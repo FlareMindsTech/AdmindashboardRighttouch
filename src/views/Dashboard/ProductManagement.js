@@ -14,6 +14,7 @@ import {
   uploadProductImage,
   deleteProductImage,
   getAllOrders,
+  uploadImage,
 } from "../utils/axiosInstance";
 
 import {
@@ -88,8 +89,10 @@ export default function ProductManagement() {
   const navigate = useNavigate();
 
   // Custom color theme
-  const customColor = "#7b2cbf";
-  const customHoverColor = "#5a189a";
+  const customColor = "#008080"; // Teal
+  const customHoverColor = "#006666"; // Darker Teal
+  const accentColor = "#FFD700"; // Gold/Yellow
+  const customBorderColor = "#F5B700"; // Golden Border
 
   const [currentUser, setCurrentUser] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -125,7 +128,7 @@ export default function ProductManagement() {
   const [itemsPerPage] = useState(5);
 
   // Category doesn't have status field
-  const initialCategory = { name: "", description: "" };
+  const initialCategory = { name: "", description: "", image: "" };
   
   // Product has status field
   const initialProduct = {
@@ -282,7 +285,7 @@ export default function ProductManagement() {
         {
           name: 'Total Stock',
           data: totalStockData,
-          color: '#4CAF50'
+          color: accentColor
         }
       ],
       options: {
@@ -373,7 +376,7 @@ export default function ProductManagement() {
         {
           name: 'Total Stock',
           data: totalStockData,
-          color: '#4CAF50'
+          color: accentColor
         }
       ],
       options: {
@@ -1167,6 +1170,57 @@ export default function ProductManagement() {
     setCurrentView("editCategory");
   };
 
+  // Add Product to Category handler
+  const handleAddProductToCategory = (category) => {
+    setSelectedCategory(category);
+    setSelectedProduct(null);
+    setNewProduct(initialProduct);
+    setVariants([{ 
+      color: '', 
+      size: '', 
+      price: '', 
+      stock: '', 
+      sku: `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}` 
+    }]);
+    setCurrentView("addProduct");
+  };
+
+  // Category Image Upload Handler
+  const handleCategoryImageUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      setIsSubmitting(true);
+      const url = await uploadImage(file);
+      
+      setNewCategory(prev => ({
+        ...prev,
+        image: url
+      }));
+      
+      toast({
+        title: "Image Uploaded",
+        description: "Category image uploaded successfully",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      toast({
+        title: "Upload Error",
+        description: error.message || "Failed to upload image",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSubmitting(false);
+      // Reset input
+      event.target.value = "";
+    }
+  };
+
   // Loading component for tables
   const TableLoader = ({ columns = 6 }) => (
     <Tr>
@@ -1325,6 +1379,77 @@ export default function ProductManagement() {
                     rows={2}
                     size="sm"
                   />
+                </FormControl>
+
+                <FormControl mb="20px">
+                  <FormLabel color="gray.700" fontSize="sm">Category Image</FormLabel>
+                  <Flex direction="column" gap={3}>
+                    {newCategory.image && (
+                      <Box 
+                        border="1px solid" 
+                        borderColor="gray.200" 
+                        borderRadius="md" 
+                        p={2} 
+                        width="fit-content"
+                        position="relative"
+                      >
+                        <Image
+                          src={newCategory.image}
+                          alt="Category Preview"
+                          boxSize="100px"
+                          objectFit="cover"
+                          borderRadius="md"
+                        />
+                        <IconButton
+                          icon={<FaTrash />}
+                          size="xs"
+                          colorScheme="red"
+                          position="absolute"
+                          top={-2}
+                          right={-2}
+                          borderRadius="full"
+                          onClick={() => setNewCategory(prev => ({ ...prev, image: "" }))}
+                          aria-label="Remove image"
+                        />
+                      </Box>
+                    )}
+                    <Box
+                      border="1px dashed"
+                      borderColor={customColor}
+                      borderRadius="md"
+                      p={4}
+                      textAlign="center"
+                      cursor="pointer"
+                      _hover={{ bg: `${customColor}05` }}
+                      position="relative"
+                    >
+                      {isSubmitting ? (
+                        <Spinner size="sm" color={customColor} />
+                      ) : (
+                        <>
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            height="100%"
+                            width="100%"
+                            position="absolute"
+                            top="0"
+                            left="0"
+                            opacity="0"
+                            cursor="pointer"
+                            onChange={handleCategoryImageUpload}
+                            disabled={isSubmitting}
+                          />
+                          <Flex direction="column" align="center" justify="center" gap={2}>
+                            <Icon as={FaPlusCircle} w={6} h={6} color={customColor} />
+                            <Text fontSize="sm" color="gray.500">
+                              Click to upload category image
+                            </Text>
+                          </Flex>
+                        </>
+                      )}
+                    </Box>
+                  </Flex>
                 </FormControl>
                 
                 <Flex justify="flex-end" mt={4} flexShrink={0}>
@@ -1760,7 +1885,7 @@ export default function ProductManagement() {
             cursor="pointer"
             onClick={() => setCurrentView("categories")}
             border={currentView === "categories" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "categories" ? customColor : `${customColor}30`}
+            borderColor={customBorderColor}
             transition="all 0.2s ease-in-out"
             bg="white"
             position="relative"
@@ -1826,7 +1951,7 @@ export default function ProductManagement() {
             cursor="pointer"
             onClick={() => setCurrentView("products")}
             border={currentView === "products" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "products" ? customColor : `${customColor}30`}
+            borderColor={customBorderColor}
             transition="all 0.2s ease-in-out"
             bg="white"
             position="relative"
@@ -1892,7 +2017,7 @@ export default function ProductManagement() {
             cursor="pointer"
             onClick={() => setCurrentView("stockAnalysis")}
             border={currentView === "stockAnalysis" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "stockAnalysis" ? customColor : `${customColor}30`}
+            borderColor={customBorderColor}
             transition="all 0.2s ease-in-out"
             bg="white"
             position="relative"
@@ -1963,7 +2088,7 @@ export default function ProductManagement() {
             cursor="pointer"
             onClick={() => setCurrentView("stockAlerts")}
             border={currentView === "stockAlerts" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "stockAlerts" ? customColor : `${customColor}30`}
+            borderColor={customBorderColor}
             transition="all 0.2s ease-in-out"
             bg="white"
             position="relative"
@@ -2042,6 +2167,8 @@ export default function ProductManagement() {
         <Card 
           shadow="lg" 
           bg="white" 
+          border="1px solid"
+          borderColor={customBorderColor}
           display="flex" 
           flexDirection="column"
           height="100%"
@@ -2237,6 +2364,21 @@ export default function ProductManagement() {
                               >
                                 Status
                               </Th>
+                              <Th 
+                                color="gray.100" 
+                                borderColor={`${customColor}30`}
+                                position="sticky"
+                                top={0}
+                                bg={`${customColor}`}
+                                zIndex={10}
+                                fontWeight="bold"
+                                fontSize="sm"
+                                py={3}
+                                borderBottom="2px solid"
+                                borderBottomColor={`${customColor}50`}
+                              >
+                                Add Product
+                              </Th>
                               
                               <Th 
                                 color="gray.100" 
@@ -2248,6 +2390,7 @@ export default function ProductManagement() {
                                 fontWeight="bold"
                                 fontSize="sm"
                                 py={3}
+                                px={14}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2265,24 +2408,24 @@ export default function ProductManagement() {
                                   bg="transparent"
                                   _hover={{ bg: `${customColor}10` }}
                                   borderBottom="1px"
-                                  borderColor={`${customColor}20`}
+                                  borderColor={`${customColor}30`}
                                   height="60px"
                                 >
-                                  <Td borderColor={`${customColor}20`} fontSize="sm" py={3}>
+                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                     {indexOfFirstItem + idx + 1}
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontWeight="medium" fontSize="sm" py={3}>
+                                  <Td borderColor={`${customColor}30`} fontWeight="medium" fontSize="sm" py={3}>
                                     {cat.name}
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="sm" py={3}>
+                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                     <Text noOfLines={1} maxW="200px">
                                       {cat.description || "-"}
                                     </Text>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="sm" py={3}>
+                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                     <Badge
-                                      bg="#9d4edd"
-                                      color="white"
+                                      bg="#dffff9ff"
+                                      color="#008080"
                                       px={3}
                                       py={1}
                                       borderRadius="full"
@@ -2293,7 +2436,22 @@ export default function ProductManagement() {
                                     </Badge>
                                   </Td>
                                  
-                                  <Td borderColor={`${customColor}20`} fontSize="sm" py={3}>
+                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
+                                    <Button
+                                      leftIcon={<FaPlus />}
+                                      bg="white"
+                                      color="#008080"
+                                      border="1px"
+                                      borderColor="#008080"
+                                      _hover={{ bg: "#008080", color: "white" }}
+                                      size="xs"
+                                      onClick={() => handleAddProductToCategory(cat)}
+                                    >
+                                      Add Product
+                                    </Button>
+                                  </Td>
+                                 
+                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                     <Flex gap={2}>
                                       <IconButton
                                         aria-label="View category"
@@ -2356,7 +2514,7 @@ export default function ProductManagement() {
                         flexShrink={0}
                         p="16px"
                         borderTop="1px solid"
-                        borderColor={`${customColor}20`}
+                        borderColor={`${customColor}30`}
                         bg="transparent"
                       >
                         <Flex
@@ -2573,28 +2731,28 @@ export default function ProductManagement() {
                                     bg="transparent"
                                     _hover={{ bg: `${customColor}10` }}
                                     borderBottom="1px"
-                                    borderColor={`${customColor}20`}
+                                    borderColor={`${customColor}30`}
                                     height="60px"
                                   >
-                                    <Td borderColor={`${customColor}20`} fontSize="sm" py={3}>
+                                    <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                       {indexOfFirstItem + idx + 1}
                                     </Td>
-                                    <Td borderColor={`${customColor}20`} fontWeight="medium" fontSize="sm" py={3}>
+                                    <Td borderColor={`${customColor}30`} fontWeight="medium" fontSize="sm" py={3}>
                                       <Text noOfLines={1} maxW="150px">
                                         {prod.name}
                                       </Text>
                                     </Td>
-                                    <Td borderColor={`${customColor}20`} fontSize="sm" py={3}>
+                                    <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                       <Text noOfLines={1} maxW="120px">
                                         {prod.category?.name || 
                                         categories.find(c => c._id === prod.category)?.name || 
                                         "N/A"}
                                       </Text>
                                     </Td>
-                                    <Td borderColor={`${customColor}20`} fontSize="sm" py={3}>
+                                    <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                       {priceRange}
                                     </Td>
-                                    <Td borderColor={`${customColor}20`} fontSize="sm" py={3}>
+                                    <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                       <Flex direction="column" gap={1}>
                                         <StockStatusBadge product={prod} />
                                         <Badge
@@ -2614,7 +2772,7 @@ export default function ProductManagement() {
                                         </Text>
                                       </Flex>
                                     </Td>
-                                    <Td borderColor={`${customColor}20`} fontSize="sm" py={3}>
+                                    <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                       <Flex gap={2}>
                                         <IconButton
                                           aria-label="View product"
@@ -2678,7 +2836,7 @@ export default function ProductManagement() {
                         flexShrink={0}
                         p="16px"
                         borderTop="1px solid"
-                        borderColor={`${customColor}20`}
+                        borderColor={`${customColor}30`}
                         bg="transparent"
                       >
                         <Flex

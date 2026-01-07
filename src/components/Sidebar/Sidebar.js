@@ -44,7 +44,7 @@ function Sidebar(props) {
   const mainPanel = React.useRef();
   const variantChange = "0.2s linear";
 
-  const activeBg = useColorModeValue("#7b2cbf", "#7b2cbf"); // Purple background when active
+  const activeBg = useColorModeValue("#008080", "#008080"); // Purple background when active
   const inactiveBg = useColorModeValue("white", "navy.700");
   const activeColor = useColorModeValue("white", "white"); // White text when active
   const inactiveColor = useColorModeValue("gray.400", "gray.400");
@@ -247,7 +247,7 @@ function Sidebar(props) {
               <Flex>
                 <IconBox
                   bg={isActive ? "white" : inactiveBg} // White background when active
-                  color={isActive ? "#7b2cbf" : "blue.500"} // Purple icon when active, blue when inactive
+                  color={isActive ? "#008080" : "blue.500"} // Purple icon when active, blue when inactive
                   h={{
                     base: "24px",  // 320px - 480px
                     sm: "26px",    // 481px - 767px
@@ -348,6 +348,7 @@ function Sidebar(props) {
       >
         <Box
           bg={sidebarBg}
+          border="1px solid #F5B700"
           transition={variantChange}
           w={{
             base: "240px",  // 320px - 480px
@@ -438,7 +439,7 @@ function Sidebar(props) {
       <AlertDialog isOpen={isSigninPromptOpen} leastDestructiveRef={signinCancelRef} onClose={closeSigninPrompt} isCentered>
         <AlertDialogOverlay>
           <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#7b2cbf">
+            <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#008080">
               Not signed in
             </AlertDialogHeader>
             <AlertDialogBody>
@@ -456,7 +457,7 @@ function Sidebar(props) {
       <AlertDialog isOpen={isLogoutOpen} leastDestructiveRef={logoutCancelRef} onClose={closeLogout} isCentered>
         <AlertDialogOverlay>
           <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#7b2cbf">
+            <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#008080">
               Confirm Logout
             </AlertDialogHeader>
             <AlertDialogBody>Are you sure you want to log out?</AlertDialogBody>
@@ -521,7 +522,7 @@ export function SidebarResponsive(props) {
     window.location.replace(`${base}#/auth/signin`);
   };
 
-  const activeBg = useColorModeValue("#7b2cbf", "#7b2cbf"); // Purple background when active
+  const activeBg = useColorModeValue("#008080", "#008080"); // Purple background when active
   const inactiveBg = useColorModeValue("white", "navy.700");
   const activeColor = useColorModeValue("white", "white"); // White text when active
   const inactiveColor = useColorModeValue("gray.400", "white");
@@ -664,7 +665,7 @@ export function SidebarResponsive(props) {
               <Flex>
                 <IconBox
                   bg={isActive ? "white" : inactiveBg} // White background when active
-                  color={isActive ? "#7b2cbf" : "blue.500"} // Purple icon when active, blue when inactive
+                  color={isActive ? "#008080" : "blue.500"} // Purple icon when active, blue when inactive
                   h={{
                     base: "24px",  // 320px - 480px
                     sm: "26px",    // 481px - 767px
@@ -774,6 +775,7 @@ export function SidebarResponsive(props) {
             md: "280px"     // 768px - 1024px
           }}
           bg={sidebarBackgroundColor}
+          border="1px solid #F5B700"
           borderRadius="16px"
           mt={{
             base: "50px",  // 320px - 480px
@@ -881,7 +883,7 @@ export function SidebarResponsive(props) {
           <AlertDialog isOpen={isSigninPromptOpenResp} leastDestructiveRef={signinCancelRefResp} onClose={closeSigninPromptResp} isCentered>
             <AlertDialogOverlay>
               <AlertDialogContent>
-                <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#7b2cbf">Not signed in</AlertDialogHeader>
+                <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#008080">Not signed in</AlertDialogHeader>
                   <AlertDialogBody>You are not signed in yet. Do you want to go to the Sign-in page?</AlertDialogBody>
                   <AlertDialogFooter>
                     <Button ref={signinCancelRefResp} onClick={closeSigninPromptResp} variant="ghost">Cancel</Button>
@@ -895,7 +897,7 @@ export function SidebarResponsive(props) {
           <AlertDialog isOpen={isLogoutOpenResp} leastDestructiveRef={logoutCancelRefResp} onClose={closeLogoutResp} isCentered>
             <AlertDialogOverlay>
               <AlertDialogContent>
-                <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#7b2cbf">Confirm Logout</AlertDialogHeader>
+                <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#008080">Confirm Logout</AlertDialogHeader>
                 <AlertDialogBody>Are you sure you want to logout?</AlertDialogBody>
                 <AlertDialogFooter>
                   <Button ref={logoutCancelRefResp} onClick={closeLogoutResp} variant="ghost">Cancel</Button>

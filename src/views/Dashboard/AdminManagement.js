@@ -1,3 +1,4 @@
+// AdminManagement.js - OWNER ONLY ACCESS
 import {
   Box,
   Button,
@@ -35,11 +36,17 @@ import {
   ModalBody,
   ModalFooter,
   ModalCloseButton,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
 } from "@chakra-ui/react";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   FaUsers,
   FaEdit,
@@ -62,6 +69,7 @@ import {
   createAdmin,
   inActiveAdmin,
 } from "views/utils/axiosInstance";
+import { useNavigate } from "react-router-dom";
 
 // Main Admin Management Component
 function AdminManagement() {
@@ -73,10 +81,11 @@ function AdminManagement() {
   const tableHeaderBg = useColorModeValue("gray.100", "gray.700");
 
   // Custom color theme
-  const customColor = "#7b2cbf";
+  const customColor = "#008080";
   const customHoverColor = "#5a189a";
 
   const toast = useToast();
+  const navigate = useNavigate();
 
   const [adminData, setAdminData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
@@ -87,14 +96,15 @@ function AdminManagement() {
   const [currentUser, setCurrentUser] = useState(null);
   const [activeFilter, setActiveFilter] = useState("all");
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [searchTerm, setSearchTerm] = useState(""); // Search filter state
-  const [showPassword, setShowPassword] = useState(false); // Show password state
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false); // Show confirm password state
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Delete modal states
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  // Alert dialog for delete
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [adminToDelete, setAdminToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const cancelRef = useRef();
 
   // View state - 'list', 'add', 'edit'
   const [currentView, setCurrentView] = useState("list");
@@ -110,7 +120,7 @@ function AdminManagement() {
     confirmPassword: "",
     profileImage: "",
     role: "admin",
-    status: "Active" // Added status field
+    status: "Active"
   });
 
   // Pagination state
@@ -131,126 +141,54 @@ function AdminManagement() {
   const handleTogglePassword = () => setShowPassword(!showPassword);
   const handleToggleConfirmPassword = () => setShowConfirmPassword(!showConfirmPassword);
 
-  // Handle delete admin - show confirmation modal
-  const handleDeleteAdmin = async (admin) => {
-    if (admin.role === "super admin" && admin._id !== currentUser._id) {
-      toast({
-        title: "Permission Denied",
-        description: "You cannot delete other super admins.",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    if (admin._id === currentUser._id) {
-      toast({
-        title: "Action Not Allowed",
-        description: "You cannot delete your own account.",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    setAdminToDelete(admin);
-    setIsDeleteModalOpen(true);
-  };
-
-  // Confirm delete handler
-  const handleConfirmDelete = async () => {
-    if (!adminToDelete) return;
-
-    setIsDeleting(true);
-    try {
-      const response = await inActiveAdmin(adminToDelete._id);
-      
-      toast({
-        title: "Admin Deleted",
-        description: `${adminToDelete.name} has been deleted successfully.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-
-      // Refresh admin list
-      const fetchAdmins = async () => {
-        try {
-          const adminsResponse = await getAllAdmins();
-          const admins = adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
-          const sortedAdmins = admins.sort(
-            (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
-          );
-          setAdminData(sortedAdmins);
-          setFilteredData(sortedAdmins);
-        } catch (err) {
-          console.error("Error refreshing admins:", err);
-        }
-      };
-
-      await fetchAdmins();
-      closeDeleteModal();
-
-    } catch (err) {
-      console.error("Error deleting admin:", err);
-      const errorMessage = err.response?.data?.message || err.message || "Failed to delete admin.";
-      toast({
-        title: "Delete Error",
-        description: errorMessage,
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-    setIsDeleting(false);
-  };
-
-  // Close delete modal
-  const closeDeleteModal = () => {
-    setIsDeleteModalOpen(false);
-    setAdminToDelete(null);
-    setIsDeleting(false);
-  };
-
-  const handleAddAdmin = () => {
-    setFormData({
-      firstName: "",
-      lastName: "",
-      phone: "",
-      email: "",
-      password: "",
-      confirmPassword: "",
-      profileImage: "",
-      role: "admin",
-      status: "Active" // Default status for new admin
-    });
-    setEditingAdmin(null);
-    setCurrentView("add");
-    setError("");
-    setSuccess("");
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-  };
-
   // Fetch current user from localStorage and check permissions
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem("user"));
+    const userString = localStorage.getItem("user");
     
-    // Check if user exists and is super admin
-    if (!storedUser || storedUser.role !== "super admin") {
+    // Check if user exists and is owner
+    if (!userString) {
       toast({
         title: "Access Denied",
-        description: "Only super admin users can access this page.",
+        description: "Please sign in to access this page.",
         status: "error",
         duration: 3000,
         isClosable: true,
       });
+      navigate("/auth/signin");
       return;
     }
-    setCurrentUser(storedUser);
-  }, [toast]);
+
+    try {
+      const userData = JSON.parse(userString);
+      const userRole = userData.role?.toLowerCase();
+      
+      // 🔐 STRICT OWNER CHECK
+      if (userRole !== "owner") {
+        toast({
+          title: "Access Denied",
+          description: "Only owner accounts can access this page.",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+        navigate("/access-denied");
+        return;
+      }
+      
+      setCurrentUser(userData);
+    } catch (error) {
+      console.error("Error parsing user data:", error);
+      toast({
+        title: "Session Error",
+        description: "Your session data is invalid. Please sign in again.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      localStorage.removeItem("user");
+      navigate("/auth/signin");
+    }
+  }, [toast, navigate]);
 
   // Fetch admins from backend
   useEffect(() => {
@@ -262,13 +200,17 @@ function AdminManagement() {
       setDataLoaded(false);
       try {
         const response = await getAllAdmins();
-        console.log("Fetched admins response:", response);
         
         // Handle different response formats
         const admins = response.data?.admins || response.data || response?.admins || response || [];
 
+        // Filter out owner accounts from the list
+        const nonOwnerAdmins = admins.filter(admin => 
+          admin.role?.toLowerCase() !== "owner"
+        );
+
         // Sort admins in descending order (newest first)
-        const sortedAdmins = admins.sort(
+        const sortedAdmins = nonOwnerAdmins.sort(
           (a, b) =>
             new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
         );
@@ -343,6 +285,105 @@ function AdminManagement() {
     return () => clearTimeout(timer);
   }, [activeFilter, adminData, dataLoaded, searchTerm]);
 
+  // Handle delete admin - show confirmation dialog
+  const handleDeleteAdmin = async (admin) => {
+    // Prevent deleting owner accounts
+    if (admin.role?.toLowerCase() === "owner") {
+      toast({
+        title: "Permission Denied",
+        description: "You cannot delete owner accounts.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setAdminToDelete(admin);
+    setIsDeleteDialogOpen(true);
+  };
+
+  // Confirm delete handler
+  const handleConfirmDelete = async () => {
+    if (!adminToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await inActiveAdmin(adminToDelete._id);
+      
+      toast({
+        title: "Admin Deleted",
+        description: `${adminToDelete.name} has been deleted successfully.`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+
+      // Refresh admin list
+      const fetchAdmins = async () => {
+        try {
+          const adminsResponse = await getAllAdmins();
+          const admins = adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
+          
+          // Filter out owner accounts
+          const nonOwnerAdmins = admins.filter(admin => 
+            admin.role?.toLowerCase() !== "owner"
+          );
+          
+          const sortedAdmins = nonOwnerAdmins.sort(
+            (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
+          );
+          setAdminData(sortedAdmins);
+          setFilteredData(sortedAdmins);
+        } catch (err) {
+          console.error("Error refreshing admins:", err);
+        }
+      };
+
+      await fetchAdmins();
+      closeDeleteDialog();
+
+    } catch (err) {
+      console.error("Error deleting admin:", err);
+      const errorMessage = err.response?.data?.message || err.message || "Failed to delete admin.";
+      toast({
+        title: "Delete Error",
+        description: errorMessage,
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+    setIsDeleting(false);
+  };
+
+  // Close delete dialog
+  const closeDeleteDialog = () => {
+    setIsDeleteDialogOpen(false);
+    setAdminToDelete(null);
+    setIsDeleting(false);
+  };
+
+  const handleAddAdmin = () => {
+    setFormData({
+      firstName: "",
+      lastName: "",
+      phone: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      profileImage: "",
+      role: "admin",
+      status: "Active"
+    });
+    setEditingAdmin(null);
+    setCurrentView("add");
+    setError("");
+    setSuccess("");
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+  };
+
   // Handle input change for form
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -361,11 +402,11 @@ function AdminManagement() {
 
   // Handle edit admin - show edit form
   const handleEditAdmin = (admin) => {
-    // Prevent editing super admins unless it's the current user
-    if (admin.role === "super admin" && admin._id !== currentUser._id) {
+    // Prevent editing owner accounts
+    if (admin.role?.toLowerCase() === "owner") {
       toast({
         title: "Permission Denied",
-        description: "You can only edit your own super admin profile.",
+        description: "You cannot edit owner accounts.",
         status: "warning",
         duration: 3000,
         isClosable: true,
@@ -387,7 +428,7 @@ function AdminManagement() {
       confirmPassword: "",
       profileImage: admin.profileImage || "",
       role: admin.role || "admin",
-      status: admin.status || "Active" // Set current status
+      status: admin.status || "Active"
     });
     setEditingAdmin(admin);
     setCurrentView("edit");
@@ -403,8 +444,8 @@ function AdminManagement() {
     setEditingAdmin(null);
     setError("");
     setSuccess("");
-    setShowPassword(false); // Reset password visibility
-    setShowConfirmPassword(false); // Reset confirm password visibility
+    setShowPassword(false);
+    setShowConfirmPassword(false);
   };
 
   // Handle form submit for both add and edit
@@ -468,11 +509,11 @@ function AdminManagement() {
       });
     }
 
-    // Prevent regular admins from creating super admins
-    if (currentUser.role === "admin" && formData.role === "super admin") {
+    // Prevent creating owner accounts
+    if (formData.role?.toLowerCase() === "owner") {
       return toast({
         title: "Permission Denied",
-        description: "Only super admins can create other super admins",
+        description: "Owner accounts cannot be created through the admin interface",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -484,21 +525,16 @@ function AdminManagement() {
     setSuccess("");
 
     try {
-      // Prepare data for API - try different structures
-      let adminDataToSend;
-
-      // Try structure 1: Combined name field (most common)
-      adminDataToSend = {
+      // Prepare data for API
+      let adminDataToSend = {
         name: `${formData.firstName} ${formData.lastName}`.trim(),
         email: formData.email,
         role: formData.role,
-        status: formData.status, // Include status in API call
+        status: formData.status,
         phone: formData.phone || "",
         profileImage: formData.profileImage || "",
         ...(formData.password && { password: formData.password })
       };
-
-      console.log("Sending data to API:", adminDataToSend);
 
       let response;
       let successMessage;
@@ -513,8 +549,6 @@ function AdminManagement() {
         successMessage = `Admin ${formData.firstName} created successfully`;
       }
 
-      console.log("Admin operation response:", response);
-
       toast({
         title: currentView === "edit" ? "Admin Updated" : "Admin Created",
         description: successMessage,
@@ -528,7 +562,13 @@ function AdminManagement() {
         try {
           const adminsResponse = await getAllAdmins();
           const admins = adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
-          const sortedAdmins = admins.sort(
+          
+          // Filter out owner accounts
+          const nonOwnerAdmins = admins.filter(admin => 
+            admin.role?.toLowerCase() !== "owner"
+          );
+          
+          const sortedAdmins = nonOwnerAdmins.sort(
             (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
           );
           setAdminData(sortedAdmins);
@@ -559,12 +599,10 @@ function AdminManagement() {
 
     } catch (err) {
       console.error("API Error details:", err);
-      console.error("Error response:", err.response);
       
       let errorMessage = "API error. Try again.";
       
       if (err.response?.data) {
-        // Try to get detailed error message
         const errorData = err.response.data;
         errorMessage = errorData.message || errorData.error || JSON.stringify(errorData);
       } else if (err.message) {
@@ -576,7 +614,7 @@ function AdminManagement() {
         title: "Error",
         description: errorMessage,
         status: "error",
-        duration: 5000, // Longer duration to read the error
+        duration: 5000,
         isClosable: true,
       });
     }
@@ -624,13 +662,13 @@ function AdminManagement() {
     }
   };
 
-  // Get verification badge
-  const getVerificationBadge = (isVerified) => {
-    if (isVerified) {
-      return { text: "Verified", color: "green" };
-    } else {
-      return { text: "Not Verified", color: "red" };
-    }
+  // Get role badge color
+  const getRoleBadgeColor = (role) => {
+    const roleLower = role?.toLowerCase();
+    if (roleLower === "owner") return "purple";
+    if (roleLower === "super admin") return "blue";
+    if (roleLower === "admin") return "green";
+    return "gray";
   };
 
   // Card click handlers
@@ -651,9 +689,15 @@ function AdminManagement() {
     }
   };
 
-  const handlePageClick = (pageNumber) => {
-    setCurrentPage(pageNumber);
-  };
+  // If currentUser is null (still checking or not owner), show loading
+  if (!currentUser) {
+    return (
+      <Flex justify="center" align="center" h="100vh">
+        <Spinner size="xl" color={customColor} />
+        <Text ml={4}>Checking permissions...</Text>
+      </Flex>
+    );
+  }
 
   // Render Form View (Add/Edit)
   if (currentView === "add" || currentView === "edit") {
@@ -682,12 +726,6 @@ function AdminManagement() {
           '&:hover::-webkit-scrollbar-thumb:hover': {
             background: '#94a3b8',
           },
-          // For Firefox
-          scrollbarWidth: 'thin',
-          scrollbarColor: 'transparent transparent',
-          '&:hover': {
-            scrollbarColor: '#cbd5e1 transparent',
-          },
         }}
       >
         <Card bg="white" shadow="xl" height="100%" display="flex" flexDirection="column">
@@ -701,7 +739,7 @@ function AdminManagement() {
                 color={customColor}
                 _hover={{ bg: `${customColor}10` }}
               >
-                {/* Removed "Back to List" text, only icon */}
+                {/* Back arrow only */}
               </Button>
               <Heading size="md" color="gray.700">
                 {currentView === "add" ? "Add New Admin" : "Edit Admin"}
@@ -817,6 +855,7 @@ function AdminManagement() {
                 >
                   <option value="admin">Admin</option>
                   <option value="super admin">Super Admin</option>
+                  {/* Owner role is not selectable */}
                 </Select>
               </FormControl>
 
@@ -930,7 +969,7 @@ function AdminManagement() {
     );
   }
 
-  // Render List View with Fixed Layout
+  // Render List View
   return (
     <Flex 
       flexDirection="column" 
@@ -956,17 +995,10 @@ function AdminManagement() {
         '&:hover::-webkit-scrollbar-thumb:hover': {
           background: '#94a3b8',
         },
-        // For Firefox
-        scrollbarWidth: 'thin',
-        scrollbarColor: 'transparent transparent',
-        '&:hover': {
-          scrollbarColor: '#cbd5e1 transparent',
-        },
       }}
     >
       {/* Fixed Statistics Cards */}
       <Box mb="24px">
-        {/* Horizontal Cards Container */}
         <Flex
           direction="row"
           wrap="wrap"
@@ -1120,9 +1152,6 @@ function AdminManagement() {
                   w={{ base: "35px", md: "45px" }} 
                   bg={customColor}
                   transition="all 0.2s ease-in-out"
-                  _groupHover={{
-                    transform: "scale(1.1)",
-                  }}
                 >
                   <Icon
                     as={IoCheckmarkDoneCircleSharp}
@@ -1135,7 +1164,7 @@ function AdminManagement() {
             </CardBody>
           </Card>
 
-          {/* Super Admins Card */}
+          {/* Deleted Admins Card */}
           <Card
             minH="83px"
             cursor="pointer"
@@ -1192,9 +1221,6 @@ function AdminManagement() {
                   w={{ base: "35px", md: "45px" }} 
                   bg={customColor}
                   transition="all 0.2s ease-in-out"
-                  _groupHover={{
-                    transform: "scale(1.1)",
-                  }}
                 >
                   <Icon
                     as={MdAdminPanelSettings}
@@ -1260,7 +1286,7 @@ function AdminManagement() {
         </Flex>
       </Box>
 
-      {/* Table Container - Removed background box */}
+      {/* Table Container */}
       <Box 
         mt={-8}
         flex="1" 
@@ -1270,7 +1296,6 @@ function AdminManagement() {
         pt={0}
         overflow="hidden"
       >
-        {/* Table Card with transparent background */}
         <Card 
           shadow="xl" 
           bg="transparent"
@@ -1340,7 +1365,7 @@ function AdminManagement() {
             </Flex>
           </CardHeader>
           
-          {/* Table Content Area - Scrollable Body with Fixed Header */}
+          {/* Table Content Area */}
           <CardBody 
             bg="transparent"
             flex="1" 
@@ -1358,15 +1383,13 @@ function AdminManagement() {
               <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
                 {currentItems.length > 0 ? (
                   <>
-                    {/* Fixed Table Container - Exact height for 5 rows */}
                     <Box 
                       flex="1"
                       display="flex"
                       flexDirection="column"
-                      height="400px" // Fixed height for exactly 5 rows
+                      height="400px"
                       overflow="hidden"
                     >
-                      {/* Scrollable Table Area */}
                       <Box
                         flex="1"
                         overflowY="hidden"
@@ -1397,7 +1420,6 @@ function AdminManagement() {
                         }}
                       >
                         <Table variant="simple" size="md" bg="transparent">
-                          {/* Fixed Header */}
                           <Thead>
                             <Tr>
                               <Th 
@@ -1478,10 +1500,8 @@ function AdminManagement() {
                             </Tr>
                           </Thead>
 
-                          {/* Scrollable Body */}
                           <Tbody bg="transparent">
                             {displayItems.map((admin, index) => {
-                              // Handle empty rows
                               if (admin.isEmpty) {
                                 return (
                                   <Tr 
@@ -1497,7 +1517,6 @@ function AdminManagement() {
                               }
 
                               const statusConfig = getStatusConfig(admin.status);
-                              const verification = getVerificationBadge(admin.isVerified);
                               return (
                                 <Tr 
                                   key={admin._id || index}
@@ -1527,10 +1546,7 @@ function AdminManagement() {
                                   </Td>
                                   <Td borderColor={`${customColor}20`}>
                                     <Badge
-                                      colorScheme={
-                                        admin.role === "super admin" ? "purple" :
-                                        admin.role === "admin" ? "blue" : "gray"
-                                      }
+                                      colorScheme={getRoleBadgeColor(admin.role)}
                                       px={3}
                                       py={1}
                                       borderRadius="full"
@@ -1570,8 +1586,7 @@ function AdminManagement() {
                                         _hover={{ bg: customColor, color: "white" }}
                                         size="sm"
                                         onClick={() => handleEditAdmin(admin)}
-                                        isDisabled={admin.role === "super admin" && admin._id !== currentUser._id}
-                                        title={admin.role === "super admin" && admin._id !== currentUser._id ? "Cannot edit other super admins" : "Edit admin"}
+                                        title="Edit admin"
                                       />
                                       {admin.status === "Active" && admin._id !== currentUser._id && (
                                         <IconButton
@@ -1597,7 +1612,7 @@ function AdminManagement() {
                       </Box>
                     </Box>
 
-                    {/* Pagination Bar - Positioned at bottom right corner */}
+                    {/* Pagination Bar */}
                     {currentItems.length > 0 && (
                       <Box 
                         flexShrink={0}
@@ -1607,16 +1622,14 @@ function AdminManagement() {
                         bg="transparent"
                       >
                         <Flex
-                          justify="flex-end" // Align to the right
+                          justify="flex-end"
                           align="center"
                           gap={3}
                         >
-                          {/* Page Info */}
                           <Text fontSize="sm" color="gray.600" display={{ base: "none", sm: "block" }}>
                             Showing {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, filteredData.length)} of {filteredData.length} admins
                           </Text>
 
-                          {/* Pagination Controls */}
                           <Flex align="center" gap={2}>
                             <Button
                               size="sm"
@@ -1639,7 +1652,6 @@ function AdminManagement() {
                               <Text display={{ base: "none", sm: "block" }}>Previous</Text>
                             </Button>
 
-                            {/* Page Number Display */}
                             <Flex 
                               align="center" 
                               gap={2}
@@ -1714,69 +1726,76 @@ function AdminManagement() {
         </Card>
       </Box>
 
-      {/* Delete Confirmation Modal */}
-      <Modal isOpen={isDeleteModalOpen} onClose={closeDeleteModal} size="md">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader color="gray.700">
-            <Flex align="center" gap={2}>
-              <Icon as={FaExclamationTriangle} color="red.500" />
-              Confirm Delete
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <Text fontSize="md" mb={4}>
-              Are you sure you want to delete{" "}
-              <Text as="span" fontWeight="bold" color={customColor}>
-                "{adminToDelete?.name}"
-              </Text>
-              ? This action cannot be undone.
-            </Text>
-            
-            <Box 
-              bg="orange.50" 
-              p={3} 
-              borderRadius="md" 
-              border="1px" 
-              borderColor="orange.200"
-            >
-              <Flex align="center" gap={2} mb={2}>
-                <Icon as={MdWarning} color="orange.500" />
-                <Text fontSize="sm" fontWeight="medium" color="orange.700">
-                  Important Note
-                </Text>
+      {/* Delete Confirmation AlertDialog */}
+      <AlertDialog
+        isOpen={isDeleteDialogOpen}
+        leastDestructiveRef={cancelRef}
+        onClose={closeDeleteDialog}
+        isCentered
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold" color="gray.700">
+              <Flex align="center" gap={2}>
+                <Icon as={FaExclamationTriangle} color="red.500" />
+                Confirm Delete
               </Flex>
-              <Text fontSize="sm" color="orange.600">
-                This admin will be permanently deleted from the system. 
-                All associated data will be removed.
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              <Text fontSize="md" mb={4}>
+                Are you sure you want to delete{" "}
+                <Text as="span" fontWeight="bold" color={customColor}>
+                  "{adminToDelete?.name}"
+                </Text>
+                ? This action cannot be undone.
               </Text>
-            </Box>
-          </ModalBody>
-          <ModalFooter>
-            <Button 
-              variant="outline" 
-              mr={3} 
-              onClick={closeDeleteModal}
-              isDisabled={isDeleting}
-              size="sm"
-            >
-              Cancel
-            </Button>
-            <Button
-              bg="red.500"
-              _hover={{ bg: "red.600" }}
-              color="white"
-              onClick={handleConfirmDelete}
-              isLoading={isDeleting}
-              loadingText="Deleting..."
-              size="sm"
-            >
-              Delete Admin
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+              
+              <Box 
+                bg="orange.50" 
+                p={3} 
+                borderRadius="md" 
+                border="1px" 
+                borderColor="orange.200"
+              >
+                <Flex align="center" gap={2} mb={2}>
+                  <Icon as={MdWarning} color="orange.500" />
+                  <Text fontSize="sm" fontWeight="medium" color="orange.700">
+                    Important Note
+                  </Text>
+                </Flex>
+                <Text fontSize="sm" color="orange.600">
+                  This admin will be permanently deleted from the system. 
+                  All associated data will be removed.
+                </Text>
+              </Box>
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button 
+                ref={cancelRef} 
+                onClick={closeDeleteDialog}
+                isDisabled={isDeleting}
+                size="sm"
+              >
+                Cancel
+              </Button>
+              <Button
+                bg="red.500"
+                _hover={{ bg: "red.600" }}
+                color="white"
+                onClick={handleConfirmDelete}
+                isLoading={isDeleting}
+                loadingText="Deleting..."
+                ml={3}
+                size="sm"
+              >
+                Delete Admin
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
     </Flex>
   );
 }

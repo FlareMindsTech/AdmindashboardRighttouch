@@ -71,7 +71,7 @@ function UserManagement() {
   const tableHeaderBg = useColorModeValue("gray.100", "gray.700");
 
   // Custom color theme
-  const customColor = "#7b2cbf";
+  const customColor = "#008080";
   const customHoverColor = "#5a189a";
 
   const toast = useToast();
@@ -153,11 +153,11 @@ function UserManagement() {
     const storedUser = JSON.parse(localStorage.getItem("user"));
     if (
       !storedUser ||
-      (storedUser.role !== "admin" && storedUser.role !== "super admin")
+      (storedUser.role !== "owner")
     ) {
       toast({
         title: "Access Denied",
-        description: "Only admin or super admin users can access this page.",
+        description: "Only owner users can access this page.",
         status: "error",
         duration: 3000,
         isClosable: true,

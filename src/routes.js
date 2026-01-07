@@ -1,4 +1,4 @@
-// dashRoutes.js - Updated with role-based access
+
 import React from "react";
 import Dashboard from "views/Dashboard/Dashboard.js";
 import Billing from "views/Dashboard/Billing.js";
@@ -6,20 +6,20 @@ import Profile from "views/Dashboard/Profile.js";
 import SignIn from "views/Pages/SignIn.js";
 import AdminManagement from "views/Dashboard/AdminManagement.js"; 
 import UserManagement from "views/Dashboard/UserManagement.js"; 
+import ServiceManagement from "views/Dashboard/ServiceManagement.js";
 import { MdLogout } from "react-icons/md";
 
 import {
   HomeIcon,
   StatsIcon,
   CreditIcon,
-
 } from "components/Icons/Icons";
 
 import ProductManagement from "views/Dashboard/ProductManagement";
 
-const ICON_COLOR = "#7b2cbf";
+const ICON_COLOR = "#008080";
 
-// ✅ Added: Logout component
+
 const Logout = () => {
   localStorage.clear();
   sessionStorage.clear();
@@ -28,75 +28,82 @@ const Logout = () => {
   return <div>Logging out...</div>;
 };
 
-// Get current user role
 const getCurrentUserRole = () => {
   const userString = localStorage.getItem("user");
-  if (userString) {
-    try {
-      const userData = JSON.parse(userString);
-      return userData.role?.toLowerCase() || 'admin';
-    } catch (error) {
-      return 'admin';
-    }
+  if (!userString) return "";
+
+  try {
+    const userData = JSON.parse(userString);
+    return userData.role?.toLowerCase() || "";
+  } catch (error) {
+    return "";
   }
-  return 'admin';
 };
 
 const userRole = getCurrentUserRole();
-const isSuperAdmin = userRole === 'super admin' || userRole === 'super admin';
 
-var dashRoutes = [
-  {
-    path: "/dashboard",
-    name: "Dashboard",
-    rtlName: "لوحة القيادة",
-    icon: <HomeIcon color="#7b2cbf" />,
-    element: <Dashboard />,
-    layout: "/admin",
-  },
-  // Show Admin Management only for super admin
-  ...(isSuperAdmin ? [{
-    path: "/admin-management",
-    name: "Admin Management",
-    rtlName: "إدارة المسؤول",
-    icon: <StatsIcon color="#7b2cbf" />,
-    element: <AdminManagement />,
-    layout: "/admin",
-  }] : []),
-  {
-    path: "/ProductManagement",
-    name: "Product Management",
-    rtlName: "إدارة المستخدمين",
-    icon: <StatsIcon color="#7b2cbf" />,
-    element: <ProductManagement />,     
-    layout: "/admin",
-  },
-  {
-    path: "/user-management",
-    name: "User Management",
-    rtlName: "إدارة المستخدمين",
-    icon: <StatsIcon color="#7b2cbf" />,
-    element: <UserManagement />,
-    layout: "/admin",
-  },
-  {
-    path: "/billing",
-    name: "Billing",
-    rtlName: "الفواتير",
-    icon: <CreditIcon color="#7b2cbf" />,
-    element: <Billing />,
-    layout: "/admin",
-  },
-  { 
-    path: "/profile", 
-    name: "Profile", 
-    element: <Profile />, 
-    layout: "/admin", 
-  },
+
+const isOwner = userRole === "owner";
+console.log("User Role:", userRole);
+console.log("Is Owner:", isOwner);
+
+const dashRoutes = [
+  // ---------------- OWNER ONLY ROUTES ----------------
+  ...(isOwner ? [
+    {
+      path: "/dashboard",
+      name: "Dashboard",
+      icon: <HomeIcon color="#7b2cbf" />,
+      element: <Dashboard />,
+      layout: "/owner",
+    },
+    {
+      path: "/admin-management",
+      name: "Technician Management",
+      icon: <StatsIcon color="#7b2cbf" />,
+      element: <AdminManagement />,
+      layout: "/owner",
+    },
+     {
+      path: "/service-management",
+      name: "Service Management",
+      icon: <StatsIcon color="#7b2cbf" />,
+      element: <ServiceManagement />,     
+      layout: "/owner",
+    },
+    {
+      path: "/product-management",
+      name: "Product Management",
+      icon: <StatsIcon color="#7b2cbf" />,
+      element: <ProductManagement />,     
+      layout: "/owner",
+    },
+    {
+      path: "/user-management",
+      name: "User Management",
+      icon: <StatsIcon color="#7b2cbf" />,
+      element: <UserManagement />,
+      layout: "/owner",
+    },
+    {
+      path: "/billing",
+      name: "Billing",
+      icon: <CreditIcon color="#7b2cbf" />,
+      element: <Billing />,
+      layout: "/owner",
+    },
+    { 
+      path: "/profile", 
+      name: "Profile", 
+      element: <Profile />, 
+      layout: "/owner", 
+    },
+  ] : []),
+
+  // ---------------- PUBLIC ROUTES ----------------
   {
     path: "/signin",
-    name: "Logout",
-    rtlName: "تسجيل الدخول",
+    name: "Sign In",
     icon: <MdLogout color={ICON_COLOR} />,
     element: <SignIn />,
     layout: "/auth",
@@ -104,10 +111,9 @@ var dashRoutes = [
   {
     path: "/logout",
     name: "Logout",
-    rtlName: "تسجيل الخروج",
     icon: <MdLogout color={ICON_COLOR} />,
     element: <Logout />,
-    layout: "/admin",
+    layout: "/owner",
   },
 ];
 

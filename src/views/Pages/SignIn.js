@@ -25,7 +25,7 @@ function AdminLogin() {
   const titleColor = useColorModeValue("purple.600", "purple.300");
   const toast = useToast();
 
-  const [email, setEmail] = useState("");
+  const [identifier, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -49,79 +49,93 @@ function AdminLogin() {
     100% { opacity: 1; transform: translateY(0); }
   `;
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      toast({
-        title: "Missing fields",
-        description: "Email and password are required",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
+const handleLogin = async () => {
+  if (!identifier || !password) {
+    toast({
+      title: "Missing fields",
+      description: "Email and password are required",
+      status: "warning",
+      duration: 3000,
+      isClosable: true,
+    });
+    return;
+  }
 
-    if (!emailRegex.test(email)) {
-      toast({
-        title: "Invalid Email",
-        description: "Please enter a valid email address",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
+  if (!emailRegex.test(identifier)) {
+    toast({
+      title: "Invalid Email",
+      description: "Please enter a valid email address",
+      status: "warning",
+      duration: 3000,
+      isClosable: true,
+    });
+    return;
+  }
 
-    if (!passwordRegex.test(password)) {
-      toast({
-        title: "Invalid Password",
-        description:
-          "Password must be at least 8 characters, include uppercase, lowercase, and a number",
-        status: "warning",
-        duration: 4000,
-        isClosable: true,
-      });
-      return;
-    }
+  if (!passwordRegex.test(password)) {
+    toast({
+      title: "Invalid Password",
+      description:
+        "Password must be at least 8 characters, include uppercase, lowercase, and a number",
+      status: "warning",
+      duration: 4000,
+      isClosable: true,
+    });
+    return;
+  }
 
-    setLoading(true);
+  setLoading(true);
 
-    try {
-      const res = await axios.post(
-        "https://server-e-fx6s.onrender.com/api/admins/login",
-        { email, password },
-        { headers: { "Content-Type": "application/json" } }
-      );
+  try {
+    const res = await axios.post(
+  "https://righttouch-backend-fn9z.onrender.com/api/user/login",
+  { identifier, password },
+  { headers: { "Content-Type": "application/json" } }
+);
 
-      const { token, name, role } = res.data;
 
-      // ✅ Store token and user info in localStorage     
-      sessionStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify({ name, email, role }));
+if (!res.data?.result) {
+  throw new Error("Invalid server response");
+}
 
-      toast({
-        title: "Login Successful",
-        description: `Welcome, ${name}!`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
+const { token, role, id } = res.data.result;
 
-      // Redirect to dashboard using hash router
-      window.location.href = "#/admin/dashboard";
-    } catch (err) {
-      console.error("Login error:", err);
-      toast({
-        title: "Login Failed",
-        description: err.response?.data?.message || "Server error",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+
+sessionStorage.setItem("token", token);
+
+localStorage.setItem(
+  "user",
+  JSON.stringify({
+    email: identifier,
+    role: role.toLowerCase(),   
+    id,
+  })
+);
+
+    toast({
+      title: "Login Successful",
+      description: `Welcome ${role}!`,
+      status: "success",
+      duration: 3000,
+      isClosable: true,
+    });
+
+    window.location.href = "#/admin/dashboard";
+  } catch (err) {
+    console.error("Login error:", err);
+    toast({
+      title: "Login Failed",
+      description: err.response?.data?.message || "Server error",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+  } finally {
+    setLoading(false);
+  }
+};
+
+
 
   return (
     <Flex
@@ -374,7 +388,7 @@ function AdminLogin() {
               <Input
                 type="email"
                 placeholder="admin@example.com"
-                value={email}
+                value={identifier}
                 onChange={(e) => setEmail(e.target.value)}
                 size={{ 
                   base: "md",    // 320px-480px

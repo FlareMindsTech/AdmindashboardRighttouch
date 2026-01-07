@@ -2,8 +2,8 @@
 import axios from "axios";
 
 // --- Configuration ---
-const API_BASE_URL = "https://server-e-fx6s.onrender.com/";
-const BASE_URL = "https://server-e-fx6s.onrender.com/api";
+const API_BASE_URL = "https://righttouch-backend-fn9z.onrender.com";
+const BASE_URL = "https://righttouch-backend-fn9z.onrender.com/api";
 const TIMEOUT_MS = 10000;
 
 // =========================================================
@@ -154,7 +154,7 @@ export const inActiveAdmin = async (adminId) => {
 
     if (!response.ok) throw new Error(`Error: ${response.status}`);
 
-    return await response.json();   // Example: { message: "Admin marked as Inactive successfully" }
+    return await response.json();   
 
   } catch (error) {
     console.error("Error deleting admin:", error);
@@ -167,10 +167,11 @@ export const inActiveAdmin = async (adminId) => {
 export const getAllCategories = async () => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/categories/all`, {
+    const response = await fetch(`${BASE_URL}/user/getAllcategory`, {
       method: "GET",
       headers: { "Content-Type": "application/json", token },
     });
+    console.log("Fetch categories response status:", response.json);
     if (!response.ok) throw new Error(`Error: ${response.status}`);
     return await response.json();
   } catch (error) {
@@ -182,7 +183,7 @@ export const getAllCategories = async () => {
 export const createCategories = async (categoryData) => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/categories/create`, {
+    const response = await fetch(`${BASE_URL}/user/category`, {
       method: "POST",
       headers: { "Content-Type": "application/json", token },
       body: JSON.stringify(categoryData),

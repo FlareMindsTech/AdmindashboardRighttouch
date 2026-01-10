@@ -32,19 +32,19 @@ export default function HeaderLinks(props) {
     >
 
       {/* ✅ Profile Button */}
-      <Button
-        as={NavLink}
-        to="/admin/profile"
-        ms="0px"
-        px="0px"
-        me={{ sm: "2px", md: "16px" }}
-        color={navbarIcon}
-        variant="no-effects"
-        rightIcon={<ProfileIcon color={navbarIcon} w="22px" h="22px" />}
-        _hover={{ bg: "rgba(255,255,255,0.1)" }}
-      >
-        <Text display={{ sm: "none", md: "flex" }}>Profile</Text>
-      </Button>
+     <Button
+  as={NavLink}
+  to="/owner/profile"
+  ms="0px"
+  px="0px"
+  me={{ sm: "2px", md: "16px" }}
+  color={navbarIcon}
+  variant="no-effects"
+  rightIcon={<ProfileIcon color={navbarIcon} w="22px" h="22px" />}
+  _hover={{ bg: "rgba(255,255,255,0.1)" }}
+>
+  <Text display={{ sm: "none", md: "flex" }}>Profile</Text>
+</Button>
 
     </Flex>
   );

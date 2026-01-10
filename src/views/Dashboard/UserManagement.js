@@ -178,7 +178,7 @@ function UserManagement() {
       try {
         const response = await getAllUsers();
         console.log("Fetched users response:", response);
-        
+
         // Handle different response formats
         const users = response.data?.users || response.data || response?.users || response || [];
 
@@ -186,12 +186,12 @@ function UserManagement() {
         const sortedUsers = users.sort((a, b) => {
           const nameA = `${a.firstName || ''} ${a.lastName || ''}`.toLowerCase().trim();
           const nameB = `${b.firstName || ''} ${b.lastName || ''}`.toLowerCase().trim();
-          
+
           // If names are the same, sort by email as fallback
           if (nameA === nameB) {
             return (a.email || '').toLowerCase().localeCompare((b.email || '').toLowerCase());
           }
-          
+
           return nameA.localeCompare(nameB);
         });
 
@@ -262,11 +262,11 @@ function UserManagement() {
       const sortedFilteredData = filtered.sort((a, b) => {
         const nameA = `${a.firstName || ''} ${a.lastName || ''}`.toLowerCase().trim();
         const nameB = `${b.firstName || ''} ${b.lastName || ''}`.toLowerCase().trim();
-        
+
         if (nameA === nameB) {
           return (a.email || '').toLowerCase().localeCompare((b.email || '').toLowerCase());
         }
-        
+
         return nameA.localeCompare(nameB);
       });
 
@@ -336,7 +336,7 @@ function UserManagement() {
     setDeleteLoading(true);
     try {
       await deleteUser(userToDelete._id);
-      
+
       toast({
         title: "User Deleted",
         description: `User ${userToDelete.firstName} ${userToDelete.lastName} has been deleted successfully.`,
@@ -350,16 +350,16 @@ function UserManagement() {
         try {
           const usersResponse = await getAllUsers();
           const users = usersResponse.data?.users || usersResponse.data || usersResponse?.users || usersResponse || [];
-          
+
           // Sort users in alphabetical order
           const sortedUsers = users.sort((a, b) => {
             const nameA = `${a.firstName || ''} ${a.lastName || ''}`.toLowerCase().trim();
             const nameB = `${b.firstName || ''} ${b.lastName || ''}`.toLowerCase().trim();
-            
+
             if (nameA === nameB) {
               return (a.email || '').toLowerCase().localeCompare((b.email || '').toLowerCase());
             }
-            
+
             return nameA.localeCompare(nameB);
           });
 
@@ -371,7 +371,7 @@ function UserManagement() {
       };
 
       await fetchUsers();
-      
+
     } catch (err) {
       console.error("Error deleting user:", err);
       const errorMessage = err.response?.data?.message || err.message || "Failed to delete user.";
@@ -503,16 +503,16 @@ function UserManagement() {
         try {
           const usersResponse = await getAllUsers();
           const users = usersResponse.data?.users || usersResponse.data || usersResponse?.users || usersResponse || [];
-          
+
           // Sort users in alphabetical order
           const sortedUsers = users.sort((a, b) => {
             const nameA = `${a.firstName || ''} ${a.lastName || ''}`.toLowerCase().trim();
             const nameB = `${b.firstName || ''} ${b.lastName || ''}`.toLowerCase().trim();
-            
+
             if (nameA === nameB) {
               return (a.email || '').toLowerCase().localeCompare((b.email || '').toLowerCase());
             }
-            
+
             return nameA.localeCompare(nameB);
           });
 
@@ -526,7 +526,7 @@ function UserManagement() {
       await fetchUsers();
 
       setSuccess(successMessage);
-      
+
       // Reset form and go back to list
       setFormData({
         firstName: "",
@@ -624,10 +624,10 @@ function UserManagement() {
   // Render Form View (Add/Edit)
   if (currentView === "add" || currentView === "edit") {
     return (
-      <Flex 
-        flexDirection="column" 
-        pt={{ base: "120px", md: "75px" }} 
-        height="100vh" 
+      <Flex
+        flexDirection="column"
+        pt={{ base: "120px", md: "75px" }}
+        height="100vh"
         overflow="auto"
         css={{
           '&::-webkit-scrollbar': {
@@ -702,7 +702,7 @@ function UserManagement() {
                 {success}
               </Text>
             )}
-            
+
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
               <FormControl isRequired>
                 <FormLabel htmlFor="firstName" color="gray.700">First Name</FormLabel>
@@ -718,7 +718,7 @@ function UserManagement() {
                   bg="white"
                 />
               </FormControl>
-              
+
               <FormControl isRequired>
                 <FormLabel htmlFor="lastName" color="gray.700">Last Name</FormLabel>
                 <Input
@@ -751,7 +751,7 @@ function UserManagement() {
                   bg="white"
                 />
               </FormControl>
-              
+
               <FormControl>
                 <FormLabel htmlFor="phone" color="gray.700">Phone</FormLabel>
                 <Input
@@ -868,9 +868,9 @@ function UserManagement() {
             </SimpleGrid>
 
             <Flex justify="flex-end" mt={6} flexShrink={0}>
-              <Button 
-                variant="outline" 
-                mr={3} 
+              <Button
+                variant="outline"
+                mr={3}
                 onClick={handleBackToList}
                 border="1px"
                 borderColor="gray.300"
@@ -896,10 +896,10 @@ function UserManagement() {
   // Render List View with Fixed Layout
   return (
     <>
-      <Flex 
-        flexDirection="column" 
-        pt={{ base: "5px", md: "45px" }} 
-        height="100vh" 
+      <Flex
+        flexDirection="column"
+        pt={{ base: "5px", md: "45px" }}
+        height="100vh"
         overflow="auto"
         css={{
           '&::-webkit-scrollbar': {
@@ -1078,10 +1078,10 @@ function UserManagement() {
                       </StatNumber>
                     </Flex>
                   </Stat>
-                  <IconBox 
-                    as="box" 
-                    h={{ base: "35px", md: "45px" }} 
-                    w={{ base: "35px", md: "45px" }} 
+                  <IconBox
+                    as="box"
+                    h={{ base: "35px", md: "45px" }}
+                    w={{ base: "35px", md: "45px" }}
                     bg={customColor}
                     transition="all 0.2s ease-in-out"
                     _groupHover={{
@@ -1150,10 +1150,10 @@ function UserManagement() {
                       </StatNumber>
                     </Flex>
                   </Stat>
-                  <IconBox 
-                    as="box" 
-                    h={{ base: "35px", md: "45px" }} 
-                    w={{ base: "35px", md: "45px" }} 
+                  <IconBox
+                    as="box"
+                    h={{ base: "35px", md: "45px" }}
+                    w={{ base: "35px", md: "45px" }}
                     bg={customColor}
                     transition="all 0.2s ease-in-out"
                     _groupHover={{
@@ -1225,28 +1225,28 @@ function UserManagement() {
         </Box>
 
         {/* Table Container - Removed background box */}
-        <Box 
+        <Box
           mt={-8}
-          flex="1" 
-          display="flex" 
-          flexDirection="column" 
+          flex="1"
+          display="flex"
+          flexDirection="column"
           p={2}
           pt={0}
           overflow="hidden"
         >
           {/* Table Card with transparent background */}
-          <Card 
-            shadow="xl" 
+          <Card
+            shadow="xl"
             bg="transparent"
-            display="flex" 
+            display="flex"
             flexDirection="column"
             height="100%"
             minH="0"
             border="none"
           >
             {/* Table Header */}
-            <CardHeader 
-              p="5px" 
+            <CardHeader
+              p="5px"
               pb="5px"
               bg="transparent"
               flexShrink={0}
@@ -1274,9 +1274,9 @@ function UserManagement() {
                   />
                   <Icon as={FaSearch} color="gray.400" />
                   {searchTerm && (
-                    <Button 
-                      size="sm" 
-                      ml={2} 
+                    <Button
+                      size="sm"
+                      ml={2}
                       onClick={handleClearSearch}
                       bg="white"
                       color={customColor}
@@ -1303,14 +1303,14 @@ function UserManagement() {
                 </Button> */}
               </Flex>
             </CardHeader>
-            
+
             {/* Table Content Area - Scrollable Body with Fixed Header */}
-            <CardBody 
+            <CardBody
               bg="transparent"
-              flex="1" 
-              display="flex" 
-              flexDirection="column" 
-              p={0} 
+              flex="1"
+              display="flex"
+              flexDirection="column"
+              p={0}
               overflow="hidden"
             >
               {tableLoading ? (
@@ -1323,7 +1323,7 @@ function UserManagement() {
                   {currentItems.length > 0 ? (
                     <>
                       {/* Fixed Table Container - Exact height for 5 rows */}
-                      <Box 
+                      <Box
                         flex="1"
                         display="flex"
                         flexDirection="column"
@@ -1364,8 +1364,8 @@ function UserManagement() {
                             {/* Fixed Header */}
                             <Thead>
                               <Tr>
-                                <Th 
-                                  color="gray.100" 
+                                <Th
+                                  color="gray.100"
                                   borderColor={`${customColor}30`}
                                   position="sticky"
                                   top={0}
@@ -1377,10 +1377,10 @@ function UserManagement() {
                                   borderBottom="2px solid"
                                   borderBottomColor={`${customColor}50`}
                                 >
-                                  User 
+                                  User
                                 </Th>
-                                <Th 
-                                  color="gray.100" 
+                                <Th
+                                  color="gray.100"
                                   borderColor={`${customColor}30`}
                                   position="sticky"
                                   top={0}
@@ -1394,8 +1394,8 @@ function UserManagement() {
                                 >
                                   Contact
                                 </Th>
-                                <Th 
-                                  color="gray.100" 
+                                <Th
+                                  color="gray.100"
                                   borderColor={`${customColor}30`}
                                   position="sticky"
                                   top={0}
@@ -1409,8 +1409,8 @@ function UserManagement() {
                                 >
                                   Role
                                 </Th>
-                                <Th 
-                                  color="gray.100" 
+                                <Th
+                                  color="gray.100"
                                   borderColor={`${customColor}30`}
                                   position="sticky"
                                   top={0}
@@ -1424,8 +1424,8 @@ function UserManagement() {
                                 >
                                   Status
                                 </Th>
-                                <Th 
-                                  color="gray.100" 
+                                <Th
+                                  color="gray.100"
                                   borderColor={`${customColor}30`}
                                   position="sticky"
                                   top={0}
@@ -1448,7 +1448,7 @@ function UserManagement() {
                                 // Handle empty rows
                                 if (user.isEmpty) {
                                   return (
-                                    <Tr 
+                                    <Tr
                                       key={user._id}
                                       bg="transparent"
                                       height="60px"
@@ -1463,7 +1463,7 @@ function UserManagement() {
                                 const statusColors = getStatusColor(user.status);
                                 const verification = getVerificationBadge(user.isVerified);
                                 return (
-                                  <Tr 
+                                  <Tr
                                     key={user._id || index}
                                     bg="transparent"
                                     _hover={{ bg: `${customColor}10` }}
@@ -1499,7 +1499,7 @@ function UserManagement() {
                                       <Badge
                                         colorScheme={
                                           user.role === "super admin" ? "purple" :
-                                          user.role === "admin" ? "blue" : "gray"
+                                            user.role === "admin" ? "blue" : "gray"
                                         }
                                         px={3}
                                         py={1}
@@ -1559,7 +1559,7 @@ function UserManagement() {
 
                       {/* Pagination Bar - Positioned at bottom right corner */}
                       {currentItems.length > 0 && (
-                        <Box 
+                        <Box
                           flexShrink={0}
                           p="16px"
                           borderTop="1px solid"
@@ -1588,8 +1588,8 @@ function UserManagement() {
                                 border="1px"
                                 borderColor={customColor}
                                 _hover={{ bg: customColor, color: "white" }}
-                                _disabled={{ 
-                                  opacity: 0.5, 
+                                _disabled={{
+                                  opacity: 0.5,
                                   cursor: "not-allowed",
                                   bg: "gray.100",
                                   color: "gray.400",
@@ -1600,8 +1600,8 @@ function UserManagement() {
                               </Button>
 
                               {/* Page Number Display */}
-                              <Flex 
-                                align="center" 
+                              <Flex
+                                align="center"
                                 gap={2}
                                 bg={`${customColor}10`}
                                 px={3}
@@ -1631,8 +1631,8 @@ function UserManagement() {
                                 border="1px"
                                 borderColor={customColor}
                                 _hover={{ bg: customColor, color: "white" }}
-                                _disabled={{ 
-                                  opacity: 0.5, 
+                                _disabled={{
+                                  opacity: 0.5,
                                   cursor: "not-allowed",
                                   bg: "gray.100",
                                   color: "gray.400",
@@ -1647,10 +1647,10 @@ function UserManagement() {
                       )}
                     </>
                   ) : (
-                    <Flex 
-                      height="200px" 
-                      justify="center" 
-                      align="center" 
+                    <Flex
+                      height="200px"
+                      justify="center"
+                      align="center"
                       border="1px dashed"
                       borderColor={`${customColor}30`}
                       borderRadius="md"
@@ -1662,8 +1662,8 @@ function UserManagement() {
                           ? userData.length === 0
                             ? "No users found."
                             : searchTerm
-                            ? "No users match your search."
-                            : "No users match the selected filter."
+                              ? "No users match your search."
+                              : "No users match the selected filter."
                           : "Loading users..."}
                       </Text>
                     </Flex>

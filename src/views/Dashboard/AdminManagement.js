@@ -63,12 +63,7 @@ import {
 import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdAdminPanelSettings, MdPerson, MdBlock, MdWarning } from "react-icons/md";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
-import {
-  getAllAdmins,
-  updateAdmin,
-  createAdmin,
-  inActiveAdmin,
-} from "views/utils/axiosInstance";
+
 import { useNavigate } from "react-router-dom";
 
 // Main Admin Management Component

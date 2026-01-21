@@ -42,6 +42,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogOverlay,
+  Textarea,
 } from "@chakra-ui/react";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
@@ -59,15 +60,22 @@ import {
   FaEyeSlash,
   FaUserSlash,
   FaExclamationTriangle,
+  FaUserGraduate,
+  FaTimes,
 } from "react-icons/fa";
 import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdAdminPanelSettings, MdPerson, MdBlock, MdWarning } from "react-icons/md";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
 import {
-  getAllAdmins,
+  getAllTechnicians,
   updateAdmin,
   createAdmin,
   inActiveAdmin,
+  deleteTechnician,
+  getTechnicianKYC,
+  verifyKYC,
+  deleteKYC,
+  updateTrainingStatus,
 } from "views/utils/axiosInstance";
 import { useNavigate } from "react-router-dom";
 
@@ -83,6 +91,7 @@ function AdminManagement() {
   // Custom color theme
   const customColor = "#008080";
   const customHoverColor = "#5a189a";
+  const customBorderColor = "#F5B700"; // Golden Border
 
   const toast = useToast();
   const navigate = useNavigate();
@@ -104,11 +113,26 @@ function AdminManagement() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [adminToDelete, setAdminToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeletingKYC, setIsDeletingKYC] = useState(false);
+  const [technicianIdToDeleteKYC, setTechnicianIdToDeleteKYC] = useState(null); // For inline confirmation
   const cancelRef = useRef();
 
   // View state - 'list', 'add', 'edit'
   const [currentView, setCurrentView] = useState("list");
   const [editingAdmin, setEditingAdmin] = useState(null);
+
+  // KYC Modal State
+  const [isKYCModalOpen, setIsKYCModalOpen] = useState(false);
+  const [kycData, setKYCData] = useState(null);
+  const [kycLoading, setKYcLoading] = useState(false);
+  const [selectedTechnicianForKYC, setSelectedTechnicianForKYC] = useState(null);
+  const [rejectionInput, setRejectionInput] = useState("");
+  const [showRejectionInput, setShowRejectionInput] = useState(false);
+  const [confirmingModalDelete, setConfirmingModalDelete] = useState(false);
+
+  // Technician Details Modal State
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [selectedTechnician, setSelectedTechnician] = useState(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -199,18 +223,20 @@ function AdminManagement() {
       setTableLoading(true);
       setDataLoaded(false);
       try {
-        const response = await getAllAdmins();
+        const response = await getAllTechnicians();
         
         // Handle different response formats
-        const admins = response.data?.admins || response.data || response?.admins || response || [];
+        const admins = response.result || response.data?.admins || response.data || response?.admins || response || [];
 
-        // Filter out owner accounts from the list
-        const nonOwnerAdmins = admins.filter(admin => 
-          admin.role?.toLowerCase() !== "owner"
-        );
+        if (!Array.isArray(admins)) {
+          console.error("Unexpected response data format:", response);
+          setAdminData([]);
+          setFilteredData([]);
+          setDataLoaded(true);
+          return;
+        }
 
-        // Sort admins in descending order (newest first)
-        const sortedAdmins = nonOwnerAdmins.sort(
+        const sortedAdmins = admins.sort(
           (a, b) =>
             new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
         );
@@ -221,6 +247,25 @@ function AdminManagement() {
       } catch (err) {
         console.error("Error fetching admins:", err);
         const errorMessage = err.response?.data?.message || err.message || "Failed to load admin list.";
+        if (errorMessage.includes("token not found") || errorMessage.includes("Session expired") || errorMessage.includes("401")) {
+             toast({
+              title: "Session Expired",
+              description: "Please log in again.",
+              status: "error",
+              duration: 3000,
+              isClosable: true,
+            });
+            localStorage.removeItem("user");
+            localStorage.removeItem("token");
+            localStorage.removeItem("adminToken");
+            sessionStorage.removeItem("token");
+            sessionStorage.removeItem("adminToken");
+            setTimeout(() => {
+                navigate("/auth/signin");
+            }, 1000);
+            return;
+        }
+
         setError(errorMessage);
         setDataLoaded(true);
         toast({
@@ -254,10 +299,16 @@ function AdminManagement() {
       // Apply role/status filter
       switch (activeFilter) {
         case "Active":
-          filtered = adminData.filter((admin) => admin.status === "Active");
+          filtered = adminData.filter((admin) => admin.status?.toLowerCase() === "approved" || admin.status?.toLowerCase() === "active");
           break;
         case "Inactive":
           filtered = adminData.filter((admin) => admin.status === "Inactive");
+          break;
+        case "Verified":
+          filtered = adminData.filter((admin) => 
+            (admin.status?.toLowerCase() === "approved" || admin.status?.toLowerCase() === "active") && 
+            admin.trainingCompleted === true
+          );
           break;
         case "Deleted":
           filtered = adminData.filter((admin) => admin.status === "Deleted");
@@ -269,12 +320,16 @@ function AdminManagement() {
       // Apply search filter
       if (searchTerm.trim() !== "") {
         filtered = filtered.filter(
-          (admin) =>
-            `${admin.firstName} ${admin.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            admin.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            admin.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (admin.role && admin.role.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (admin.status && admin.status.toLowerCase().includes(searchTerm.toLowerCase()))
+          (admin) => {
+            const fullName = `${admin.firstName || ""} ${admin.lastName || ""}`;
+            return (
+              fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              (admin.email && admin.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+              (admin.status && admin.status.toLowerCase().includes(searchTerm.toLowerCase())) ||
+              (admin.city && admin.city.toLowerCase().includes(searchTerm.toLowerCase())) ||
+              (admin.mobileNumber && admin.mobileNumber.toString().includes(searchTerm))
+            );
+          }
         );
       }
 
@@ -309,7 +364,7 @@ function AdminManagement() {
 
     setIsDeleting(true);
     try {
-      const response = await inActiveAdmin(adminToDelete._id);
+      const response = await deleteTechnician(adminToDelete._id);
       
       toast({
         title: "Admin Deleted",
@@ -322,15 +377,16 @@ function AdminManagement() {
       // Refresh admin list
       const fetchAdmins = async () => {
         try {
-          const adminsResponse = await getAllAdmins();
-          const admins = adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
+          const adminsResponse = await getAllTechnicians();
+          // Handle different response formats
+          const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
           
-          // Filter out owner accounts
-          const nonOwnerAdmins = admins.filter(admin => 
-            admin.role?.toLowerCase() !== "owner"
-          );
+          if (!Array.isArray(admins)) {
+            console.error("Unexpected response data format during refresh:", adminsResponse);
+            return;
+          }
           
-          const sortedAdmins = nonOwnerAdmins.sort(
+          const sortedAdmins = admins.sort(
             (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
           );
           setAdminData(sortedAdmins);
@@ -560,7 +616,7 @@ function AdminManagement() {
       // Refresh admin list
       const fetchAdmins = async () => {
         try {
-          const adminsResponse = await getAllAdmins();
+          const adminsResponse = await getAllTechnicians();
           const admins = adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
           
           // Filter out owner accounts
@@ -635,6 +691,12 @@ function AdminManagement() {
   // Get status color with background and icon
   const getStatusConfig = (status) => {
     switch (status?.toLowerCase()) {
+      case "approved":
+        return { 
+          color: "white", 
+          bg: "green.500",
+          icon: IoCheckmarkDoneCircleSharp
+        };
       case "active":
         return { 
           color: "white", 
@@ -656,8 +718,8 @@ function AdminManagement() {
       default:
         return { 
           color: "white", 
-          bg: "#9d4edd",
-          icon: IoCheckmarkDoneCircleSharp
+          bg: "gray.500",
+          icon: MdPerson
         };
     }
   };
@@ -687,6 +749,225 @@ function AdminManagement() {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
     }
+  };
+
+  // KYC Handlers
+  const handleViewKYC = async (technician) => {
+    setSelectedTechnicianForKYC(technician);
+    setIsKYCModalOpen(true);
+    setKYCData(null);
+    setKYcLoading(true);
+    try {
+      const idToFetch = technician._id; 
+      const response = await getTechnicianKYC(idToFetch);
+      // Determine response structure
+      setKYCData(response.data || response.result || response);
+    } catch (error) {
+      console.error("Failed to fetch KYC:", error);
+      toast({
+        title: "Info",
+        description: "KYC documents not found or error fetching them.",
+        status: "info",
+        duration: 3000,
+        isClosable: true,
+      });
+      setKYCData(null); 
+    } finally {
+      setKYcLoading(false);
+    }
+  };
+
+  const handleVerifyKYCAction = async (status) => {
+     if (!selectedTechnicianForKYC) return;
+     
+     // specific check for rejection
+     if (status === "rejected") {
+       if (!rejectionInput || rejectionInput.trim() === "") {
+         toast({
+          title: "Validation Error",
+          description: "Please enter a rejection reason in the field below before rejecting.",
+          status: "warning",
+          duration: 3000,
+          isClosable: true,
+        });
+        return;
+       }
+     }
+
+     try {
+       const payload = {
+         technicianId: selectedTechnicianForKYC._id,
+         status: status
+       };
+       
+       if (status === "rejected" && rejectionInput) {
+         payload.rejectionReason = rejectionInput;
+       }
+
+       await verifyKYC(payload);
+       
+       toast({
+         title: "Success",
+         description: `KYC has been ${status}.`,
+         status: "success",
+         duration: 3000,
+         isClosable: true,
+       });
+
+       closeKYCModal();
+       
+       // Refresh list
+       const refresh = async () => {
+          try {
+            const response = await getAllTechnicians();
+            const admins = response.result || response.data?.admins || response.data || response?.admins || response || [];
+            if (Array.isArray(admins)) {
+               const sortedAdmins = admins.sort(
+                  (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
+               );
+               setAdminData(sortedAdmins);
+               setFilteredData(sortedAdmins);
+            }
+          } catch(e) {
+            console.error("Error refreshing list:", e);
+          }
+       };
+       refresh();
+
+     } catch (error) {
+       console.error("KYC Verification Error:", error);
+       let errorMsg = "Failed to update KYC status.";
+       // Try to extract message from response if available
+       if (error.response && error.response.data && error.response.data.message) {
+           errorMsg = error.response.data.message;
+       } else if (error.message) {
+           errorMsg = error.message;
+       }
+
+       toast({
+        title: "Error",
+        description: errorMsg,
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+     }
+  };
+
+  const handleDeleteKYC = async (technician) => {
+      if (!technician?._id) return;
+      
+      try {
+        setIsDeletingKYC(true);
+        await deleteKYC(technician._id);
+        
+        toast({
+          title: "Success",
+          description: "KYC record deleted successfully.",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+        
+        // If modal is open, close it
+        if (isKYCModalOpen) {
+          closeKYCModal();
+        }
+
+        // Reset deletion ID
+        setTechnicianIdToDeleteKYC(null);
+        
+        // Refresh list
+        const response = await getAllTechnicians();
+        const admins = response.result || response.data?.admins || response.data || response?.admins || response || [];
+        if (Array.isArray(admins)) {
+           const sortedAdmins = admins.sort(
+              (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
+           );
+           setAdminData(sortedAdmins);
+           setFilteredData(sortedAdmins);
+        }
+      } catch (error) {
+         console.error("Delete KYC Error:", error);
+         toast({
+          title: "Error",
+          description: "Failed to delete KYC record.",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+      } finally {
+        setIsDeletingKYC(false);
+      }
+  };
+
+  const handleTrainingCompletion = async (technician, status = true) => {
+    try {
+      setLoading(true);
+      
+      await updateTrainingStatus(technician._id, status);
+      
+      toast({
+        title: "Training Updated",
+        description: `Technician training status marked as ${status ? "completed" : "pending"}.`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+
+      // Update selectedTechnician if it's the one being modified
+      if (selectedTechnician && selectedTechnician._id === technician._id) {
+        setSelectedTechnician(prev => ({ ...prev, trainingCompleted: status }));
+      }
+
+      // Refresh list
+      const response = await getAllTechnicians();
+      const admins = response.result || response.data?.admins || response.data || response?.admins || response || [];
+      if (Array.isArray(admins)) {
+         const sortedAdmins = admins.sort(
+            (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
+         );
+         setAdminData(sortedAdmins);
+         setFilteredData(sortedAdmins);
+      }
+    } catch (error) {
+       console.error("Training Update Error:", error);
+       let errorMsg = "Failed to update training status.";
+       if (error.response && error.response.data && error.response.data.message) {
+           errorMsg = error.response.data.message;
+       } else if (error.message) {
+           errorMsg = error.message;
+       }
+       
+       toast({
+        title: "Error",
+        description: errorMsg,
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+       });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const closeKYCModal = () => {
+    setIsKYCModalOpen(false);
+    setKYCData(null);
+    setSelectedTechnicianForKYC(null);
+    setRejectionInput("");
+    setShowRejectionInput(false);
+    setConfirmingModalDelete(false);
+  };
+
+  const handleViewDetails = (technician) => {
+    setSelectedTechnician(technician);
+    setIsDetailsModalOpen(true);
+  };
+
+  const closeDetailsModal = () => {
+    setIsDetailsModalOpen(false);
+    setSelectedTechnician(null);
   };
 
   // If currentUser is null (still checking or not owner), show loading
@@ -1032,7 +1313,7 @@ function AdminManagement() {
             cursor="pointer"
             onClick={() => handleCardClick("all")}
             border={activeFilter === "all" ? "2px solid" : "1px solid"}
-            borderColor={activeFilter === "all" ? customColor : `${customColor}30`}
+            borderColor={customBorderColor}
             transition="all 0.2s ease-in-out"
             bg="white"
             position="relative"
@@ -1069,7 +1350,7 @@ function AdminManagement() {
                     fontWeight="bold"
                     pb="0px"
                   >
-                    Total Admins
+                    Total Technician
                   </StatLabel>
                   <Flex>
                     <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
@@ -1101,7 +1382,7 @@ function AdminManagement() {
             cursor="pointer"
             onClick={() => handleCardClick("Active")}
             border={activeFilter === "Active" ? "2px solid" : "1px solid"}
-            borderColor={activeFilter === "Active" ? customColor : `${customColor}30`}
+            borderColor={customBorderColor}
             transition="all 0.2s ease-in-out"
             bg="white"
             position="relative"
@@ -1138,11 +1419,11 @@ function AdminManagement() {
                     fontWeight="bold"
                     pb="2px"
                   >
-                    Active Admins
+                    Active Technician
                   </StatLabel>
                   <Flex>
                     <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
-                      {adminData.filter((a) => a.status === "Active").length}
+                      {adminData.filter((a) => a.status?.toLowerCase() === "approved" || a.status?.toLowerCase() === "active").length}
                     </StatNumber>
                   </Flex>
                 </Stat>
@@ -1168,9 +1449,9 @@ function AdminManagement() {
           <Card
             minH="83px"
             cursor="pointer"
-            onClick={() => handleCardClick("Deleted")}
-            border={activeFilter === "Deleted" ? "2px solid" : "1px solid"}
-            borderColor={activeFilter === "Deleted" ? customColor : `${customColor}30`}
+            onClick={() => handleCardClick("Verified")}
+            border={activeFilter === "Verified" ? "2px solid" : "1px solid"}
+            borderColor={customBorderColor}
             transition="all 0.2s ease-in-out"
             bg="white"
             position="relative"
@@ -1207,11 +1488,14 @@ function AdminManagement() {
                     fontWeight="bold"
                     pb="2px"
                   >
-                    Deleted Admins
+                    Verified Technician
                   </StatLabel>
                   <Flex>
                     <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
-                      {adminData.filter((a) => a.status === "Deleted").length}
+                      {adminData.filter((a) => 
+                        (a.status?.toLowerCase() === "approved" || a.status?.toLowerCase() === "active") && 
+                        a.trainingCompleted === true
+                      ).length}
                     </StatNumber>
                   </Flex>
                 </Stat>
@@ -1264,11 +1548,11 @@ function AdminManagement() {
 
         {/* Active Filter Display */}
         <Flex justify="space-between" align="center" mb={4}>
-          <Text fontSize="lg" fontWeight="bold" color={textColor}>
-            {activeFilter === "Active" && "Active Admins"}
-            {activeFilter === "Inactive" && "Inactive Admins"}
-            {activeFilter === "Deleted" && "Deleted Admins"}
-            {activeFilter === "all" && "All Admins"}
+          <Text fontSize="lg" fontWeight="bold" color={textColor} pl="25px">
+            {activeFilter === "Active" && "Active Technician"}
+            {activeFilter === "Inactive" && "Inactive Technician"}
+            {activeFilter === "Verified" && "Verified Technician"}
+            {activeFilter === "all" && "All Technician"}
           </Text>
           {activeFilter !== "all" && (
             <Button
@@ -1298,12 +1582,13 @@ function AdminManagement() {
       >
         <Card 
           shadow="xl" 
-          bg="transparent"
+          bg="white"
           display="flex" 
           flexDirection="column"
           height="100%"
           minH="0"
-          border="none"
+          border="1px solid"
+          borderColor={customBorderColor}
         >
           {/* Table Header */}
           <CardHeader 
@@ -1317,7 +1602,7 @@ function AdminManagement() {
             <Flex justify="space-between" align="center" flexWrap="wrap" gap={4}>
               {/* Title */}
               <Heading size="md" flexShrink={0} color="gray.700">
-                👤 Admins Table
+                👤 Technician Table
               </Heading>
 
               {/* Search Bar */}
@@ -1351,7 +1636,7 @@ function AdminManagement() {
               </Flex>
 
               {/* Add Admin Button */}
-              <Button
+              {/* <Button
                 bg={customColor}
                 _hover={{ bg: customHoverColor }}
                 color="white"
@@ -1361,7 +1646,7 @@ function AdminManagement() {
                 flexShrink={0}
               >
                 + Add Admin
-              </Button>
+              </Button> */}
             </Flex>
           </CardHeader>
           
@@ -1435,37 +1720,7 @@ function AdminManagement() {
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
-                                Admin
-                              </Th>
-                              <Th 
-                                color="gray.100" 
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="sm"
-                                py={3}
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                               Email
-                              </Th>
-                              <Th 
-                                color="gray.100" 
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="sm"
-                                py={3}
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                Role
+                                Technician Name
                               </Th>
                               <Th 
                                 color="gray.100" 
@@ -1495,6 +1750,66 @@ function AdminManagement() {
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
+                                Experience
+                              </Th>
+                              <Th 
+                                color="gray.100" 
+                                borderColor={`${customColor}30`}
+                                position="sticky"
+                                top={0}
+                                bg={`${customColor}`}
+                                zIndex={10}
+                                fontWeight="bold"
+                                fontSize="sm"
+                                py={3}
+                                borderBottom="2px solid"
+                                borderBottomColor={`${customColor}50`}
+                              >
+                                City
+                              </Th>
+                              <Th 
+                                color="gray.100" 
+                                borderColor={`${customColor}30`}
+                                position="sticky"
+                                top={0}
+                                bg={`${customColor}`}
+                                zIndex={10}
+                                fontWeight="bold"
+                                fontSize="sm"
+                                py={3}
+                                borderBottom="2px solid"
+                                borderBottomColor={`${customColor}50`}
+                              >
+                                Rating
+                              </Th>
+                              <Th 
+                                color="gray.100" 
+                                borderColor={`${customColor}30`}
+                                position="sticky"
+                                top={0}
+                                bg={`${customColor}`}
+                                zIndex={10}
+                                fontWeight="bold"
+                                fontSize="sm"
+                                py={3}
+                                borderBottom="2px solid"
+                                borderBottomColor={`${customColor}50`}
+                              >
+                                Total Jobs
+                              </Th>
+                              <Th 
+                                color="gray.100" 
+                                borderColor={`${customColor}30`}
+                                position="sticky"
+                                top={0}
+                                bg={`${customColor}`}
+                                zIndex={10}
+                                fontWeight="bold"
+                                fontSize="sm"
+                                py={3}
+                                borderBottom="2px solid"
+                                borderBottomColor={`${customColor}50`}
+                              >
                                 Actions
                               </Th>
                             </Tr>
@@ -1509,7 +1824,7 @@ function AdminManagement() {
                                     bg="transparent"
                                     height="60px"
                                   >
-                                    <Td borderColor={`${customColor}20`} colSpan={5}>
+                                    <Td borderColor={`${customColor}20`} colSpan={7}>
                                       <Box height="60px" />
                                     </Td>
                                   </Tr>
@@ -1530,31 +1845,22 @@ function AdminManagement() {
                                     <Flex align="center">
                                       <Avatar
                                         size="sm"
-                                        name={`${admin.name}`}
-                                        src={admin.profileImage}
+                                        name={`${admin.firstName} ${admin.lastName}` || "Unknown"}
+                                        src={admin.profileImage || ""}
                                         mr={3}
                                       />
                                       <Box>
-                                        <Text fontWeight="medium">{`${admin.name}`}</Text>
+                                        <Text fontWeight="medium" color="gray.700">
+                                          {admin.firstName} {admin.lastName}
+                                        </Text>
+                                        <Text fontSize="xs" color="gray.500">
+                                          {admin.email || "No Email"}
+                                        </Text>
+                                        {admin.availability?.isOnline && (
+                                          <Badge colorScheme="green" fontSize="xs" mt={1}>Online</Badge>
+                                        )}
                                       </Box>
                                     </Flex>
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`}>
-                                    <Box>
-                                      <Text>{admin.email}</Text>
-                                    </Box>
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`}>
-                                    <Badge
-                                      colorScheme={getRoleBadgeColor(admin.role)}
-                                      px={3}
-                                      py={1}
-                                      borderRadius="full"
-                                      fontSize="sm"
-                                      fontWeight="bold"
-                                    >
-                                      {admin.role || "admin"}
-                                    </Badge>
                                   </Td>
                                   <Td borderColor={`${customColor}20`}>
                                     <Badge
@@ -1571,37 +1877,67 @@ function AdminManagement() {
                                       width="fit-content"
                                     >
                                       <Icon as={statusConfig.icon} boxSize={3} />
-                                      {admin.status || "active"}
+                                      {admin.status || "Unknown"}
                                     </Badge>
+                                  </Td>
+                                  <Td borderColor={`${customColor}20`}>
+                                    <Text fontWeight="medium" color="gray.700">
+                                      {admin.experienceYears ? `${admin.experienceYears} Years` : "N/A"}
+                                    </Text>
+                                  </Td>
+                                  <Td borderColor={`${customColor}20`}>
+                                    <Text fontWeight="medium" color="gray.700">
+                                      {admin.city || "N/A"}
+                                    </Text>
+                                  </Td>
+                                  <Td borderColor={`${customColor}20`}>
+                                    <Flex align="center">
+                                      <Icon as={FaSearch} color="yellow.400" mr={1} boxSize={3} />
+                                      <Text fontWeight="bold">{admin.rating?.avg?.toFixed(1) || "0.0"}</Text>
+                                      <Text fontSize="xs" color="gray.500" ml={1}>({admin.rating?.count || 0})</Text>
+                                    </Flex>
+                                  </Td>
+                                  <Td borderColor={`${customColor}20`}>
+                                    <Text fontWeight="medium">{admin.totalJobsCompleted || 0}</Text>
                                   </Td>
                                   <Td borderColor={`${customColor}20`}>
                                     <Flex gap={2}>
                                       <IconButton
-                                        aria-label="Edit admin"
-                                        icon={<FaEdit />}
+                                        aria-label="View Details"
+                                        icon={<FaEye />}
                                         bg="white"
-                                        color={customColor}
+                                        color="purple.500"
                                         border="1px"
-                                        borderColor={customColor}
-                                        _hover={{ bg: customColor, color: "white" }}
+                                        borderColor="purple.500"
+                                        _hover={{ bg: "purple.500", color: "white" }}
                                         size="sm"
-                                        onClick={() => handleEditAdmin(admin)}
-                                        title="Edit admin"
+                                        onClick={() => handleViewDetails(admin)}
+                                        title="View Details"
                                       />
-                                      {admin.status === "Active" && admin._id !== currentUser._id && (
-                                        <IconButton
-                                          aria-label="Delete admin"
-                                          icon={<FaUserSlash />}
-                                          bg="white"
-                                          color="red.500"
-                                          border="1px"
-                                          borderColor="red.500"
-                                          _hover={{ bg: "red.500", color: "white" }}
-                                          size="sm"
-                                          onClick={() => handleDeleteAdmin(admin)}
-                                          title="Delete admin"
-                                        />
-                                      )}
+                                      <IconButton
+                                        aria-label="View KYC"
+                                        icon={<MdAdminPanelSettings />} /* Using a different icon to distinguish */
+                                        bg="white"
+                                        color="blue.500"
+                                        border="1px"
+                                        borderColor="blue.500"
+                                        _hover={{ bg: "blue.500", color: "white" }}
+                                        size="sm"
+                                        onClick={() => handleViewKYC(admin)}
+                                        title="View KYC Documents"
+                                      />
+                                      <IconButton
+                                        aria-label="Delete technician"
+                                        icon={<FaUserSlash />}
+                                        bg="white"
+                                        color="red.500"
+                                        border="1px"
+                                        borderColor="red.500"
+                                        _hover={{ bg: "red.500", color: "white" }}
+                                        size="sm"
+                                        onClick={() => handleDeleteAdmin(admin)}
+                                        title="Delete technician"
+                                      />
                                     </Flex>
                                   </Td>
                                 </Tr>
@@ -1726,49 +2062,256 @@ function AdminManagement() {
         </Card>
       </Box>
 
-      {/* Delete Confirmation AlertDialog */}
+      <Modal isOpen={isKYCModalOpen} onClose={closeKYCModal} size="xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>KYC Verification</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            {kycLoading ? (
+               <Flex justify="center" align="center" h="200px">
+                  <Spinner size="xl" color={customColor} />
+               </Flex>
+            ) : kycData ? (
+               <Box>
+                  {(() => {
+                    // Filter to find the correct KYC record for this technician
+                    let kycRecord = kycData;
+                    if (Array.isArray(kycData)) {
+                        kycRecord = kycData.find(doc => {
+                            const tId = doc.technicianId?._id || doc.technicianId;
+                            return tId === selectedTechnicianForKYC?._id;
+                        });
+                    }
+                    
+                    if (!kycRecord) return <Text textAlign="center">No matching KYC Data found for this technician.</Text>;
+
+                    return (
+                      <>
+                        <Text fontWeight="bold" mb={4} fontSize="lg" borderBottom="1px solid" borderColor="gray.100" pb={2}>
+                           Technician: <Text as="span" color={customColor}>{selectedTechnicianForKYC?.firstName} {selectedTechnicianForKYC?.lastName}</Text>
+                        </Text>
+                        
+                        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={5}>
+                           {/* Identity Proof (Aadhaar) */}
+                           <Box>
+                              <Text fontWeight="semibold" mb={2} color="gray.600">Aadhaar Card</Text>
+                              {kycRecord.documents?.aadhaarUrl ? (
+                                 <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
+                                    <img 
+                                      src={kycRecord.documents.aadhaarUrl} 
+                                      alt="Aadhaar Card" 
+                                      style={{ width: '100%', height: '150px', objectFit: 'cover' }} 
+                                      onClick={() => window.open(kycRecord.documents.aadhaarUrl, '_blank')}
+                                      cursor="pointer"
+                                    />
+                                    <Button 
+                                      size="xs" 
+                                      width="100%" 
+                                      borderRadius="0"
+                                      as="a" 
+                                      href={kycRecord.documents.aadhaarUrl} 
+                                      target="_blank"
+                                      colorScheme="purple"
+                                      variant="ghost"
+                                    >
+                                      View Full Image
+                                    </Button>
+                                 </Box>
+                              ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
+                               <Text mt={2} fontSize="sm"><strong>No:</strong> {kycRecord.aadhaarNumber || "N/A"}</Text>
+                           </Box>
+
+                           {/* PAN Card */}
+                           <Box>
+                              <Text fontWeight="semibold" mb={2} color="gray.600">PAN Card</Text>
+                               {kycRecord.documents?.panUrl ? (
+                                 <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
+                                    <img 
+                                      src={kycRecord.documents.panUrl} 
+                                      alt="PAN Card" 
+                                      style={{ width: '100%', height: '150px', objectFit: 'cover' }} 
+                                      onClick={() => window.open(kycRecord.documents.panUrl, '_blank')}
+                                      cursor="pointer"
+                                    />
+                                    <Button 
+                                      size="xs" 
+                                      width="100%" 
+                                      borderRadius="0"
+                                      as="a" 
+                                      href={kycRecord.documents.panUrl} 
+                                      target="_blank"
+                                      colorScheme="purple"
+                                      variant="ghost"
+                                    >
+                                      View Full Image
+                                    </Button>
+                                 </Box>
+                              ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
+                              <Text mt={2} fontSize="sm"><strong>No:</strong> {kycRecord.panNumber || "N/A"}</Text>
+                           </Box>
+
+                           {/* Driving License */}
+                           <Box>
+                              <Text fontWeight="semibold" mb={2} color="gray.600">Driving License</Text>
+                               {kycRecord.documents?.dlUrl ? (
+                                 <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
+                                    <img 
+                                      src={kycRecord.documents.dlUrl} 
+                                      alt="Driving License" 
+                                      style={{ width: '100%', height: '150px', objectFit: 'cover' }} 
+                                      onClick={() => window.open(kycRecord.documents.dlUrl, '_blank')}
+                                      cursor="pointer"
+                                    />
+                                    <Button 
+                                      size="xs" 
+                                      width="100%" 
+                                      borderRadius="0"
+                                      as="a" 
+                                      href={kycRecord.documents.dlUrl} 
+                                      target="_blank"
+                                      colorScheme="purple"
+                                      variant="ghost"
+                                    >
+                                      View Full Image
+                                    </Button>
+                                 </Box>
+                              ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
+                              <Text mt={2} fontSize="sm"><strong>No:</strong> {kycRecord.drivingLicenseNumber || "N/A"}</Text>
+                           </Box>
+                        </SimpleGrid>
+
+                         <Box mt={6} p={4} bg={kycRecord.verificationStatus === 'approved' ? 'green.50' : kycRecord.verificationStatus === 'rejected' ? 'red.50' : 'yellow.50'} borderRadius="md">
+                            <Text fontSize="md">
+                              <strong>Verification Status: </strong> 
+                              <Badge 
+                                colorScheme={kycRecord.verificationStatus === 'approved' ? 'green' : kycRecord.verificationStatus === 'rejected' ? 'red' : 'yellow'}
+                                fontSize="0.9em"
+                                ml={2}
+                              >
+                                {kycRecord.verificationStatus || "Pending"}
+                              </Badge>
+                            </Text>
+                             {/* Additional metadata if available */}
+                             {kycRecord.verifiedAt && <Text fontSize="sm" mt={1} color="gray.600">Verified At: {new Date(kycRecord.verifiedAt).toLocaleDateString()}</Text>}
+                             {kycRecord.rejectionReason && <Text fontSize="sm" mt={1} color="red.500"><strong>Rejection Reason:</strong> {kycRecord.rejectionReason}</Text>}
+                         </Box>
+                         
+                         {showRejectionInput && (
+                           <Box mt={4}>
+                             <Text mb={2} fontWeight="bold" fontSize="sm">Reason for Rejection (Required):</Text>
+                             <Textarea 
+                               placeholder="Enter reason for rejection here..."
+                               value={rejectionInput}
+                               onChange={(e) => setRejectionInput(e.target.value)}
+                               bg="white"
+                             />
+                           </Box>
+                         )}
+                      </>
+                    );
+                  })()}
+               </Box>
+            ) : (
+                <Text textAlign="center" py={10}>No KYC documents found for this technician.</Text>
+            )}
+          </ModalBody>
+
+          <ModalFooter>
+            <Button variant="outline" mr={3} onClick={closeKYCModal}>
+              Close
+            </Button>
+            {kycData && (
+              <Button 
+                colorScheme="orange" 
+                variant="ghost" 
+                mr="auto"
+                leftIcon={<FaExclamationTriangle />}
+                onClick={() => {
+                  if (confirmingModalDelete) {
+                    handleDeleteKYC(selectedTechnicianForKYC);
+                  } else {
+                    setConfirmingModalDelete(true);
+                  }
+                }}
+                isLoading={isDeletingKYC}
+              >
+                {confirmingModalDelete ? "Confirm Delete?" : "Delete Record"}
+              </Button>
+            )}
+            {kycData && (
+              <>
+                {!showRejectionInput ? (
+                  <>
+                    <Button 
+                      colorScheme="red" 
+                      mr={3} 
+                      onClick={() => setShowRejectionInput(true)}
+                      isDisabled={(() => {
+                        // Only disable if no record matches
+                        let kycRecord = kycData;
+                        if (Array.isArray(kycData)) {
+                            kycRecord = kycData.find(doc => (doc.technicianId?._id || doc.technicianId) === selectedTechnicianForKYC?._id);
+                        }
+                        return !kycRecord;
+                      })()}
+                    >
+                      Reject
+                    </Button>
+                    <Button 
+                      colorScheme="green" 
+                      onClick={() => handleVerifyKYCAction("approved")}
+                      isDisabled={(() => {
+                        let kycRecord = kycData;
+                        if (Array.isArray(kycData)) {
+                            kycRecord = kycData.find(doc => (doc.technicianId?._id || doc.technicianId) === selectedTechnicianForKYC?._id);
+                        }
+                        return !kycRecord || kycRecord.verificationStatus === 'approved';
+                      })()}
+                    >
+                      Approve (Verify)
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                     <Button 
+                      variant="ghost" 
+                      mr={3} 
+                      onClick={() => {
+                        setShowRejectionInput(false);
+                        setRejectionInput("");
+                      }}
+                    >
+                      Cancel Rejection
+                    </Button>
+                    <Button 
+                      colorScheme="red" 
+                      onClick={() => handleVerifyKYCAction("rejected")}
+                    >
+                      Confirm Rejection
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Delete Alert Dialog */}
       <AlertDialog
         isOpen={isDeleteDialogOpen}
         leastDestructiveRef={cancelRef}
         onClose={closeDeleteDialog}
-        isCentered
       >
         <AlertDialogOverlay>
           <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold" color="gray.700">
-              <Flex align="center" gap={2}>
-                <Icon as={FaExclamationTriangle} color="red.500" />
-                Confirm Delete
-              </Flex>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              Delete Technician
             </AlertDialogHeader>
 
             <AlertDialogBody>
-              <Text fontSize="md" mb={4}>
-                Are you sure you want to delete{" "}
-                <Text as="span" fontWeight="bold" color={customColor}>
-                  "{adminToDelete?.name}"
-                </Text>
-                ? This action cannot be undone.
-              </Text>
-              
-              <Box 
-                bg="orange.50" 
-                p={3} 
-                borderRadius="md" 
-                border="1px" 
-                borderColor="orange.200"
-              >
-                <Flex align="center" gap={2} mb={2}>
-                  <Icon as={MdWarning} color="orange.500" />
-                  <Text fontSize="sm" fontWeight="medium" color="orange.700">
-                    Important Note
-                  </Text>
-                </Flex>
-                <Text fontSize="sm" color="orange.600">
-                  This admin will be permanently deleted from the system. 
-                  All associated data will be removed.
-                </Text>
-              </Box>
+              Are you sure? You can't undo this action afterwards.
             </AlertDialogBody>
 
             <AlertDialogFooter>
@@ -1796,6 +2339,91 @@ function AdminManagement() {
           </AlertDialogContent>
         </AlertDialogOverlay>
       </AlertDialog>
+    {/* Details Preview Modal */}
+      <Modal isOpen={isDetailsModalOpen} onClose={closeDetailsModal} size="xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Technician Details</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            {selectedTechnician && (
+              <Box>
+                <Flex align="center" mb={6}>
+                  <Avatar 
+                    size="xl" 
+                    name={`${selectedTechnician.firstName} ${selectedTechnician.lastName}`} 
+                    src={selectedTechnician.profileImage} 
+                    mr={4}
+                    border="2px solid"
+                    borderColor={customColor}
+                  />
+                  <Box>
+                    <Heading size="md">{selectedTechnician.firstName} {selectedTechnician.lastName}</Heading>
+                    <Text color="gray.500">{selectedTechnician.email}</Text>
+                    <Badge colorScheme={selectedTechnician.status === "Active" ? "green" : "red"} mt={1}>
+                      {selectedTechnician.status}
+                    </Badge>
+                  </Box>
+                </Flex>
+
+                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                  <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
+                    <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Contact Info</Text>
+                    <Text mb={2}><strong>Mobile:</strong> {selectedTechnician.mobileNumber}</Text>
+                    <Text mb={2}><strong>Email:</strong> {selectedTechnician.email}</Text>
+                    <Text><strong>Gender:</strong> {selectedTechnician.gender || "N/A"}</Text>
+                  </Box>
+
+                  <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
+                    <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Professional Info</Text>
+                    <Text mb={2}><strong>Experience:</strong> {selectedTechnician.experienceYears} Years</Text>
+                    <Text mb={2}><strong>Specialization:</strong> {selectedTechnician.specialization || "N/A"}</Text>
+                    <Text mb={2}><strong>Total Jobs:</strong> {selectedTechnician.totalJobsCompleted}</Text>
+                    <Text>
+                      <strong>Training:</strong>{" "}
+                      <Badge colorScheme={selectedTechnician.trainingCompleted ? "green" : "orange"}>
+                        {selectedTechnician.trainingCompleted ? "Completed" : "Pending"}
+                      </Badge>
+                    </Text>
+                  </Box>
+
+                  <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
+                    <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Address</Text>
+                    <Text mb={1}>{selectedTechnician.address}</Text>
+                    <Text mb={1}>{selectedTechnician.locality}, {selectedTechnician.city}</Text>
+                    <Text>{selectedTechnician.state} - {selectedTechnician.pincode}</Text>
+                  </Box>
+
+                  <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
+                    <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">StatUs</Text>
+                    <Text mb={2}><strong>Rating:</strong> {selectedTechnician.rating?.avg} ({selectedTechnician.rating?.count} reviews)</Text>
+                    <Text mb={2}><strong>Wallet Balance:</strong> ₹{selectedTechnician.walletBalance}</Text>
+                    <Text><strong>Work Status:</strong> {selectedTechnician.workStatus}</Text>
+                  </Box>
+                </SimpleGrid>
+              </Box>
+            )}
+          </ModalBody>
+          <ModalFooter>
+             {selectedTechnician && (
+               <Button
+                 bg={selectedTechnician.trainingCompleted ? "red.500" : "teal.500"}
+                 _hover={{ bg: selectedTechnician.trainingCompleted ? "red.600" : "teal.600" }}
+                 color="white"
+                 mr={3}
+                 onClick={() => handleTrainingCompletion(selectedTechnician, !selectedTechnician.trainingCompleted)}
+                 isLoading={loading}
+                 leftIcon={<FaUserGraduate />}
+               >
+                 {selectedTechnician.trainingCompleted ? "Mark Training as Incomplete" : "Approve Training"}
+               </Button>
+             )}
+            <Button colorScheme="blue" mr={3} onClick={closeDetailsModal}>
+              Close
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Flex>
   );
 }

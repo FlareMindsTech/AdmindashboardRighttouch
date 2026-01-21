@@ -427,7 +427,7 @@ function Sidebar(props) {
         boxSize={{ base: "20px", sm: "18px", md: "20px", lg: "20px" }}
         objectFit="contain"
       />
-      <strong>FlareMinds</strong> ❤️
+      <strong>FlareMinds</strong> 
     </Text>
   </Flex>
 </Box>
@@ -872,7 +872,7 @@ export function SidebarResponsive(props) {
         boxSize={{ base: "20px", sm: "20px", md: "22px" }}
         objectFit="contain"
       />
-      <strong>FlareMinds</strong> ❤️
+      <strong>FlareMinds</strong> 
     </Text>
   </Flex>
 </Box>

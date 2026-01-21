@@ -9,7 +9,7 @@ import {
 import { FaUsers, FaBoxOpen, FaEdit, FaSignOutAlt, FaSave, FaTimes, FaChartPie } from "react-icons/fa";
 import Card from "components/Card/Card";
 import { useNavigate } from "react-router-dom";
-import { getAllAdmins, getAllProducts, getAllUsers,getAllOrders } from "../utils/axiosInstance";
+import { getAllTechnicians, getAllProducts, getAllUsers,getAllOrders } from "../utils/axiosInstance";
 import ReactApexChart from 'react-apexcharts';
 
 const getInitialAdminData = () => {
@@ -476,7 +476,7 @@ export default function AdminProfile() {
   const fetchAllAdmins = async () => {
     setDataLoading(true);
     try {
-      const allAdmins = await getAllAdmins();
+      const allAdmins = await getAllTechnicians();
       const adminsArray = Array.isArray(allAdmins) ? allAdmins : (allAdmins.admins || []);
       
       const safeAdmins = adminsArray.map(admin => ({

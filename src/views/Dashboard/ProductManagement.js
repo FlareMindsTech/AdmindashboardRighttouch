@@ -12,9 +12,11 @@ import {
   updateProducts,
   deleteProducts,
   uploadProductImage,
+  uploadProductImages,
   deleteProductImage,
-  getAllOrders,
   uploadImage,
+  uploadImageCategory, 
+  removeCategoryImage,
 } from "../utils/axiosInstance";
 
 import {
@@ -54,6 +56,9 @@ import {
   Spinner,
   Center,
   SimpleGrid,
+  Switch,
+  Checkbox,
+  Stack,
 } from "@chakra-ui/react";
 
 // Import ApexCharts
@@ -84,6 +89,12 @@ import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdCategory, MdInventory, MdWarning } from "react-icons/md";
 
 export default function ProductManagement() {
+  const getSafeId = (val) => {
+    if (!val) return null;
+    if (typeof val === 'object') return val._id || null;
+    if (typeof val === 'string' && val.trim() !== "") return val;
+    return null;
+  };
   const textColor = useColorModeValue("gray.700", "white");
   const toast = useToast();
   const navigate = useNavigate();
@@ -93,6 +104,7 @@ export default function ProductManagement() {
   const customHoverColor = "#006666"; // Darker Teal
   const accentColor = "#FFD700"; // Gold/Yellow
   const customBorderColor = "#F5B700"; // Golden Border
+
 
   const [currentUser, setCurrentUser] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -128,19 +140,32 @@ export default function ProductManagement() {
   const [itemsPerPage] = useState(5);
 
   // Category doesn't have status field
-  const initialCategory = { name: "", description: "", image: "" };
+  const initialCategory = { name: "", description: "", image: "" ,categoryType: "product"};
   
   // Product has status field
   const initialProduct = {
     name: "",
     description: "",
     images: [],
-    status: "Available",
+    status: "",
+    productType: "Hardware",
+    pricingModel: "fixed",
+    estimatedPriceFrom: 0,
+    estimatedPriceTo: 0,
+    siteInspectionRequired: false,
+    installationDuration: "",
+    usageType: "",
+    whatIncluded: [""],
+    whatNotIncluded: [""],
+    warrantyPeriod: "",
+    amcAvailable: true,
+    amcPricePerYear: ""
   };
   
   const statusOptions = ["Available", "Out of Stock", "Discontinued"];
   
   const [newCategory, setNewCategory] = useState(initialCategory);
+  const [categoryFile, setCategoryFile] = useState("");
   const [newProduct, setNewProduct] = useState(initialProduct);
   
   // Color management states
@@ -151,32 +176,115 @@ export default function ProductManagement() {
   const [customColorInput, setCustomColorInput] = useState("");
 
   // Variants management
-  const [variants, setVariants] = useState([
-    { 
-      color: '', 
-      size: '', 
-      price: '', 
-      stock: '', 
-      sku: `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}` 
-    }
-  ]);
+  const [variants, setVariants] = useState([]);
+// Add this state variable
+const [imageFiles, setImageFiles] = useState([]);
+const [formerImages, setFormerImages] = useState([]);
 
+  const [deletedImageIds, setDeletedImageIds] = useState([]);
+
+  // Category Image Upload Handler
+  const handleCategoryImageUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setCategoryFile(file);
+      setNewCategory(prev => ({
+        ...prev,
+        image: URL.createObjectURL(file)
+      }));
+    }
+  };
+
+  const handleRemoveCategoryImg = async () => {
+    // If we are editing a category and it has a saved image, and we haven't just uploaded a new one (which is in categoryFile)
+    if (currentView === "editCategory" && selectedCategory && (selectedCategory.image || selectedCategory.url) && !categoryFile) {
+        try {
+            setIsSubmitting(true);
+            await removeCategoryImage(selectedCategory._id);
+            
+            // Update UI state
+            setNewCategory(prev => ({ ...prev, image: "", url: "" }));
+            setSelectedCategory(prev => ({ ...prev, image: "", url: "" }));
+             // Update local list
+            const updatedCategories = categories.map(c => c._id === selectedCategory._id ? { ...c, image: "", url: "" } : c);
+            // Assuming setCategories is available, if not we might need to fetch data again
+             // But fetchData() is called on update success usually.
+             // For immediate UI update:
+            // setCategories(updatedCategories); 
+
+            toast({ title: "Image Removed", status: "success", duration: 3000, isClosable: true });
+        } catch(e) {
+             toast({ title: "Error Removing Image", description: e.message, status: "error", duration: 3000, isClosable: true });
+        } finally {
+            setIsSubmitting(false);
+        }
+    } else {
+        // Just clear the preview if it's a new file upload or in add mode
+        setCategoryFile(null);
+        setNewCategory(prev => ({ ...prev, image: "" }));
+    }
+  };
+
+// Update your handleImageUpload function
+const handleImageUpload = (e) => {
+  const files = Array.from(e.target.files);
+  
+  // Store the actual File objects
+  setImageFiles(prev => [...prev, ...files]);
+  
+  // Also create preview URLs for display
+  const previewUrls = files.map(file => ({
+    url: URL.createObjectURL(file),
+    preview: URL.createObjectURL(file),
+    file: file
+  }));
+  
+  setNewProduct(prev => ({
+    ...prev,
+    images: [...(prev.images || []), ...previewUrls]
+  }));
+};
+
+// Updated handleRemoveImage to track deleted server images
+const handleRemoveImage = (indexOrId) => {
+  // Local state cleanup
+  if (typeof indexOrId === 'number') {
+    // This looks like an index for a newly uploaded file (client-side only)
+    setImageFiles(prev => prev.filter((_, i) => i !== indexOrId));
+    setNewProduct(prev => ({
+      ...prev,
+      images: (prev.images || []).filter((_, i) => i !== indexOrId)
+    }));
+  } else {
+    // This is a public_id string from the server
+    
+    // Add to deletion queue
+    setDeletedImageIds(prev => [...prev, indexOrId]);
+
+    setImageFiles(prev => prev.filter(file => !(file.public_id && file.public_id === indexOrId)));
+    setNewProduct(prev => ({
+      ...prev,
+      images: (prev.images || []).filter(img => !(img.public_id && img.public_id === indexOrId))
+    }));
+  }
+};
   // Calculate pagination
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   
   // Filtered data
   const filteredCategories = categories.filter((cat) =>
-    cat.name?.toLowerCase().includes(categorySearch.toLowerCase()) ||
+    (cat.category || cat.name)?.toLowerCase().includes(categorySearch.toLowerCase()) ||
     cat.description?.toLowerCase().includes(categorySearch.toLowerCase())
   );
 
   const filteredProducts = products.filter(
     (prod) =>
       prod.name?.toLowerCase().includes(productSearch.toLowerCase()) &&
-      (productCategoryFilter ? 
-        (prod.category?._id === productCategoryFilter || prod.category === productCategoryFilter) 
-        : true)
+      (productCategoryFilter ? (
+        (prod.category?._id || prod.category) === productCategoryFilter || 
+        (prod.categoryId?._id || prod.categoryId) === productCategoryFilter
+      ) : true)
   );
 
   const currentCategories = filteredCategories.slice(indexOfFirstItem, indexOfLastItem);
@@ -206,7 +314,7 @@ export default function ProductManagement() {
       
       items.forEach(item => {
         const itemProductId = item.productId?._id || item.productId || item.product?._id || item.product;
-        const itemName = item.name || item.productId?.name || item.product?.name;
+        const itemName = item.name || item.productId?.name || item.product?.name || item.productName || item.productId?.productName || item.product?.productName;
         
         if (itemProductId === product._id || itemName === product.name) {
           orderedQty += item.quantity || item.qty || 0;
@@ -461,97 +569,9 @@ export default function ProductManagement() {
     setSearchTerm("");
     setCategorySearch("");
     setProductSearch("");
+    setProductCategoryFilter("");
     setCurrentPage(1);
   };
-
-  // Image upload handler
-  const handleImageUpload = async (event) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    try {
-      setIsSubmitting(true);
-      
-      if (selectedProduct) {
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i];
-          const result = await uploadProductImage(selectedProduct._id, file);
-          
-          if (result.data && result.data.images) {
-            setNewProduct(prev => ({
-              ...prev,
-              images: result.data.images
-            }));
-          }
-        }
-        toast({
-          title: "Images Uploaded",
-          description: "Product images uploaded successfully",
-          status: "success",
-          duration: 3000,
-          isClosable: true,
-        });
-      } else {
-        const newImages = Array.from(files).map(file => ({
-          file: file,
-          preview: URL.createObjectURL(file),
-          isNew: true
-        }));
-        
-        setNewProduct(prev => ({
-          ...prev,
-          images: [...(prev.images || []), ...newImages]
-        }));
-      }
-    } catch (error) {
-      toast({
-        title: "Upload Error",
-        description: error.message || "Failed to upload images",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setIsSubmitting(false);
-      event.target.value = "";
-    }
-  };
-
-  // Image removal handler
-  const handleRemoveImage = async (publicIdOrIndex) => {
-    try {
-      if (selectedProduct && typeof publicIdOrIndex === 'string') {
-        await deleteProductImage(selectedProduct._id, publicIdOrIndex);
-        
-        setNewProduct(prev => ({
-          ...prev,
-          images: prev.images.filter(img => img.public_id !== publicIdOrIndex)
-        }));
-        
-        toast({
-          title: "Image Removed",
-          description: "Image deleted successfully",
-          status: "success",
-          duration: 3000,
-          isClosable: true,
-        });
-      } else {
-        setNewProduct(prev => ({
-          ...prev,
-          images: prev.images.filter((_, index) => index !== publicIdOrIndex)
-        }));
-      }
-    } catch (error) {
-      toast({
-        title: "Delete Error",
-        description: error.message || "Failed to delete image",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  };
-
   // Color management functions
   const handleAddCustomColor = () => {
     const color = customColorInput.trim();
@@ -700,10 +720,10 @@ export default function ProductManagement() {
   // Fetch current user
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("user"));
-    if (!storedUser || (storedUser.role !== "admin" && storedUser.role !== "super admin")) {
+    if (!storedUser || (storedUser.role?.toLowerCase() !== "owner")) {
       toast({
         title: "Access Denied",
-        description: "Only admin or super admin can access this page.",
+        description: "Only owner can access this page.",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -715,54 +735,142 @@ export default function ProductManagement() {
   }, [navigate, toast]);
 
   // Fetch categories + products + orders
-  const fetchData = useCallback(async () => {
-    try {
-      setIsLoadingData(true);
-      setIsLoadingCategories(true);
-      setIsLoadingProducts(true);
-      setIsLoadingOrders(true);
+  // const fetchData = useCallback(async () => {
+  //   try {
+  //     setIsLoadingData(true);
+  //     setIsLoadingCategories(true);
+  //     setIsLoadingProducts(true);
+  //     setIsLoadingOrders(true);
 
-      const [categoryData, productData, ordersData] = await Promise.all([
-        getAllCategories(),
-        getAllProducts(),
-        getAllOrders()
-      ]);
+  //     const [categoryData, productData, ordersData] = await Promise.all([
+  //       getAllCategories(),
+  //       getAllProducts(),
+  //       getAllOrders()
+  //     ]);
 
-      setCategories(categoryData.categories || categoryData.data || []);
-      setProducts(productData.products || productData.data || []);
+  //     setCategories(categoryData.categories || categoryData.data || []);
+  //     setProducts(productData.products || productData.data || []);
       
-      let ordersArray = [];
-      if (Array.isArray(ordersData)) {
-        ordersArray = ordersData;
-      } else if (ordersData && Array.isArray(ordersData.orders)) {
-        ordersArray = ordersData.orders;
-      } else if (ordersData && Array.isArray(ordersData.data)) {
-        ordersArray = ordersData.data;
-      } else {
-        const maybeArray = Object.values(ordersData || {}).find((v) => Array.isArray(v));
-        if (Array.isArray(maybeArray)) {
-          ordersArray = maybeArray;
-        }
+  //     let ordersArray = [];
+  //     if (Array.isArray(ordersData)) {
+  //       ordersArray = ordersData;
+  //     } else if (ordersData && Array.isArray(ordersData.orders)) {
+  //       ordersArray = ordersData.orders;
+  //     } else if (ordersData && Array.isArray(ordersData.data)) {
+  //       ordersArray = ordersData.data;
+  //     } else {
+  //       const maybeArray = Object.values(ordersData || {}).find((v) => Array.isArray(v));
+  //       if (Array.isArray(maybeArray)) {
+  //         ordersArray = maybeArray;
+  //       }
+  //     }
+  //     setOrders(ordersArray);
+      
+  //   } catch (err) {
+  //     console.error("Fetch error:", err);
+  //     toast({
+  //       title: "Fetch Error",
+  //       description: err.message || "Failed to load dashboard data.",
+  //       status: "error",
+  //       duration: 3000,
+  //       isClosable: true,
+  //     });
+  //   } finally {
+  //     setIsLoadingData(false);
+  //     setIsLoadingCategories(false);
+  //     setIsLoadingProducts(false);
+  //     setIsLoadingOrders(false);
+  //   }
+  // }, [toast]);
+const fetchData = useCallback(async () => {
+  try {
+    setIsLoadingData(true);
+    setIsLoadingCategories(true);
+    setIsLoadingProducts(true);
+    setIsLoadingOrders(true);
+
+    const [categoryData, productData] = await Promise.all([
+      getAllCategories(),
+      getAllProducts()
+    ]);
+
+    console.log("Raw category data:", categoryData); // Add this
+    
+    // Handle different possible response structures
+    let categoriesArray = [];
+    if (Array.isArray(categoryData)) {
+      categoriesArray = categoryData;
+    } else if (categoryData && Array.isArray(categoryData.categories)) {
+      categoriesArray = categoryData.categories;
+    } else if (categoryData && Array.isArray(categoryData.data)) {
+      categoriesArray = categoryData.data;
+    } else if (categoryData?.data?.categories) {
+      categoriesArray = categoryData.data.categories;
+    } else if (categoryData?.result && Array.isArray(categoryData.result)) {
+      // Handle { success: true, result: [...] } format
+      categoriesArray = categoryData.result;
+    } else if (categoryData?.result?.categories) {
+      // Handle { success: true, result: { categories: [...] } } format
+      categoriesArray = categoryData.result.categories;
+    } else {
+      // Try to extract any array from the response
+      const maybeArray = Object.values(categoryData || {}).find((v) => Array.isArray(v));
+      if (Array.isArray(maybeArray)) {
+        categoriesArray = maybeArray;
       }
-      setOrders(ordersArray);
-      
-    } catch (err) {
-      console.error("Fetch error:", err);
-      toast({
-        title: "Fetch Error",
-        description: err.message || "Failed to load dashboard data.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setIsLoadingData(false);
-      setIsLoadingCategories(false);
-      setIsLoadingProducts(false);
-      setIsLoadingOrders(false);
     }
-  }, [toast]);
 
+    console.log("Processed categories:", categoriesArray); // Add this
+    
+    setCategories(categoriesArray);
+    
+    // Rest of your existing code...
+    let productsArray = [];
+    if (Array.isArray(productData)) {
+      productsArray = productData;
+    } else if (productData && Array.isArray(productData.products)) {
+      productsArray = productData.products;
+    } else if (productData && Array.isArray(productData.data)) {
+      productsArray = productData.data;
+    } else if (productData?.data?.products) {
+      productsArray = productData.data.products;
+    } else if (productData?.result && Array.isArray(productData.result)) {
+      productsArray = productData.result;
+    } else if (productData?.result?.products) {
+      productsArray = productData.result.products;
+    } else {
+      const maybeArray = Object.values(productData || {}).find((v) => Array.isArray(v));
+      if (Array.isArray(maybeArray)) {
+        productsArray = maybeArray;
+      }
+    }
+    
+    // Normalize products to ensure name property exists
+    const normalizedProducts = productsArray.map(product => ({
+      ...product,
+      name: product.name || product.productName || "Unnamed Product"
+    }));
+    
+    setProducts(normalizedProducts);
+    
+    // ... rest of orders handling
+    
+  } catch (err) {
+    console.error("Fetch error:", err);
+    toast({
+      title: "Fetch Error",
+      description: err.message || "Failed to load dashboard data.",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+  } finally {
+    setIsLoadingData(false);
+    setIsLoadingCategories(false);
+    setIsLoadingProducts(false);
+    // setIsLoadingOrders(false);
+  }
+}, [toast]);
   useEffect(() => {
     if (currentUser) {
       fetchData();
@@ -775,6 +883,7 @@ export default function ProductManagement() {
     setSearchTerm("");
     setCategorySearch("");
     setProductSearch("");
+    setProductCategoryFilter("");
   }, [currentView]);
 
   if (!currentUser) return null;
@@ -786,69 +895,193 @@ export default function ProductManagement() {
     setNewCategory(initialCategory);
     setNewProduct(initialProduct);
     setCustomColorInput("");
-    setVariants([{ 
-      color: '', 
-      size: '', 
-      price: '', 
-      stock: '', 
-      sku: `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}` 
-    }]);
+    setVariants([]);
+    setCategoryFile(null);
   };
 
   // Reset form
-  const handleResetCategory = () => setNewCategory(initialCategory);
+  const handleResetCategory = () => {
+    setNewCategory(initialCategory);
+    setCategoryFile(null);
+  };
   const handleResetProduct = () => {
     setNewProduct(initialProduct);
     setCustomColorInput("");
-    setVariants([{ 
-      color: '', 
-      size: '', 
-      price: '', 
-      stock: '', 
-      sku: `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}` 
-    }]);
+    setVariants([]);
   };
 
   // Category Submit
-  const handleSubmitCategory = async () => {
-    if (!newCategory.name.trim()) {
-      return toast({
-        title: "Validation Error",
-        description: "Category name is required.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+  // const handleSubmitCategory = async () => {
+  //   if (!newCategory.name.trim()) {
+  //     return toast({
+  //       title: "Validation Error",
+  //       description: "Category name is required.",
+  //       status: "error",
+  //       duration: 3000,
+  //       isClosable: true,
+  //     });
+  //   }
+  //   if (!newCategory.description.trim()) {
+  //     return toast({
+  //       title: "Validation Error",
+  //       description: "Category description is required.",
+  //       status: "error",
+  //       duration: 3000,
+  //       isClosable: true,
+  //     });
+  //   }
+  //   if (!newCategory.image) {
+  //     return toast({
+  //       title: "Validation Error",
+  //       description: "Category image is required.",
+  //       status: "error",
+  //       duration: 3000,
+  //       isClosable: true,
+  //     });
+  //   }
+  //   try {
+  //     setIsSubmitting(true);
+  //     // Create a copy without the blob URL and map 'name' to 'category' for submission
+  //     const categoryData = { 
+  //       category: newCategory.name, 
+  //       description: newCategory.description,
+  //       categoryType: newCategory.categoryType,
+  //       image: "" 
+  //     };
+  //     const data = await createCategories(categoryData);
+  //     // Enhanced ID extraction
+  //     const categoryId = data._id || data.category?._id || data.data?._id || data.data?.category?._id;
+
+  //     if (categoryFile && categoryId) {
+  //       try {
+  //         await uploadImageCategory(categoryId, categoryFile);
+  //       } catch (uploadError) {
+  //         console.error("Image upload failed:", uploadError);
+  //         toast({
+  //           title: "Warning",
+  //           description: "Category created, but image upload failed.",
+  //           status: "warning",
+  //           duration: 5000,
+  //           isClosable: true,
+  //         });
+  //       }
+  //     }
+
+  //     toast({
+  //       title: "Category Created",
+  //       description: `"${data.category?.name || data.data?.name || data.name}" added successfully.`,
+  //       status: "success",
+  //       duration: 3000,
+  //       isClosable: true,
+  //     });
+  //     await fetchData();
+  //     handleBack();
+  //     setCategoryFile(null);
+  //   } catch (err) {
+  //     toast({
+  //       title: "Error Creating Category",
+  //       description: err.message || "Failed to create category",
+  //       status: "error",
+  //       duration: 3000,
+  //       isClosable: true,
+  //     });
+  //   } finally {
+  //     setIsSubmitting(false);
+  //   }
+  // };
+const handleSubmitCategory = async () => {
+  const categoryName = newCategory.name || "";
+  const categoryDesc = newCategory.description || "";
+
+  if (!categoryName.trim()) {
+    return toast({
+      title: "Validation Error",
+      description: "Category name is required.",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+  }
+
+  if (!categoryDesc.trim()) {
+    return toast({
+      title: "Validation Error",
+      description: "Category description is required.",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+  }
+
+  if (!categoryFile) {
+    return toast({
+      title: "Validation Error",
+      description: "Category image is required.",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+  }
+
+  try {
+    setIsSubmitting(true);
+
+    // 1️⃣ CREATE CATEGORY (WITHOUT IMAGE)
+    const categoryData = {
+      category: newCategory.name,
+      description: newCategory.description,
+      categoryType: newCategory.categoryType,
+    };
+
+    const resData = await createCategories(categoryData);
+
+    const categoryId =
+      resData._id ||
+      resData.category?._id ||
+      resData.data?._id ||
+      resData.data?.category?._id ||
+      resData.result?._id; // ✅ Added support for 'result' key based on console output
+
+    if (!categoryId) {
+      console.error("No category ID found in response structure:", resData);
+      throw new Error(`Category created but ID was not found in response. Received: ${JSON.stringify(resData)}`);
     }
 
-    try {
-      setIsSubmitting(true);
-      const data = await createCategories(newCategory);
-      toast({
-        title: "Category Created",
-        description: `"${data.category?.name || data.data?.name}" added successfully.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-      await fetchData();
-      handleBack();
-    } catch (err) {
-      toast({
-        title: "Error Creating Category",
-        description: err.message || "Failed to create category",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    // 2️⃣ UPLOAD IMAGE
+    await uploadImageCategory(categoryId, categoryFile);
+
+    toast({
+      title: "Category Created",
+      description: `"${resData.category?.category || resData.category || categoryData.category}" added successfully.`,
+      status: "success",
+      duration: 3000,
+      isClosable: true,
+    });
+
+    setNewCategory(initialCategory);
+    setCategoryFile("");
+    fetchData();
+    handleBack();
+
+  } catch (err) {
+    toast({
+      title: "Error Creating Category",
+      description: err.message || "Failed to create category",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   // Update Category
   const handleUpdateCategory = async () => {
-    if (!newCategory.name.trim()) {
+    const categoryName = newCategory.name || "";
+    const categoryDesc = newCategory.description || "";
+
+    if (!categoryName.trim()) {
       return toast({
         title: "Validation Error",
         description: "Category name is required.",
@@ -857,17 +1090,51 @@ export default function ProductManagement() {
         isClosable: true,
       });
     }
+    if (!categoryDesc.trim()) {
+      return toast({
+        title: "Validation Error",
+        description: "Category description is required.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
 
     try {
       setIsSubmitting(true);
-      await updateCategories(selectedCategory._id, newCategory);
+      const updateData = {
+        category: categoryName.trim(),
+        description: categoryDesc.trim(),
+        categoryType: newCategory.categoryType
+      };
+      
+      const response = await updateCategories(selectedCategory._id, updateData);
+      
+      // Handle image upload if a new file was selected
+      if (categoryFile && selectedCategory._id) {
+        try {
+          await uploadImageCategory(selectedCategory._id, categoryFile);
+        } catch (uploadError) {
+          console.error("Image upload failed during update:", uploadError);
+          toast({
+            title: "Warning",
+            description: "Category details updated, but image upload failed.",
+            status: "warning",
+            duration: 5000,
+            isClosable: true,
+          });
+        }
+      }
+
       toast({
         title: "Category Updated",
-        description: `"${newCategory.name}" updated successfully.`,
+        description: `"${categoryName}" updated successfully.`,
         status: "success",
         duration: 3000,
         isClosable: true,
       });
+      
+      setCategoryFile(null);
       await fetchData();
       handleBack();
     } catch (error) {
@@ -962,171 +1229,234 @@ export default function ProductManagement() {
     setIsDeleting(false);
   };
 
-  // Product Submit (Add/Edit)
-  const handleSubmitProduct = async () => {
-    if (!newProduct.name) {
-      return toast({
-        title: "Validation Error",
-        description: "Product name is required.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-    
-    if (!selectedCategory?._id) {
-      return toast({
-        title: "Category Error",
-        description: "Please select a category first.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
+ // Product Submit (Add/Edit) - Updated for new API format
+const handleSubmitProduct = async () => {
+  if (!newProduct.name) {
+    return toast({
+      title: "Validation Error",
+      description: "Product name is required.",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+  }
+  
 
-    // Validate all variants
-    const invalidVariants = variants.filter(variant => 
-      !variant.color || !variant.size || !variant.price || !variant.stock
-    );
-    
-    if (invalidVariants.length > 0) {
-      return toast({
-        title: "Validation Error",
-        description: "Please fill all fields for each variant (color, size, price, stock).",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
+  // Enhanced validation
+  if (!newProduct.name || !newProduct.name.trim()) {
+    return toast({
+      title: "Validation Error",
+      description: "Product name is required.",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+  }
 
-    // Check for duplicate variants
-    const variantKeys = variants.map(v => `${v.color}-${v.size}`.toLowerCase());
-    const hasDuplicates = new Set(variantKeys).size !== variantKeys.length;
-    
-    if (hasDuplicates) {
-      return toast({
-        title: "Duplicate Variants",
-        description: "Duplicate color-size combinations are not allowed.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
+  // Determine the Category ID for the payload - Ensure it's ALWAYS a non-empty string
+  let finalCategoryId = 
+    getSafeId(selectedCategory) || 
+    getSafeId(newProduct.categoryId) ||
+    getSafeId(newProduct.category) ||
+    getSafeId(selectedProduct?.category) || 
+    getSafeId(selectedProduct?.categoryId) ||
+    getSafeId(selectedProduct?.category?._id) ||
+    getSafeId(selectedProduct?.categoryId?._id);
 
-    try {
-      setIsSubmitting(true);
-
-      // Prepare product data
-      const productData = {
-        name: newProduct.name.trim(),
-        description: newProduct.description?.trim() || "",
-        category: selectedCategory._id,
-        status: newProduct.status || "Available", // Product status validation
-        images: newProduct.images?.filter(img => img.url || img.preview).map(img => img.url || img.preview) || [],
-        variants: variants.map(variant => ({
-          color: variant.color,
-          size: variant.size,
-          price: Number(variant.price),
-          stock: Number(variant.stock),
-          sku: variant.sku || `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        })),
-      };
-
-      let response;
-      if (selectedProduct) {
-        response = await updateProducts(selectedProduct._id, productData);
-        
-        // Handle image uploads for existing product
-        if (newProduct.images && newProduct.images.some(img => img.isNew)) {
-          for (const img of newProduct.images) {
-            if (img.isNew && img.file) {
-              try {
-                await uploadProductImage(selectedProduct._id, img.file);
-              } catch (imgError) {
-                console.error("Image upload failed:", imgError);
-              }
-            }
-          }
+  // Debugging: If we still don't have it, try every possible path
+  if (!finalCategoryId && selectedProduct) {
+    const possibleFieldNames = ['category', 'categoryId', 'category_id', 'CategoryId'];
+    for (const field of possibleFieldNames) {
+      const val = selectedProduct[field];
+      if (val) {
+        if (typeof val === 'string' && val.trim() !== "") {
+          finalCategoryId = val;
+          break;
+        } else if (typeof val === 'object' && val._id) {
+          finalCategoryId = val._id;
+          break;
         }
-        
-        toast({
-          title: "Product Updated",
-          description: `"${productData.name}" updated successfully.`,
-          status: "success",
-          duration: 3000,
-          isClosable: true,
-        });
-      } else {
-        response = await createProducts(productData);
-        
-        // Handle image uploads for new product
-        if (newProduct.images && newProduct.images.length > 0) {
-          const createdProduct = response.data || response.product || response;
-          
-          for (const img of newProduct.images) {
-            if (img.file) {
-              try {
-                await uploadProductImage(createdProduct._id, img.file);
-              } catch (imgError) {
-                console.error("Image upload failed:", imgError);
-              }
-            }
-          }
-        }
-        
-        toast({
-          title: "Product Created",
-          description: `"${productData.name}" added successfully.`,
-          status: "success",
-          duration: 3000,
-          isClosable: true,
-        });
+      }
+    }
+  }
+
+  if (!finalCategoryId) {
+    return toast({
+      title: "Validation Error",
+      description: "Category is required. Please ensure this product is linked to a category.",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+  }
+
+  // Price validation - only alert if completely empty
+  if (newProduct.estimatedPriceFrom === "" || newProduct.estimatedPriceTo === "") {
+    return toast({
+      title: "Validation Error",
+      description: "Price range (From/To) is required.",
+      status: "error",
+      duration: 3000,
+      isClosable: true,
+    });
+  }
+
+  try {
+    setIsSubmitting(true);
+
+    // Prepare product data according to new API format
+    const productData = {
+      productName: (newProduct.name || "").trim(),
+      productType: newProduct.productType || "Hardware",
+      description: (newProduct.description || "").trim(),
+      pricingModel: newProduct.pricingModel || "fixed",
+      estimatedPriceFrom: Number(newProduct.estimatedPriceFrom) || 0,
+      estimatedPriceTo: Number(newProduct.estimatedPriceTo) || 0,
+      siteInspectionRequired: !!newProduct.siteInspectionRequired,
+      installationDuration: newProduct.installationDuration || "2-3 hours",
+      usageType: newProduct.usageType || "Residential",
+      whatIncluded: Array.isArray(newProduct.whatIncluded) ? newProduct.whatIncluded.map(i => i.trim()).filter(i => i !== "") : [],
+      whatNotIncluded: Array.isArray(newProduct.whatNotIncluded) ? newProduct.whatNotIncluded.map(i => i.trim()).filter(i => i !== "") : [],
+      warrantyPeriod: newProduct.warrantyPeriod || "2 years",
+      amcAvailable: !!newProduct.amcAvailable,
+      amcPricePerYear: Number(newProduct.amcPricePerYear) || 0,
+      status: newProduct.status || "Available",
+      productImages: Array.isArray(newProduct.images) ? newProduct.images.filter(img => !img.file) : [],
+      images: Array.isArray(newProduct.images) ? newProduct.images.filter(img => !img.file) : []
+    };
+
+    // Only add categoryId if it exists to avoid null errors on update
+    if (finalCategoryId) {
+      productData.categoryId = finalCategoryId;
+    }
+
+    // Only add variants if they exist to avoid empty array validation issues
+    if (variants && variants.length > 0) {
+      productData.variants = variants;
+    }
+
+    console.log("Sending product data:", productData);
+
+    let response;
+    if (selectedProduct) {
+      if (!selectedProduct._id) {
+        throw new Error("Cannot update: Product ID is missing.");
+      }
+      // For editing - update product
+      response = await updateProducts(selectedProduct._id, productData);
+      
+      // Handle deleted images
+      if (deletedImageIds.length > 0) {
+        await Promise.all(
+          deletedImageIds.map((publicId) => 
+            deleteProductImage(selectedProduct._id, publicId)
+          )
+        );
+        setDeletedImageIds([]); // Clear after processing
       }
 
-      await fetchData();
-      handleBack();
-    } catch (err) {
-      console.error("Product submission error:", err);
-      
-      let errorTitle = selectedProduct ? "Error Updating Product" : "Error Creating Product";
-      let errorDescription = err.message;
-      
-      if (err.message?.includes("500")) {
-        errorDescription = "Server error. Please check backend connection.";
-      } else if (err.message?.includes("401") || err.message?.includes("403")) {
-        errorDescription = "Authentication error. Please log in again.";
-      } else if (err.message?.includes("Network")) {
-        errorDescription = "Network error. Check your internet connection.";
-      } else if (err.message?.includes("category")) {
-        errorDescription = "Category error. Please select a valid category.";
-      } else if (err.status === 500) {
-        errorDescription = "Server error (500). Please check backend logs.";
-      } else if (err.response?.data?.message) {
-        errorDescription = err.response.data.message;
+      // Handle image uploads for existing product
+      if (imageFiles.length > 0) {
+        await uploadProductImages(selectedProduct._id, imageFiles);
       }
       
       toast({
-        title: errorTitle,
-        description: errorDescription,
-        status: "error",
-        duration: 5000,
+        title: "Product Updated",
+        description: `"${productData.productName}" updated successfully.`,
+        status: "success",
+        duration: 3000,
         isClosable: true,
-        position: "top",
       });
-    } finally {
-      setIsSubmitting(false);
+    } else {
+      // For new product - create first, then upload images
+      response = await createProducts(productData);
+      
+      // Get the created product ID - Support data, result, or direct ID
+      const createdProductId = 
+        response.result?._id || 
+        response.data?._id || 
+        response._id || 
+        response.productId ||
+        response.result?.productId;
+      
+      console.log("Submit product response:", response);
+      
+      // Handle image uploads for new product
+      if (imageFiles.length > 0 && createdProductId) {
+        await uploadProductImages(createdProductId, imageFiles);
+      }
+      
+      toast({
+        title: "Product Created",
+        description: `"${productData.productName}" added successfully.`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
     }
-  };
 
+    // Reset local image files state after successful submission
+    setImageFiles([]);
+    await fetchData();
+    handleBack();
+  } catch (err) {
+    console.error("Product submission error:", err);
+    
+    let errorTitle = selectedProduct ? "Error Updating Product" : "Error Creating Product";
+    let errorDescription = err.message;
+    
+    if (err.message?.includes("500")) {
+      errorDescription = "Server error. Please check backend connection.";
+    } else if (err.message?.includes("401") || err.message?.includes("403")) {
+      errorDescription = "Authentication error. Please log in again.";
+    } else if (err.message?.includes("Network")) {
+      errorDescription = "Network error. Check your internet connection.";
+    } else if (err.message?.includes("category")) {
+      errorDescription = "Category error. Please select a valid category.";
+    } else if (err.status === 500) {
+      errorDescription = "Server error (500). Please check backend logs.";
+    } else if (err.response?.data?.message) {
+      errorDescription = err.response.data.message;
+    }
+    
+    toast({
+      title: errorTitle,
+      description: errorDescription,
+      status: "error",
+      duration: 5000,
+      isClosable: true,
+      position: "top",
+    });
+  } finally {
+    setIsSubmitting(false);
+  }
+};
   // Edit Product handler
   const handleEditProduct = (product) => {
     setSelectedProduct(product);
-    setSelectedCategory(categories.find((c) => c._id === product.category?._id || c._id === product.category));
+    // Simplified category detection - trust the ID from the product
+    const catId = getSafeId(product.category) || getSafeId(product.categoryId);
+    let cat = categories.find((c) => c._id === catId);
     
-    const productImages = product.images || [];
+    if (!cat && catId) {
+      if (typeof product.categoryId === 'object') {
+        cat = product.categoryId;
+      } else if (typeof product.category === 'object') {
+        cat = product.category;
+      } else {
+        cat = { _id: catId, name: product.categoryName || "Current Category" };
+      }
+    }
+    
+    if (cat) {
+      setSelectedCategory(cat);
+    }
+    
+    const existingImages = Array.isArray(product.productImages) ? product.productImages : (Array.isArray(product.images) ? product.images : []);
+    setFormerImages(existingImages);
     
     // Set variants from product data
-    if (product.variants && product.variants.length > 0) {
+    if (Array.isArray(product.variants) && product.variants.length > 0) {
       setVariants(product.variants.map(variant => {
         const color = Array.isArray(variant.color) ? variant.color[0] || '' : variant.color || '';
         const size = Array.isArray(variant.size) ? variant.size[0] || '' : variant.size || '';
@@ -1140,86 +1470,53 @@ export default function ProductManagement() {
         };
       }));
     } else {
-      setVariants([
-        { 
-          color: '', 
-          size: '', 
-          price: '', 
-          stock: '', 
-          sku: `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}` 
-        }
-      ]);
+      setVariants([]);
     }
     
     setNewProduct({
-      name: product.name || '',
+      name: product.productName || product.name || '',
       description: product.description || '',
-      images: productImages,
-      status: product.status || "Available", // Product status
+      images: Array.isArray(existingImages) ? existingImages : [],
+      status: product.status || "Available",
+      productType: product.productType || "Hardware",
+      pricingModel: product.pricingModel || "fixed",
+      estimatedPriceFrom: product.estimatedPriceFrom !== undefined ? product.estimatedPriceFrom : 0,
+      estimatedPriceTo: product.estimatedPriceTo !== undefined ? product.estimatedPriceTo : 0,
+      siteInspectionRequired: !!product.siteInspectionRequired,
+      installationDuration: product.installationDuration || "2-3 hours",
+      usageType: product.usageType || "Residential",
+      whatIncluded: Array.isArray(product.whatIncluded) ? product.whatIncluded : ["Product", "Installation"],
+      whatNotIncluded: Array.isArray(product.whatNotIncluded) ? product.whatNotIncluded : ["Plumbing work"],
+      warrantyPeriod: product.warrantyPeriod || "2 years",
+      amcAvailable: !!product.amcAvailable,
+      amcPricePerYear: product.amcPricePerYear || 0,
+      categoryId: catId // Store the ID here too
     });
+    setCurrentView("addProduct");
+  };
+
+  const handleAddProductToCategory = (category) => {
+    setSelectedCategory(category);
+    setNewProduct(initialProduct);
+    setVariants([]);
+    setImageFiles([]);
     setCurrentView("addProduct");
   };
 
   // Edit Category handler - No status field
   const handleEditCategory = (category) => {
     setSelectedCategory(category);
+    setCategoryFile(null);
     setNewCategory({ 
-      name: category.name, 
-      description: category.description || "" 
+      name: category.name || category.category, 
+      description: category.description || "",
+      image: category.image || category.url || "",
+      categoryType: category.categoryType || "product"
     });
     setCurrentView("editCategory");
   };
 
-  // Add Product to Category handler
-  const handleAddProductToCategory = (category) => {
-    setSelectedCategory(category);
-    setSelectedProduct(null);
-    setNewProduct(initialProduct);
-    setVariants([{ 
-      color: '', 
-      size: '', 
-      price: '', 
-      stock: '', 
-      sku: `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}` 
-    }]);
-    setCurrentView("addProduct");
-  };
 
-  // Category Image Upload Handler
-  const handleCategoryImageUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    try {
-      setIsSubmitting(true);
-      const url = await uploadImage(file);
-      
-      setNewCategory(prev => ({
-        ...prev,
-        image: url
-      }));
-      
-      toast({
-        title: "Image Uploaded",
-        description: "Category image uploaded successfully",
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-    } catch (error) {
-      toast({
-        title: "Upload Error",
-        description: error.message || "Failed to upload image",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setIsSubmitting(false);
-      // Reset input
-      event.target.value = "";
-    }
-  };
 
   // Loading component for tables
   const TableLoader = ({ columns = 6 }) => (
@@ -1408,7 +1705,7 @@ export default function ProductManagement() {
                           top={-2}
                           right={-2}
                           borderRadius="full"
-                          onClick={() => setNewCategory(prev => ({ ...prev, image: "" }))}
+                          onClick={handleRemoveCategoryImg}
                           aria-label="Remove image"
                         />
                       </Box>
@@ -1489,22 +1786,22 @@ export default function ProductManagement() {
                 {/* Scrollable Form Container */}
                 <Box
                   flex="1"
-                  overflowY="auto"
-                  overflowX="hidden"
-                  css={globalScrollbarStyles}
+                  overflowY="visible"
                   pr={2}
                 >
                   <Box p={4}>
-                    {!selectedCategory && (
-                      <FormControl mb="20px">
+                    {/* Category Selection - Always visible */}
+                    <FormControl mb="20px">
                         <FormLabel htmlFor="category" color="gray.700" fontSize="sm">Category *</FormLabel>
                         <Select
                           id="category"
                           placeholder="Select category"
-                          value={selectedCategory?._id || ""}
+                          value={
+                            (typeof selectedCategory === 'object' ? selectedCategory?._id : selectedCategory) || ""
+                          }
                           onChange={(e) => {
                             const category = categories.find(c => c._id === e.target.value);
-                            setSelectedCategory(category);
+                            setSelectedCategory(category || { _id: e.target.value });
                           }}
                           borderColor={`${customColor}50`}
                           _hover={{ borderColor: customColor }}
@@ -1513,11 +1810,10 @@ export default function ProductManagement() {
                           size="sm"
                         >
                           {categories.map((cat) => (
-                            <option key={cat._id} value={cat._id}>{cat.name}</option>
+                            <option key={cat._id} value={cat._id}>{cat.category || cat.name}</option>
                           ))}
                         </Select>
                       </FormControl>
-                    )}
 
                     <Grid templateColumns={["1fr", "1fr 1fr"]} gap={4} mb={4}>
                       <FormControl isRequired>
@@ -1533,214 +1829,197 @@ export default function ProductManagement() {
                           size="sm"
                         />
                       </FormControl>
-                      
-                      {/* Status Field for Product ONLY */}
-                      <FormControl>
-                        <FormLabel color="gray.700" fontSize="sm">Product Status</FormLabel>
-                        <Select
-                          value={newProduct.status}
-                          onChange={(e) => setNewProduct({ ...newProduct, status: e.target.value })}
+                    </Grid>
+
+                    <Grid templateColumns={["1fr", "1fr 1fr"]} gap={4} mb={4}>
+                      <FormControl isRequired>
+                        <FormLabel color="gray.700" fontSize="sm">Estimated Price From (₹) *</FormLabel>
+                        <Input
+                          type="number"
+                          value={newProduct.estimatedPriceFrom}
+                          onChange={(e) => setNewProduct({ ...newProduct, estimatedPriceFrom: e.target.value })}
+                          placeholder="2500"
                           borderColor={`${customColor}50`}
                           _hover={{ borderColor: customColor }}
                           _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
                           bg="white"
                           size="sm"
+                        />
+                      </FormControl>
+                      
+                      <FormControl isRequired>
+                        <FormLabel color="gray.700" fontSize="sm">Estimated Price To (₹) *</FormLabel>
+                        <Input
+                          type="number"
+                          value={newProduct.estimatedPriceTo}
+                          onChange={(e) => setNewProduct({ ...newProduct, estimatedPriceTo: e.target.value })}
+                          placeholder="3500"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                          size="sm"
+                        />
+                      </FormControl>
+                    </Grid>
+
+                    {/* New Product Fields according to API structure */}
+                    <Grid templateColumns={["1fr", "1fr 1fr", "1fr 1fr 1fr"]} gap={4} mb={4}>
+                      <FormControl>
+                        <FormLabel color="gray.700" fontSize="sm">Product Type</FormLabel>
+                        <Select
+                          value={newProduct.productType}
+                          onChange={(e) => setNewProduct({ ...newProduct, productType: e.target.value })}
+                          size="sm"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
                         >
-                          {statusOptions.map((status) => (
-                            <option key={status} value={status}>{status}</option>
-                          ))}
+                          <option value="Hardware">Hardware</option>
+                          <option value="Service">Service</option>
+                        </Select>
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel color="gray.700" fontSize="sm">Pricing Model</FormLabel>
+                        <Select
+                          value={newProduct.pricingModel}
+                          onChange={(e) => setNewProduct({ ...newProduct, pricingModel: e.target.value })}
+                          size="sm"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                        >
+                          <option value="fixed">Fixed</option>
+                          <option value="quote">Quote</option>
+                        </Select>
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel color="gray.700" fontSize="sm">Usage Type</FormLabel>
+                        <Select
+                          value={newProduct.usageType}
+                          onChange={(e) => setNewProduct({ ...newProduct, usageType: e.target.value })}
+                          size="sm"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                        >
+                          <option value="Residential">Residential</option>
+                          <option value="Commercial">Commercial</option>
+                          <option value="Industrial">Industrial</option>
                         </Select>
                       </FormControl>
                     </Grid>
 
-                    {/* Custom Color Input Section */}
-                    <Box mb="20px">
-                      <FormLabel color="gray.700" fontSize="sm">Manage Colors</FormLabel>
-                      <Flex mb={3} gap={2}>
+                    <Grid templateColumns={["1fr", "1fr 1fr"]} gap={4} mb={4}>
+                      <FormControl>
+                        <FormLabel color="gray.700" fontSize="sm">Installation Duration</FormLabel>
                         <Input
-                          placeholder="Add custom color (e.g., Navy Blue, Teal)"
-                          value={customColorInput}
-                          onChange={(e) => setCustomColorInput(e.target.value)}
+                          value={newProduct.installationDuration}
+                          onChange={(e) => setNewProduct({ ...newProduct, installationDuration: e.target.value })}
+                          placeholder="e.g. 2-3 hours"
                           size="sm"
                           borderColor={`${customColor}50`}
                           _hover={{ borderColor: customColor }}
                           _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
                           bg="white"
                         />
-                        <Button
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel color="gray.700" fontSize="sm">Warranty Period</FormLabel>
+                        <Input
+                          value={newProduct.warrantyPeriod}
+                          onChange={(e) => setNewProduct({ ...newProduct, warrantyPeriod: e.target.value })}
+                          placeholder="e.g. 2 years"
                           size="sm"
-                          leftIcon={<FaPlus />}
-                          onClick={handleAddCustomColor}
-                          bg={customColor}
-                          _hover={{ bg: customHoverColor }}
-                          color="white"
-                          isDisabled={!customColorInput.trim()}
-                        >
-                          Add Color
-                        </Button>
-                      </Flex>
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                        />
+                      </FormControl>
+                    </Grid>
 
-                      {/* Available Colors Display */}
-                      <Flex flexWrap="wrap" gap={2} mb={2}>
-                        {availableColors.map((color) => {
-                          const isDefaultColor = ['Red', 'Blue', 'Green', 'Black', 'White', 'Yellow', 'Pink', 'Gray', 'Maroon', 'Purple'].includes(color);
-                          return (
-                            <Box key={color} position="relative">
-                              <Button
-                                size="xs"
-                                variant="outline"
-                                colorScheme="gray"
-                                fontSize="xs"
-                                _hover={{ shadow: "sm" }}
-                              >
-                                {color}
-                              </Button>
-                              {!isDefaultColor && (
-                                <IconButton
-                                  aria-label={`Remove ${color}`}
-                                  icon={<FaTimes />}
-                                  size="2xs"
-                                  colorScheme="red"
-                                  position="absolute"
-                                  top={-2}
-                                  right={-2}
-                                  borderRadius="full"
-                                  onClick={() => handleRemoveColor(color)}
-                                />
-                              )}
-                            </Box>
-                          );
-                        })}
-                      </Flex>
-                    </Box>
-
-                    {/* Variants Section */}
-                    <Box mb="20px">
-                      <Flex justify="space-between" align="center" mb={3}>
-                        <FormLabel color="gray.700" fontSize="sm" m={0}>Product Variants *</FormLabel>
-                        <Button
+                    <SimpleGrid columns={[1, 2, 3]} spacing={4} mb={4}>
+                      <FormControl display="flex" alignItems="center">
+                        <FormLabel htmlFor="site-inspection" mb="0" fontSize="sm" color="gray.700">
+                          Site Inspection?
+                        </FormLabel>
+                        <Switch
+                          id="site-inspection"
+                          isChecked={newProduct.siteInspectionRequired}
+                          onChange={(e) => setNewProduct({ ...newProduct, siteInspectionRequired: e.target.checked })}
+                          colorScheme="teal"
                           size="sm"
-                          leftIcon={<FaPlus />}
-                          onClick={handleAddVariant}
-                          bg={customColor}
-                          _hover={{ bg: customHoverColor }}
-                          color="white"
-                        >
-                          Add Variant
-                        </Button>
-                      </Flex>
-                      
-                      {variants.map((variant, index) => (
-                        <Box 
-                          key={index} 
-                          p={4} 
-                          border="1px" 
-                          borderColor="gray.200" 
-                          borderRadius="md" 
-                          mb={3}
-                          position="relative"
-                        >
-                          <Flex justify="space-between" align="center" mb={3}>
-                            <Text fontSize="sm" fontWeight="bold" color="gray.700">
-                              Variant {index + 1}
-                            </Text>
-                            {variants.length > 1 && (
-                              <IconButton
-                                aria-label="Remove variant"
-                                icon={<FaTimes />}
-                                size="xs"
-                                colorScheme="red"
-                                onClick={() => handleRemoveVariant(index)}
-                              />
-                            )}
-                          </Flex>
-                          
-                          <Grid templateColumns={["1fr", "1fr 1fr", "1fr 1fr 1fr 1fr"]} gap={4}>
-                            {/* Color Selection */}
-                            <FormControl isRequired>
-                              <FormLabel fontSize="xs" color="gray.600">Color</FormLabel>
-                              <Select
-                                value={variant.color}
-                                onChange={(e) => handleVariantChange(index, 'color', e.target.value)}
-                                placeholder="Select color"
-                                size="sm"
-                                borderColor={`${customColor}50`}
-                                _hover={{ borderColor: customColor }}
-                                _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                                bg="white"
-                              >
-                                <option value="">Select color</option>
-                                {availableColors.map(color => (
-                                  <option key={color} value={color}>{color}</option>
-                                ))}
-                              </Select>
-                            </FormControl>
+                        />
+                      </FormControl>
 
-                            {/* Size Selection */}
-                            <FormControl isRequired>
-                              <FormLabel fontSize="xs" color="gray.600">Size</FormLabel>
-                              <Select
-                                value={variant.size}
-                                onChange={(e) => handleVariantChange(index, 'size', e.target.value)}
-                                placeholder="Select size"
-                                size="sm"
-                                borderColor={`${customColor}50`}
-                                _hover={{ borderColor: customColor }}
-                                _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                                bg="white"
-                              >
-                                <option value="">Select size</option>
-                                {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map(size => (
-                                  <option key={size} value={size}>{size}</option>
-                                ))}
-                              </Select>
-                            </FormControl>
+                      <FormControl display="flex" alignItems="center">
+                        <FormLabel htmlFor="amc-available" mb="0" fontSize="sm" color="gray.700">
+                          AMC Available?
+                        </FormLabel>
+                        <Switch
+                          id="amc-available"
+                          isChecked={newProduct.amcAvailable}
+                          onChange={(e) => setNewProduct({ ...newProduct, amcAvailable: e.target.checked })}
+                          colorScheme="teal"
+                          size="sm"
+                        />
+                      </FormControl>
 
-                            {/* Price */}
-                            <FormControl isRequired>
-                              <FormLabel fontSize="xs" color="gray.600">Price (₹)</FormLabel>
-                              <Input
-                                type="number"
-                                value={variant.price}
-                                onChange={(e) => handleVariantChange(index, 'price', e.target.value)}
-                                placeholder="Enter price"
-                                min="0"
-                                step="0.01"
-                                size="sm"
-                                borderColor={`${customColor}50`}
-                                _hover={{ borderColor: customColor }}
-                                _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                                bg="white"
-                              />
-                            </FormControl>
+                      {newProduct.amcAvailable && (
+                        <FormControl>
+                          <FormLabel fontSize="sm" color="gray.700">AMC Price / Year</FormLabel>
+                          <Input
+                            type="number"
+                            value={newProduct.amcPricePerYear}
+                            onChange={(e) => setNewProduct({ ...newProduct, amcPricePerYear: e.target.value })}
+                            size="sm"
+                            borderColor={`${customColor}50`}
+                            _hover={{ borderColor: customColor }}
+                            _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                            bg="white"
+                          />
+                        </FormControl>
+                      )}
+                    </SimpleGrid>
 
-                            {/* Stock */}
-                            <FormControl isRequired>
-                              <FormLabel fontSize="xs" color="gray.600">Stock</FormLabel>
-                              <Input
-                                type="number"
-                                value={variant.stock}
-                                onChange={(e) => handleVariantChange(index, 'stock', e.target.value)}
-                                placeholder="Enter stock"
-                                min="0"
-                                size="sm"
-                                borderColor={`${customColor}50`}
-                                _hover={{ borderColor: customColor }}
-                                _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                                bg="white"
-                              />
-                            </FormControl>
-                          </Grid>
-                          
-                          {/* SKU Display */}
-                          {variant.sku && (
-                            <Text fontSize="xs" color="gray.500" mt={2}>
-                              SKU: <Text as="span" fontWeight="bold">{variant.sku}</Text>
-                            </Text>
-                          )}
-                        </Box>
-                      ))}
-                    </Box>
+                    <Grid templateColumns={["1fr", "1fr 1fr"]} gap={4} mb={4}>
+                      <FormControl>
+                        <FormLabel color="gray.700" fontSize="sm">What's Included (One per line)</FormLabel>
+                        <Textarea
+                          value={newProduct.whatIncluded.join('\n')}
+                          onChange={(e) => setNewProduct({ ...newProduct, whatIncluded: e.target.value.split('\n') })}
+                          placeholder="Item 1&#10;Item 2"
+                          size="sm"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                          rows={3}
+                        />
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel color="gray.700" fontSize="sm">What's Not Included (One per line)</FormLabel>
+                        <Textarea
+                          value={newProduct.whatNotIncluded.join('\n')}
+                          onChange={(e) => setNewProduct({ ...newProduct, whatNotIncluded: e.target.value.split('\n') })}
+                          placeholder="Item 1&#10;Item 2"
+                          size="sm"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                          rows={3}
+                        />
+                      </FormControl>
+                    </Grid>
 
                     <FormControl mb="20px">
                       <FormLabel color="gray.700" fontSize="sm">Description</FormLabel>
@@ -1760,60 +2039,79 @@ export default function ProductManagement() {
                     {/* Image Upload Section */}
                     <FormControl mb="20px">
                       <FormLabel color="gray.700" fontSize="sm">Product Images</FormLabel>
-                      
-                      <Input
-                        type="file"
-                        multiple
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        borderColor={`${customColor}50`}
-                        _hover={{ borderColor: customColor }}
-                        _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                        bg="white"
-                        size="sm"
-                        mb={3}
-                      />
-                      <Text fontSize="xs" color="gray.500">
-                        Upload product images (multiple images supported)
-                      </Text>
-
-                      {newProduct.images && newProduct.images.length > 0 && (
-                        <Box mt={3}>
-                          <Text fontSize="sm" color="gray.700" mb={2}>
-                            Current Images:
-                          </Text>
+                      <Flex direction="column" gap={3}>
+                        {newProduct.images && newProduct.images.length > 0 && (
                           <Flex wrap="wrap" gap={3}>
                             {newProduct.images.map((img, index) => (
                               <Box 
                                 key={img.public_id || index} 
-                                position="relative" 
-                                border="1px" 
+                                border="1px solid" 
                                 borderColor="gray.200" 
                                 borderRadius="md" 
-                                p={1}
+                                p={2} 
+                                width="fit-content"
+                                position="relative"
                               >
                                 <Image
                                   src={img.url || img.preview || img}
                                   alt={`Product image ${index + 1}`}
-                                  boxSize="50px"
+                                  boxSize="100px"
                                   objectFit="cover"
                                   borderRadius="md"
                                 />
                                 <IconButton
-                                  aria-label="Remove image"
                                   icon={<FaTrash />}
                                   size="xs"
                                   colorScheme="red"
                                   position="absolute"
-                                  top={-1}
-                                  right={-1}
+                                  top={-2}
+                                  right={-2}
+                                  borderRadius="full"
                                   onClick={() => handleRemoveImage(img.public_id || index)}
+                                  aria-label="Remove image"
                                 />
                               </Box>
                             ))}
                           </Flex>
+                        )}
+                        <Box
+                          border="1px dashed"
+                          borderColor={customColor}
+                          borderRadius="md"
+                          p={4}
+                          textAlign="center"
+                          cursor="pointer"
+                          _hover={{ bg: `${customColor}05` }}
+                          position="relative"
+                        >
+                          {isSubmitting ? (
+                            <Spinner size="sm" color={customColor} />
+                          ) : (
+                            <>
+                              <Input
+                                type="file"
+                                multiple
+                                accept="image/*"
+                                height="100%"
+                                width="100%"
+                                position="absolute"
+                                top="0"
+                                left="0"
+                                opacity="0"
+                                cursor="pointer"
+                                onChange={handleImageUpload}
+                                disabled={isSubmitting}
+                              />
+                              <Flex direction="column" align="center" justify="center" gap={2}>
+                                <Icon as={FaPlusCircle} w={6} h={6} color={customColor} />
+                                <Text fontSize="sm" color="gray.500">
+                                  Click to upload product images (Multiple supported)
+                                </Text>
+                              </Flex>
+                            </>
+                          )}
                         </Box>
-                      )}
+                      </Flex>
                     </FormControl>
                   </Box>
                 </Box>
@@ -1843,7 +2141,7 @@ export default function ProductManagement() {
                       color="white"
                       onClick={handleSubmitProduct}
                       isLoading={isSubmitting}
-                      isDisabled={!selectedCategory || variants.length === 0}
+                      isDisabled={isSubmitting}
                       size="sm"
                     >
                       {selectedProduct ? "Update Product" : "Create Product"}
@@ -1875,7 +2173,7 @@ export default function ProductManagement() {
         mt={{ base: 0, md: 0 }}
       >
         <Grid
-          templateColumns={{ base: "1fr 1fr", md: "1fr 1fr 1fr 1fr" }}
+          templateColumns={{ base: "1fr 1fr", md: "1fr 1fr" }}
           gap={{ base: "10px", md: "15px" }} 
           mb={{ base: "15px", md: "20px" }}
         >
@@ -2011,147 +2309,11 @@ export default function ProductManagement() {
             </CardBody>
           </Card>
 
-          {/* Available Stock Card */}
-          <Card
-            minH={{ base: "65px", md: "75px" }}
-            cursor="pointer"
-            onClick={() => setCurrentView("stockAnalysis")}
-            border={currentView === "stockAnalysis" ? "2px solid" : "1px solid"}
-            borderColor={customBorderColor}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "none", md: "translateY(-2px)" }, 
-              shadow: { base: "none", md: "lg" },
-              _before: {
-                opacity: 1,
-              },
-              borderColor: customColor,
-            }}
-          >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}>
-              <Flex flexDirection="row" align="center" justify="center" w="100%">
-                <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }} 
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="1px"
-                  >
-                    Available Stock
-                  </StatLabel>
-                  <Flex>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}> 
-                      {isLoadingProducts || isLoadingOrders ? <Spinner size="xs" /> : 
-                        calculateTotalAvailableStock().toLocaleString()
-                      }
-                    </StatNumber>
-                  </Flex>
-                  <Text fontSize={{ base: "2xs", md: "xs" }} color="gray.500" mt={{ base: 0.5, md: 1 }}> 
-                    {getLowStockProducts().length} low stock
-                  </Text>
-                </Stat>
-                <IconBox 
-                  as="box" 
-                  h={{ base: "30px", md: "35px" }} 
-                  w={{ base: "30px", md: "35px" }} 
-                  bg={customColor}
-                  transition="all 0.2s ease-in-out"
-                >
-                  <Icon
-                    as={FaChartLine}
-                    h={{ base: "14px", md: "18px" }} 
-                    w={{ base: "14px", md: "18px" }} 
-                    color="white"
-                  />
-                </IconBox>
-              </Flex>
-            </CardBody>
-          </Card>
+          {/* Available Stock Card Hidden */}
+          {/* <Card ... /> */}
 
-          {/* Stock Alerts Card */}
-          <Card
-            minH={{ base: "65px", md: "75px" }}
-            cursor="pointer"
-            onClick={() => setCurrentView("stockAlerts")}
-            border={currentView === "stockAlerts" ? "2px solid" : "1px solid"}
-            borderColor={customBorderColor}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "none", md: "translateY(-2px)" }, 
-              shadow: { base: "none", md: "lg" },
-              _before: {
-                opacity: 1,
-              },
-              borderColor: customColor,
-            }}
-          >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}> 
-              <Flex flexDirection="row" align="center" justify="center" w="100%">
-                <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }} 
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="1px"
-                  >
-                    Stock Alerts
-                  </StatLabel>
-                  <Flex>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}> 
-                      {isLoadingProducts || isLoadingOrders ? <Spinner size="xs" /> : 
-                        getOutOfStockProducts().length
-                      }
-                    </StatNumber>
-                  </Flex>
-                  <Text fontSize={{ base: "2xs", md: "xs" }} color="red.500" mt={{ base: 0.5, md: 1 }}> 
-                    {getOutOfStockProducts().length} out of stock
-                  </Text>
-                </Stat>
-                <IconBox 
-                  as="box" 
-                  h={{ base: "30px", md: "35px" }} 
-                  w={{ base: "30px", md: "35px" }} 
-                  bg="red.500"
-                  transition="all 0.2s ease-in-out"
-                >
-                  <Icon
-                    as={FaExclamationTriangle}
-                    h={{ base: "12px", md: "14px" }} 
-                    w={{ base: "12px", md: "14px" }} 
-                    color="white"
-                  />
-                </IconBox>
-              </Flex>
-            </CardBody>
-          </Card>
+          {/* Stock Alerts Card Hidden */}
+          {/* <Card ... /> */}
         </Grid>
       </Box>
 
@@ -2212,6 +2374,27 @@ export default function ProductManagement() {
                     bg="white"
                     fontSize="sm"
                   />
+                  {currentView === "products" && (
+                    <Select
+                      placeholder="All Categories"
+                      value={productCategoryFilter}
+                      onChange={(e) => setProductCategoryFilter(e.target.value)}
+                      size="sm"
+                      mr={2}
+                      maxW="150px"
+                      borderColor={`${customColor}50`}
+                      _hover={{ borderColor: customColor }}
+                      _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                      bg="white"
+                      fontSize="sm"
+                    >
+                      {categories.map((cat) => (
+                        <option key={cat._id} value={cat._id}>
+                          {cat.category || cat.name}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
                   <Icon as={FaSearch} color="gray.400" boxSize={3} />
                   {searchTerm && (
                     <Button 
@@ -2415,7 +2598,7 @@ export default function ProductManagement() {
                                     {indexOfFirstItem + idx + 1}
                                   </Td>
                                   <Td borderColor={`${customColor}30`} fontWeight="medium" fontSize="sm" py={3}>
-                                    {cat.name}
+                                    {cat.category || cat.name}
                                   </Td>
                                   <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                     <Text noOfLines={1} maxW="200px">
@@ -2679,21 +2862,8 @@ export default function ProductManagement() {
                               >
                                 Price Range
                               </Th>
-                              <Th 
-                                color="gray.100" 
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="sm"
-                                py={3}
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                Stock Status
-                              </Th>
+                              {/* Stock Status Hidden */}
+                              {/* <Th ... >Stock Status</Th> */}
                               <Th 
                                 color="gray.100" 
                                 borderColor={`${customColor}30`}
@@ -2718,12 +2888,12 @@ export default function ProductManagement() {
                               currentProducts.map((prod, idx) => {
                                 const availableStock = calculateAvailableStock(prod);
                                 const totalStock = prod.variants?.reduce((sum, variant) => sum + (variant.stock || 0), 0) || 0;
-                                const prices = prod.variants?.map(v => v.price || 0) || [];
-                                const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
-                                const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
-                                const priceRange = minPrice === maxPrice ? 
-                                  `₹${minPrice}` : 
-                                  `₹${minPrice} - ₹${maxPrice}`;
+                                
+                                const priceRange = prod.estimatedPriceFrom && prod.estimatedPriceTo ? 
+                                  `₹${prod.estimatedPriceFrom} - ₹${prod.estimatedPriceTo}` : 
+                                  (prod.variants?.length > 0 ? 
+                                    `₹${Math.min(...prod.variants.map(v => v.price || 0))} - ₹${Math.max(...prod.variants.map(v => v.price || 0))}` : 
+                                    (prod.price ? `₹${prod.price}` : "N/A"));
                                 
                                 return (
                                   <Tr 
@@ -2742,36 +2912,55 @@ export default function ProductManagement() {
                                         {prod.name}
                                       </Text>
                                     </Td>
-                                    <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
-                                      <Text noOfLines={1} maxW="120px">
-                                        {prod.category?.name || 
-                                        categories.find(c => c._id === prod.category)?.name || 
-                                        "N/A"}
-                                      </Text>
-                                    </Td>
+                                      <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
+                                        <Flex align="center" gap={2}>
+                                          {(() => {
+                                            // Extract Category Object and ID
+                                            const categoryData = prod.categoryId || prod.category;
+                                            const isObject = typeof categoryData === 'object' && categoryData !== null;
+                                            
+                                            const catId = isObject ? categoryData._id : categoryData;
+                                            
+                                            // Find in categories list OR use embedded object
+                                            const catObj = categories.find(c => c._id === catId) || (isObject ? categoryData : null);
+                                            
+                                            const catName = catObj?.category || catObj?.name || "N/A";
+                                            const catImage = catObj?.image;
+
+                                            return (
+                                              <>
+                                                {catImage && (
+                                                  <Box w="24px" h="24px" borderRadius="full" overflow="hidden" flexShrink={0}>
+                                                    <Image 
+                                                      src={catImage} 
+                                                      w="100%" 
+                                                      h="100%" 
+                                                      objectFit="cover"
+                                                      fallbackSrc="/placeholder.png"
+                                                    />
+                                                  </Box>
+                                                )}
+                                                <Badge
+                                                  bg={`${customColor}10`}
+                                                  color={customColor}
+                                                  px={2}
+                                                  py={0.5}
+                                                  borderRadius="md"
+                                                  fontSize="xs"
+                                                  fontWeight="medium"
+                                                >
+                                                  {catName}
+                                                </Badge>
+                                              </>
+                                            );
+                                          })()}
+                                        </Flex>
+                                      </Td>
                                     <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                       {priceRange}
                                     </Td>
-                                    <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
-                                      <Flex direction="column" gap={1}>
-                                        <StockStatusBadge product={prod} />
-                                        <Badge
-                                          colorScheme={
-                                            prod.status === "Available" ? "green" : 
-                                            prod.status === "Out of Stock" ? "orange" : "red"
-                                          }
-                                          fontSize="xs"
-                                          px={2}
-                                          py={1}
-                                          borderRadius="full"
-                                        >
-                                          {prod.status || "Available"}
-                                        </Badge>
-                                        <Text fontSize="xs" color="gray.500">
-                                          Total: {totalStock} | Available: {availableStock}
-                                        </Text>
-                                      </Flex>
-                                    </Td>
+                                    {/* Stock Status Hidden */}
+                                    {/* <Td ... >...</Td> */}
                                     <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                       <Flex gap={2}>
                                         <IconButton
@@ -2814,7 +3003,7 @@ export default function ProductManagement() {
                               })
                             ) : (
                               <Tr>
-                                <Td colSpan={6} textAlign="center" py={6}>
+                                <Td colSpan={5} textAlign="center" py={6}>
                                   <Text fontSize="sm">
                                     {products.length === 0
                                       ? "No products found. Click 'Add Product' to create one."
@@ -2921,75 +3110,11 @@ export default function ProductManagement() {
                   </>
                 )}
 
-                {/* Stock Analysis View */}
-                {currentView === "stockAnalysis" && (
-                  <Box 
-                    flex="1" 
-                    display="flex" 
-                    flexDirection="column" 
-                    overflow="auto"
-                    css={globalScrollbarStyles}
-                    p={4}
-                  >
-                    {/* Available vs Total Stock Chart */}
-                    <Card bg="white" shadow="sm" p={4} mb={6}>
-                      <Text fontWeight="bold" color="gray.700" mb={4}>
-                        Available vs Total Stock (Top 10 Products)
-                      </Text>
-                      {products.length > 0 ? (
-                        stockChartData && (
-                          <ReactApexChart
-                            options={stockChartData.options}
-                            series={stockChartData.series}
-                            type="line"
-                            height={350}
-                          />
-                        )
-                      ) : (
-                        <Center py={10}>
-                          <Text fontSize="md" color="gray.500">
-                            No products available to display stock analysis
-                          </Text>
-                        </Center>
-                      )}
-                    </Card>
-                  </Box>
-                )}
+                {/* Stock Analysis View Hidden */}
+                {/* currentView === "stockAnalysis" && ... */}
 
-                {/* Stock Alerts View */}
-                {currentView === "stockAlerts" && (
-                  <Box 
-                    flex="1" 
-                    display="flex" 
-                    flexDirection="column" 
-                    overflow="auto"
-                    css={globalScrollbarStyles}
-                    p={4}
-                  >
-                    {/* Stock Alerts Chart */}
-                    <Card bg="white" shadow="sm" p={4} mb={6}>
-                      <Text fontWeight="bold" color="gray.700" mb={4}>
-                        Stock Alerts - Low and Out of Stock Products
-                      </Text>
-                      {products.length > 0 ? (
-                        stockAlertChartData && (
-                          <ReactApexChart
-                            options={stockAlertChartData.options}
-                            series={stockAlertChartData.series}
-                            type="line"
-                            height={350}
-                          />
-                        )
-                      ) : (
-                        <Center py={10}>
-                          <Text fontSize="md" color="gray.500">
-                            No products available to display stock alerts
-                          </Text>
-                        </Center>
-                      )}
-                    </Card>
-                  </Box>
-                )}
+                {/* Stock Alerts View Hidden */}
+                {/* currentView === "stockAlerts" && ... */}
               </Box>
             )}
           </CardBody>
@@ -3007,9 +3132,21 @@ export default function ProductManagement() {
           <ModalBody>
             {viewModalType === "category" && selectedCategory && (
               <SimpleGrid columns={1} spacing={4}>
+                 {(selectedCategory.image || selectedCategory.url) && (
+                   <Box mb={4} borderRadius="xl" overflow="hidden" height="200px" border="1px" borderColor="gray.200">
+                      <Image 
+                        src={selectedCategory.image || selectedCategory.url} 
+                        alt={selectedCategory.name || selectedCategory.category} 
+                        w="100%" 
+                        h="100%" 
+                        objectFit="contain" 
+                        bg="gray.50"
+                      />
+                   </Box>
+                )}
                 <Box>
                   <Text fontWeight="bold" color="gray.600" fontSize="sm">Name:</Text>
-                  <Text fontSize="md" mt={1}>{selectedCategory.name}</Text>
+                  <Text fontSize="md" mt={1}>{selectedCategory.category || selectedCategory.name}</Text>
                 </Box>
                 <Box>
                   <Text fontWeight="bold" color="gray.600" fontSize="sm">Description:</Text>
@@ -3049,6 +3186,8 @@ export default function ProductManagement() {
                       src={
                         selectedProduct.images?.[0]?.url ||
                         selectedProduct.images?.[0] ||
+                        selectedProduct.productImages?.[0]?.url ||
+                        selectedProduct.productImages?.[0] ||
                         "/placeholder.png"
                       }
                       alt="product"
@@ -3061,155 +3200,199 @@ export default function ProductManagement() {
                   {/* Right Side - Details Grid */}
                   <Box flex="1">
                     <Text fontSize="lg" fontWeight="bold" mb={1} noOfLines={2}>
-                      {selectedProduct.name}
+                      {selectedProduct.productName || selectedProduct.name}
                     </Text>
                     
-                    <SimpleGrid columns={2} spacing={2} mt={2}>
+                    <SimpleGrid columns={1} spacing={2} mt={2}>
                       <Box>
                         <Text fontSize="xs" color="gray.500">Category</Text>
-                        <Text fontSize="sm" fontWeight="medium">
-                          {selectedProduct.category?.name || "N/A"}
-                        </Text>
+                        {(() => {
+                          const categoryData = selectedProduct.categoryId || selectedProduct.category;
+                          const isObject = typeof categoryData === 'object' && categoryData !== null;
+                          const catId = isObject ? categoryData._id : categoryData;
+                          const catObj = categories.find(c => c._id === catId) || (isObject ? categoryData : null);
+                          
+                          return (
+                            <Flex align="center" gap={2} mt={1}>
+                              {catObj?.image && (
+                                <Image 
+                                  src={catObj.image} 
+                                  w="20px" 
+                                  h="20px" 
+                                  borderRadius="full" 
+                                  objectFit="cover"
+                                  fallbackSrc="/placeholder.png"
+                                />
+                              )}
+                              <Text fontSize="sm" fontWeight="medium">
+                                {catObj?.category || catObj?.name || "N/A"}
+                              </Text>
+                            </Flex>
+                          );
+                        })()}
                       </Box>
                       
                       <Box>
                         <Text fontSize="xs" color="gray.500">Status</Text>
-                        <Badge
-                          colorScheme={
-                            selectedProduct.status === "Available" ? "green" : 
-                            selectedProduct.status === "Out of Stock" ? "orange" : "red"
-                          }
-                          fontSize="xs"
-                          px={2}
-                          py={1}
-                        >
-                          {selectedProduct.status || "Available"}
-                        </Badge>
+                        <Flex gap={2} mt={1}>
+                          <Badge
+                            colorScheme={
+                              selectedProduct.status === "Available" ? "green" : 
+                              selectedProduct.status === "Out of Stock" ? "orange" : "red"
+                            }
+                            fontSize="xs"
+                            px={2}
+                            py={1}
+                          >
+                            {selectedProduct.status || "Available"}
+                          </Badge>
+                          {selectedProduct.isActive !== undefined && (
+                            <Badge colorScheme={selectedProduct.isActive ? "teal" : "gray"} fontSize="xs" px={2} py={1}>
+                              {selectedProduct.isActive ? "Active" : "Inactive"}
+                            </Badge>
+                          )}
+                        </Flex>
                       </Box>
                     </SimpleGrid>
                   </Box>
                 </Flex>
 
-                {/* Variants Information */}
+                {/* Product Specification Grid */}
                 <Box mb={4}>
-                  <Text fontWeight="bold" color="gray.500" fontSize="sm" mb={2}>Product Variants</Text>
-                  {selectedProduct.variants && selectedProduct.variants.length > 0 ? (
-                    <SimpleGrid columns={1} spacing={2}>
-                      {selectedProduct.variants.map((variant, index) => (
-                        <Box 
-                          key={index}
-                          p={2}
-                          border="1px"
-                          borderColor="gray.200"
-                          borderRadius="md"
-                          bg={useColorModeValue("gray.50", "gray.700")}
-                        >
-                          <Grid templateColumns="1fr 1fr" gap={2}>
-                            <Box>
-                              <Text fontSize="xs" color="gray.500">Color</Text>
-                              <Text fontSize="sm" fontWeight="medium">{variant.color || "N/A"}</Text>
-                            </Box>
-                            <Box>
-                              <Text fontSize="xs" color="gray.500">Size</Text>
-                              <Text fontSize="sm" fontWeight="medium">{variant.size || "N/A"}</Text>
-                            </Box>
-                            <Box>
-                              <Text fontSize="xs" color="gray.500">Price</Text>
-                              <Text fontSize="sm" fontWeight="bold" color="green.600">
-                                ₹{variant.price || "N/A"}
-                              </Text>
-                            </Box>
-                            <Box>
-                              <Text fontSize="xs" color="gray.500">Stock</Text>
-                              <Text fontSize="sm" fontWeight="medium">{variant.stock || "0"}</Text>
-                            </Box>
-                            {variant.sku && (
-                              <Box colSpan={2}>
-                                <Text fontSize="xs" color="gray.500">SKU</Text>
-                                <Text fontSize="xs" fontWeight="medium">{variant.sku}</Text>
-                              </Box>
-                            )}
-                          </Grid>
-                        </Box>
-                      ))}
-                    </SimpleGrid>
-                  ) : (
-                    <Text fontSize="sm" color="gray.500">No variants available</Text>
-                  )}
-                </Box>
-
-                {/* Stock Information */}
-                <Box mb={4}>
-                  <Text fontWeight="bold" color="gray.500" fontSize="sm" mb={2}>Stock Information</Text>
+                  <Text fontWeight="bold" color="gray.500" fontSize="sm" mb={2}>Specifications</Text>
                   <SimpleGrid columns={2} spacing={3}>
-                    <Box textAlign="center" bg={useColorModeValue("gray.50", "gray.700")} p={2} borderRadius="md">
-                      <Text fontSize="xs" color="gray.500">Total Stock</Text>
-                      <Text fontSize="lg" fontWeight="bold">
-                        {selectedProduct.variants?.reduce((sum, variant) => sum + (variant.stock || 0), 0) || 0}
+                    <Box bg={useColorModeValue("gray.50", "gray.700")} p={2} borderRadius="md">
+                      <Text fontSize="xs" color="gray.500">Product Type</Text>
+                      <Text fontSize="sm" fontWeight="medium">{selectedProduct.productType || "Hardware"}</Text>
+                    </Box>
+                    <Box bg={useColorModeValue("gray.50", "gray.700")} p={2} borderRadius="md">
+                      <Text fontSize="xs" color="gray.500">Pricing Model</Text>
+                      <Text fontSize="sm" fontWeight="medium" textTransform="capitalize">{selectedProduct.pricingModel || "Fixed"}</Text>
+                    </Box>
+                    <Box bg={useColorModeValue("gray.50", "gray.700")} p={2} borderRadius="md">
+                      <Text fontSize="xs" color="gray.500">Usage Type</Text>
+                      <Text fontSize="sm" fontWeight="medium">{selectedProduct.usageType || "Residential"}</Text>
+                    </Box>
+                    <Box bg={useColorModeValue("gray.50", "gray.700")} p={2} borderRadius="md">
+                      <Text fontSize="xs" color="gray.500">Installation</Text>
+                      <Text fontSize="sm" fontWeight="medium">{selectedProduct.installationDuration || "N/A"}</Text>
+                    </Box>
+                    <Box bg={useColorModeValue("gray.50", "gray.700")} p={2} borderRadius="md">
+                      <Text fontSize="xs" color="gray.500">Warranty</Text>
+                      <Text fontSize="sm" fontWeight="medium">{selectedProduct.warrantyPeriod || "N/A"}</Text>
+                    </Box>
+                    <Box bg={useColorModeValue("gray.50", "gray.700")} p={2} borderRadius="md">
+                      <Text fontSize="xs" color="gray.500">AMC Available</Text>
+                      <Text fontSize="sm" fontWeight="medium">
+                        {selectedProduct.amcAvailable ? `Yes (₹${selectedProduct.amcPricePerYear}/yr)` : "No"}
                       </Text>
                     </Box>
-                    
-                    <Box textAlign="center" bg={useColorModeValue("gray.50", "gray.700")} p={2} borderRadius="md">
-                      <Text fontSize="xs" color="gray.500">Available</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="green.600">
-                        {calculateAvailableStock(selectedProduct)}
+                    <Box bg={useColorModeValue("gray.50", "gray.700")} p={2} borderRadius="md" colSpan={2}>
+                      <Text fontSize="xs" color="gray.500">Estimated Price Range</Text>
+                      <Text fontSize="sm" fontWeight="bold" color={customColor}>
+                        ₹{selectedProduct.estimatedPriceFrom || "0"} - ₹{selectedProduct.estimatedPriceTo || "0"}
                       </Text>
                     </Box>
-                    
-                    <Box textAlign="center" bg={useColorModeValue("gray.50", "gray.700")} p={2} borderRadius="md" colSpan={2}>
-                      <Text fontSize="xs" color="gray.500">Status</Text>
-                      <Box mt={1}>
-                        <StockStatusBadge product={selectedProduct} />
-                        <Badge
-                          colorScheme={
-                            selectedProduct.status === "Available" ? "green" : 
-                            selectedProduct.status === "Out of Stock" ? "orange" : "red"
-                          }
-                          fontSize="xs"
-                          px={2}
-                          py={1}
-                          mt={1}
-                        >
-                          {selectedProduct.status || "Available"}
-                        </Badge>
-                      </Box>
+                    <Box bg={useColorModeValue("gray.50", "gray.700")} p={2} borderRadius="md" colSpan={2}>
+                      <Text fontSize="xs" color="gray.500">Site Inspection Required</Text>
+                      <Text fontSize="sm" fontWeight="medium">{selectedProduct.siteInspectionRequired ? "Yes" : "No"}</Text>
                     </Box>
                   </SimpleGrid>
                 </Box>
 
+                {/* What's Included / Not Included */}
+                <SimpleGrid columns={2} spacing={4} mb={4}>
+                  <Box>
+                    <Text fontWeight="bold" color="green.600" fontSize="sm" mb={1}>What's Included</Text>
+                    <Box fontSize="xs" pl={2}>
+                      {selectedProduct.whatIncluded && selectedProduct.whatIncluded.length > 0 ? (
+                        selectedProduct.whatIncluded.map((item, i) => (
+                          <Flex key={i} align="center" gap={1} mb={0.5}>
+                            <Icon as={IoCheckmarkDoneCircleSharp} color="green.500" />
+                            <Text>{item}</Text>
+                          </Flex>
+                        ))
+                      ) : <Text color="gray.400">Not specified</Text>}
+                    </Box>
+                  </Box>
+                  <Box>
+                    <Text fontWeight="bold" color="red.600" fontSize="sm" mb={1}>Not Included</Text>
+                    <Box fontSize="xs" pl={2}>
+                      {selectedProduct.whatNotIncluded && selectedProduct.whatNotIncluded.length > 0 ? (
+                        selectedProduct.whatNotIncluded.map((item, i) => (
+                          <Flex key={i} align="center" gap={1} mb={0.5}>
+                            <Icon as={FaTimes} color="red.500" />
+                            <Text>{item}</Text>
+                          </Flex>
+                        ))
+                      ) : <Text color="gray.400">Not specified</Text>}
+                    </Box>
+                  </Box>
+                </SimpleGrid>
+
+                {/* Compliance Certificates */}
+                {selectedProduct.complianceCertificates && selectedProduct.complianceCertificates.length > 0 && (
+                  <Box mb={4}>
+                    <Text fontWeight="bold" color="gray.500" fontSize="sm" mb={1}>Certifications</Text>
+                    <Flex wrap="wrap" gap={2}>
+                      {selectedProduct.complianceCertificates.map((cert, i) => (
+                        <Badge key={i} variant="outline" colorScheme="blue" fontSize="2xs">
+                          {cert}
+                        </Badge>
+                      ))}
+                    </Flex>
+                  </Box>
+                )}
+
+                {/* Metadata */}
+                <SimpleGrid columns={2} spacing={2} mb={4} borderTop="1px" borderColor="gray.100" pt={2}>
+                  <Box>
+                    <Text fontSize="2xs" color="gray.400">Created At</Text>
+                    <Text fontSize="xs">
+                      {selectedProduct.createdAt ? new Date(selectedProduct.createdAt).toLocaleDateString() : "N/A"}
+                    </Text>
+                  </Box>
+                  
                 {/* Description */}
                 <Box mb={4}>
                   <Text fontWeight="bold" color="gray.500" fontSize="sm" mb={1}>Description</Text>
-                  <Text fontSize="sm" lineHeight="1.4">
+                  <Text fontSize="sm" lineHeight="1.4" color="gray.700">
                     {selectedProduct.description || "No description available"}
                   </Text>
                 </Box>
 
+                </SimpleGrid>
+
                 {/* Images Grid */}
-                {selectedProduct.images && selectedProduct.images.length > 0 && (
-                  <Box>
-                    <Text fontWeight="bold" color="gray.500" fontSize="sm" mb={2}>Images</Text>
-                    <SimpleGrid columns={4} spacing={2}>
-                      {selectedProduct.images.map((img, index) => (
-                        <Box
-                          key={img.public_id || index}
-                          borderRadius="md"
-                          overflow="hidden"
-                        >
-                          <Image
-                            src={img.url || img}
-                            alt={`Image ${index + 1}`}
-                            w="100%"
-                            h="60px"
-                            objectFit="cover"
-                            border="1px solid"
-                            borderColor="gray.200"
-                          />
-                        </Box>
-                      ))}
-                    </SimpleGrid>
-                  </Box>
-                )}
+                {(() => {
+                  const allImages = [...(selectedProduct.images || []), ...(selectedProduct.productImages || [])];
+                  if (allImages.length === 0) return null;
+                  
+                  return (
+                    <Box>
+                      <Text fontWeight="bold" color="gray.500" fontSize="sm" mb={2}>All Images ({allImages.length})</Text>
+                      <SimpleGrid columns={4} spacing={2}>
+                        {allImages.map((img, index) => (
+                          <Box
+                            key={img.public_id || index}
+                            borderRadius="md"
+                            overflow="hidden"
+                          >
+                            <Image
+                              src={img.url || img}
+                              alt={`Image ${index + 1}`}
+                              w="100%"
+                              h="60px"
+                              objectFit="cover"
+                              border="1px solid"
+                              borderColor="gray.200"
+                            />
+                          </Box>
+                        ))}
+                      </SimpleGrid>
+                    </Box>
+                  );
+                })()}
               </Box>
             )}
           </ModalBody>
@@ -3240,7 +3423,7 @@ export default function ProductManagement() {
             <Text fontSize="md" mb={4}>
               Are you sure you want to delete{" "}
               <Text as="span" fontWeight="bold" color={customColor}>
-                "{itemToDelete?.name}"
+                "{itemToDelete?.category || itemToDelete?.name}"
               </Text>
               ? This action cannot be undone.
             </Text>

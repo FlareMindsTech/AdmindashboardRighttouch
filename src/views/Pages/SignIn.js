@@ -17,20 +17,26 @@ import {
   HStack,
   keyframes,
 } from "@chakra-ui/react";
-import { MdAdminPanelSettings } from "react-icons/md";
+import { MdAdminPanelSettings, MdLightbulb } from "react-icons/md";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
+
 
 function AdminLogin() {
   const bgForm = useColorModeValue("white", "gray.800");
   const titleColor = useColorModeValue("purple.600", "purple.300");
   const toast = useToast();
+  const navigate = useNavigate();
 
-  const [identifier, setEmail] = useState("");
+
+  const [mobileNumber, setMobileNumber] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isGlow, setIsGlow] = useState(false);
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const mobileRegex = /^[0-9]{10}$/;
   const passwordRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$/;
 
   // Animations
@@ -49,11 +55,28 @@ function AdminLogin() {
     100% { opacity: 1; transform: translateY(0); }
   `;
 
+  const bulbGlow = keyframes`
+    0%, 100% { filter: drop-shadow(0 0 5px rgba(255, 215, 0, 0.4)); opacity: 0.6; }
+    50% { filter: drop-shadow(0 0 25px rgba(255, 215, 0, 0.9)); opacity: 1; }
+  `;
+
+  const glowAnimation = keyframes`
+    0% { box-shadow: 0 0 20px rgba(0, 128, 128, 0.2); }
+    50% { box-shadow: 0 0 40px rgba(255, 215, 0, 0.4); }
+    100% { box-shadow: 0 0 20px rgba(0, 128, 128, 0.2); }
+  `;
+
+  const swing = keyframes`
+    0% { transform: rotate(-5deg); }
+    50% { transform: rotate(5deg); }
+    100% { transform: rotate(-5deg); }
+  `;
+
 const handleLogin = async () => {
-  if (!identifier || !password) {
+  if (!mobileNumber || !password) {
     toast({
       title: "Missing fields",
-      description: "Email and password are required",
+      description: "Mobile number and password are required",
       status: "warning",
       duration: 3000,
       isClosable: true,
@@ -61,10 +84,10 @@ const handleLogin = async () => {
     return;
   }
 
-  if (!emailRegex.test(identifier)) {
+  if (!mobileRegex.test(mobileNumber)) {
     toast({
-      title: "Invalid Email",
-      description: "Please enter a valid email address",
+      title: "Invalid Mobile Number",
+      description: "Please enter a valid 10-digit mobile number",
       status: "warning",
       duration: 3000,
       isClosable: true,
@@ -72,6 +95,7 @@ const handleLogin = async () => {
     return;
   }
 
+  
   if (!passwordRegex.test(password)) {
     toast({
       title: "Invalid Password",
@@ -88,10 +112,14 @@ const handleLogin = async () => {
 
   try {
     const res = await axios.post(
-  "https://righttouch-backend-fn9z.onrender.com/api/user/login",
-  { identifier, password },
-  { headers: { "Content-Type": "application/json" } }
-);
+      "https://righttouch.onrender.com/api/user/login",
+      { 
+        mobileNumber: mobileNumber, 
+        password: password,
+        role: "Owner" 
+      },
+      { headers: { "Content-Type": "application/json" } }
+    );
 
 
 if (!res.data?.result) {
@@ -106,8 +134,8 @@ sessionStorage.setItem("token", token);
 localStorage.setItem(
   "user",
   JSON.stringify({
-    email: identifier,
-    role: role.toLowerCase(),   
+    mobileNumber: mobileNumber,
+    role: role,   
     id,
   })
 );
@@ -116,18 +144,26 @@ localStorage.setItem(
       title: "Login Successful",
       description: `Welcome ${role}!`,
       status: "success",
-      duration: 3000,
+      duration: 2000,
       isClosable: true,
     });
 
-    window.location.href = "#/admin/dashboard";
+    // Small delay to let toast show, then navigate
+    setTimeout(() => {
+      // Direct hash navigation for HashRouter
+      window.location.hash = "/owner/dashboard";
+      // Force reload to ensure routes.js and layouts re-render with new auth state
+      window.location.reload();
+    }, 500);
+
   } catch (err) {
-    console.error("Login error:", err);
+    console.error("Login error object:", err);
+    console.error("Login error response:", err.response);
     toast({
-      title: "Login Failed",
-      description: err.response?.data?.message || "Server error",
+      title: err.response?.status === 429 ? "Too Many Attempts" : "Login Failed",
+      description: err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : null) || err.message || "Server error",
       status: "error",
-      duration: 3000,
+      duration: 5000,
       isClosable: true,
     });
   } finally {
@@ -146,7 +182,7 @@ localStorage.setItem(
       h="100vh"
       alignItems="center"
       justifyContent="center"
-      bg="linear-gradient(135deg, #667eea 0%, #764ba2 50%, #805ad5 100%)"
+      bg="radial-gradient(circle at center, #004d4d 0%, #002d2d 100%)"
       overflow="hidden"
       _before={{
         content: '""',
@@ -156,13 +192,71 @@ localStorage.setItem(
         w: "100%",
         h: "100%",
         background: `
-          radial-gradient(circle at 20% 20%, rgba(120, 80, 200, 0.4) 0%, transparent 50%),
-          radial-gradient(circle at 80% 80%, rgba(80, 60, 180, 0.3) 0%, transparent 50%),
-          radial-gradient(circle at 40% 60%, rgba(160, 100, 220, 0.2) 0%, transparent 50%)
+          radial-gradient(circle at 10% 10%, rgba(255, 215, 0, 0.05) 0%, transparent 40%),
+          radial-gradient(circle at 90% 90%, rgba(0, 128, 128, 0.1) 0%, transparent 40%)
         `,
         zIndex: 1,
       }}
     >
+      {/* Hanging Bulb with Wire */}
+      <Box
+        position="absolute"
+        top="0"
+        right="15%"
+        zIndex="1"
+        display="flex"
+        flexDirection="column"
+        alignItems="center"
+        transformOrigin="top center"
+        animation={`${swing} 4s ease-in-out infinite`}
+      >
+        {/* Wire */}
+        <Box
+          w="2px"
+          h="150px"
+          bg="rgba(0, 0, 0, 0.6)"
+          boxShadow="0 0 10px rgba(0,0,0,0.5)"
+        />
+        {/* Bulb Socket */}
+        <Box
+          w="24px"
+          h="30px"
+          bg="gray.700"
+          borderRadius="4px"
+          mt="-2px"
+        />
+        {/* Bulb */}
+        <Box
+          position="relative"
+          mt="-5px"
+          transition="all 0.5s ease"
+          transform={isGlow ? "scale(1.1) rotate(180deg)" : "scale(1) rotate(180deg)"}
+        >
+          <Icon 
+            as={MdLightbulb} 
+            w="120px" 
+            h="120px" 
+            color={isGlow ? "#FFD700" : "rgba(255, 215, 0, 0.3)"}
+            filter={isGlow ? "drop-shadow(0 0 50px #FFD700)" : "none"}
+            animation={isGlow ? `${bulbGlow} 2s infinite ease-in-out` : "none"}
+          />
+          {/* Light beam effect */}
+          {isGlow && (
+            <Box
+              position="absolute"
+              top="50%"
+              left="50%"
+              transform="translate(-50%, -50%)"
+              w="400px"
+              h="400px"
+              bg="radial-gradient(circle, rgba(255,215,0,0.25) 0%, transparent 70%)"
+              borderRadius="50%"
+              pointerEvents="none"
+              zIndex="-1"
+            />
+          )}
+        </Box>
+      </Box>
       {/* Animated Background Elements */}
       <Box
         position="absolute"
@@ -264,14 +358,19 @@ localStorage.setItem(
           lg: "35px",         // 1025px-1280px
           xl: "40px"          // 1281px+
         }}
-        boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 30px rgba(128, 90, 213, 0.3)"
+        boxShadow={isGlow ? "0 25px 60px -12px rgba(0, 0, 0, 0.5), 0 0 40px rgba(255, 215, 0, 0.3)" : "0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 30px rgba(0, 128, 128, 0.3)"}
         overflow="hidden"
         zIndex="2"
-        animation={`${slideIn} 0.6s ease-out`}
+        animation={isGlow ? `${glowAnimation} 3s infinite ease-in-out` : `${slideIn} 0.6s ease-out`}
+        onClick={() => setIsGlow(true)}
+        onFocusCapture={() => setIsGlow(true)}
+        border="1px solid"
+        borderColor={isGlow ? "#FFD700" : "#008080"}
+        transition="all 0.5s ease"
       >
         {/* Header Section */}
         <Flex
-          bg="linear-gradient(135deg, #805ad5 0%, #6b46c1 100%)"
+          bg="linear-gradient(135deg, #008080 0%, #006666 100%)"
           color="white"
           p={{ 
             base: "25px",     // 320px-480px
@@ -283,9 +382,12 @@ localStorage.setItem(
           h="200px"
           direction="column"
           align="center"
+          justifyContent="center"
           textAlign="center"
           position="relative"
           overflow="hidden"
+          borderBottom="4px solid"
+          borderBottomColor="#FFD700"
           _before={{
             content: '""',
             position: "absolute",
@@ -293,7 +395,7 @@ localStorage.setItem(
             left: 0,
             w: "100%",
             h: "100%",
-            background: "linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.1) 50%, transparent 70%)",
+            background: "linear-gradient(45deg, transparent 30%, rgba(255,215,0,0.1) 50%, transparent 70%)",
             animation: `${shimmerAnimation} 3s infinite linear`,
           }}
         >
@@ -312,14 +414,16 @@ localStorage.setItem(
               lg: "90px",
               xl: "100%"
             }}
-            bg="rgba(255,255,255,0.2)"
+            bg="rgba(0, 128, 128, 0.4)"
             borderRadius="50%"
             display="flex"
             alignItems="center"
             justifyContent="center"
             boxShadow="0 8px 25px rgba(0,0,0,0.2)"
+            border="2px solid"
+            borderColor="#FFD700"
           >
-            <Icon as={MdAdminPanelSettings} h="60px" w="60px" color="white" />
+            <Icon as={MdAdminPanelSettings} h="60px" w="60px" color="#FFD700" />
           </Box>
           
           <Text
@@ -334,7 +438,7 @@ localStorage.setItem(
             mt={3}
 
           >
-            Admin Portal
+            Right Touch
           </Text>
         </Flex>
 
@@ -375,21 +479,21 @@ localStorage.setItem(
                 <Box
                   w="20px"
                   h="20px"
-                  bg="purple.100"
+                  bg="teal.50"
                   borderRadius="50%"
                   display="flex"
                   alignItems="center"
                   justifyContent="center"
                 >
-                  <Text fontSize="12px">📧</Text>
+                  <Text fontSize="12px">�</Text>
                 </Box>
-                Email Address
+                Mobile Number
               </FormLabel>
               <Input
-                type="email"
-                placeholder="admin@example.com"
-                value={identifier}
-                onChange={(e) => setEmail(e.target.value)}
+                type="tel"
+                placeholder="Enter Mobile Number"
+                value={mobileNumber}
+                onChange={(e) => setMobileNumber(e.target.value)}
                 size={{ 
                   base: "md",    // 320px-480px
                   sm: "lg",      // 481px-767px
@@ -409,10 +513,10 @@ localStorage.setItem(
                 border="2px solid"
                 borderColor="gray.200"
                 bg="white"
-                _hover={{ borderColor: "purple.300" }}
+                _hover={{ borderColor: "teal.300" }}
                 _focus={{ 
-                  borderColor: "purple.500", 
-                  boxShadow: "0 0 0 3px rgba(128, 90, 213, 0.15)",
+                  borderColor: "#008080", 
+                  boxShadow: "0 0 0 3px rgba(0, 128, 128, 0.15)",
                   bg: "white"
                 }}
                 transition="all 0.3s ease"
@@ -437,7 +541,7 @@ localStorage.setItem(
                 <Box
                   w="20px"
                   h="20px"
-                  bg="purple.100"
+                  bg="teal.50"
                   borderRadius="50%"
                   display="flex"
                   alignItems="center"
@@ -471,10 +575,10 @@ localStorage.setItem(
                   border="2px solid"
                   borderColor="gray.200"
                   bg="white"
-                  _hover={{ borderColor: "purple.300" }}
+                  _hover={{ borderColor: "teal.300" }}
                   _focus={{ 
-                    borderColor: "purple.500", 
-                    boxShadow: "0 0 0 3px rgba(128, 90, 213, 0.15)",
+                    borderColor: "#008080", 
+                    boxShadow: "0 0 0 3px rgba(0, 128, 128, 0.15)",
                     bg: "white"
                   }}
                   transition="all 0.3s ease"
@@ -516,7 +620,8 @@ localStorage.setItem(
                     borderRadius="10px"
                     transition="all 0.3s ease"
                   >
-                    {showPassword ? <ViewIcon color="purple.500" /> : <ViewOffIcon color="purple.500" />}
+
+                    {showPassword ? <ViewIcon color="teal.500" /> : <ViewOffIcon color="teal.500" />}
                   </Button>
                 </InputRightElement>
               </InputGroup>
@@ -532,8 +637,8 @@ localStorage.setItem(
                 xl: "58px"      // 1281px+
               }}
               borderRadius="14px"
-              bg="linear-gradient(135deg, #805ad5 0%, #6b46c1 100%)"
-              color="white"
+              bg="linear-gradient(135deg, #FFD700 0%, #F5B700 100%)"
+              color="#004d4d"
               onClick={handleLogin}
               isLoading={loading}
               loadingText="Authenticating..."
@@ -546,13 +651,13 @@ localStorage.setItem(
               }}
               fontWeight="bold"
               _hover={{ 
-                bg: "linear-gradient(135deg, #6b46c1 0%, #805ad5 100%)",
+                bg: "linear-gradient(135deg, #F5B700 0%, #FFD700 100%)",
                 transform: "translateY(-2px)",
-                boxShadow: "0 12px 30px rgba(128, 90, 213, 0.4)"
+                boxShadow: "0 12px 30px rgba(255, 215, 0, 0.4)"
               }}
               _active={{ 
                 transform: "translateY(0)",
-                boxShadow: "0 6px 20px rgba(128, 90, 213, 0.3)"
+                boxShadow: "0 6px 20px rgba(255, 215, 0, 0.3)"
               }}
               _disabled={{
                 opacity: 0.7,
@@ -560,7 +665,7 @@ localStorage.setItem(
                 transform: "none"
               }}
               transition="all 0.3s ease"
-              boxShadow="0 8px 25px rgba(128, 90, 213, 0.25)"
+              boxShadow="0 8px 25px rgba(255, 215, 0, 0.25)"
             >
               {loading ? "🔐 Authenticating..." : "🚀 Sign In to Dashboard"}
             </Button>
@@ -580,7 +685,7 @@ localStorage.setItem(
               <Box
                 w="12px"
                 h="12px"
-                bg="green.400"
+                bg="teal.400"
                 borderRadius="50%"
                 animation={`${floatAnimation} 2s ease-in-out infinite`}
               />
@@ -592,8 +697,8 @@ localStorage.setItem(
                   lg: "14px",     // 1025px-1280px
                   xl: "14px"      // 1281px+
                 }}
-                color="gray.500"
-                fontWeight="500"
+                color="teal.600"
+                fontWeight="600"
               >
                 Secure • Encrypted • Protected
               </Text>

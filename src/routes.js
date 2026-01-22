@@ -49,56 +49,54 @@ console.log("Is Owner:", isOwner);
 
 const dashRoutes = [
   // ---------------- OWNER ONLY ROUTES ----------------
-  ...(isOwner ? [
-    {
-      path: "/dashboard",
-      name: "Dashboard",
-      icon: <HomeIcon color="#7b2cbf" />,
-      element: <Dashboard />,
-      layout: "/owner",
-    },
-    {
-      path: "/admin-management",
-      name: "Technician Management",
-      icon: <StatsIcon color="#7b2cbf" />,
-      element: <AdminManagement />,
-      layout: "/owner",
-    },
-     {
-      path: "/service-management",
-      name: "Service Management",
-      icon: <StatsIcon color="#7b2cbf" />,
-      element: <ServiceManagement />,     
-      layout: "/owner",
-    },
-    {
-      path: "/product-management",
-      name: "Product Management",
-      icon: <StatsIcon color="#7b2cbf" />,
-      element: <ProductManagement />,     
-      layout: "/owner",
-    },
-    {
-      path: "/user-management",
-      name: "User Management",
-      icon: <StatsIcon color="#7b2cbf" />,
-      element: <UserManagement />,
-      layout: "/owner",
-    },
-    {
-      path: "/billing",
-      name: "Billing",
-      icon: <CreditIcon color="#7b2cbf" />,
-      element: <Billing />,
-      layout: "/owner",
-    },
-    { 
-      path: "/profile", 
-      name: "Profile", 
-      element: <Profile />, 
-      layout: "/owner", 
-    },
-  ] : []),
+  {
+    path: "/dashboard",
+    name: "Dashboard",
+    icon: <HomeIcon color="#008080" />,
+    element: <Dashboard />,
+    layout: "/owner",
+  },
+  {
+    path: "/admin-management",
+    name: "Technician Management",
+    icon: <StatsIcon color="#008080" />,
+    element: <AdminManagement />,
+    layout: "/owner",
+  },
+  {
+    path: "/service-management",
+    name: "Service Management",
+    icon: <StatsIcon color="#008080" />,
+    element: <ServiceManagement />,
+    layout: "/owner",
+  },
+  {
+    path: "/product-management",
+    name: "Product Management",
+    icon: <StatsIcon color="#008080" />,
+    element: <ProductManagement />,
+    layout: "/owner",
+  },
+  {
+    path: "/user-management",
+    name: "User Management",
+    icon: <StatsIcon color="#008080" />,
+    element: <UserManagement />,
+    layout: "/owner",
+  },
+  {
+    path: "/billing",
+    name: "Billing",
+    icon: <CreditIcon color="#008080" />,
+    element: <Billing />,
+    layout: "/owner",
+  },
+  {
+    path: "/profile",
+    name: "Profile",
+    element: <Profile />,
+    layout: "/owner",
+  },
 
   // ---------------- PUBLIC ROUTES ----------------
   {

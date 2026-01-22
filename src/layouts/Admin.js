@@ -7,7 +7,7 @@ import {
   useColorMode,
 } from "@chakra-ui/react";
 import { Image } from "@chakra-ui/react";
-import FlareLogo from "assets/img/Aadvi-logo.391cb09fed9e3ccf27bb.png";
+import FlareLogo from "assets/img/Right_Touch.png";
 import Sidebar, { SidebarResponsive } from "components/Sidebar/Sidebar.js";
 import AdminNavbar from "components/Navbars/AdminNavbar.js";
 import React, { useState, useEffect, useMemo } from "react";
@@ -129,10 +129,10 @@ export default function Dashboard(props) {
     if (!userRole || userRole !== "owner") {
       return (
         <>
-          <Route path="*" element={<Navigate to="/access-denied" replace />} />
-          <Route path="/owner/*" element={<Navigate to="/access-denied" replace />} />
+          <Route path="*" element={<Navigate to="/auth/signin" replace />} />
+          <Route path="/owner/*" element={<Navigate to="/auth/signin" replace />} />
           {/* 🔴 BLOCK ALL ADMIN ACCESS */}
-          <Route path="/admin/*" element={<Navigate to="/access-denied" replace />} />
+          <Route path="/admin/*" element={<Navigate to="/auth/signin" replace />} />
         </>
       );
     }
@@ -201,13 +201,9 @@ export default function Dashboard(props) {
     return findRoute(routes);
   };
 
-  // Redirect non-owners trying to access owner routes
+  // Redirect non-owners check is handled in the render phase
   useEffect(() => {
-    if (!isLoading && userRole !== "owner") {
-      if (location.pathname.startsWith("/owner") || location.pathname.startsWith("/admin")) {
-        window.history.replaceState(null, "", "/access-denied");
-      }
-    }
+    // Legacy redirect logic removed in favor of strict render-time redirection
   }, [isLoading, userRole, location.pathname]);
 
   // Show loading state
@@ -221,34 +217,8 @@ export default function Dashboard(props) {
 
   // 🔐 STRICT ACCESS CONTROL: ONLY OWNER
   if (userRole !== "owner") {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" h="100vh">
-        <Box textAlign="center" p={8} borderRadius="lg" bg="gray.50" shadow="md">
-          <Box fontSize="2xl" fontWeight="bold" mb={4}>Owner Access Required</Box>
-          <Box mb={4}>
-            This dashboard is restricted to owner accounts only.
-            <br />
-            Please sign in with an owner account to continue.
-          </Box>
-          <Box
-            as="a"
-            href="/auth/signin"
-            color="white"
-            bg="purple.600"
-            px={6}
-            py={2}
-            borderRadius="md"
-            _hover={{ bg: "purple.700" }}
-            textDecoration="none"
-            onClick={() => {
-              localStorage.clear();
-            }}
-          >
-            Sign In
-          </Box>
-        </Box>
-      </Box>
-    );
+    // Redirect to login page immediately if not owner
+    return <Navigate to="/auth/signin" replace />;
   }
 
   // ✅ ONLY OWNER SEES THIS
@@ -297,8 +267,8 @@ export default function Dashboard(props) {
             <Image 
               src={FlareLogo} 
               alt="Flare Logo" 
-              w={{ base: "80px", sm: "90px", md: "100px", lg: "100px", xl: "100px" }} 
-              h="auto" 
+              w={{ base: "120px", sm: "90px", md: "100px", lg: "100px", xl: "100px" }} 
+              h="8vh" 
             />
             <Box w="1px" h="20px" />
           </Stack>

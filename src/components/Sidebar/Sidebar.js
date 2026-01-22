@@ -351,18 +351,18 @@ function Sidebar(props) {
           border="1px solid #F5B700"
           transition={variantChange}
           w={{
-            base: "240px",  // 320px - 480px
-            sm: "250px",    // 481px - 767px
-            md: "260px",    // 768px - 1024px
-            lg: "250px",    // 1025px - 1280px
-            xl: "260px"     // 1281px +
+            base: "260px",
+            sm: "270px",
+            md: "285px",
+            lg: "285px",
+            xl: "285px"
           }}
           maxW={{
-            base: "240px",  // 320px - 480px
-            sm: "250px",    // 481px - 767px
-            md: "260px",    // 768px - 1024px
-            lg: "260px",    // 1025px - 1280px
-            xl: "260px"     // 1281px +
+            base: "260px",
+            sm: "270px",
+            md: "285px",
+            lg: "285px",
+            xl: "285px"
           }}
           h={{
             base: "calc(100vh - 60px)",  // 320px - 480px
@@ -765,14 +765,14 @@ export function SidebarResponsive(props) {
         <DrawerOverlay />
         <DrawerContent
           w={{
-            base: "250px",  // 320px - 480px
-            sm: "260px",    // 481px - 767px
-            md: "280px"     // 768px - 1024px
+            base: "270px",
+            sm: "280px",
+            md: "300px"
           }}
           maxW={{
-            base: "250px",  // 320px - 480px
-            sm: "260px",    // 481px - 767px
-            md: "280px"     // 768px - 1024px
+            base: "270px",
+            sm: "280px",
+            md: "300px"
           }}
           bg={sidebarBackgroundColor}
           border="1px solid #F5B700"

@@ -279,10 +279,10 @@ function AdminManagement() {
           filtered = adminData.filter((admin) => admin.status === "Inactive");
           break;
         case "Verified":
-          filtered = adminData.filter((admin) => 
-            (admin.status?.toLowerCase() === "approved" || admin.status?.toLowerCase() === "active") && 
-            admin.trainingCompleted === true
-          );
+          filtered = adminData.filter((admin) => admin.verificationStatus?.toLowerCase() === "approved");
+          break;
+        case "TrainingCompleted":
+          filtered = adminData.filter((admin) => admin.trainingCompleted === true);
           break;
         case "Deleted":
           filtered = adminData.filter((admin) => admin.status === "Deleted");
@@ -907,7 +907,7 @@ function AdminManagement() {
             </CardBody>
           </Card>
 
-          {/* Deleted Admins Card */}
+          {/* Verified Admins Card */}
           <Card
             minH="83px"
             cursor="pointer"
@@ -954,10 +954,7 @@ function AdminManagement() {
                   </StatLabel>
                   <Flex>
                     <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
-                      {adminData.filter((a) => 
-                        (a.status?.toLowerCase() === "approved" || a.status?.toLowerCase() === "active") && 
-                        a.trainingCompleted === true
-                      ).length}
+                      {adminData.filter((a) => a.verificationStatus?.toLowerCase() === "approved").length}
                     </StatNumber>
                   </Flex>
                 </Stat>
@@ -970,6 +967,75 @@ function AdminManagement() {
                 >
                   <Icon
                     as={MdAdminPanelSettings}
+                    h={{ base: "18px", md: "24px" }}
+                    w={{ base: "18px", md: "24px" }}
+                    color="white"
+                  />
+                </IconBox>
+              </Flex>
+            </CardBody>
+          </Card>
+
+          {/* Training Completed Card */}
+          <Card
+            minH="83px"
+            cursor="pointer"
+            onClick={() => handleCardClick("TrainingCompleted")}
+            border={activeFilter === "TrainingCompleted" ? "2px solid" : "1px solid"}
+            borderColor={customBorderColor}
+            transition="all 0.2s ease-in-out"
+            bg="white"
+            position="relative"
+            overflow="hidden"
+            w={{ base: "32%", md: "30%", lg: "25%" }}
+            minW="100px"
+            flex="1"
+            _before={{
+              content: '""',
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+              opacity: 0,
+              transition: "opacity 0.2s ease-in-out",
+            }}
+            _hover={{
+              transform: "translateY(-4px)",
+              shadow: "xl",
+              _before: {
+                opacity: 1,
+              },
+              borderColor: customColor,
+            }}
+          >
+            <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
+              <Flex flexDirection="row" align="center" justify="space-between" w="100%">
+                <Stat me="auto">
+                  <StatLabel
+                    fontSize={{ base: "sm", md: "md" }}
+                    color="gray.600"
+                    fontWeight="bold"
+                    pb="2px"
+                  >
+                    Training Completed
+                  </StatLabel>
+                  <Flex>
+                    <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
+                      {adminData.filter((a) => a.trainingCompleted === true).length}
+                    </StatNumber>
+                  </Flex>
+                </Stat>
+                <IconBox 
+                  as="box" 
+                  h={{ base: "35px", md: "45px" }} 
+                  w={{ base: "35px", md: "45px" }} 
+                  bg={customColor}
+                  transition="all 0.2s ease-in-out"
+                >
+                  <Icon
+                    as={FaUserGraduate}
                     h={{ base: "18px", md: "24px" }}
                     w={{ base: "18px", md: "24px" }}
                     color="white"
@@ -1014,6 +1080,7 @@ function AdminManagement() {
             {activeFilter === "Active" && "Active Technician"}
             {activeFilter === "Inactive" && "Inactive Technician"}
             {activeFilter === "Verified" && "Verified Technician"}
+            {activeFilter === "TrainingCompleted" && "Training Completed"}
             {activeFilter === "all" && "All Technician"}
           </Text>
           {activeFilter !== "all" && (
@@ -1259,6 +1326,23 @@ function AdminManagement() {
                               >
                                 Total Jobs
                               </Th>
+                              {activeFilter === "Verified" && (
+                                <Th 
+                                  color="gray.100" 
+                                  borderColor={`${customColor}30`}
+                                  position="sticky"
+                                  top={0}
+                                  bg={`${customColor}`}
+                                  zIndex={10}
+                                  fontWeight="bold"
+                                  fontSize="sm"
+                                  py={3}
+                                  borderBottom="2px solid"
+                                  borderBottomColor={`${customColor}50`}
+                                >
+                                  Approved Date
+                                </Th>
+                              )}
                               <Th 
                                 color="gray.100" 
                                 borderColor={`${customColor}30`}
@@ -1362,6 +1446,13 @@ function AdminManagement() {
                                   <Td borderColor={`${customColor}20`}>
                                     <Text fontWeight="medium">{admin.totalJobsCompleted || 0}</Text>
                                   </Td>
+                                  {activeFilter === "Verified" && (
+                                    <Td borderColor={`${customColor}20`}>
+                                      <Text fontWeight="medium" color="gray.700">
+                                        {admin.updatedAt ? new Date(admin.updatedAt).toLocaleDateString() : "N/A"}
+                                      </Text>
+                                    </Td>
+                                  )}
                                   <Td borderColor={`${customColor}20`}>
                                     <Flex gap={2}>
                                       <IconButton

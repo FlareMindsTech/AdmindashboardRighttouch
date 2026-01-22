@@ -77,13 +77,13 @@ const dashRoutes = [
     element: <ProductManagement />,
     layout: "/owner",
   },
-  {
+  /* {
     path: "/user-management",
     name: "User Management",
     icon: <StatsIcon color="#008080" />,
     element: <UserManagement />,
     layout: "/owner",
-  },
+  }, */
   {
     path: "/billing",
     name: "Billing",

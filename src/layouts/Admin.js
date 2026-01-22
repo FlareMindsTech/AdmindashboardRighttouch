@@ -279,7 +279,7 @@ export default function Dashboard(props) {
       <MainPanel
         maxH={{ base: "auto", sm: "auto", md: "98vh", lg: "98vh", xl: "98vh", "2xl": "98vh" }}
         overflow={{ sm: "auto", md: "hidden" }}
-        w={{ base: "100%", sm: "100%", md: "100%", lg: "calc(100% - 240px)", xl: "calc(100% - 275px)", "2xl": "calc(100% - 275px)" }}
+        w={{ base: "100%", sm: "100%", md: "100%", lg: "calc(100% - 300px)", xl: "calc(100% - 310px)", "2xl": "calc(100% - 310px)" }}
         transition="all 0.33s cubic-bezier(0.685, 0.0473, 0.346, 1)"
       >
         <Portal>

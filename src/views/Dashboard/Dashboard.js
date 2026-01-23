@@ -26,7 +26,7 @@ import { FiBell, FiShoppingCart, FiUsers, FiDollarSign, FiMapPin, FiPackage, FiR
 import ReactApexChart from 'react-apexcharts';
 
 // Import your order data function
-import { getAllOrders, getAllCategories } from '../utils/axiosInstance';
+import { getAllBookings, getAllServiceBooking, } from '../utils/axiosInstance';
 
 // Import your custom Card components
 import Card from "components/Card/Card.js";

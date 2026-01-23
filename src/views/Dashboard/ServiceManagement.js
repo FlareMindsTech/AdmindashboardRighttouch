@@ -168,10 +168,12 @@ export default function ServiceManagement() {
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
 
-  const filteredCategories = categories.filter((cat) =>
-    cat.category?.toLowerCase().includes(categorySearch.toLowerCase()) ||
-    cat.description?.toLowerCase().includes(categorySearch.toLowerCase())
-  );
+  const filteredCategories = categories.filter((cat) => {
+    const categoryName = (cat.category || cat.name || "").toLowerCase();
+    const categoryDesc = (cat.description || "").toLowerCase();
+    const searchLow = categorySearch.toLowerCase();
+    return categoryName.includes(searchLow) || categoryDesc.includes(searchLow);
+  });
 
   const filteredServices = services.filter(
     (service) =>
@@ -417,13 +419,16 @@ export default function ServiceManagement() {
 
 
       const [categoryData, serviceData] = await Promise.all([
-        getAllCategories(),
+        getAllCategories("service"),
         getAllServices(),  // Using the function defined outside component
 
       ]);
 
-      setCategories(categoryData.result || categoryData.data || []);
-      setServices(serviceData.result || serviceData.data || []);
+      const categoriesRaw = categoryData.result || categoryData.data || categoryData.categories || categoryData || [];
+      const servicesRaw = serviceData.result || serviceData.data || serviceData.services || serviceData || [];
+
+      setCategories(Array.isArray(categoriesRaw) ? categoriesRaw : (categoriesRaw.categories || []));
+      setServices(Array.isArray(servicesRaw) ? servicesRaw : (servicesRaw.services || []));
 
 
 
@@ -447,10 +452,11 @@ export default function ServiceManagement() {
   // All useEffect hooks must come after all useCallback hooks
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("user"));
-    if (!storedUser || (storedUser.role !== "owner")) {
+    const role = storedUser?.role?.toLowerCase();
+    if (!storedUser || (role !== "owner" && role !== "admin" && role !== "super admin")) {
       toast({
         title: "Access Denied",
-        description: "Only admin or super admin can access this page.",
+        description: "Only admin, super admin, or owner can access this page.",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -965,11 +971,8 @@ export default function ServiceManagement() {
     >
       <Flex justify="space-between" align="center" mb={2}>
         <HStack spacing={2}>
-          <Text fontWeight="bold" color="gray.700" fontSize="xs">
-            #{indexOfFirstItem + idx + 1}
-          </Text>
           <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
-            {cat.category}
+            #{indexOfFirstItem + idx + 1} {cat.category || cat.name}
           </Text>
         </HStack>
         <Badge
@@ -2288,7 +2291,7 @@ export default function ServiceManagement() {
                                     {indexOfFirstItem + idx + 1}
                                   </Td>
                                   <Td borderColor={`${customColor}20`} fontWeight="medium" fontSize="xs" py={2}>
-                                    {cat.category}
+                                    {cat.category || cat.name}
                                   </Td>
                                   <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
                                     <Text noOfLines={1} maxW="200px">

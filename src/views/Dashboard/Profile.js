@@ -9,7 +9,7 @@ import {
 import { FaUsers, FaBoxOpen, FaEdit, FaSignOutAlt, FaSave, FaTimes, FaChartPie, FaCrown } from "react-icons/fa";
 import Card from "components/Card/Card";
 import { useNavigate } from "react-router-dom";
-import { getAllBookings, getAllProductBookings, getAllTechnicians, getAllProduct, getAllServices } from "views/utils/axiosInstance";
+import { getAllBookings, getAllServiceBooking, getAllTechnicians, getAllProduct, getAllServices } from "views/utils/axiosInstance";
 
 import ReactApexChart from 'react-apexcharts';
 
@@ -63,11 +63,11 @@ const getInitialOwnerData = () => {
     avatar: userData.avatar || userData.profileImage || userData.image || "https://i.pravatar.cc/150?img=32",
     actions: [
       { icon: "users", label: "Manage Users" },
-      { icon: "box", label: "Manage Products" },
-      { icon: "chart", label: "Product Stock Overview" },
+      { icon: "box", label: "Manage Services" },
+      { icon: "chart", label: "Service Overview" },
     ],
-    createdOwners: [], 
-    ownerProducts: [], 
+    createdOwners: [],
+    ownerProducts: [],
     allUsers: [],
   };
 };
@@ -76,9 +76,9 @@ const getInitialOwnerData = () => {
 const getRoleColor = (role) => {
   switch (role?.toLowerCase()) {
     case 'owner': return 'purple';
-    case 'manager': return 'blue'; 
+    case 'manager': return 'blue';
     case 'user': return 'green';
-    case 'staff': return 'orange'; 
+    case 'staff': return 'orange';
     default: return 'gray';
   }
 };
@@ -111,7 +111,7 @@ const EditOwnerModal = ({ isOpen, onClose, owner, onSave }) => {
     <Modal isOpen={isOpen} onClose={onClose} size="md">
       <ModalOverlay />
       <ModalContent>
-        <ModalHeader>Edit Owner</ModalHeader> 
+        <ModalHeader>Edit Owner</ModalHeader>
         <ModalCloseButton />
         <ModalBody>
           <VStack spacing={4}>
@@ -131,7 +131,7 @@ const EditOwnerModal = ({ isOpen, onClose, owner, onSave }) => {
                 type="email"
                 value={getSafeString(editData.email, '')}
                 onChange={handleChange}
-                placeholder="Enter owner email" 
+                placeholder="Enter owner email"
               />
             </FormControl>
             <FormControl>
@@ -140,7 +140,7 @@ const EditOwnerModal = ({ isOpen, onClose, owner, onSave }) => {
                 name="role"
                 value={getSafeString(editData.role, '')}
                 onChange={handleChange}
-                placeholder="Enter owner role" 
+                placeholder="Enter owner role"
               />
             </FormControl>
           </VStack>
@@ -188,7 +188,7 @@ export default function OwnerProfile() {
   const currentUserRole = ownerData.role?.toLowerCase();
 
 
-  const isOwner = currentUserRole === 'owner'; 
+  const isOwner = currentUserRole === 'owner';
 
 
 
@@ -219,31 +219,22 @@ export default function OwnerProfile() {
     }
   };
 
-  const fetchStockMovement = async () => {
+  const fetchServiceOverview = async () => {
     setDataLoading(true);
     try {
-      const [bookingsRes, prodBookingsRes, productsRes] = await Promise.all([
-        getAllBookings(),
-        getAllProductBookings(),
-        getAllProduct()
+      const [servicesRes, bookingsRes] = await Promise.all([
+        getAllServices(),
+        getAllServiceBooking()
       ]);
 
-      const allBookings = bookingsRes.result || [];
-      const allProductBookings = prodBookingsRes.result || [];
-      const allProducts = productsRes.result || productsRes.products || [];
+      const allServices = servicesRes.result || servicesRes.services || servicesRes.data || [];
+      const allBookings = bookingsRes.result || bookingsRes.bookings || bookingsRes.data || [];
 
+      setServices(allServices);
       setBookings(allBookings);
-      setProductBookings(allProductBookings);
-
-     
-      const today = new Date().toISOString().split('T')[0];
-
-      const addedToday = allProducts.filter(p => p.createdAt?.startsWith(today)).length;
-      const outgoingToday = allProductBookings.filter(b => b.createdAt?.startsWith(today)).length;
-
-      setDailyStats({ added: addedToday, outgoing: outgoingToday });
     } catch (err) {
-      console.error("Error fetching stock movement:", err);
+      console.error("Error fetching service overview:", err);
+      toast({ title: "Error", description: "Failed to load service analytics", status: "error" });
     } finally {
       setDataLoading(false);
     }
@@ -295,8 +286,10 @@ export default function OwnerProfile() {
     console.log(`🔄 Current view changed to: ${currentView}`);
     if (currentView === "users") {
       fetchAllTechnicians();
-    } else if (currentView === "products" || currentView === "analytics") {
-      fetchOwnerProducts();
+    } else if (currentView === "services_view") {
+      fetchAllServices();
+    } else if (currentView === "analytics") {
+      fetchServiceOverview();
     }
   }, [currentView, isOwner]);
 
@@ -307,18 +300,18 @@ export default function OwnerProfile() {
 
   const handleActionClick = async (action) => {
     console.log(`🖱️ Action clicked: ${action.label}`);
-    if (action.label === "Manage Products") {
-      setCurrentView("products");
-      setProductSubView("products");
-      await fetchOwnerProducts();
+    if (action.label === "Manage Services") {
+      setCurrentView("services_view");
+      setProductSubView("services");
+      await fetchAllServices();
       setCurrentPage(1);
     } else if (action.label === "Manage Users") {
       setCurrentView("users");
       await fetchAllTechnicians();
       setCurrentPage(1);
-    } else if (action.label === "Product Stock Overview") {
+    } else if (action.label === "Service Overview") {
       setCurrentView("analytics");
-      await fetchStockMovement();
+      await fetchServiceOverview();
     } else {
       setCurrentView("dashboard");
     }
@@ -331,7 +324,7 @@ export default function OwnerProfile() {
   };
 
   const handleSaveProfile = (updatedData) => {
-    setOwnerData(updatedData); 
+    setOwnerData(updatedData);
     setIsEditingProfile(false);
     toast({ title: "Profile updated", status: "success", duration: 2000 });
   };
@@ -378,7 +371,7 @@ export default function OwnerProfile() {
           <Avatar
             size="xl"
             mb={3}
-            name={ownerData.name} 
+            name={ownerData.name}
             bg="#008080"
             color="white"
             showBorder
@@ -389,12 +382,12 @@ export default function OwnerProfile() {
           <VStack spacing={2} align="center" w="100%">
             <Flex align="center" gap={2}>
               <Text fontSize="lg" fontWeight="bold">{ownerData.name}</Text>
-              <FaCrown color="#FFD700" size="16px" /> 
+              <FaCrown color="#FFD700" size="16px" />
             </Flex>
             <Badge colorScheme={getRoleColor(ownerData.role)} fontSize="sm" px={2} py={1}>
               {ownerData.role}
             </Badge>
-            <Text fontSize="sm" mb={2}>{ownerData.email}</Text>
+            
 
             <Divider my={3} />
 
@@ -413,8 +406,8 @@ export default function OwnerProfile() {
                   onClick={() => handleActionClick(action)}
                   colorScheme={
                     currentView === "users" && action.label === "Manage Users" ? "#5a189a" :
-                      currentView === "products" && action.label === "Manage Products" ? "#5a189a" :
-                        currentView === "analytics" && action.label === "Product Stock Overview" ? "#5a189a" :
+                      currentView === "services_view" && action.label === "Manage Services" ? "#5a189a" :
+                        currentView === "analytics" && action.label === "Service Overview" ? "#5a189a" :
                           "gray"
                   }
                 >
@@ -430,7 +423,7 @@ export default function OwnerProfile() {
       <Grid templateColumns="1fr" gap={4} flex="1" mt={12}>
         {isEditingProfile && (
           <ProfileEditComponent
-            ownerData={ownerData} 
+            ownerData={ownerData}
             onSave={handleSaveProfile}
             onCancel={handleCancelEdit}
           />
@@ -463,8 +456,8 @@ export default function OwnerProfile() {
                     <Table variant="simple" size="sm">
                       <Thead display={{ base: "none", md: "table-header-group" }}>
                         <Tr>
-                          <Th>Avatar</Th>
-                          <Th>Email</Th>
+                          <Th>Technician</Th>
+                          <Th>Experience</Th>
                           <Th>Phone</Th>
                           <Th>Status</Th>
                           <Th>Joined</Th>
@@ -474,18 +467,19 @@ export default function OwnerProfile() {
                         {currentTechnicians.length > 0 ? (
                           currentTechnicians.map((tech, i) => {
                             const user = tech.userId || {};
-                            const displayName = user.name || (user.firstName ? `${user.firstName} ${user.lastName || ''}` : user.email || "Technician");
-                            const displayEmail = user.email || "N/A";
-                            const displayPhone = user.phoneNumber || user.phone || tech.phoneNumber || "N/A";
+                            const displayName = user.name || (tech.firstName ? `${tech.firstName} ${tech.lastName || ''}` : (user.firstName ? `${user.firstName} ${user.lastName || ''}` : user.email || "Technician"));
+                            const displayPhone = tech.mobileNumber || user.mobileNumber || user.phoneNumber || user.phone || tech.phoneNumber || "N/A";
                             const isApproved = tech.status === 'approved' || tech.isActive === true;
 
                             return (
                               <Tr key={tech._id || i} display={{ base: "block", md: "table-row" }} mb={{ base: 4, md: 0 }}>
                                 <Td display="flex" alignItems="center" gap={3} border="none">
                                   <Avatar size="sm" name={displayName} src={user.profileImage || tech.profileImage} />
-
+                                  <Text fontWeight="medium" display={{ base: "block", md: "block" }}>{displayName}</Text>
                                 </Td>
-                                <Td display={{ base: "none", md: "table-cell" }}>{displayEmail}</Td>
+                                <Td display={{ base: "none", md: "table-cell" }}>
+                                  {tech.experienceYears ? `${tech.experienceYears} Years` : "N/A"}
+                                </Td>
                                 <Td>{displayPhone}</Td>
                                 <Td>
                                   <Badge colorScheme={isApproved ? "green" : "red"}>
@@ -513,113 +507,67 @@ export default function OwnerProfile() {
               </Card>
             )}
 
-            {currentView === "products" && (
+            {currentView === "services_view" && (
               <Card p={{ base: 3, md: 5 }} bg={cardBg} w="100%" overflowX="auto">
                 <Flex justify="space-between" align="center" mb={4} flexDirection={{ base: "column", sm: "row" }} gap={3}>
                   <Text fontSize={{ base: "md", md: "lg" }} fontWeight="bold">
-                    Manage {productSubView === "products" ? "Products" : "Services"}
+                    Manage Services
                   </Text>
-                  <HStack spacing={2} alignSelf={{ base: "flex-end", sm: "center" }}>
-                    <Button
-                      size="sm"
-                      colorScheme={productSubView === "products" ? "purple" : "gray"}
-                      onClick={() => { setProductSubView("products"); setCurrentPage(1); }}
-                    >
-                      All Products
-                    </Button>
-                    <Button
-                      size="sm"
-                      colorScheme={productSubView === "services" ? "purple" : "gray"}
-                      onClick={() => { setProductSubView("services"); setCurrentPage(1); }}
-                    >
-                      All Services
-                    </Button>
-                  </HStack>
                 </Flex>
-
                 {dataLoading ? (
                   <Flex justify="center" py={8}><Spinner size="lg" /></Flex>
                 ) : (
                   <>
-                    {productSubView === "products" ? (
-                      <Table variant="simple" size="sm">
-                        <Thead display={{ base: "none", md: "table-header-group" }}>
-                          <Tr>
-                            <Th>Product</Th>
-                            <Th>Category</Th>
-                            <Th>Price</Th>
-                            
-                          </Tr>
-                        </Thead>
-                        <Tbody>
-                          {currentProducts.length > 0 ? (
-                            currentProducts.map((p, i) => (
-                              <Tr key={i} display={{ base: "block", md: "table-row" }} mb={2}>
-                                <Td border="none">
-                                  <Text fontWeight="bold">{p.name}</Text>
-                                </Td>
-                                <Td display={{ base: "none", md: "table-cell" }}>
-                                  <Badge colorScheme="purple" variant="subtle">{p.category}</Badge>
-                                </Td>
-                                <Td>
-                                  {p.pricingModel === "fixed" ? (
-                                    `₹${p.price || p.estimatedPriceFrom || 0}`
-                                  ) : p.estimatedPriceFrom && p.estimatedPriceTo ? (
-                                    `₹${p.estimatedPriceFrom} - ₹${p.estimatedPriceTo}`
-                                  ) : (
-                                    `₹${p.price || 0}`
-                                  )}
-                                </Td>
-                                
-                              </Tr>
-                            ))
-                          ) : (
-                            <Tr><Td colSpan={5} textAlign="center">No products found</Td></Tr>
-                          )}
-                        </Tbody>
-                      </Table>
-                    ) : (
-                      <Table variant="simple" size="sm">
-                        <Thead display={{ base: "none", md: "table-header-group" }}>
-                          <Tr>
-                            <Th>Service</Th>
-                            <Th>Type</Th>
-                            <Th>Price</Th>
-                            <Th>Commission</Th>
-                            <Th>Status</Th>
-                          </Tr>
-                        </Thead>
-                        <Tbody>
-                          {currentServicesList.length > 0 ? (
-                            currentServicesList.map((s, i) => (
-                              <Tr key={i} display={{ base: "block", md: "table-row" }} mb={2}>
-                                <Td border="none">
-                                  <Text fontWeight="bold">{s.serviceName}</Text>
-                                </Td>
-                                <Td>{s.serviceType}</Td>
-                                <Td>₹{s.serviceCost}</Td>
-                                <Td>{s.commissionPercentage}%</Td>
-                                <Td>
-                                  <Badge colorScheme={s.isActive ? "green" : "red"}>{s.isActive ? "Active" : "Inactive"}</Badge>
-                                </Td>
-                              </Tr>
-                            ))
-                          ) : (
-                            <Tr><Td colSpan={5} textAlign="center">No services found</Td></Tr>
-                          )}
-                        </Tbody>
-                      </Table>
-                    )}
+                    <Table variant="simple" size="sm">
+                      <Thead display={{ base: "none", md: "table-header-group" }}>
+                        <Tr>
+                          <Th>Service</Th>
+                          <Th>Type</Th>
+                          <Th>Price</Th>
+                          <Th>Commission</Th>
+                          <Th>Status</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {currentServicesList.length > 0 ? (
+                          currentServicesList.map((s, i) => (
+                            <Tr key={i} display={{ base: "block", md: "table-row" }} mb={{ base: 4, md: 0 }} borderBottom={{ base: "1px solid", md: "none" }} borderColor="gray.100" pb={{ base: 2, md: 0 }}>
+                              <Td border="none" px={{ base: 0, md: 4 }} py={{ base: 1, md: 3 }}>
+                                <Text fontWeight="bold" fontSize={{ base: "sm", md: "md" }}>{s.serviceName}</Text>
+                              </Td>
+                              <Td border="none" px={{ base: 0, md: 4 }} py={{ base: 1, md: 3 }} display={{ base: "flex", md: "table-cell" }} justifyContent="space-between" alignItems="center">
+                                <Text display={{ base: "block", md: "none" }} fontSize="xs" color="gray.500" fontWeight="bold">Type:</Text>
+                                <Text fontSize={{ base: "sm", md: "md" }}>{s.serviceType}</Text>
+                              </Td>
+                              <Td border="none" px={{ base: 0, md: 4 }} py={{ base: 1, md: 3 }} display={{ base: "flex", md: "table-cell" }} justifyContent="space-between" alignItems="center">
+                                <Text display={{ base: "block", md: "none" }} fontSize="xs" color="gray.500" fontWeight="bold">Price:</Text>
+                                <Text fontSize={{ base: "sm", md: "md" }} fontWeight="semibold">₹{s.serviceCost}</Text>
+                              </Td>
+                              <Td border="none" px={{ base: 0, md: 4 }} py={{ base: 1, md: 3 }} display={{ base: "flex", md: "table-cell" }} justifyContent="space-between" alignItems="center">
+                                <Text display={{ base: "block", md: "none" }} fontSize="xs" color="gray.500" fontWeight="bold">Commission:</Text>
+                                <Text fontSize={{ base: "sm", md: "md" }}>{s.commissionPercentage}%</Text>
+                              </Td>
+                              <Td border="none" px={{ base: 0, md: 4 }} py={{ base: 1, md: 3 }} display={{ base: "flex", md: "table-cell" }} justifyContent="space-between" alignItems="center">
+                                <Text display={{ base: "block", md: "none" }} fontSize="xs" color="gray.500" fontWeight="bold">Status:</Text>
+                                <Badge colorScheme={s.isActive ? "green" : "red"}>{s.isActive ? "Active" : "Inactive"}</Badge>
+                              </Td>
+                            </Tr>
+                          ))
+                        ) : (
+                          <Tr><Td colSpan={5} textAlign="center">No services found</Td></Tr>
+                        )}
+                      </Tbody>
+                    </Table>
 
                     <Flex justify="space-between" mt={4}>
                       <Button size="sm" onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} isDisabled={currentPage === 1}>Previous</Button>
                       <Text>
-                        Page {currentPage} of {productSubView === "products" ? totalProductPages : totalServicePages}
+                        Page {currentPage} of {totalServicePages}
                       </Text>
                       <Button
                         size="sm"
-                        onClick={() => setCurrentPage(p => Math.min(p + 1, productSubView === "products" ? totalProductPages : totalServicePages))}
-                        isDisabled={currentPage === (productSubView === "products" ? totalProductPages : totalServicePages)}
+                        onClick={() => setCurrentPage(p => Math.min(p + 1, totalServicePages))}
+                        isDisabled={currentPage === totalServicePages}
                       >
                         Next
                       </Button>
@@ -633,54 +581,89 @@ export default function OwnerProfile() {
               <Card p={6} bg={cardBg}>
                 <VStack align="stretch" spacing={6}>
                   <Flex justify="space-between" align="center">
-                    <Text fontSize="lg" fontWeight="bold">Product Stock Overview (Daily)</Text>
-                    <Badge colorScheme="purple" p={2}>Today: {new Date().toLocaleDateString()}</Badge>
+                    <Text fontSize="lg" fontWeight="bold">Service Overview</Text>
+                    <Badge colorScheme="purple" p={2}>Analysis: {new Date().toLocaleDateString()}</Badge>
                   </Flex>
 
-                  <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={6}>
-                    <Box p={5} borderRadius="xl" bg="green.50" border="1px solid" borderColor="green.200">
-                      <VStack align="start" spacing={1}>
-                        <Text color="green.600" fontWeight="bold">Products Added</Text>
-                        <Heading size="xl" color="green.700">{dailyStats.added}</Heading>
-                        <Text fontSize="sm" color="green.600">Items newly created today</Text>
-                      </VStack>
-                    </Box>
+                  {dataLoading ? (
+                    <Flex justify="center" align="center" py={12}>
+                      <Spinner size="xl" color="purple.500" />
+                    </Flex>
+                  ) : (
+                    <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={8}>
+                      <Box p={5} borderRadius="xl" border="1px solid" borderColor="gray.100" bg="white" shadow="sm">
+                        <Text fontWeight="bold" mb={4} textAlign="center" color="#5a189a">Available Services by Type</Text>
+                        <ReactApexChart
+                          options={{
+                            labels: Array.from(new Set(services.map(s => s.serviceType || "Unknown"))),
+                            colors: ['#7B1FA2', '#9C27B0', '#BA68C8', '#E1BEE7', '#4A148C'],
+                            legend: { position: 'bottom' },
+                            dataLabels: { enabled: true },
+                            responsive: [{ breakpoint: 480, options: { chart: { width: 300 }, legend: { position: 'bottom' } } }]
+                          }}
+                          series={
+                            Array.from(new Set(services.map(s => s.serviceType || "Unknown"))).map(type =>
+                              services.filter(s => (s.serviceType || "Unknown") === type).length
+                            )
+                          }
+                          type="pie"
+                          height={350}
+                        />
+                      </Box>
 
-                    <Box p={5} borderRadius="xl" bg="orange.50" border="1px solid" borderColor="orange.200">
-                      <VStack align="start" spacing={1}>
-                        <Text color="orange.600" fontWeight="bold">Products Outgoing</Text>
-                        <Heading size="xl" color="orange.700">{dailyStats.outgoing}</Heading>
-                        <Text fontSize="sm" color="orange.600">Product bookings recorded today</Text>
-                      </VStack>
-                    </Box>
-                  </Grid>
+                      <Box p={5} borderRadius="xl" border="1px solid" borderColor="gray.100" bg="white" shadow="sm">
+                        <Text fontWeight="bold" mb={4} textAlign="center" color="#5a189a">Service Bookings Distribution</Text>
+                        <ReactApexChart
+                          options={{
+                            labels: Array.from(new Set(bookings.map(b => b.serviceId?.serviceName || "Misc"))).slice(0, 5),
+                            colors: ['#FF7043', '#FFA726', '#FFCA28', '#FFEE58', '#D4E157'],
+                            legend: { position: 'bottom' },
+                            plotOptions: { pie: { donut: { size: '65%' } } }
+                          }}
+                          series={
+                            Array.from(new Set(bookings.map(b => b.serviceId?.serviceName || "Misc"))).slice(0, 5).map(name =>
+                              bookings.filter(b => (b.serviceId?.serviceName || "Misc") === name).length
+                            )
+                          }
+                          type="donut"
+                          height={350}
+                        />
+                      </Box>
+                    </Grid>
+                  )}
 
                   <Divider />
 
                   <Box>
-                    <Text fontWeight="bold" mb={4}>Recent Movements</Text>
+                    <Text fontWeight="bold" mb={4}>Recent Service Bookings</Text>
                     <Table variant="simple" size="sm">
-                      <Thead>
+                      <Thead display={{ base: "none", md: "table-header-group" }}>
                         <Tr>
-                          <Th>Item ID</Th>
-                          <Th>Type</Th>
-                          <Th>Quantity</Th>
+                          <Th>Booking ID</Th>
+                          <Th>Service</Th>
+                          <Th display={{ base: "none", lg: "table-cell" }}>Customer</Th>
                           <Th>Status</Th>
-                          <Th>Time</Th>
+                          <Th display={{ base: "none", sm: "table-cell" }}>Date</Th>
                         </Tr>
                       </Thead>
                       <Tbody>
-                        {productBookings.slice(0, 5).map((move, i) => (
-                          <Tr key={i}>
-                            <Td fontSize="xs">{move.ProductId || move._id}</Td>
-                            <Td><Badge colorScheme="orange">Outgoing</Badge></Td>
-                            <Td>{move.quantity || 1}</Td>
-                            <Td><Badge size="xs" colorScheme={getStatusColor(move.status)}>{move.status}</Badge></Td>
-                            <Td fontSize="xs">{new Date(move.createdAt).toLocaleTimeString()}</Td>
+                        {bookings.slice(0, 5).map((booking, i) => (
+                          <Tr key={i} display={{ base: "block", md: "table-row" }} mb={{ base: 3, md: 0 }} borderBottom={{ base: "1px solid", md: "none" }} borderColor="gray.50" pb={{ base: 2, md: 0 }}>
+                            <Td fontSize="xs" border="none" display={{ base: "none", md: "table-cell" }}>{booking._id?.substring(0, 8)}...</Td>
+                            <Td fontWeight="medium" border="none" px={{ base: 0, md: 4 }} py={{ base: 1, md: 3 }}>
+                              <Text fontSize="sm">{booking.serviceId?.serviceName || "N/A"}</Text>
+                              <Text display={{ base: "block", md: "none" }} fontSize="xs" color="gray.400">{booking._id?.substring(0, 8)}...</Text>
+                            </Td>
+                            <Td fontSize="xs" border="none" px={{ base: 0, md: 4 }} py={{ base: 1, md: 3 }} display={{ base: "none", lg: "table-cell" }}>{booking.userId?.name || booking.userId?.email || "Unknown"}</Td>
+                            <Td border="none" px={{ base: 0, md: 4 }} py={{ base: 1, md: 3 }} display={{ base: "flex", md: "table-cell" }} justifyContent="space-between" alignItems="center">
+                              <Text display={{ base: "block", md: "none" }} fontSize="xs" color="gray.500" fontWeight="bold">Status:</Text>
+                              <Badge colorScheme={getStatusColor(booking.status)} fontSize="xs">{booking.status}</Badge>
+                            </Td>
+                            <Td fontSize="xs" border="none" px={{ base: 0, md: 4 }} py={{ base: 1, md: 3 }} display={{ base: "none", sm: "table-cell" }}>{new Date(booking.createdAt).toLocaleDateString()}</Td>
                           </Tr>
                         ))}
-                        {productBookings.length === 0 && (
-                          <Tr><Td colSpan={5} textAlign="center" py={4}>No stock movement today</Td></Tr>
+                        {bookings.length === 0 && (
+                          <Tr><Td colSpan={5} textAlign="center" py={4}>No recent bookings found</Td></Tr>
                         )}
                       </Tbody>
                     </Table>

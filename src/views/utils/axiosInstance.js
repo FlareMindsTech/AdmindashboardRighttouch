@@ -86,9 +86,9 @@ export { adminAxiosInstance };
 // 5. Helper function to get token (checks both storages)
 // =========================================================
 const getToken = () =>
-  localStorage.getItem("token") || 
-  sessionStorage.getItem("token") || 
-  localStorage.getItem("adminToken") || 
+  localStorage.getItem("token") ||
+  sessionStorage.getItem("token") ||
+  localStorage.getItem("adminToken") ||
   sessionStorage.getItem("adminToken");
 
 // =========================================================
@@ -102,25 +102,25 @@ export const getAllTechnicians = async () => {
     // Try to get admin token first, fall back to regular token
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
     const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
-    
+
     // Use adminToken if available, otherwise use userToken
     const token = adminToken || userToken;
-    
+
     if (!token) {
       throw new Error("Authentication token not found. Please log in.");
     }
 
     // Debug: Log what type of token we're using
     console.log("Using token for technician fetch:", adminToken ? "adminToken" : "userToken");
-    
+
     const response = await fetch(`${BASE_URL}/technician/technicianAll`, {
       method: "GET",
-      headers: { 
-        "Content-Type": "application/json", 
+      headers: {
+        "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`
       },
     });
-    
+
     if (response.status === 401) {
       // Clear tokens if unauthorized
       localStorage.removeItem("token");
@@ -129,13 +129,13 @@ export const getAllTechnicians = async () => {
       sessionStorage.removeItem("adminToken");
       throw new Error("Session expired. Please log in again.");
     }
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Error response:", errorText);
       throw new Error(`Error: ${response.status} - ${response.statusText}`);
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error("Error fetching technicians:", error);
@@ -148,15 +148,15 @@ export const getTechnicianById = async (technicianId) => {
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
     const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
     const token = adminToken || userToken;
-    
+
     if (!token) {
       throw new Error("Authentication token not found. Please log in.");
     }
-    
+
     const response = await fetch(`${BASE_URL}/technician/technicianById/${technicianId}`, {
       method: "GET",
-      headers: { 
-        "Content-Type": "application/json", 
+      headers: {
+        "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`
       },
     });
@@ -175,23 +175,23 @@ export const updateTrainingStatus = async (technicianId, status) => {
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
     const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
     const token = adminToken || userToken;
-    
+
     if (!token) {
       throw new Error("Authentication token not found. Please log in.");
     }
-    
+
     const response = await fetch(`${BASE_URL}/technician/${technicianId}/training`, {
       method: "PUT",
-      headers: { 
-        "Content-Type": "application/json", 
+      headers: {
+        "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`
       },
       body: JSON.stringify({ trainingCompleted: status })
     });
 
     if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Error: ${response.status} - ${errorText}`);
+      const errorText = await response.text();
+      throw new Error(`Error: ${response.status} - ${errorText}`);
     }
     return await response.json();
   } catch (error) {
@@ -205,15 +205,15 @@ export const deleteTechnician = async (technicianId) => {
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
     const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
     const token = adminToken || userToken;
-    
+
     if (!token) {
       throw new Error("Authentication token not found. Please log in.");
     }
-    
+
     const response = await fetch(`${BASE_URL}/technician/technicianDelete/${technicianId}`, {
       method: "DELETE",
-      headers: { 
-        "Content-Type": "application/json", 
+      headers: {
+        "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`
       },
     });
@@ -232,9 +232,9 @@ export const getTechnicianKYC = async (technicianId) => {
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
     const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
     const token = adminToken || userToken;
-    
+
     if (!token) throw new Error("Authentication token not found.");
-    
+
     const response = await fetch(`${BASE_URL}/technician/technician/kyc/${technicianId}`, {
       method: "GET",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -252,7 +252,7 @@ export const getAllKYCRecords = async () => {
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
     const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
     const token = adminToken || userToken;
-    
+
     if (!token) throw new Error("Authentication token not found.");
 
     const response = await fetch(`${BASE_URL}/technician/technician/kyc`, {
@@ -272,7 +272,7 @@ export const verifyKYC = async (verificationData) => {
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
     const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
     const token = adminToken || userToken;
-    
+
     if (!token) throw new Error("Authentication token not found.");
 
     const response = await fetch(`${BASE_URL}/technician/technician/kyc/verify`, {
@@ -293,7 +293,7 @@ export const deleteKYC = async (technicianId) => {
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
     const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
     const token = adminToken || userToken;
-    
+
     if (!token) throw new Error("Authentication token not found.");
 
     const response = await fetch(`${BASE_URL}/technician/technician/deletekyc/${technicianId}`, {
@@ -335,10 +335,11 @@ export const getAllBookings = async () => {
   try {
     const token = getToken();
 
-    const response = await fetch(`${BASE_URL}/user/service/booking`, {
+    const response = await fetch(`https://righttouch-backend-fn9z.onrender.com/api/user/service/booking`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
+        token: token,
         "Authorization": `Bearer ${token}`,
       },
     });
@@ -346,7 +347,19 @@ export const getAllBookings = async () => {
     console.log("Fetch bookings response status:", response.status);
 
     if (!response.ok) {
-      throw new Error(`Error: ${response.status}`);
+      let errorMessage = `Error: ${response.status}`;
+      try {
+        const text = await response.text();
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          errorMessage = text.substring(0, 100) || errorMessage;
+        }
+      } catch (e) {
+        // Fallback
+      }
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -445,14 +458,16 @@ export const getAllProduct = async () => {
 // 7. API CALL FUNCTIONS
 // =========================================================
 // -----Service Category APIs -----
-export const getAllCategories = async () => {
+export const getAllCategories = async (categoryType = "product") => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/user/getAllcategory?categoryType=product`, {
+    const response = await fetch(`${BASE_URL}/user/getAllcategory?categoryType=${categoryType}`, {
       method: "GET",
-      headers: { "Content-Type": "application/json", 
-           token: token,
-   Authorization: `Bearer ${token}` },
+      headers: {
+        "Content-Type": "application/json",
+        token: token,
+        Authorization: `Bearer ${token}`
+      },
     });
     console.log("Fetch categories response status:", response.status);
     if (!response.ok) throw new Error(`Error: ${response.status}`);
@@ -469,10 +484,10 @@ export const createCategories = async (categoryData) => {
     const token = getToken();
     const response = await fetch(`${BASE_URL}/user/category`, {
       method: "POST",
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
-         token: token,
-   Authorization: `Bearer ${token}` 
+        token: token,
+        Authorization: `Bearer ${token}`
       },
       body: JSON.stringify(categoryData),
     });
@@ -491,7 +506,7 @@ export const uploadImageCategory = async (categoryId, file) => {
     const token = getToken();
     const formData = new FormData();
 
-    formData.append("categoryId", categoryId); 
+    formData.append("categoryId", categoryId);
     formData.append("image", file); // Reverted back to 'image' as it may be the specific key needed for this endpoint
 
     const res = await fetch(
@@ -638,7 +653,7 @@ export const updateCategories = async (categoryId, updatedData) => {
     const token = getToken();
     const response = await fetch(`${BASE_URL}/user/updatecategory/${categoryId}`, {
       method: "PUT",
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
         token: token,
         Authorization: `Bearer ${token}`
@@ -659,7 +674,7 @@ export const deleteCategory = async (categoryId) => {
     const token = getToken();
     const response = await fetch(`${BASE_URL}/user/deletecategory/${categoryId}`, {
       method: "DELETE",
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
         token: token,
         Authorization: `Bearer ${token}`
@@ -748,7 +763,7 @@ export const uploadServiceImages = async (serviceId, files = []) => {
     }
 
 
-  
+
 
 
     const formData = new FormData();
@@ -792,7 +807,7 @@ export const uploadServiceImages = async (serviceId, files = []) => {
       });
     }
 
-   
+
     for (let [key, value] of formData.entries()) {
       console.log(`${key}:`, value instanceof File ?
         `File: ${value.name} (${value.type}, ${value.size} bytes)` :
@@ -912,7 +927,7 @@ export const createProducts = async (productData) => {
 
     const response = await fetch(`${BASE_URL}/user/product`, {
       method: "POST",
-      headers: { 
+      headers: {
         "Content-Type": "application/json",
         token: token,
         "Authorization": `Bearer ${token}` // make sure backend expects "Authorization"
@@ -952,8 +967,8 @@ export const updateProducts = async (productId, updatedData) => {
     const token = getToken();
     const response = await fetch(`${BASE_URL}/user/updateProduct/${productId}`, {
       method: "PUT",
-      headers: { 
-        "Content-Type": "application/json", 
+      headers: {
+        "Content-Type": "application/json",
         token: token,
         Authorization: `Bearer ${token}`
       },
@@ -990,8 +1005,8 @@ export const deleteProducts = async (productId) => {
     const token = getToken();
     const response = await fetch(`${BASE_URL}/user/deleteproduct/${productId}`, {
       method: "DELETE",
-      headers: { 
-        "Content-Type": "application/json", 
+      headers: {
+        "Content-Type": "application/json",
         token: token,
         Authorization: `Bearer ${token}`
       },
@@ -1145,7 +1160,7 @@ export const uploadProductImage = async (productId, file) => {
 
     const res = await fetch(`${BASE_URL}/user/product/upload-images`, {
       method: "POST",
-      headers: { 
+      headers: {
         token: token,
         Authorization: `Bearer ${token}`,
       },
@@ -1191,13 +1206,95 @@ export const deleteProductImage = async (productId, public_id) => {
     });
 
     if (!response.ok) {
-       console.warn(`Delete image failed with status: ${response.status}`);
-       // Don't throw if 404/400 (image might be already gone), but let's see
+      console.warn(`Delete image failed with status: ${response.status}`);
+      // Don't throw if 404/400 (image might be already gone), but let's see
     }
     return await response.json();
   } catch (error) {
     console.error("Error deleting image:", error);
     // throw error; // Suppress to avoid breaking the main update flow
-    return { success: false, message: error.message }; 
+    return { success: false, message: error.message };
+  }
+};
+
+
+
+
+
+export const getAllServiceBooking = async () => {
+  try {
+    const token = getToken();
+
+    const response = await fetch(
+      `${BASE_URL}/user/service/booking`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          token: token,
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    console.log("Service booking status:", response.status);
+
+    if (!response.ok) {
+      let errorMessage = `Failed to fetch bookings: ${response.status}`;
+      try {
+        const text = await response.text();
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // If not JSON, use first 100 chars of text
+          errorMessage = text.substring(0, 100) || errorMessage;
+        }
+      } catch (e) {
+        // Fallback
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    console.log("Service booking data:", data);
+
+    return data;
+  } catch (error) {
+    console.error("Error fetching service bookings:", error);
+    throw error;
+  }
+};
+
+
+export const UpdatePaymentStatus = async (paymentId) => {
+  try {
+    const token = getToken();
+
+    const response = await fetch(
+      `${BASE_URL}/user/payment/${paymentId}/status`,
+      {
+        method: "PUT", 
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    console.log("Payment status response:", response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Failed to fetch payment status");
+    }
+
+    const data = await response.json();
+    console.log("Payment status data:", data);
+
+    return data;
+  } catch (error) {
+    console.error("Error fetching payment status:", error);
+    throw error;
   }
 };

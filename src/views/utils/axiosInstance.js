@@ -293,7 +293,7 @@ export const verifyBankDetails = async (bankData) => {
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
     const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
     const token = adminToken || userToken;
-    
+
     if (!token) throw new Error("Authentication token not found.");
 
     const response = await fetch(`${BASE_URL}/technician/technician/kyc/bank/verify`, {
@@ -301,7 +301,7 @@ export const verifyBankDetails = async (bankData) => {
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify(bankData),
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = `Error: ${response.status}`;
@@ -313,7 +313,7 @@ export const verifyBankDetails = async (bankData) => {
       }
       throw new Error(errorMessage);
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error("Error verifying Bank Details:", error.message);
@@ -910,13 +910,13 @@ export const uploadServiceImages = async (serviceId, files = []) => {
 };
 export const getAllServices = async () => {
   try {
-    const token = localStorage.getItem('token');
-    const BASE_URL = "https://righttouch-backend-fn9z.onrender.com/api";
+    const token = getToken();
     const response = await fetch(`${BASE_URL}/user/getAllServices`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        token
+        "token": token,
+        "Authorization": `Bearer ${token}`
       },
     });
     if (!response.ok) throw new Error(`Error: ${response.status}`);
@@ -1328,7 +1328,7 @@ export const UpdatePaymentStatus = async (paymentId) => {
     const response = await fetch(
       `${BASE_URL}/user/payment/${paymentId}/status`,
       {
-        method: "PUT", 
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,

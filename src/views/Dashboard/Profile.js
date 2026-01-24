@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 import {
   Avatar, Button, Flex, Grid, Text, VStack, Image, Divider,
@@ -196,8 +197,8 @@ export default function OwnerProfile() {
     setDataLoading(true);
     try {
       const response = await getAllTechnicians();
-      const techArray = response.result || response.technicians || response.data || [];
-      setTechnicians(techArray);
+      const techArray = response.result || response.technicians || response.data || (Array.isArray(response) ? response : []);
+      setTechnicians(Array.isArray(techArray) ? techArray : []);
     } catch (err) {
       console.error("Error fetching technicians:", err);
       toast({ title: "Error", description: "Failed to fetch technicians", status: "error" });
@@ -210,8 +211,22 @@ export default function OwnerProfile() {
     setDataLoading(true);
     try {
       const response = await getAllServices();
-      const serviceArray = response.result || response.services || response.data || [];
-      setServices(serviceArray);
+      console.log("Services API response:", response);
+
+      let serviceArray = [];
+      if (Array.isArray(response)) {
+        serviceArray = response;
+      } else if (response && typeof response === 'object') {
+        serviceArray = response.services || response.allServices || response.service || response.serviceList || response.result || response.data || [];
+
+        // Handle nested structure like response.data.services or response.result.services
+        if (!Array.isArray(serviceArray)) {
+          const nested = serviceArray;
+          serviceArray = nested.services || nested.allServices || nested.service || nested.serviceList || nested.result || nested.data || [];
+        }
+      }
+
+      setServices(Array.isArray(serviceArray) ? serviceArray : []);
     } catch (err) {
       console.error("Error fetching services:", err);
     } finally {
@@ -227,11 +242,30 @@ export default function OwnerProfile() {
         getAllServiceBooking()
       ]);
 
-      const allServices = servicesRes.result || servicesRes.services || servicesRes.data || [];
-      const allBookings = bookingsRes.result || bookingsRes.bookings || bookingsRes.data || [];
+      let allServices = [];
+      if (Array.isArray(servicesRes)) {
+        allServices = servicesRes;
+      } else if (servicesRes && typeof servicesRes === 'object') {
+        allServices = servicesRes.services || servicesRes.allServices || servicesRes.service || servicesRes.serviceList || servicesRes.result || servicesRes.data || [];
+        if (!Array.isArray(allServices)) {
+          const nested = allServices;
+          allServices = nested.services || nested.allServices || nested.service || nested.serviceList || nested.result || nested.data || [];
+        }
+      }
 
-      setServices(allServices);
-      setBookings(allBookings);
+      let allBookings = [];
+      if (Array.isArray(bookingsRes)) {
+        allBookings = bookingsRes;
+      } else if (bookingsRes && typeof bookingsRes === 'object') {
+        allBookings = bookingsRes.bookings || bookingsRes.allBookings || bookingsRes.booking || bookingsRes.bookingList || bookingsRes.result || bookingsRes.data || [];
+        if (!Array.isArray(allBookings)) {
+          const nested = allBookings;
+          allBookings = nested.bookings || nested.allBookings || nested.booking || nested.bookingList || nested.result || nested.data || [];
+        }
+      }
+
+      setServices(Array.isArray(allServices) ? allServices : []);
+      setBookings(Array.isArray(allBookings) ? allBookings : []);
     } catch (err) {
       console.error("Error fetching service overview:", err);
       toast({ title: "Error", description: "Failed to load service analytics", status: "error" });
@@ -336,8 +370,8 @@ export default function OwnerProfile() {
 
 
   const indexOfLastUser = currentPage * usersPerPage;
-  const currentUsers = ownerData.allUsers.slice(indexOfLastUser - usersPerPage, indexOfLastUser);
-  const totalUserPages = Math.ceil(ownerData.allUsers.length / usersPerPage);
+  const currentUsers = (Array.isArray(ownerData.allUsers) ? ownerData.allUsers : []).slice(indexOfLastUser - usersPerPage, indexOfLastUser);
+  const totalUserPages = Math.ceil((Array.isArray(ownerData.allUsers) ? ownerData.allUsers : []).length / usersPerPage);
 
   const indexOfLastProduct = currentPage * productsPerPage;
   const currentProducts = ownerData.ownerProducts.slice(indexOfLastProduct - productsPerPage, indexOfLastProduct);
@@ -348,8 +382,8 @@ export default function OwnerProfile() {
   const totalTechnicianPages = Math.ceil(technicians.length / technicianPerPage);
 
   const indexOfLastService = currentPage * servicePerPage;
-  const currentServicesList = services.slice(indexOfLastService - servicePerPage, indexOfLastService);
-  const totalServicePages = Math.ceil(services.length / servicePerPage);
+  const currentServicesList = (Array.isArray(services) ? services : []).slice(indexOfLastService - servicePerPage, indexOfLastService);
+  const totalServicePages = Math.ceil((Array.isArray(services) ? services : []).length / servicePerPage);
 
   return (
     <Flex direction={{ base: "column", md: "row" }} gap={8} p={6} mt={12}>
@@ -387,7 +421,7 @@ export default function OwnerProfile() {
             <Badge colorScheme={getRoleColor(ownerData.role)} fontSize="sm" px={2} py={1}>
               {ownerData.role}
             </Badge>
-            
+
 
             <Divider my={3} />
 
@@ -602,8 +636,8 @@ export default function OwnerProfile() {
                             responsive: [{ breakpoint: 480, options: { chart: { width: 300 }, legend: { position: 'bottom' } } }]
                           }}
                           series={
-                            Array.from(new Set(services.map(s => s.serviceType || "Unknown"))).map(type =>
-                              services.filter(s => (s.serviceType || "Unknown") === type).length
+                            Array.from(new Set((Array.isArray(services) ? services : []).map(s => s.serviceType || "Unknown"))).map(type =>
+                              (Array.isArray(services) ? services : []).filter(s => (s.serviceType || "Unknown") === type).length
                             )
                           }
                           type="pie"
@@ -621,8 +655,8 @@ export default function OwnerProfile() {
                             plotOptions: { pie: { donut: { size: '65%' } } }
                           }}
                           series={
-                            Array.from(new Set(bookings.map(b => b.serviceId?.serviceName || "Misc"))).slice(0, 5).map(name =>
-                              bookings.filter(b => (b.serviceId?.serviceName || "Misc") === name).length
+                            Array.from(new Set((Array.isArray(bookings) ? bookings : []).map(b => b.serviceId?.serviceName || "Misc"))).slice(0, 5).map(name =>
+                              (Array.isArray(bookings) ? bookings : []).filter(b => (b.serviceId?.serviceName || "Misc") === name).length
                             )
                           }
                           type="donut"
@@ -647,7 +681,7 @@ export default function OwnerProfile() {
                         </Tr>
                       </Thead>
                       <Tbody>
-                        {bookings.slice(0, 5).map((booking, i) => (
+                        {(Array.isArray(bookings) ? bookings : []).slice(0, 5).map((booking, i) => (
                           <Tr key={i} display={{ base: "block", md: "table-row" }} mb={{ base: 3, md: 0 }} borderBottom={{ base: "1px solid", md: "none" }} borderColor="gray.50" pb={{ base: 2, md: 0 }}>
                             <Td fontSize="xs" border="none" display={{ base: "none", md: "table-cell" }}>{booking._id?.substring(0, 8)}...</Td>
                             <Td fontWeight="medium" border="none" px={{ base: 0, md: 4 }} py={{ base: 1, md: 3 }}>

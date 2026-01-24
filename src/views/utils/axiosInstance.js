@@ -288,6 +288,40 @@ export const verifyKYC = async (verificationData) => {
   }
 };
 
+export const verifyBankDetails = async (bankData) => {
+  try {
+    const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
+    const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const token = adminToken || userToken;
+    
+    if (!token) throw new Error("Authentication token not found.");
+
+    const response = await fetch(`${BASE_URL}/technician/technician/kyc/bank/verify`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify(bankData),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Error: ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorJson.error || errorMessage;
+      } catch (e) {
+        // Could not parse error response
+      }
+      throw new Error(errorMessage);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error("Error verifying Bank Details:", error.message);
+    throw error;
+  }
+};
+
+
 export const deleteKYC = async (technicianId) => {
   try {
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
@@ -328,6 +362,26 @@ export const createAdmin = async (adminData) => {
     return data;
   } catch (error) {
     console.error("Error fetching bookings:", error);
+    throw error;
+  }
+};
+
+export const updateAdmin = async (adminId, adminData) => {
+  try {
+    const token = getToken();
+    const response = await fetch(`${BASE_URL}/admins/update/${adminId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(adminData),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error updating admin:", error);
     throw error;
   }
 };

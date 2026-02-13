@@ -123,6 +123,13 @@ export default function ServiceManagement() {
   const [whatIncludedInput, setWhatIncludedInput] = useState("");
   const [whatNotIncludedInput, setWhatNotIncludedInput] = useState("");
   const [serviceHighlightsInput, setServiceHighlightsInput] = useState("");
+  // New input states for array fields
+  const [faqInput, setFaqInput] = useState("");
+  const [brandsInput, setBrandsInput] = useState("");
+  const [rectifyInput, setRectifyInput] = useState("");
+  const [faultInput, setFaultInput] = useState("");
+  const [toolsInput, setToolsInput] = useState("");
+  const [checklistInput, setChecklistInput] = useState("");
 
   // Category form
   const initialCategory = {
@@ -144,6 +151,7 @@ export default function ServiceManagement() {
     minimumVisitCharge: 0,
     serviceDiscountPercentage: 0,
     commissionPercentage: 0,
+    technicianAmount: 0,
     whatIncluded: [],
     whatNotIncluded: [],
     serviceImages: [],
@@ -156,6 +164,12 @@ export default function ServiceManagement() {
     isActive: true,
     isPopular: false,
     isRecommended: false,
+    frequentlyAskedQuestions: [],
+    supportedBrands: [],
+    rectifyMethod: [],
+    faultReasons: [],
+    toolsEquipments: [],
+    serviceChecklist: [],
   };
 
   const [newCategory, setNewCategory] = useState(initialCategory);
@@ -377,6 +391,25 @@ export default function ServiceManagement() {
     }));
   };
 
+  // --- Handlers for New Array Fields ---
+
+  const handleAddArrayItem = (field, inputState, setInputState) => {
+    if (inputState.trim()) {
+      setNewService(prev => ({
+        ...prev,
+        [field]: [...(prev[field] || []), inputState.trim()]
+      }));
+      setInputState("");
+    }
+  };
+
+  const handleRemoveArrayItem = (field, index) => {
+    setNewService(prev => ({
+      ...prev,
+      [field]: (prev[field] || []).filter((_, i) => i !== index)
+    }));
+  };
+
   const handleNextPage = () => {
     if (currentView === "categories" && currentPage < totalCategoryPages) {
       setCurrentPage(currentPage + 1);
@@ -492,6 +525,12 @@ export default function ServiceManagement() {
     setWhatIncludedInput("");
     setWhatNotIncludedInput("");
     setServiceHighlightsInput("");
+    setFaqInput("");
+    setBrandsInput("");
+    setRectifyInput("");
+    setFaultInput("");
+    setToolsInput("");
+    setChecklistInput("");
   };
 
   const handleResetCategory = () => setNewCategory(initialCategory);
@@ -500,6 +539,12 @@ export default function ServiceManagement() {
     setWhatIncludedInput("");
     setWhatNotIncludedInput("");
     setServiceHighlightsInput("");
+    setFaqInput("");
+    setBrandsInput("");
+    setRectifyInput("");
+    setFaultInput("");
+    setToolsInput("");
+    setChecklistInput("");
   };
 
   const handleSubmitCategory = async () => {
@@ -761,6 +806,14 @@ export default function ServiceManagement() {
         isActive: newService.isActive !== false,
         isPopular: newService.isPopular || false,
         isRecommended: newService.isRecommended || false,
+        // New fields
+        frequentlyAskedQuestions: newService.frequentlyAskedQuestions || [],
+        supportedBrands: newService.supportedBrands || [],
+        rectifyMethod: newService.rectifyMethod || [],
+        faultReasons: newService.faultReasons || [],
+        toolsEquipments: newService.toolsEquipments || [],
+        serviceChecklist: newService.serviceChecklist || [],
+        technicianAmount: Number(newService.technicianAmount || 0), // Assuming this is calculated or manually entered
       };
 
       console.log("Submitting service data:", serviceData);
@@ -890,6 +943,14 @@ export default function ServiceManagement() {
       isActive: service.isActive !== false,
       isPopular: service.isPopular || false,
       isRecommended: service.isRecommended || false,
+      // New fields population
+      technicianAmount: service.technicianAmount || 0,
+      frequentlyAskedQuestions: service.frequentlyAskedQuestions || [],
+      supportedBrands: service.supportedBrands || [],
+      rectifyMethod: service.rectifyMethod || [],
+      faultReasons: service.faultReasons || [],
+      toolsEquipments: service.toolsEquipments || [],
+      serviceChecklist: service.serviceChecklist || [],
     });
     setCurrentView("addService");
   };
@@ -1361,7 +1422,7 @@ export default function ServiceManagement() {
                     </Grid>
 
                     {/* Pricing Details */}
-                    <Grid templateColumns={["1fr", "1fr 1fr 1fr"]} gap={4} mb={4}>
+                    <Grid templateColumns={["1fr", "1fr 1fr", "repeat(3, 1fr)"]} gap={4} mb={4}>
                       <FormControl isRequired>
                         <FormLabel color="gray.700" fontSize="sm">Service Cost (₹) *</FormLabel>
                         <Input
@@ -1404,6 +1465,39 @@ export default function ServiceManagement() {
                           placeholder="Enter commission percentage"
                           min="0"
                           max="100"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                          size="sm"
+                        />
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel color="gray.700" fontSize="sm">Min. Visit Charge (₹)</FormLabel>
+                        <Input
+                          type="number"
+                          value={newService.minimumVisitCharge}
+                          onChange={(e) => setNewService({ ...newService, minimumVisitCharge: e.target.value })}
+                          placeholder="Minimum visit charge"
+                          min="0"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                          size="sm"
+                        />
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel color="gray.700" fontSize="sm">Technician Amount (₹)</FormLabel>
+                        <Input
+                          type="number"
+                          value={newService.technicianAmount}
+                          // Allow editing or make read-only if strictly calculated
+                          onChange={(e) => setNewService({ ...newService, technicianAmount: e.target.value })}
+                          placeholder="Technician Amount"
+                          min="0"
                           borderColor={`${customColor}50`}
                           _hover={{ borderColor: customColor }}
                           _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
@@ -1550,6 +1644,266 @@ export default function ServiceManagement() {
                               size="2xs"
                               ml={2}
                               onClick={() => handleRemoveServiceHighlights(index)}
+                              colorScheme="red"
+                              variant="ghost"
+                            />
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </FormControl>
+
+                    {/* New Array Fields: FAQ, Brands, Rectify, Faults, Tools, Checklist */}
+
+                    {/* Frequently Asked Questions */}
+                    <FormControl mb={4}>
+                      <FormLabel color="gray.700" fontSize="sm">Frequently Asked Questions</FormLabel>
+                      <Flex mb={2} gap={2}>
+                        <Input
+                          value={faqInput}
+                          onChange={(e) => setFaqInput(e.target.value)}
+                          placeholder="Add FAQ"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                          size="sm"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => handleAddArrayItem('frequentlyAskedQuestions', faqInput, setFaqInput)}
+                          leftIcon={<FaPlus />}
+                          bg={customColor}
+                          _hover={{ bg: customHoverColor }}
+                          color="white"
+                        >
+                          Add
+                        </Button>
+                      </Flex>
+                      <Flex wrap="wrap" gap={2}>
+                        {newService.frequentlyAskedQuestions?.map((item, index) => (
+                          <Badge key={index} colorScheme="blue" p={2} whiteSpace="normal" textAlign="left">
+                            {item}
+                            <IconButton
+                              aria-label="Remove item"
+                              icon={<FaTimes />}
+                              size="2xs"
+                              ml={2}
+                              onClick={() => handleRemoveArrayItem('frequentlyAskedQuestions', index)}
+                              colorScheme="red"
+                              variant="ghost"
+                            />
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </FormControl>
+
+                    {/* Supported Brands */}
+                    <FormControl mb={4}>
+                      <FormLabel color="gray.700" fontSize="sm">Supported Brands</FormLabel>
+                      <Flex mb={2} gap={2}>
+                        <Input
+                          value={brandsInput}
+                          onChange={(e) => setBrandsInput(e.target.value)}
+                          placeholder="Add brand (e.g. LG, Samsung)"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                          size="sm"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => handleAddArrayItem('supportedBrands', brandsInput, setBrandsInput)}
+                          leftIcon={<FaPlus />}
+                          bg={customColor}
+                          _hover={{ bg: customHoverColor }}
+                          color="white"
+                        >
+                          Add
+                        </Button>
+                      </Flex>
+                      <Flex wrap="wrap" gap={2}>
+                        {newService.supportedBrands?.map((item, index) => (
+                          <Badge key={index} colorScheme="teal" p={2}>
+                            {item}
+                            <IconButton
+                              aria-label="Remove item"
+                              icon={<FaTimes />}
+                              size="2xs"
+                              ml={2}
+                              onClick={() => handleRemoveArrayItem('supportedBrands', index)}
+                              colorScheme="red"
+                              variant="ghost"
+                            />
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </FormControl>
+
+                    {/* Service Checklist */}
+                    <FormControl mb={4}>
+                      <FormLabel color="gray.700" fontSize="sm">Service Checklist</FormLabel>
+                      <Flex mb={2} gap={2}>
+                        <Input
+                          value={checklistInput}
+                          onChange={(e) => setChecklistInput(e.target.value)}
+                          placeholder="Add checklist item"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                          size="sm"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => handleAddArrayItem('serviceChecklist', checklistInput, setChecklistInput)}
+                          leftIcon={<FaPlus />}
+                          bg={customColor}
+                          _hover={{ bg: customHoverColor }}
+                          color="white"
+                        >
+                          Add
+                        </Button>
+                      </Flex>
+                      <Flex wrap="wrap" gap={2}>
+                        {newService.serviceChecklist?.map((item, index) => (
+                          <Badge key={index} colorScheme="cyan" p={2}>
+                            {item}
+                            <IconButton
+                              aria-label="Remove item"
+                              icon={<FaTimes />}
+                              size="2xs"
+                              ml={2}
+                              onClick={() => handleRemoveArrayItem('serviceChecklist', index)}
+                              colorScheme="red"
+                              variant="ghost"
+                            />
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </FormControl>
+
+                    {/* Rectify Method */}
+                    <FormControl mb={4}>
+                      <FormLabel color="gray.700" fontSize="sm">Rectify Method</FormLabel>
+                      <Flex mb={2} gap={2}>
+                        <Input
+                          value={rectifyInput}
+                          onChange={(e) => setRectifyInput(e.target.value)}
+                          placeholder="Add rectify method"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                          size="sm"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => handleAddArrayItem('rectifyMethod', rectifyInput, setRectifyInput)}
+                          leftIcon={<FaPlus />}
+                          bg={customColor}
+                          _hover={{ bg: customHoverColor }}
+                          color="white"
+                        >
+                          Add
+                        </Button>
+                      </Flex>
+                      <Flex wrap="wrap" gap={2}>
+                        {newService.rectifyMethod?.map((item, index) => (
+                          <Badge key={index} colorScheme="orange" p={2}>
+                            {item}
+                            <IconButton
+                              aria-label="Remove item"
+                              icon={<FaTimes />}
+                              size="2xs"
+                              ml={2}
+                              onClick={() => handleRemoveArrayItem('rectifyMethod', index)}
+                              colorScheme="red"
+                              variant="ghost"
+                            />
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </FormControl>
+
+                    {/* Fault Reasons */}
+                    <FormControl mb={4}>
+                      <FormLabel color="gray.700" fontSize="sm">Fault Reasons</FormLabel>
+                      <Flex mb={2} gap={2}>
+                        <Input
+                          value={faultInput}
+                          onChange={(e) => setFaultInput(e.target.value)}
+                          placeholder="Add fault reason"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                          size="sm"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => handleAddArrayItem('faultReasons', faultInput, setFaultInput)}
+                          leftIcon={<FaPlus />}
+                          bg={customColor}
+                          _hover={{ bg: customHoverColor }}
+                          color="white"
+                        >
+                          Add
+                        </Button>
+                      </Flex>
+                      <Flex wrap="wrap" gap={2}>
+                        {newService.faultReasons?.map((item, index) => (
+                          <Badge key={index} colorScheme="red" variant="subtle" p={2}>
+                            {item}
+                            <IconButton
+                              aria-label="Remove item"
+                              icon={<FaTimes />}
+                              size="2xs"
+                              ml={2}
+                              onClick={() => handleRemoveArrayItem('faultReasons', index)}
+                              colorScheme="red"
+                              variant="ghost"
+                            />
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </FormControl>
+
+                    {/* Tools & Equipments */}
+                    <FormControl mb={4}>
+                      <FormLabel color="gray.700" fontSize="sm">Tools & Equipments</FormLabel>
+                      <Flex mb={2} gap={2}>
+                        <Input
+                          value={toolsInput}
+                          onChange={(e) => setToolsInput(e.target.value)}
+                          placeholder="Add tool/equipment"
+                          borderColor={`${customColor}50`}
+                          _hover={{ borderColor: customColor }}
+                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                          bg="white"
+                          size="sm"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => handleAddArrayItem('toolsEquipments', toolsInput, setToolsInput)}
+                          leftIcon={<FaPlus />}
+                          bg={customColor}
+                          _hover={{ bg: customHoverColor }}
+                          color="white"
+                        >
+                          Add
+                        </Button>
+                      </Flex>
+                      <Flex wrap="wrap" gap={2}>
+                        {newService.toolsEquipments?.map((item, index) => (
+                          <Badge key={index} colorScheme="gray" p={2}>
+                            {item}
+                            <IconButton
+                              aria-label="Remove item"
+                              icon={<FaTimes />}
+                              size="2xs"
+                              ml={2}
+                              onClick={() => handleRemoveArrayItem('toolsEquipments', index)}
                               colorScheme="red"
                               variant="ghost"
                             />
@@ -3100,6 +3454,18 @@ export default function ServiceManagement() {
                     <Text fontSize="md" mt={1}>{selectedService.commissionPercentage || 0}%</Text>
                   </Box>
                   <Box>
+                    <Text fontWeight="bold" color="gray.600" fontSize="sm">Tech Amount:</Text>
+                    <Text fontSize="md" mt={1} fontWeight="bold" color="blue.600">
+                      ₹{selectedService.technicianAmount || 0}
+                    </Text>
+                  </Box>
+                  <Box>
+                    <Text fontWeight="bold" color="gray.600" fontSize="sm">Min. Visit Charge:</Text>
+                    <Text fontSize="md" mt={1}>
+                      ₹{selectedService.minimumVisitCharge || 0}
+                    </Text>
+                  </Box>
+                  <Box>
                     <Text fontWeight="bold" color="gray.600" fontSize="sm">Duration:</Text>
                     <Text fontSize="md" mt={1}>{selectedService.duration || "Not specified"}</Text>
                   </Box>
@@ -3139,6 +3505,8 @@ export default function ServiceManagement() {
                   </Box>
                 )}
 
+
+
                 {/* Service Highlights */}
                 {selectedService.serviceHighlights && selectedService.serviceHighlights.length > 0 && (
                   <Box mt={4}>
@@ -3152,6 +3520,94 @@ export default function ServiceManagement() {
                     </Flex>
                   </Box>
                 )}
+
+                {/* New Array Fields Display */}
+                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mt={4}>
+
+                  {/* FAQs */}
+                  {selectedService.frequentlyAskedQuestions && selectedService.frequentlyAskedQuestions.length > 0 && (
+                    <Box gridColumn={{ base: "span 1", md: "span 2" }}>
+                      <Text fontWeight="bold" color="gray.600" fontSize="sm">FAQs:</Text>
+                      <Flex wrap="wrap" gap={2} mt={2}>
+                        {selectedService.frequentlyAskedQuestions.map((item, index) => (
+                          <Badge key={index} colorScheme="blue" p={2} whiteSpace="normal" textAlign="left">
+                            {item}
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </Box>
+                  )}
+
+                  {/* Supported Brands */}
+                  {selectedService.supportedBrands && selectedService.supportedBrands.length > 0 && (
+                    <Box>
+                      <Text fontWeight="bold" color="gray.600" fontSize="sm">Supported Brands:</Text>
+                      <Flex wrap="wrap" gap={2} mt={2}>
+                        {selectedService.supportedBrands.map((item, index) => (
+                          <Badge key={index} colorScheme="teal" p={2}>
+                            {item}
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </Box>
+                  )}
+
+                  {/* Service Checklist */}
+                  {selectedService.serviceChecklist && selectedService.serviceChecklist.length > 0 && (
+                    <Box>
+                      <Text fontWeight="bold" color="gray.600" fontSize="sm">Checklist:</Text>
+                      <Flex wrap="wrap" gap={2} mt={2}>
+                        {selectedService.serviceChecklist.map((item, index) => (
+                          <Badge key={index} colorScheme="cyan" p={2}>
+                            {item}
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </Box>
+                  )}
+
+                  {/* Rectify Method */}
+                  {selectedService.rectifyMethod && selectedService.rectifyMethod.length > 0 && (
+                    <Box>
+                      <Text fontWeight="bold" color="gray.600" fontSize="sm">Rectify Method:</Text>
+                      <Flex wrap="wrap" gap={2} mt={2}>
+                        {selectedService.rectifyMethod.map((item, index) => (
+                          <Badge key={index} colorScheme="orange" p={2}>
+                            {item}
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </Box>
+                  )}
+
+                  {/* Fault Reasons */}
+                  {selectedService.faultReasons && selectedService.faultReasons.length > 0 && (
+                    <Box>
+                      <Text fontWeight="bold" color="gray.600" fontSize="sm">Fault Reasons:</Text>
+                      <Flex wrap="wrap" gap={2} mt={2}>
+                        {selectedService.faultReasons.map((item, index) => (
+                          <Badge key={index} colorScheme="red" variant="subtle" p={2}>
+                            {item}
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </Box>
+                  )}
+
+                  {/* Tools */}
+                  {selectedService.toolsEquipments && selectedService.toolsEquipments.length > 0 && (
+                    <Box>
+                      <Text fontWeight="bold" color="gray.600" fontSize="sm">Tools & Equipment:</Text>
+                      <Flex wrap="wrap" gap={2} mt={2}>
+                        {selectedService.toolsEquipments.map((item, index) => (
+                          <Badge key={index} colorScheme="gray" p={2}>
+                            {item}
+                          </Badge>
+                        ))}
+                      </Flex>
+                    </Box>
+                  )}
+                </SimpleGrid>
 
                 {/* Additional Information */}
                 <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={4} mt={4}>

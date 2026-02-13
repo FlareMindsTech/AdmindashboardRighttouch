@@ -91,6 +91,38 @@ import {
 } from "views/utils/axiosInstance";
 import { useNavigate } from "react-router-dom";
 
+// Helper to resolve technician name safely
+const getTechnicianName = (tech) => {
+  if (!tech) return "Unknown";
+
+  // Top level specific fields
+  if (tech.name && tech.name.trim() !== "") return tech.name;
+  if (tech.firstName) return `${tech.firstName} ${tech.lastName || ""}`.trim();
+  if (tech.fname) return `${tech.fname} ${tech.lname || ""}`.trim();
+
+  // Profile fields
+  if (tech.profile?.name) return tech.profile.name;
+  if (tech.profile?.firstName) return `${tech.profile.firstName} ${tech.profile.lastName || ""}`.trim();
+
+  // Nested userId fields (for when admin is a populated technician object)
+  if (tech.userId) {
+    if (typeof tech.userId === 'object') {
+      if (tech.userId.name) return tech.userId.name;
+      if (tech.userId.firstName) return `${tech.userId.firstName} ${tech.userId.lastName || ""}`.trim();
+      if (tech.userId.fname) return `${tech.userId.fname} ${tech.userId.lname || ""}`.trim();
+    }
+  }
+
+  // Fallback email or ID
+  if (tech.email) return tech.email.split('@')[0];
+
+  return "Unknown";
+};
+
+const getTechnicianImage = (tech) => {
+  return tech?.profileImage || tech?.profile?.profileImage || (typeof tech?.userId === 'object' ? tech?.userId?.profileImage : "") || "";
+};
+
 // Main Admin Management Component
 function AdminManagement() {
   // Chakra color mode
@@ -181,7 +213,7 @@ function AdminManagement() {
   // Fetch current user from localStorage and check permissions
   useEffect(() => {
     const userString = localStorage.getItem("user");
-    
+
     // Check if user exists and is owner
     if (!userString) {
       toast({
@@ -198,7 +230,7 @@ function AdminManagement() {
     try {
       const userData = JSON.parse(userString);
       const userRole = userData.role?.toLowerCase();
-      
+
       // 🔐 STRICT OWNER CHECK
       if (userRole !== "owner") {
         toast({
@@ -211,7 +243,7 @@ function AdminManagement() {
         navigate("/access-denied");
         return;
       }
-      
+
       setCurrentUser(userData);
     } catch (error) {
       console.error("Error parsing user data:", error);
@@ -240,10 +272,10 @@ function AdminManagement() {
           getAllTechnicians(),
           getAllKYCRecords()
         ]);
-        
+
         // Handle different response formats for admins
         const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
-        
+
         // Handle different response formats for KYC
         const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
 
@@ -271,22 +303,22 @@ function AdminManagement() {
         console.error("Error fetching admins:", err);
         const errorMessage = err.response?.data?.message || err.message || "Failed to load admin list.";
         if (errorMessage.includes("token not found") || errorMessage.includes("Session expired") || errorMessage.includes("401")) {
-             toast({
-              title: "Session Expired",
-              description: "Please log in again.",
-              status: "error",
-              duration: 3000,
-              isClosable: true,
-            });
-            localStorage.removeItem("user");
-            localStorage.removeItem("token");
-            localStorage.removeItem("adminToken");
-            sessionStorage.removeItem("token");
-            sessionStorage.removeItem("adminToken");
-            setTimeout(() => {
-                navigate("/auth/signin");
-            }, 1000);
-            return;
+          toast({
+            title: "Session Expired",
+            description: "Please log in again.",
+            status: "error",
+            duration: 3000,
+            isClosable: true,
+          });
+          localStorage.removeItem("user");
+          localStorage.removeItem("token");
+          localStorage.removeItem("adminToken");
+          sessionStorage.removeItem("token");
+          sessionStorage.removeItem("adminToken");
+          setTimeout(() => {
+            navigate("/auth/signin");
+          }, 1000);
+          return;
         }
 
         setError(errorMessage);
@@ -332,14 +364,14 @@ function AdminManagement() {
           break;
         case "KYCVerified":
           filtered = adminData.filter((admin) => {
-            const kycMatch = allKycRecords.find(k => 
+            const kycMatch = allKycRecords.find(k =>
               (k.technicianId?._id || k.technicianId) === admin._id
             );
             const status = kycMatch?.status?.toLowerCase() || kycMatch?.verificationStatus?.toLowerCase();
             return status === "approved" || status === "verified";
           });
           break;
-  // Removed BankVerified case as per user request
+        // Removed BankVerified case as per user request
         case "Deleted":
           filtered = adminData.filter((admin) => admin.status === "Deleted");
           break;
@@ -351,12 +383,15 @@ function AdminManagement() {
       if (searchTerm.trim() !== "") {
         filtered = filtered.filter(
           (admin) => {
-            const fullName = `${admin.firstName || ""} ${admin.lastName || ""}`;
+            const fullName = getTechnicianName(admin);
+            const specialization = admin.specialization || admin.profile?.specialization || "";
+            const city = admin.city || admin.profile?.city || admin.locality || "";
+
             return (
               fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
               (admin.email && admin.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-              (admin.specialization && admin.specialization.toLowerCase().includes(searchTerm.toLowerCase())) ||
-              (admin.city && admin.city.toLowerCase().includes(searchTerm.toLowerCase())) ||
+              (specialization.toLowerCase().includes(searchTerm.toLowerCase())) ||
+              (city.toLowerCase().includes(searchTerm.toLowerCase())) ||
               (admin.mobileNumber && admin.mobileNumber.toString().includes(searchTerm))
             );
           }
@@ -395,7 +430,7 @@ function AdminManagement() {
     setIsDeleting(true);
     try {
       const response = await deleteTechnician(adminToDelete._id);
-      
+
       toast({
         title: "Admin Deleted",
         description: `${adminToDelete.name} has been deleted successfully.`,
@@ -411,19 +446,19 @@ function AdminManagement() {
             getAllTechnicians(),
             getAllKYCRecords()
           ]);
-          
+
           const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
           const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
 
           if (Array.isArray(kycRecords)) {
             setAllKycRecords(kycRecords);
           }
-          
+
           if (!Array.isArray(admins)) {
             console.error("Unexpected response data format during refresh:", adminsResponse);
             return;
           }
-          
+
           const sortedAdmins = admins.sort(
             (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
           );
@@ -508,19 +543,26 @@ function AdminManagement() {
       return;
     }
 
-    // Extract first and last name from admin.name
-    const nameParts = admin.name ? admin.name.split(' ') : ['', ''];
-    const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || '';
+    // Extract first and last name from available fields
+    // Extract first and last name using robust helper
+    const fullName = getTechnicianName(admin);
+    let firstName = admin.firstName || admin.profile?.firstName || admin.fname || (admin.userId?.firstName) || "";
+    let lastName = admin.lastName || admin.profile?.lastName || admin.lname || (admin.userId?.lastName) || "";
+
+    if (!firstName && fullName !== "Unknown") {
+      const parts = fullName.split(' ');
+      firstName = parts[0];
+      lastName = parts.length > 1 ? parts.slice(1).join(' ') : "";
+    }
 
     setFormData({
       firstName: firstName,
       lastName: lastName,
-      phone: admin.phone || "",
+      phone: admin.phone || admin.mobileNumber || "",
       email: admin.email || "",
       password: "", // Don't pre-fill password for security
       confirmPassword: "",
-      profileImage: admin.profileImage || "",
+      profileImage: admin.profileImage || admin.profile?.profileImage || "",
       role: admin.role || "admin",
       status: admin.status || "Active"
     });
@@ -658,19 +700,19 @@ function AdminManagement() {
             getAllTechnicians(),
             getAllKYCRecords()
           ]);
-          
+
           const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
           const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
 
           if (Array.isArray(kycRecords)) {
             setAllKycRecords(kycRecords);
           }
-          
+
           // Filter out owner accounts
-          const nonOwnerAdmins = Array.isArray(admins) ? admins.filter(admin => 
+          const nonOwnerAdmins = Array.isArray(admins) ? admins.filter(admin =>
             admin.role?.toLowerCase() !== "owner"
           ) : [];
-          
+
           const sortedAdmins = nonOwnerAdmins.sort(
             (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
           );
@@ -684,7 +726,7 @@ function AdminManagement() {
       await fetchAdmins();
 
       setSuccess(successMessage);
-      
+
       // Reset form and go back to list
       setFormData({
         firstName: "",
@@ -702,16 +744,16 @@ function AdminManagement() {
 
     } catch (err) {
       console.error("API Error details:", err);
-      
+
       let errorMessage = "API error. Try again.";
-      
+
       if (err.response?.data) {
         const errorData = err.response.data;
         errorMessage = errorData.message || errorData.error || JSON.stringify(errorData);
       } else if (err.message) {
         errorMessage = err.message;
       }
-      
+
       setError(errorMessage);
       toast({
         title: "Error",
@@ -739,32 +781,32 @@ function AdminManagement() {
   const getStatusConfig = (status) => {
     switch (status?.toLowerCase()) {
       case "approved":
-        return { 
-          color: "white", 
+        return {
+          color: "white",
           bg: "green.500",
           icon: IoCheckmarkDoneCircleSharp
         };
       case "active":
-        return { 
-          color: "white", 
+        return {
+          color: "white",
           bg: "#9d4edd",
           icon: IoCheckmarkDoneCircleSharp
         };
       case "inactive":
-        return { 
-          color: "white", 
+        return {
+          color: "white",
           bg: "red.500",
           icon: FaUserSlash
         };
       case "pending":
-        return { 
-          color: "white", 
+        return {
+          color: "white",
           bg: "yellow.500",
           icon: MdPerson
         };
       default:
-        return { 
-          color: "white", 
+        return {
+          color: "white",
           bg: "gray.500",
           icon: MdPerson
         };
@@ -805,7 +847,7 @@ function AdminManagement() {
     setKYCData(null);
     setKYcLoading(true);
     try {
-      const idToFetch = technician._id; 
+      const idToFetch = technician._id;
       const response = await getTechnicianKYC(idToFetch);
       // Determine response structure
       setKYCData(response.data || response.result || response);
@@ -818,7 +860,7 @@ function AdminManagement() {
         duration: 3000,
         isClosable: true,
       });
-      setKYCData(null); 
+      setKYCData(null);
     } finally {
       setKYcLoading(false);
     }
@@ -827,12 +869,12 @@ function AdminManagement() {
   // Removed Bank Modal handlers as per user request
 
   const handleVerifyKYCAction = async (status) => {
-     if (!selectedTechnicianForKYC) return;
-     
-     // specific check for rejection
-     if (status === "rejected") {
-       if (!rejectionInput || rejectionInput.trim() === "") {
-         toast({
+    if (!selectedTechnicianForKYC) return;
+
+    // specific check for rejection
+    if (status === "rejected") {
+      if (!rejectionInput || rejectionInput.trim() === "") {
+        toast({
           title: "Validation Error",
           description: "Please enter a rejection reason in the field below before rejecting.",
           status: "warning",
@@ -840,142 +882,142 @@ function AdminManagement() {
           isClosable: true,
         });
         return;
-       }
-     }
+      }
+    }
 
-     try {
-       const payload = {
-         technicianId: selectedTechnicianForKYC._id,
-         status: status
-       };
-       
-       if (status === "rejected" && rejectionInput) {
-         payload.rejectionReason = rejectionInput;
-       }
+    try {
+      const payload = {
+        technicianId: selectedTechnicianForKYC._id,
+        status: status
+      };
 
-       await verifyKYC(payload);
-       
-       toast({
-         title: "Success",
-         description: `KYC has been ${status}.`,
-         status: "success",
-         duration: 3000,
-         isClosable: true,
-       });
+      if (status === "rejected" && rejectionInput) {
+        payload.rejectionReason = rejectionInput;
+      }
 
-       closeKYCModal();
-       
-       // Refresh list
-       const refresh = async () => {
-          try {
-            const [adminsResponse, kycResponse] = await Promise.all([
-              getAllTechnicians(),
-              getAllKYCRecords()
-            ]);
-            
-            const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
-            const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
+      await verifyKYC(payload);
 
-            if (Array.isArray(kycRecords)) {
-              setAllKycRecords(kycRecords);
-            }
+      toast({
+        title: "Success",
+        description: `KYC has been ${status}.`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
 
-            if (Array.isArray(admins)) {
-               const sortedAdmins = admins.sort(
-                  (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
-               );
-               setAdminData(sortedAdmins);
-               setFilteredData(sortedAdmins);
-            }
-          } catch(e) {
-            console.error("Error refreshing list:", e);
+      closeKYCModal();
+
+      // Refresh list
+      const refresh = async () => {
+        try {
+          const [adminsResponse, kycResponse] = await Promise.all([
+            getAllTechnicians(),
+            getAllKYCRecords()
+          ]);
+
+          const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
+          const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
+
+          if (Array.isArray(kycRecords)) {
+            setAllKycRecords(kycRecords);
           }
-       };
-       refresh();
 
-     } catch (error) {
-       console.error("KYC Verification Error:", error);
-       let errorMsg = "Failed to update KYC status.";
-       // Try to extract message from response if available
-       if (error.response && error.response.data && error.response.data.message) {
-           errorMsg = error.response.data.message;
-       } else if (error.message) {
-           errorMsg = error.message;
-       }
+          if (Array.isArray(admins)) {
+            const sortedAdmins = admins.sort(
+              (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
+            );
+            setAdminData(sortedAdmins);
+            setFilteredData(sortedAdmins);
+          }
+        } catch (e) {
+          console.error("Error refreshing list:", e);
+        }
+      };
+      refresh();
 
-       toast({
+    } catch (error) {
+      console.error("KYC Verification Error:", error);
+      let errorMsg = "Failed to update KYC status.";
+      // Try to extract message from response if available
+      if (error.response && error.response.data && error.response.data.message) {
+        errorMsg = error.response.data.message;
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+
+      toast({
         title: "Error",
         description: errorMsg,
         status: "error",
         duration: 3000,
         isClosable: true,
       });
-     }
+    }
   };
 
   const handleDeleteKYC = async (technician) => {
-      if (!technician?._id) return;
-      
-      try {
-        setIsDeletingKYC(true);
-        await deleteKYC(technician._id);
-        
-        toast({
-          title: "Success",
-          description: "KYC record deleted successfully.",
-          status: "success",
-          duration: 3000,
-          isClosable: true,
-        });
-        
-        // If modal is open, close it
-        if (isKYCModalOpen) {
-          closeKYCModal();
-        }
+    if (!technician?._id) return;
 
-        // Reset deletion ID
-        setTechnicianIdToDeleteKYC(null);
-        
-        // Refresh list
-        const [adminsResponse, kycResponse] = await Promise.all([
-           getAllTechnicians(),
-           getAllKYCRecords()
-        ]);
-        
-        const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
-        const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
+    try {
+      setIsDeletingKYC(true);
+      await deleteKYC(technician._id);
 
-        if (Array.isArray(kycRecords)) {
-           setAllKycRecords(kycRecords);
-        }
+      toast({
+        title: "Success",
+        description: "KYC record deleted successfully.",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
 
-        if (Array.isArray(admins)) {
-           const sortedAdmins = admins.sort(
-              (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
-           );
-           setAdminData(sortedAdmins);
-           setFilteredData(sortedAdmins);
-        }
-      } catch (error) {
-         console.error("Delete KYC Error:", error);
-         toast({
-          title: "Error",
-          description: "Failed to delete KYC record.",
-          status: "error",
-          duration: 3000,
-          isClosable: true,
-        });
-      } finally {
-        setIsDeletingKYC(false);
+      // If modal is open, close it
+      if (isKYCModalOpen) {
+        closeKYCModal();
       }
+
+      // Reset deletion ID
+      setTechnicianIdToDeleteKYC(null);
+
+      // Refresh list
+      const [adminsResponse, kycResponse] = await Promise.all([
+        getAllTechnicians(),
+        getAllKYCRecords()
+      ]);
+
+      const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
+      const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
+
+      if (Array.isArray(kycRecords)) {
+        setAllKycRecords(kycRecords);
+      }
+
+      if (Array.isArray(admins)) {
+        const sortedAdmins = admins.sort(
+          (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
+        );
+        setAdminData(sortedAdmins);
+        setFilteredData(sortedAdmins);
+      }
+    } catch (error) {
+      console.error("Delete KYC Error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete KYC record.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsDeletingKYC(false);
+    }
   };
 
   const handleTrainingCompletion = async (technician, status = true) => {
     try {
       setLoading(true);
-      
+
       await updateTrainingStatus(technician._id, status);
-      
+
       toast({
         title: "Training Updated",
         description: `Technician training status marked as ${status ? "completed" : "pending"}.`,
@@ -994,7 +1036,7 @@ function AdminManagement() {
         getAllTechnicians(),
         getAllKYCRecords()
       ]);
-      
+
       const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
       const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
 
@@ -1003,28 +1045,28 @@ function AdminManagement() {
       }
 
       if (Array.isArray(admins)) {
-         const sortedAdmins = admins.sort(
-            (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
-         );
-         setAdminData(sortedAdmins);
-         setFilteredData(sortedAdmins);
+        const sortedAdmins = admins.sort(
+          (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
+        );
+        setAdminData(sortedAdmins);
+        setFilteredData(sortedAdmins);
       }
     } catch (error) {
-       console.error("Training Update Error:", error);
-       let errorMsg = "Failed to update training status.";
-       if (error.response && error.response.data && error.response.data.message) {
-           errorMsg = error.response.data.message;
-       } else if (error.message) {
-           errorMsg = error.message;
-       }
-       
-       toast({
+      console.error("Training Update Error:", error);
+      let errorMsg = "Failed to update training status.";
+      if (error.response && error.response.data && error.response.data.message) {
+        errorMsg = error.response.data.message;
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+
+      toast({
         title: "Error",
         description: errorMsg,
         status: "error",
         duration: 3000,
         isClosable: true,
-       });
+      });
     } finally {
       setLoading(false);
     }
@@ -1062,10 +1104,10 @@ function AdminManagement() {
   // Render Form View (Add/Edit)
   if (currentView === "add" || currentView === "edit") {
     return (
-      <Flex 
-        flexDirection="column" 
-        pt={{ base: "120px", md: "75px" }} 
-        height="100vh" 
+      <Flex
+        flexDirection="column"
+        pt={{ base: "120px", md: "75px" }}
+        height="100vh"
         overflow="auto"
         css={{
           '&::-webkit-scrollbar': {
@@ -1134,7 +1176,7 @@ function AdminManagement() {
                 {success}
               </Text>
             )}
-            
+
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
               <FormControl isRequired>
                 <FormLabel htmlFor="firstName" color="gray.700">First Name</FormLabel>
@@ -1150,7 +1192,7 @@ function AdminManagement() {
                   bg="white"
                 />
               </FormControl>
-              
+
               <FormControl isRequired>
                 <FormLabel htmlFor="lastName" color="gray.700">Last Name</FormLabel>
                 <Input
@@ -1183,7 +1225,7 @@ function AdminManagement() {
                   bg="white"
                 />
               </FormControl>
-              
+
               <FormControl>
                 <FormLabel htmlFor="phone" color="gray.700">Phone</FormLabel>
                 <Input
@@ -1304,9 +1346,9 @@ function AdminManagement() {
             </SimpleGrid>
 
             <Flex justify="flex-end" mt={6} flexShrink={0}>
-              <Button 
-                variant="outline" 
-                mr={3} 
+              <Button
+                variant="outline"
+                mr={3}
                 onClick={handleBackToList}
                 border="1px"
                 borderColor="gray.300"
@@ -1329,12 +1371,14 @@ function AdminManagement() {
     );
   }
 
+
+
   // Render List View
   return (
-    <Flex 
-      flexDirection="column" 
-      pt={{ base: "5px", md: "45px" }} 
-      height="100vh" 
+    <Flex
+      flexDirection="column"
+      pt={{ base: "5px", md: "45px" }}
+      height="100vh"
       overflow="auto"
       css={{
         '&::-webkit-scrollbar': {
@@ -1506,10 +1550,10 @@ function AdminManagement() {
                     </StatNumber>
                   </Flex>
                 </Stat>
-                <IconBox 
-                  as="box" 
-                  h={{ base: "35px", md: "45px" }} 
-                  w={{ base: "35px", md: "45px" }} 
+                <IconBox
+                  as="box"
+                  h={{ base: "35px", md: "45px" }}
+                  w={{ base: "35px", md: "45px" }}
                   bg={customColor}
                   transition="all 0.2s ease-in-out"
                 >
@@ -1577,10 +1621,10 @@ function AdminManagement() {
                     </StatNumber>
                   </Flex>
                 </Stat>
-                <IconBox 
-                  as="box" 
-                  h={{ base: "35px", md: "45px" }} 
-                  w={{ base: "35px", md: "45px" }} 
+                <IconBox
+                  as="box"
+                  h={{ base: "35px", md: "45px" }}
+                  w={{ base: "35px", md: "45px" }}
                   bg={customColor}
                   transition="all 0.2s ease-in-out"
                 >
@@ -1646,7 +1690,7 @@ function AdminManagement() {
                   <Flex>
                     <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
                       {adminData.filter((a) => {
-                        const kycMatch = allKycRecords.find(k => 
+                        const kycMatch = allKycRecords.find(k =>
                           (k.technicianId?._id || k.technicianId) === a._id
                         );
                         const status = kycMatch?.status?.toLowerCase() || kycMatch?.verificationStatus?.toLowerCase();
@@ -1655,10 +1699,10 @@ function AdminManagement() {
                     </StatNumber>
                   </Flex>
                 </Stat>
-                <IconBox 
-                  as="box" 
-                  h={{ base: "35px", md: "45px" }} 
-                  w={{ base: "35px", md: "45px" }} 
+                <IconBox
+                  as="box"
+                  h={{ base: "35px", md: "45px" }}
+                  w={{ base: "35px", md: "45px" }}
                   bg={customColor}
                   transition="all 0.2s ease-in-out"
                 >
@@ -1730,19 +1774,19 @@ function AdminManagement() {
       </Box>
 
       {/* Table Container */}
-      <Box 
+      <Box
         mt={-8}
-        flex="1" 
-        display="flex" 
-        flexDirection="column" 
+        flex="1"
+        display="flex"
+        flexDirection="column"
         p={2}
         pt={0}
         overflow="hidden"
       >
-        <Card 
-          shadow="xl" 
+        <Card
+          shadow="xl"
           bg="white"
-          display="flex" 
+          display="flex"
           flexDirection="column"
           height="100%"
           minH="0"
@@ -1750,8 +1794,8 @@ function AdminManagement() {
           borderColor={customBorderColor}
         >
           {/* Table Header */}
-          <CardHeader 
-            p="5px" 
+          <CardHeader
+            p="5px"
             pb="5px"
             bg="transparent"
             flexShrink={0}
@@ -1779,9 +1823,9 @@ function AdminManagement() {
                 />
                 <Icon as={FaSearch} color="gray.400" />
                 {searchTerm && (
-                  <Button 
-                    size="sm" 
-                    ml={2} 
+                  <Button
+                    size="sm"
+                    ml={2}
                     onClick={handleClearSearch}
                     bg="white"
                     color={customColor}
@@ -1808,14 +1852,14 @@ function AdminManagement() {
               </Button> */}
             </Flex>
           </CardHeader>
-          
+
           {/* Table Content Area */}
-          <CardBody 
+          <CardBody
             bg="transparent"
-            flex="1" 
-            display="flex" 
-            flexDirection="column" 
-            p={0} 
+            flex="1"
+            display="flex"
+            flexDirection="column"
+            p={0}
             overflow="hidden"
           >
             {tableLoading ? (
@@ -1827,7 +1871,7 @@ function AdminManagement() {
               <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
                 {currentItems.length > 0 ? (
                   <>
-                    <Box 
+                    <Box
                       flex="1"
                       display="flex"
                       flexDirection="column"
@@ -1866,8 +1910,8 @@ function AdminManagement() {
                         <Table variant="simple" size="md" bg="transparent">
                           <Thead>
                             <Tr>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -1881,8 +1925,8 @@ function AdminManagement() {
                               >
                                 Technician Name
                               </Th>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -1897,8 +1941,8 @@ function AdminManagement() {
                                 Specialization
                               </Th>
 
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -1912,8 +1956,8 @@ function AdminManagement() {
                               >
                                 Experience
                               </Th>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -1927,8 +1971,8 @@ function AdminManagement() {
                               >
                                 City
                               </Th>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -1942,8 +1986,8 @@ function AdminManagement() {
                               >
                                 Rating
                               </Th>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -1959,8 +2003,8 @@ function AdminManagement() {
                               </Th>
 
 
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -1981,7 +2025,7 @@ function AdminManagement() {
                             {displayItems.map((admin, index) => {
                               if (admin.isEmpty) {
                                 return (
-                                  <Tr 
+                                  <Tr
                                     key={admin._id}
                                     bg="transparent"
                                     height="60px"
@@ -1994,7 +2038,7 @@ function AdminManagement() {
                               }
 
                               return (
-                                <Tr 
+                                <Tr
                                   key={admin._id || index}
                                   bg="transparent"
                                   _hover={{ bg: `${customColor}10` }}
@@ -2006,13 +2050,13 @@ function AdminManagement() {
                                     <Flex align="center">
                                       <Avatar
                                         size="sm"
-                                        name={`${admin.firstName} ${admin.lastName}` || "Unknown"}
-                                        src={admin.profileImage || ""}
+                                        name={getTechnicianName(admin)}
+                                        src={getTechnicianImage(admin)}
                                         mr={3}
                                       />
                                       <Box>
                                         <Text fontWeight="medium" color="gray.700">
-                                          {admin.firstName} {admin.lastName}
+                                          {getTechnicianName(admin)}
                                         </Text>
                                         {admin.availability?.isOnline && (
                                           <Badge colorScheme="green" fontSize="xs" mt={1}>Online</Badge>
@@ -2022,18 +2066,18 @@ function AdminManagement() {
                                   </Td>
                                   <Td borderColor={`${customColor}20`}>
                                     <Text fontWeight="medium" color="gray.700">
-                                      {admin.specialization || "N/A"}
+                                      {admin.specialization || admin.profile?.specialization || admin.userId?.specialization || admin.userId?.profile?.specialization || "N/A"}
                                     </Text>
                                   </Td>
 
                                   <Td borderColor={`${customColor}20`}>
                                     <Text fontWeight="medium" color="gray.700">
-                                      {admin.experienceYears ? `${admin.experienceYears} Years` : "N/A"}
+                                      {(admin.experienceYears || admin.profile?.experienceYears || admin.userId?.experienceYears || admin.userId?.profile?.experienceYears) ? `${admin.experienceYears || admin.profile?.experienceYears || admin.userId?.experienceYears || admin.userId?.profile?.experienceYears} Years` : "N/A"}
                                     </Text>
                                   </Td>
                                   <Td borderColor={`${customColor}20`}>
                                     <Text fontWeight="medium" color="gray.700">
-                                      {admin.city || "N/A"}
+                                      {admin.city || admin.profile?.city || admin.locality || admin.userId?.city || admin.userId?.profile?.city || admin.addressSnapshot?.city || "N/A"}
                                     </Text>
                                   </Td>
                                   <Td borderColor={`${customColor}20`}>
@@ -2044,7 +2088,7 @@ function AdminManagement() {
                                     </Flex>
                                   </Td>
                                   <Td borderColor={`${customColor}20`}>
-                                    <Text fontWeight="medium">{admin.totalJobsCompleted || 0}</Text>
+                                    <Text fontWeight="medium">{admin.totalJobsCompleted || admin.jobStats?.completed || 0}</Text>
                                   </Td>
 
 
@@ -2074,7 +2118,7 @@ function AdminManagement() {
                                         onClick={() => handleViewKYC(admin)}
                                         title="View KYC Documents"
                                       />
-                                      
+
 
 
                                       {/* Bank Verification Trigger Removed */}
@@ -2103,7 +2147,7 @@ function AdminManagement() {
 
                     {/* Pagination Bar */}
                     {currentItems.length > 0 && (
-                      <Box 
+                      <Box
                         flexShrink={0}
                         p="16px"
                         borderTop="1px solid"
@@ -2130,8 +2174,8 @@ function AdminManagement() {
                               border="1px"
                               borderColor={customColor}
                               _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{ 
-                                opacity: 0.5, 
+                              _disabled={{
+                                opacity: 0.5,
                                 cursor: "not-allowed",
                                 bg: "gray.100",
                                 color: "gray.400",
@@ -2141,8 +2185,8 @@ function AdminManagement() {
                               <Text display={{ base: "none", sm: "block" }}>Previous</Text>
                             </Button>
 
-                            <Flex 
-                              align="center" 
+                            <Flex
+                              align="center"
                               gap={2}
                               bg={`${customColor}10`}
                               px={3}
@@ -2172,8 +2216,8 @@ function AdminManagement() {
                               border="1px"
                               borderColor={customColor}
                               _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{ 
-                                opacity: 0.5, 
+                              _disabled={{
+                                opacity: 0.5,
                                 cursor: "not-allowed",
                                 bg: "gray.100",
                                 color: "gray.400",
@@ -2188,10 +2232,10 @@ function AdminManagement() {
                     )}
                   </>
                 ) : (
-                  <Flex 
-                    height="200px" 
-                    justify="center" 
-                    align="center" 
+                  <Flex
+                    height="200px"
+                    justify="center"
+                    align="center"
                     border="1px dashed"
                     borderColor={`${customColor}30`}
                     borderRadius="md"
@@ -2203,8 +2247,8 @@ function AdminManagement() {
                         ? adminData.length === 0
                           ? "No admins found."
                           : searchTerm
-                          ? "No admins match your search."
-                          : "No admins match the selected filter."
+                            ? "No admins match your search."
+                            : "No admins match the selected filter."
                         : "Loading admins..."}
                     </Text>
                   </Flex>
@@ -2222,186 +2266,186 @@ function AdminManagement() {
           <ModalCloseButton />
           <ModalBody>
             {kycLoading ? (
-               <Flex justify="center" align="center" h="200px">
-                  <Spinner size="xl" color={customColor} />
-               </Flex>
+              <Flex justify="center" align="center" h="200px">
+                <Spinner size="xl" color={customColor} />
+              </Flex>
             ) : kycData ? (
-               <Box>
-                  {(() => {
-                    // Filter to find the correct KYC record for this technician
-                    let kycRecord = kycData;
-                    if (Array.isArray(kycData)) {
-                        kycRecord = kycData.find(doc => {
-                            const tId = doc.technicianId?._id || doc.technicianId;
-                            return tId === selectedTechnicianForKYC?._id;
-                        });
-                    }
-                    
-                    if (!kycRecord) return <Text textAlign="center">No matching KYC Data found for this technician.</Text>;
+              <Box>
+                {(() => {
+                  // Filter to find the correct KYC record for this technician
+                  let kycRecord = kycData;
+                  if (Array.isArray(kycData)) {
+                    kycRecord = kycData.find(doc => {
+                      const tId = doc.technicianId?._id || doc.technicianId;
+                      return tId === selectedTechnicianForKYC?._id;
+                    });
+                  }
 
-                    return (
-                      <>
-                        <Flex mb={4} justify="space-between" align="center" borderBottom="1px solid" borderColor="gray.100" pb={2}>
-                           <Text fontWeight="bold" fontSize="lg">
-                              Technician: <Text as="span" color={customColor}>{selectedTechnicianForKYC?.firstName} {selectedTechnicianForKYC?.lastName}</Text>
-                           </Text>
-                        </Flex>
-                        
-                        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={5}>
-                           {/* Identity Proof (Aadhaar) */}
-                           <Box bg="white" p={3} borderRadius="md" boxShadow="sm" border="1px solid" borderColor="purple.100">
-                              <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={2}>Aadhaar Card</Text>
-                              {kycRecord.documents?.aadhaarUrl ? (
-                                 <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
-                                    <img 
-                                      src={kycRecord.documents.aadhaarUrl} 
-                                      alt="Aadhaar Card" 
-                                      style={{ width: '100%', height: '150px', objectFit: 'cover' }} 
-                                      onClick={() => window.open(kycRecord.documents.aadhaarUrl, '_blank')}
-                                      cursor="pointer"
-                                    />
-                                    <Button 
-                                      size="xs" 
-                                      width="100%" 
-                                      borderRadius="0"
-                                      as="a" 
-                                      href={kycRecord.documents.aadhaarUrl} 
-                                      target="_blank"
-                                      colorScheme="purple"
-                                      variant="ghost"
-                                    >
-                                      View Full Image
-                                    </Button>
-                                 </Box>
-                              ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
-                               <Text mt={3} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Number</Text>
-                               <Text fontSize="sm" fontWeight="semibold" color="gray.700">{kycRecord.aadhaarNumber || "N/A"}</Text>
-                           </Box>
+                  if (!kycRecord) return <Text textAlign="center">No matching KYC Data found for this technician.</Text>;
 
-                           {/* PAN Card */}
-                           <Box bg="white" p={3} borderRadius="md" boxShadow="sm" border="1px solid" borderColor="purple.100">
-                              <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={2}>PAN Card</Text>
-                               {kycRecord.documents?.panUrl ? (
-                                 <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
-                                    <img 
-                                      src={kycRecord.documents.panUrl} 
-                                      alt="PAN Card" 
-                                      style={{ width: '100%', height: '150px', objectFit: 'cover' }} 
-                                      onClick={() => window.open(kycRecord.documents.panUrl, '_blank')}
-                                      cursor="pointer"
-                                    />
-                                    <Button 
-                                      size="xs" 
-                                      width="100%" 
-                                      borderRadius="0"
-                                      as="a" 
-                                      href={kycRecord.documents.panUrl} 
-                                      target="_blank"
-                                      colorScheme="purple"
-                                      variant="ghost"
-                                    >
-                                      View Full Image
-                                    </Button>
-                                 </Box>
-                              ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
-                              <Text mt={3} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Number</Text>
-                              <Text fontSize="sm" fontWeight="semibold" color="gray.700">{kycRecord.panNumber || "N/A"}</Text>
-                           </Box>
+                  return (
+                    <>
+                      <Flex mb={4} justify="space-between" align="center" borderBottom="1px solid" borderColor="gray.100" pb={2}>
+                        <Text fontWeight="bold" fontSize="lg">
+                          Technician: <Text as="span" color={customColor}>{getTechnicianName(selectedTechnicianForKYC)}</Text>
+                        </Text>
+                      </Flex>
 
-                           {/* Driving License */}
-                           <Box bg="white" p={3} borderRadius="md" boxShadow="sm" border="1px solid" borderColor="purple.100">
-                              <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={2}>Driving License</Text>
-                               {kycRecord.documents?.dlUrl ? (
-                                 <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
-                                    <img 
-                                      src={kycRecord.documents.dlUrl} 
-                                      alt="Driving License" 
-                                      style={{ width: '100%', height: '150px', objectFit: 'cover' }} 
-                                      onClick={() => window.open(kycRecord.documents.dlUrl, '_blank')}
-                                      cursor="pointer"
-                                    />
-                                    <Button 
-                                      size="xs" 
-                                      width="100%" 
-                                      borderRadius="0"
-                                      as="a" 
-                                      href={kycRecord.documents.dlUrl} 
-                                      target="_blank"
-                                      colorScheme="purple"
-                                      variant="ghost"
-                                    >
-                                      View Full Image
-                                    </Button>
-                                 </Box>
-                              ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
-                              <Text mt={3} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Number</Text>
-                              <Text fontSize="sm" fontWeight="semibold" color="gray.700">{kycRecord.drivingLicenseNumber || "N/A"}</Text>
-                           </Box>
-                        </SimpleGrid>
-                        
-                        {/* Bank Information Integration */}
-                        <Box mt={6} p={4} borderRadius="md" border="1px solid" borderColor="teal.100" bg="white" boxShadow="sm">
-                           <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={4} borderBottom="1px solid" borderColor="teal.50" pb={2}>
-                             Bank Information
-                           </Text>
-                           {kycRecord.bankDetails ? (
-                             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                               <Box>
-                                 <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Account Holder</Text>
-                                 <Text fontSize="md" fontWeight="semibold" color="gray.700">{kycRecord.bankDetails.accountHolderName || "N/A"}</Text>
-                               </Box>
-                               <Box>
-                                 <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Bank / Branch</Text>
-                                 <Text fontSize="md" fontWeight="semibold" color="gray.700">{kycRecord.bankDetails.bankName || "N/A"}</Text>
-                                 <Text fontSize="sm" color="gray.500">{kycRecord.bankDetails.branchName || ""}</Text>
-                               </Box>
-                               <Box>
-                                 <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">IFSC Code</Text>
-                                 <Text fontSize="md" fontWeight="semibold" color="gray.800" fontFamily="monospace">{kycRecord.bankDetails.ifscCode || "N/A"}</Text>
-                               </Box>
-                               <Box>
-                                 <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">UPI ID</Text>
-                                 <Text fontSize="md" fontWeight="semibold" color="teal.600">{kycRecord.bankDetails.upiId || "N/A"}</Text>
-                               </Box>
-                             </SimpleGrid>
-                           ) : (
-                             <Text color="gray.400" fontStyle="italic">No bank details uploaded by technician.</Text>
-                           )}
+                      <SimpleGrid columns={{ base: 1, md: 3 }} spacing={5}>
+                        {/* Identity Proof (Aadhaar) */}
+                        <Box bg="white" p={3} borderRadius="md" boxShadow="sm" border="1px solid" borderColor="purple.100">
+                          <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={2}>Aadhaar Card</Text>
+                          {kycRecord.documents?.aadhaarUrl ? (
+                            <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
+                              <img
+                                src={kycRecord.documents.aadhaarUrl}
+                                alt="Aadhaar Card"
+                                style={{ width: '100%', height: '150px', objectFit: 'cover' }}
+                                onClick={() => window.open(kycRecord.documents.aadhaarUrl, '_blank')}
+                                cursor="pointer"
+                              />
+                              <Button
+                                size="xs"
+                                width="100%"
+                                borderRadius="0"
+                                as="a"
+                                href={kycRecord.documents.aadhaarUrl}
+                                target="_blank"
+                                colorScheme="purple"
+                                variant="ghost"
+                              >
+                                View Full Image
+                              </Button>
+                            </Box>
+                          ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
+                          <Text mt={3} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Number</Text>
+                          <Text fontSize="sm" fontWeight="semibold" color="gray.700">{kycRecord.aadhaarNumber || "N/A"}</Text>
                         </Box>
 
-                         <Box mt={6} p={4} bg={kycRecord.verificationStatus === 'approved' ? 'green.50' : kycRecord.verificationStatus === 'rejected' ? 'red.50' : 'yellow.50'} borderRadius="md">
-                            <Text fontSize="md">
-                              <strong>Verification Status: </strong> 
-                              <Badge 
-                                colorScheme={kycRecord.verificationStatus === 'approved' ? 'green' : kycRecord.verificationStatus === 'rejected' ? 'red' : 'yellow'}
-                                fontSize="0.9em"
-                                ml={2}
+                        {/* PAN Card */}
+                        <Box bg="white" p={3} borderRadius="md" boxShadow="sm" border="1px solid" borderColor="purple.100">
+                          <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={2}>PAN Card</Text>
+                          {kycRecord.documents?.panUrl ? (
+                            <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
+                              <img
+                                src={kycRecord.documents.panUrl}
+                                alt="PAN Card"
+                                style={{ width: '100%', height: '150px', objectFit: 'cover' }}
+                                onClick={() => window.open(kycRecord.documents.panUrl, '_blank')}
+                                cursor="pointer"
+                              />
+                              <Button
+                                size="xs"
+                                width="100%"
+                                borderRadius="0"
+                                as="a"
+                                href={kycRecord.documents.panUrl}
+                                target="_blank"
+                                colorScheme="purple"
+                                variant="ghost"
                               >
-                                {kycRecord.verificationStatus || "Pending"}
-                              </Badge>
-                            </Text>
-                             {/* Additional metadata if available */}
-                             {kycRecord.verifiedAt && <Text fontSize="sm" mt={1} color="gray.600">Verified At: {new Date(kycRecord.verifiedAt).toLocaleDateString()}</Text>}
-                             {kycRecord.rejectionReason && <Text fontSize="sm" mt={1} color="red.500"><strong>Rejection Reason:</strong> {kycRecord.rejectionReason}</Text>}
-                         </Box>
-                         
-                         {showRejectionInput && (
-                           <Box mt={4}>
-                             <Text mb={2} fontWeight="bold" fontSize="sm">Reason for Rejection (Required):</Text>
-                             <Textarea 
-                               placeholder="Enter reason for rejection here..."
-                               value={rejectionInput}
-                               onChange={(e) => setRejectionInput(e.target.value)}
-                               bg="white"
-                             />
-                           </Box>
-                         )}
-                      </>
-                    );
-                  })()}
-               </Box>
+                                View Full Image
+                              </Button>
+                            </Box>
+                          ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
+                          <Text mt={3} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Number</Text>
+                          <Text fontSize="sm" fontWeight="semibold" color="gray.700">{kycRecord.panNumber || "N/A"}</Text>
+                        </Box>
+
+                        {/* Driving License */}
+                        <Box bg="white" p={3} borderRadius="md" boxShadow="sm" border="1px solid" borderColor="purple.100">
+                          <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={2}>Driving License</Text>
+                          {kycRecord.documents?.dlUrl ? (
+                            <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
+                              <img
+                                src={kycRecord.documents.dlUrl}
+                                alt="Driving License"
+                                style={{ width: '100%', height: '150px', objectFit: 'cover' }}
+                                onClick={() => window.open(kycRecord.documents.dlUrl, '_blank')}
+                                cursor="pointer"
+                              />
+                              <Button
+                                size="xs"
+                                width="100%"
+                                borderRadius="0"
+                                as="a"
+                                href={kycRecord.documents.dlUrl}
+                                target="_blank"
+                                colorScheme="purple"
+                                variant="ghost"
+                              >
+                                View Full Image
+                              </Button>
+                            </Box>
+                          ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
+                          <Text mt={3} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Number</Text>
+                          <Text fontSize="sm" fontWeight="semibold" color="gray.700">{kycRecord.drivingLicenseNumber || "N/A"}</Text>
+                        </Box>
+                      </SimpleGrid>
+
+                      {/* Bank Information Integration */}
+                      <Box mt={6} p={4} borderRadius="md" border="1px solid" borderColor="teal.100" bg="white" boxShadow="sm">
+                        <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={4} borderBottom="1px solid" borderColor="teal.50" pb={2}>
+                          Bank Information
+                        </Text>
+                        {kycRecord.bankDetails ? (
+                          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                            <Box>
+                              <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Account Holder</Text>
+                              <Text fontSize="md" fontWeight="semibold" color="gray.700">{kycRecord.bankDetails.accountHolderName || "N/A"}</Text>
+                            </Box>
+                            <Box>
+                              <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Bank / Branch</Text>
+                              <Text fontSize="md" fontWeight="semibold" color="gray.700">{kycRecord.bankDetails.bankName || "N/A"}</Text>
+                              <Text fontSize="sm" color="gray.500">{kycRecord.bankDetails.branchName || ""}</Text>
+                            </Box>
+                            <Box>
+                              <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">IFSC Code</Text>
+                              <Text fontSize="md" fontWeight="semibold" color="gray.800" fontFamily="monospace">{kycRecord.bankDetails.ifscCode || "N/A"}</Text>
+                            </Box>
+                            <Box>
+                              <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">UPI ID</Text>
+                              <Text fontSize="md" fontWeight="semibold" color="teal.600">{kycRecord.bankDetails.upiId || "N/A"}</Text>
+                            </Box>
+                          </SimpleGrid>
+                        ) : (
+                          <Text color="gray.400" fontStyle="italic">No bank details uploaded by technician.</Text>
+                        )}
+                      </Box>
+
+                      <Box mt={6} p={4} bg={kycRecord.verificationStatus === 'approved' ? 'green.50' : kycRecord.verificationStatus === 'rejected' ? 'red.50' : 'yellow.50'} borderRadius="md">
+                        <Text fontSize="md">
+                          <strong>Verification Status: </strong>
+                          <Badge
+                            colorScheme={kycRecord.verificationStatus === 'approved' ? 'green' : kycRecord.verificationStatus === 'rejected' ? 'red' : 'yellow'}
+                            fontSize="0.9em"
+                            ml={2}
+                          >
+                            {kycRecord.verificationStatus || "Pending"}
+                          </Badge>
+                        </Text>
+                        {/* Additional metadata if available */}
+                        {kycRecord.verifiedAt && <Text fontSize="sm" mt={1} color="gray.600">Verified At: {new Date(kycRecord.verifiedAt).toLocaleDateString()}</Text>}
+                        {kycRecord.rejectionReason && <Text fontSize="sm" mt={1} color="red.500"><strong>Rejection Reason:</strong> {kycRecord.rejectionReason}</Text>}
+                      </Box>
+
+                      {showRejectionInput && (
+                        <Box mt={4}>
+                          <Text mb={2} fontWeight="bold" fontSize="sm">Reason for Rejection (Required):</Text>
+                          <Textarea
+                            placeholder="Enter reason for rejection here..."
+                            value={rejectionInput}
+                            onChange={(e) => setRejectionInput(e.target.value)}
+                            bg="white"
+                          />
+                        </Box>
+                      )}
+                    </>
+                  );
+                })()}
+              </Box>
             ) : (
-                <Text textAlign="center" py={10}>No KYC documents found for this technician.</Text>
+              <Text textAlign="center" py={10}>No KYC documents found for this technician.</Text>
             )}
           </ModalBody>
 
@@ -2410,9 +2454,9 @@ function AdminManagement() {
               Close
             </Button>
             {kycData && (
-              <Button 
-                colorScheme="orange" 
-                variant="ghost" 
+              <Button
+                colorScheme="orange"
+                variant="ghost"
                 mr="auto"
                 leftIcon={<FaExclamationTriangle />}
                 onClick={() => {
@@ -2431,28 +2475,28 @@ function AdminManagement() {
               <>
                 {!showRejectionInput ? (
                   <>
-                    <Button 
-                      colorScheme="red" 
-                      mr={3} 
+                    <Button
+                      colorScheme="red"
+                      mr={3}
                       onClick={() => setShowRejectionInput(true)}
                       isDisabled={(() => {
                         // Only disable if no record matches
                         let kycRecord = kycData;
                         if (Array.isArray(kycData)) {
-                            kycRecord = kycData.find(doc => (doc.technicianId?._id || doc.technicianId) === selectedTechnicianForKYC?._id);
+                          kycRecord = kycData.find(doc => (doc.technicianId?._id || doc.technicianId) === selectedTechnicianForKYC?._id);
                         }
                         return !kycRecord;
                       })()}
                     >
                       Reject
                     </Button>
-                    <Button 
-                      colorScheme="green" 
+                    <Button
+                      colorScheme="green"
                       onClick={() => handleVerifyKYCAction("approved")}
                       isDisabled={(() => {
                         let kycRecord = kycData;
                         if (Array.isArray(kycData)) {
-                            kycRecord = kycData.find(doc => (doc.technicianId?._id || doc.technicianId) === selectedTechnicianForKYC?._id);
+                          kycRecord = kycData.find(doc => (doc.technicianId?._id || doc.technicianId) === selectedTechnicianForKYC?._id);
                         }
                         return !kycRecord || kycRecord.verificationStatus === 'approved';
                       })()}
@@ -2463,9 +2507,9 @@ function AdminManagement() {
                   </>
                 ) : (
                   <>
-                     <Button 
-                      variant="ghost" 
-                      mr={3} 
+                    <Button
+                      variant="ghost"
+                      mr={3}
                       onClick={() => {
                         setShowRejectionInput(false);
                         setRejectionInput("");
@@ -2473,8 +2517,8 @@ function AdminManagement() {
                     >
                       Cancel Rejection
                     </Button>
-                    <Button 
-                      colorScheme="red" 
+                    <Button
+                      colorScheme="red"
                       onClick={() => handleVerifyKYCAction("rejected")}
                     >
                       Confirm Rejection
@@ -2504,8 +2548,8 @@ function AdminManagement() {
             </AlertDialogBody>
 
             <AlertDialogFooter>
-              <Button 
-                ref={cancelRef} 
+              <Button
+                ref={cancelRef}
                 onClick={closeDeleteDialog}
                 isDisabled={isDeleting}
                 size="sm"
@@ -2530,7 +2574,7 @@ function AdminManagement() {
       </AlertDialog>
       {/* Bank Verification Modal Removed */}
 
-    {/* Details Preview Modal */}
+      {/* Details Preview Modal */}
       <Modal isOpen={isDetailsModalOpen} onClose={closeDetailsModal} size="xl" scrollBehavior="inside">
         <ModalOverlay />
         <ModalContent>
@@ -2540,17 +2584,19 @@ function AdminManagement() {
             {selectedTechnician && (
               <Box>
                 <Flex align="center" mb={6}>
-                  <Avatar 
-                    size="xl" 
-                    name={`${selectedTechnician.firstName} ${selectedTechnician.lastName}`} 
-                    src={selectedTechnician.profileImage} 
+                  <Avatar
+                    size="xl"
+                    name={getTechnicianName(selectedTechnician)}
+                    src={getTechnicianImage(selectedTechnician)}
                     mr={4}
                     border="2px solid"
                     borderColor={customColor}
                   />
                   <Box>
-                    <Heading size="md">{selectedTechnician.firstName} {selectedTechnician.lastName}</Heading>
-                    <Badge colorScheme={selectedTechnician.status === "Active" ? "green" : "red"} mt={1}>
+                    <Heading size="md">
+                      {getTechnicianName(selectedTechnician)}
+                    </Heading>
+                    <Badge colorScheme={selectedTechnician.status === "Active" || selectedTechnician.status === "approved" ? "green" : "red"} mt={1}>
                       {selectedTechnician.status}
                     </Badge>
                   </Box>
@@ -2559,15 +2605,39 @@ function AdminManagement() {
                 <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                   <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
                     <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Contact Info</Text>
-                    <Text mb={2}><strong>Mobile:</strong> {selectedTechnician.mobileNumber}</Text>
-                    <Text><strong>Gender:</strong> {selectedTechnician.gender || "N/A"}</Text>
+                    <Text mb={2}>
+                      <strong>Mobile:</strong>{" "}
+                      {selectedTechnician.mobileNumber ||
+                        selectedTechnician.phone ||
+                        selectedTechnician.userId?.mobileNumber ||
+                        selectedTechnician.userId?.phone ||
+                        selectedTechnician.profile?.mobileNumber ||
+                        "N/A"}
+                    </Text>
+                    <Text mb={2}>
+                      <strong>Gender:</strong>{" "}
+                      {selectedTechnician.gender ||
+                        selectedTechnician.userId?.gender ||
+                        selectedTechnician.profile?.gender ||
+                        "N/A"}
+                    </Text>
+                    <Text>
+                      <strong>Last Login:</strong>{" "}
+                      {(() => {
+                        const dateVal = selectedTechnician.lastLoginAt ||
+                          selectedTechnician.lastLogin ||
+                          selectedTechnician.userId?.lastLoginAt ||
+                          selectedTechnician.userId?.lastLogin;
+                        return dateVal ? new Date(dateVal).toLocaleString() : "N/A";
+                      })()}
+                    </Text>
                   </Box>
 
                   <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
                     <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Professional Info</Text>
-                    <Text mb={2}><strong>Experience:</strong> {selectedTechnician.experienceYears} Years</Text>
-                    <Text mb={2}><strong>Specialization:</strong> {selectedTechnician.specialization || "N/A"}</Text>
-                    <Text mb={2}><strong>Total Jobs:</strong> {selectedTechnician.totalJobsCompleted}</Text>
+                    <Text mb={2}><strong>Experience:</strong> {selectedTechnician.experienceYears || selectedTechnician.profile?.experienceYears || "0"} Years</Text>
+                    <Text mb={2}><strong>Specialization:</strong> {selectedTechnician.specialization || selectedTechnician.profile?.specialization || "N/A"}</Text>
+                    <Text mb={2}><strong>Total Jobs:</strong> {selectedTechnician.totalJobsCompleted || selectedTechnician.jobStats?.completed || 0}</Text>
                     <Text mb={2}>
                       <strong>Training:</strong>{" "}
                       <Badge colorScheme={selectedTechnician.trainingCompleted ? "green" : "orange"}>
@@ -2577,14 +2647,14 @@ function AdminManagement() {
                     <Text>
                       <strong>KYC Status:</strong>{" "}
                       {(() => {
-                        const kycMatch = allKycRecords.find(k => 
+                        const kycMatch = allKycRecords.find(k =>
                           (k.technicianId?._id || k.technicianId) === selectedTechnician._id
                         );
                         const status = kycMatch?.status?.toLowerCase() || kycMatch?.verificationStatus?.toLowerCase();
-                        
+
                         let badgeColor = "gray";
                         let statusText = "Not Uploaded";
-                        
+
                         if (status === "approved" || status === "verified") {
                           badgeColor = "green";
                           statusText = "Verified";
@@ -2595,7 +2665,7 @@ function AdminManagement() {
                           badgeColor = "orange";
                           statusText = "Pending";
                         }
-                        
+
                         return (
                           <Badge colorScheme={badgeColor} borderRadius="full" px={2}>
                             {statusText}
@@ -2607,55 +2677,57 @@ function AdminManagement() {
 
                   <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
                     <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Address</Text>
-                    <Text mb={1}>{selectedTechnician.address}</Text>
-                    <Text mb={1}>{selectedTechnician.locality}, {selectedTechnician.city}</Text>
-                    <Text>{selectedTechnician.state} - {selectedTechnician.pincode}</Text>
+                    <Text mb={1}>{selectedTechnician.address || "N/A"}</Text>
+                    <Text mb={1}>
+                      {selectedTechnician.locality || "N/A"}, {selectedTechnician.city || selectedTechnician.profile?.city || "N/A"}
+                    </Text>
+                    <Text>{selectedTechnician.state || "N/A"} - {selectedTechnician.pincode || "N/A"}</Text>
                   </Box>
 
-                   <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
-                     <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">StatUs</Text>
-                     <Text mb={2}><strong>Rating:</strong> {selectedTechnician.rating?.avg} ({selectedTechnician.rating?.count} reviews)</Text>
-                     <Text mb={2}><strong>Wallet Balance:</strong> ₹{selectedTechnician.walletBalance}</Text>
-                     <Text><strong>Work Status:</strong> {selectedTechnician.workStatus}</Text>
-                   </Box>
- 
-                   <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
-                     <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Bank Details</Text>
-                     {(() => {
-                         const kycMatch = allKycRecords.find(k => 
-                           (k.technicianId?._id || k.technicianId) === selectedTechnician._id
-                         );
-                         if (!kycMatch || !kycMatch.bankDetails) return <Text color="gray.400">No bank details provided</Text>;
-                         
-                         return (
-                           <Box>
-                             <Text mb={1} fontSize="sm"><strong>Bank:</strong> {kycMatch.bankDetails.bankName || "N/A"}</Text>
-                             <Text mb={1} fontSize="sm"><strong>A/C Holder:</strong> {kycMatch.bankDetails.accountHolderName || "N/A"}</Text>
-                             <Text mb={1} fontSize="sm"><strong>IFSC:</strong> {kycMatch.bankDetails.ifscCode || "N/A"}</Text>
-                             <Text fontSize="sm"><strong>UPI:</strong> {kycMatch.bankDetails.upiId || "N/A"}</Text>
-                           </Box>
-                         );
-                     })()}
-                   </Box>
-                 </SimpleGrid>
+                  <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
+                    <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">StatUs</Text>
+                    <Text mb={2}><strong>Rating:</strong> {selectedTechnician.rating?.avg} ({selectedTechnician.rating?.count} reviews)</Text>
+                    <Text mb={2}><strong>Wallet Balance:</strong> ₹{selectedTechnician.walletBalance}</Text>
+                    <Text><strong>Work Status:</strong> {selectedTechnician.workStatus}</Text>
+                  </Box>
+
+                  <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
+                    <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Bank Details</Text>
+                    {(() => {
+                      const kycMatch = allKycRecords.find(k =>
+                        (k.technicianId?._id || k.technicianId) === selectedTechnician._id
+                      );
+                      if (!kycMatch || !kycMatch.bankDetails) return <Text color="gray.400">No bank details provided</Text>;
+
+                      return (
+                        <Box>
+                          <Text mb={1} fontSize="sm"><strong>Bank:</strong> {kycMatch.bankDetails.bankName || "N/A"}</Text>
+                          <Text mb={1} fontSize="sm"><strong>A/C Holder:</strong> {kycMatch.bankDetails.accountHolderName || "N/A"}</Text>
+                          <Text mb={1} fontSize="sm"><strong>IFSC:</strong> {kycMatch.bankDetails.ifscCode || "N/A"}</Text>
+                          <Text fontSize="sm"><strong>UPI:</strong> {kycMatch.bankDetails.upiId || "N/A"}</Text>
+                        </Box>
+                      );
+                    })()}
+                  </Box>
+                </SimpleGrid>
 
               </Box>
             )}
           </ModalBody>
           <ModalFooter>
-             {selectedTechnician && (
-               <Button
-                 bg={selectedTechnician.trainingCompleted ? "red.500" : "teal.500"}
-                 _hover={{ bg: selectedTechnician.trainingCompleted ? "red.600" : "teal.600" }}
-                 color="white"
-                 mr={3}
-                 onClick={() => handleTrainingCompletion(selectedTechnician, !selectedTechnician.trainingCompleted)}
-                 isLoading={loading}
-                 leftIcon={<FaUserGraduate />}
-               >
-                 {selectedTechnician.trainingCompleted ? "Mark Training as Incomplete" : "Approve Training"}
-               </Button>
-             )}
+            {selectedTechnician && (
+              <Button
+                bg={selectedTechnician.trainingCompleted ? "red.500" : "teal.500"}
+                _hover={{ bg: selectedTechnician.trainingCompleted ? "red.600" : "teal.600" }}
+                color="white"
+                mr={3}
+                onClick={() => handleTrainingCompletion(selectedTechnician, !selectedTechnician.trainingCompleted)}
+                isLoading={loading}
+                leftIcon={<FaUserGraduate />}
+              >
+                {selectedTechnician.trainingCompleted ? "Mark Training as Incomplete" : "Approve Training"}
+              </Button>
+            )}
             <Button colorScheme="blue" mr={3} onClick={closeDetailsModal}>
               Close
             </Button>

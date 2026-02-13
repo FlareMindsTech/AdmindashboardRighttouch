@@ -3,7 +3,7 @@ import axios from "axios";
 
 // --- Configuration ---
 const API_BASE_URL = "https://righttouch-backend-fn9z.onrender.com";
-const BASE_URL = "https://righttouch.onrender.com/api";
+const BASE_URL = "https://fullrighttouch.onrender.com/api";
 const TIMEOUT_MS = 10000;
 // https://righttouch-backend-fn9z.onrender.com"
 // =========================================================
@@ -95,7 +95,7 @@ const getToken = () =>
 // 6. API CALL FUNCTIONS
 // =========================================================
 
-// ----- Admin APIs -----
+
 // ----- Admin APIs -----
 export const getAllTechnicians = async () => {
   try {
@@ -385,46 +385,7 @@ export const updateAdmin = async (adminId, adminData) => {
     throw error;
   }
 };
-export const getAllBookings = async () => {
-  try {
-    const token = getToken();
 
-    const response = await fetch(`https://righttouch-backend-fn9z.onrender.com/api/user/service/booking`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        token: token,
-        "Authorization": `Bearer ${token}`,
-      },
-    });
-
-    console.log("Fetch bookings response status:", response.status);
-
-    if (!response.ok) {
-      let errorMessage = `Error: ${response.status}`;
-      try {
-        const text = await response.text();
-        try {
-          const errorData = JSON.parse(text);
-          errorMessage = errorData.message || errorMessage;
-        } catch (e) {
-          errorMessage = text.substring(0, 100) || errorMessage;
-        }
-      } catch (e) {
-        // Fallback
-      }
-      throw new Error(errorMessage);
-    }
-
-    const data = await response.json();
-    console.log("Fetch bookings response data:", data);
-
-    return data;
-  } catch (error) {
-    console.error("Error fetching bookings:", error);
-    throw error;
-  }
-};
 
 export const getAllProductBookings = async () => {
   try {
@@ -1073,21 +1034,81 @@ export const deleteProducts = async (productId) => {
   }
 };
 
+export const deleteProductImage = async (productId, publicId) => {
+  try {
+    const token = getToken();
+    // Send multiple varied keys to ensure backend captures the ID regardless of expected property name
+    const payload = {
+      productId,
+      public_id: publicId,
+      publicId: publicId,
+      imageId: publicId,
+      id: publicId,
+      url: publicId,
+      imageUrl: publicId
+    };
+
+    console.log("Deleting product image with payload:", payload);
+
+    const response = await fetch(`${BASE_URL}/user/product/remove-image`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        token: token,
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = "Failed to remove product image";
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorJson.error || errorMessage;
+      } catch (e) {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error removing product image:", error);
+    throw error;
+  }
+};
+
 // ----- User APIs -----
 export const getAllUsers = async () => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/users/all`, {
+
+    const response = await fetch(`${BASE_URL}/user/users/Customer`, {
       method: "GET",
-      headers: { "Content-Type": "application/json", token },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
     });
-    if (!response.ok) throw new Error(`Error: ${response.status}`);
-    return await response.json();
+
+    console.log("Fetch user response status:", response.status);
+    // console.log("Fetched user details showing here", response.json());
+
+    if (!response.ok) {
+      throw new Error(`Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log("Fetch user response data:", data);
+
+    return data;
   } catch (error) {
-    console.error("Error fetching users:", error);
+    console.error("Error fetching user:", error);
     throw error;
   }
 };
+
 
 export const createUser = async (userData) => {
   try {
@@ -1245,31 +1266,7 @@ export const uploadProductImages = async (productId, files) => {
   }
 };
 
-// Delete Product Image
-export const deleteProductImage = async (productId, public_id) => {
-  try {
-    const token = getToken();
-    const response = await fetch(`${BASE_URL}/user/product/remove-image`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        token: `${token}`,
-        Authorization: `Bearer ${token}`
-      },
-      body: JSON.stringify({ productId, public_id }),
-    });
 
-    if (!response.ok) {
-      console.warn(`Delete image failed with status: ${response.status}`);
-      // Don't throw if 404/400 (image might be already gone), but let's see
-    }
-    return await response.json();
-  } catch (error) {
-    console.error("Error deleting image:", error);
-    // throw error; // Suppress to avoid breaking the main update flow
-    return { success: false, message: error.message };
-  }
-};
 
 
 
@@ -1349,6 +1346,191 @@ export const UpdatePaymentStatus = async (paymentId) => {
     return data;
   } catch (error) {
     console.error("Error fetching payment status:", error);
+    throw error;
+  }
+};
+
+
+
+
+export const getAllCurrentTechJob = async () => {
+  try {
+    const token = getToken();
+
+    const response = await fetch(
+      `${BASE_URL}/technician/jobs/current`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          token: token,
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    console.log("Technician current job status:", response.status);
+
+    if (!response.ok) {
+      let errorMessage = `Failed to fetch current job: ${response.status}`;
+      try {
+        const text = await response.text();
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // If not JSON, use first 100 chars of text
+          errorMessage = text.substring(0, 100) || errorMessage;
+        }
+      } catch (e) {
+        // Fallback
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    console.log("technician current job data:", data);
+
+    return data;
+  } catch (error) {
+    console.error("Error fetching technician current job:", error);
+    throw error;
+  }
+};
+
+export const getAllWallets = async () => {
+  try {
+    const token = getToken();
+
+    const response = await fetch(
+      `${BASE_URL}/admin/wallet/withdraws`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          token: token,
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    console.log("Admin wallet status:", response.status);
+
+    if (!response.ok) {
+      let errorMessage = `Failed to fetch admin wallet: ${response.status}`;
+      try {
+        const text = await response.text();
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // If not JSON, use first 100 chars of text
+          errorMessage = text.substring(0, 100) || errorMessage;
+        }
+      } catch (e) {
+        // Fallback
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    console.log("Admin wallet data:", data);
+
+    return data;
+  } catch (error) {
+    console.error("Error fetching admin wallet:", error);
+    throw error;
+  }
+};
+
+export const approveWithdrawal = async (withdrawId) => {
+  try {
+    const token = getToken();
+    const response = await fetch(`${BASE_URL}/admin/wallet/withdraw/${withdrawId}/approve`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        token: token,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Error: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Error approving withdrawal:", error);
+    throw error;
+  }
+};
+
+export const rejectWithdrawal = async (withdrawId) => {
+  try {
+    const token = getToken();
+    const response = await fetch(`${BASE_URL}/admin/wallet/withdraw/${withdrawId}/reject`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        token: token,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Error: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Error rejecting withdrawal:", error);
+    throw error;
+  }
+};
+
+
+export const getTotalWalletsDetails = async () => {
+  try {
+    const token = getToken();
+
+    const response = await fetch(
+      `${BASE_URL}/admin/wallet`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          token: token,
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    console.log("Admin total wallet status:", response.status);
+
+    if (!response.ok) {
+      let errorMessage = `Failed to fetch admin total wallet: ${response.status}`;
+      try {
+        const text = await response.text();
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          // If not JSON, use first 100 chars of text
+          errorMessage = text.substring(0, 100) || errorMessage;
+        }
+      } catch (e) {
+        // Fallback
+      }
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    console.log("Admin total wallet data:", data);
+
+    return data;
+  } catch (error) {
+    console.error("Error fetching admin total wallet:", error);
     throw error;
   }
 };

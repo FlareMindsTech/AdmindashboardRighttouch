@@ -2,14 +2,8 @@ import {
   Box,
   Button,
   Flex,
-  FormControl,
-  FormLabel,
-  Grid,
   Icon,
   Input,
-  InputGroup,
-  InputRightElement,
-  Select,
   SimpleGrid,
   Stat,
   StatLabel,
@@ -23,7 +17,6 @@ import {
   useColorModeValue,
   useToast,
   Heading,
-  Badge,
   Text,
   IconButton,
   Spinner,
@@ -34,31 +27,38 @@ import {
   AlertDialogHeader,
   AlertDialogContent,
   AlertDialogOverlay,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  Badge,
+  Grid,
+  GridItem,
+  VStack,
 } from "@chakra-ui/react";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   FaUsers,
-  FaEdit,
-  FaArrowLeft,
   FaChevronLeft,
   FaChevronRight,
   FaSearch,
-  FaUserPlus,
-  FaEye,
-  FaEyeSlash,
   FaTrash,
+  FaEye,
+  FaWallet,
 } from "react-icons/fa";
 import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
-import { MdAdminPanelSettings, MdPerson } from "react-icons/md";
-import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
 import {
   getAllUsers,
-  updateUser,
-  createUser,
   deleteUser,
+  getAllServiceBooking,
+  getAllCurrentTechJob,
+  getAllTechnicians,
 } from "views/utils/axiosInstance";
 
 // Main User Management Component
@@ -72,12 +72,14 @@ function UserManagement() {
 
   // Custom color theme
   const customColor = "#008080";
-  const customHoverColor = "#5a189a";
+  const customHoverColor = "#008080";
 
   const toast = useToast();
 
   const [userData, setUserData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
+  const [allBookingsState, setAllBookingsState] = useState([]); // Store all bookings separately
+  const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState("");
@@ -89,9 +91,8 @@ function UserManagement() {
   const [showPassword, setShowPassword] = useState(false); // Show password state
   const [showConfirmPassword, setShowConfirmPassword] = useState(false); // Show confirm password state
 
-  // View state - 'list', 'add', 'edit'
+  // View state - 'list'
   const [currentView, setCurrentView] = useState("list");
-  const [editingUser, setEditingUser] = useState(null);
 
   // Delete confirmation dialog state
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -99,17 +100,17 @@ function UserManagement() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const cancelRef = useRef();
 
-  // Form state
-  const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    phone: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-    profileImage: "",
-    role: "user"
-  });
+  // User details modal state
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [selectedUserDetails, setSelectedUserDetails] = useState(null);
+
+  // Technician Allocation Modal State
+  const [isTechModalOpen, setIsTechModalOpen] = useState(false);
+  const [selectedUserForTech, setSelectedUserForTech] = useState(null);
+
+  // User Payment Details Modal State
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedUserForPayment, setSelectedUserForPayment] = useState(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -125,39 +126,18 @@ function UserManagement() {
     displayItems.push({ _id: `empty-${displayItems.length}`, isEmpty: true });
   }
 
-  // Toggle password visibility
-  const handleTogglePassword = () => setShowPassword(!showPassword);
-  const handleToggleConfirmPassword = () => setShowConfirmPassword(!showConfirmPassword);
-
-  const handleAddUser = () => {
-    setFormData({
-      firstName: "",
-      lastName: "",
-      phone: "",
-      email: "",
-      password: "",
-      confirmPassword: "",
-      profileImage: "",
-      role: "user"
-    });
-    setEditingUser(null);
-    setCurrentView("add");
-    setError("");
-    setSuccess("");
-    setShowPassword(false); // Reset password visibility
-    setShowConfirmPassword(false); // Reset confirm password visibility
-  };
-
   // Fetch current user from localStorage
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("user"));
+    const role = storedUser?.role?.toLowerCase();
+
     if (
       !storedUser ||
-      (storedUser.role !== "owner")
+      (role !== "admin" && role !== "super admin" && role !== "owner")
     ) {
       toast({
         title: "Access Denied",
-        description: "Only owner users can access this page.",
+        description: "Only admin, super admin, or owner users can access this page.",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -167,59 +147,205 @@ function UserManagement() {
     setCurrentUser(storedUser);
   }, [toast]);
 
-  // Fetch users from backend
-  useEffect(() => {
-    const fetchUsers = async () => {
-      if (!currentUser) return;
+  // Fetch users from backend - defined as useCallback for reuse
+  const fetchUsers = useCallback(async () => {
+    if (!currentUser) return;
 
-      setLoading(true);
-      setTableLoading(true);
-      setDataLoaded(false);
-      try {
-        const response = await getAllUsers();
-        console.log("Fetched users response:", response);
+    setLoading(true);
+    setTableLoading(true);
+    setDataLoaded(false);
+    try {
+      const [usersResponse, bookingsResponse, techJobsResponse, techniciansResponse] = await Promise.all([
+        getAllUsers(),
+        getAllServiceBooking(),
+        getAllCurrentTechJob().catch((error) => {
+          console.error("Error fetching current tech jobs:", error);
+          return [];
+        }),
+        getAllTechnicians().catch((error) => {
+          console.error("Error fetching technicians:", error);
+          return [];
+        }),
+      ]);
+      console.log("usersResponse", usersResponse);
+      console.log("bookingsResponse", bookingsResponse);
+      console.log("techJobsResponse", techJobsResponse);
+      console.log("techniciansResponse", techniciansResponse);
 
-        // Handle different response formats
-        const users = response.data?.users || response.data || response?.users || response || [];
+      // Handle different response formats (handle direct array or .result/.data/.users)
+      const usersRaw = usersResponse.result || usersResponse.data?.users || usersResponse.data || usersResponse?.users || usersResponse || [];
+      const allBookingsRaw = bookingsResponse.result || bookingsResponse.data?.bookings || bookingsResponse.data || bookingsResponse?.serviceBookings || bookingsResponse || [];
+      const allJobsRaw = techJobsResponse.result || techJobsResponse.data || techJobsResponse || [];
+      const allTechnicians = techniciansResponse.result || techniciansResponse.data || techniciansResponse || [];
 
-        // Sort users in alphabetical order by first name, then last name
-        const sortedUsers = users.sort((a, b) => {
-          const nameA = `${a.firstName || ''} ${a.lastName || ''}`.toLowerCase().trim();
-          const nameB = `${b.firstName || ''} ${b.lastName || ''}`.toLowerCase().trim();
+      // Ensure we have arrays
+      const users = Array.isArray(usersRaw) ? usersRaw : [];
+      const allBookings = Array.isArray(allBookingsRaw) ? allBookingsRaw : [];
+      const allJobs = Array.isArray(allJobsRaw) ? allJobsRaw : [];
+      const techniciansList = Array.isArray(allTechnicians) ? allTechnicians : [];
 
-          // If names are the same, sort by email as fallback
-          if (nameA === nameB) {
-            return (a.email || '').toLowerCase().localeCompare((b.email || '').toLowerCase());
+      setTechnicians(techniciansList);
+      setAllBookingsState(allBookings); // Store raw bookings for modal filtering
+
+      // Sort users in alphabetical order by first name, then last name
+      const sortedUsers = users.sort((a, b) => {
+        const getName = (u) => {
+          if (u.profile && (u.profile.fname || u.profile.lname)) {
+            return `${u.profile.fname || ""} ${u.profile.lname || ""}`.trim();
           }
+          if (u.profile && (u.profile.firstName || u.profile.lastName)) {
+            return `${u.profile.firstName || ""} ${u.profile.lastName || ""}`.trim();
+          }
+          return (u.name || `${u.firstName || ''} ${u.lastName || ''}`).trim();
+        };
 
-          return nameA.localeCompare(nameB);
+        const nameA = getName(a).toLowerCase();
+        const nameB = getName(b).toLowerCase();
+
+        // If names are the same, sort by email/mobile as fallback
+        if (nameA === nameB) {
+          const extraA = (a.email || a.mobileNumber || '').toLowerCase();
+          const extraB = (b.email || b.mobileNumber || '').toLowerCase();
+          return extraA.localeCompare(extraB);
+        }
+
+        return nameA.localeCompare(nameB);
+      });
+
+      // Enrich users with booking data
+      const usersWithDetails = sortedUsers.map(user => {
+        const userId = user._id;
+        const userAuthId = user.userId;
+        const userEmail = user.email;
+
+        const userBookings = allBookings.filter(booking => {
+          const bookingUserId = booking.userId || (booking.user && booking.user._id);
+          const bookingCustomerId = booking.customerId?._id || booking.customerId;
+
+          return (
+            (bookingCustomerId === userId) ||
+            (bookingUserId === userId) ||
+            (userAuthId && bookingUserId === userAuthId) ||
+            (userEmail && booking.user?.email === userEmail)
+          );
         });
 
-        setUserData(sortedUsers);
-        setFilteredData(sortedUsers);
-        setDataLoaded(true);
-      } catch (err) {
-        console.error("Error fetching users:", err);
-        const errorMessage = err.response?.data?.message || err.message || "Failed to load user list.";
-        setError(errorMessage);
-        setDataLoaded(true);
-        toast({
-          title: "Fetch Error",
-          description: errorMessage,
-          status: "error",
-          duration: 3000,
-          isClosable: true,
+        // Find if this user has any current tech job
+        const userJob = allJobs.find(job => {
+          // IDs from user object
+          const currentUserId = user._id;
+          const currentUserAuthId = user.userId;
+          const currentUserEmail = user.email?.toLowerCase();
+
+          // Search criteria in job
+          const jobCustId = job.customer?._id || job.customer;
+          const jobBookingId = job.bookingId || job.booking?._id || job.jobId;
+          const jobBookingUserId = job.booking?.userId || job.booking?.user?._id || job.booking?.user;
+          const jobUserId = job.userId || job.user?._id || job.user;
+
+          // Additional fallbacks for nested service info
+          const serviceCustId = job.service?.customer?._id || job.service?.customer || job.service?.userId;
+          const serviceEmail = job.service?.customer?.email?.toLowerCase() || job.service?.user?.email?.toLowerCase();
+
+          // Check if any booking associated with this user matches the job ID
+          const matchesBooking = userBookings.some(b => b._id === jobBookingId || b.id === jobBookingId);
+
+          const isMatch = (
+            (jobCustId && (jobCustId === currentUserId || jobCustId === currentUserAuthId)) ||
+            (jobBookingUserId && (jobBookingUserId === currentUserId || jobBookingUserId === currentUserAuthId)) ||
+            (jobUserId && (jobUserId === currentUserId || jobUserId === currentUserAuthId)) ||
+            (serviceCustId && (serviceCustId === currentUserId || serviceCustId === currentUserAuthId)) ||
+            (currentUserEmail && (
+              job.customer?.email?.toLowerCase() === currentUserEmail ||
+              job.booking?.user?.email?.toLowerCase() === currentUserEmail ||
+              serviceEmail === currentUserEmail
+            )) ||
+            matchesBooking
+          );
+
+          return isMatch;
         });
-      } finally {
-        setLoading(false);
-        setTableLoading(false);
+
+        // Resolve Technician Name
+        let technicianName = "None";
+        if (userJob) {
+          const techId = typeof userJob.technician === 'object' ? userJob.technician?._id : userJob.technician;
+          const matchedTech = techniciansList.find(t => t._id === techId || t.userId === techId);
+
+          technicianName =
+            (userJob.technician?.name) ||
+            (userJob.technician?.firstName ? `${userJob.technician.firstName} ${userJob.technician.lastName || ''}`.trim() : null) ||
+            (matchedTech?.name) ||
+            (matchedTech?.firstName ? `${matchedTech.firstName} ${matchedTech.lastName || ''}`.trim() : null) ||
+            userJob.technicianName ||
+            "Allocated"; // Fallback if assigned but name not found
+        }
+
+
+        return {
+          ...user,
+          bookingCount: user.jobStats?.service?.total ?? 0, // Use backend provided stats
+          allocatedTechnician: technicianName,
+          bookings: userBookings,
+          hasPayments: userBookings.some(b => b.paymentStatus === 'paid' || b.paymentStatus === 'success')
+        };
+      });
+
+      console.log("Total Appointments/Jobs fetched:", allJobs.length);
+      console.log("Users with technicians found:", usersWithDetails.filter(u => u.allocatedTechnician !== "None"));
+
+      setUserData(usersWithDetails);
+
+      // DEBUG: Log ID samples to find why linking is failing
+      if (usersWithDetails.length > 0) {
+        console.log("Linking Debug - Sample User:", {
+          _id: usersWithDetails[0]._id,
+          userId: usersWithDetails[0].userId,
+          email: usersWithDetails[0].email
+        });
       }
-    };
+      if (allBookings.length > 0) {
+        console.log("Linking Debug - Sample Booking:", {
+          _id: allBookings[0]._id,
+          userId: allBookings[0].userId,
+          user_id: allBookings[0].user?._id,
+          email: allBookings[0].user?.email
+        });
+      }
+      if (allJobs.length > 0) {
+        console.log("Linking Debug - Sample Job:", {
+          jobId: allJobs[0].jobId,
+          custId: allJobs[0].customer?._id || allJobs[0].customer,
+          bookingId: allJobs[0].bookingId || allJobs[0].booking?._id
+        });
+      }
 
+      setFilteredData(usersWithDetails);
+      setDataLoaded(true);
+    } catch (err) {
+      console.error("Error fetching users:", err);
+      const errorMessage = err.response?.data?.message || err.message || "Failed to load user list.";
+      setError(errorMessage);
+      setDataLoaded(true);
+      toast({
+        title: "Fetch Error",
+        description: errorMessage,
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setLoading(false);
+      setTableLoading(false);
+    }
+  }, [currentUser, toast]);
+
+  // Initial fetch
+  useEffect(() => {
     if (currentUser) {
       fetchUsers();
     }
-  }, [currentUser, toast]);
+  }, [currentUser, fetchUsers]);
 
   // Apply filters and search - UPDATED to maintain alphabetical order
   useEffect(() => {
@@ -233,14 +359,14 @@ function UserManagement() {
 
       // Apply role/status filter
       switch (activeFilter) {
-        case "Active":
-          filtered = userData.filter((user) => user.status === "Active");
+        case "technicianAllocation":
+          filtered = userData.filter((user) => user.allocatedTechnician !== "None");
           break;
         case "Inactive":
           filtered = userData.filter((user) => user.status === "Inactive");
           break;
-        case "verified":
-          filtered = userData.filter((user) => user.isVerified === true);
+        case "withBookings":
+          filtered = userData.filter((user) => (user.bookingCount || 0) > 0);
           break;
         default:
           filtered = userData;
@@ -248,20 +374,35 @@ function UserManagement() {
 
       // Apply search filter
       if (searchTerm.trim() !== "") {
-        filtered = filtered.filter(
-          (user) =>
-            `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (user.role && user.role.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (user.status && user.status.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
+        filtered = filtered.filter((user) => {
+          const userName = (
+            (user.profile && (user.profile.fname || user.profile.lname)) ? `${user.profile.fname || ""} ${user.profile.lname || ""}` :
+              (user.profile && (user.profile.firstName || user.profile.lastName)) ? `${user.profile.firstName || ""} ${user.profile.lastName || ""}` :
+                (user.name || `${user.firstName || ""} ${user.lastName || ""}`)
+          ).toLowerCase();
+
+          return (
+            userName.includes(searchTerm.toLowerCase()) ||
+            (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (user.mobileNumber || user.phone || "").toString().toLowerCase().includes(searchTerm.toLowerCase())
+          );
+        });
       }
 
       // Maintain alphabetical order after filtering
       const sortedFilteredData = filtered.sort((a, b) => {
-        const nameA = `${a.firstName || ''} ${a.lastName || ''}`.toLowerCase().trim();
-        const nameB = `${b.firstName || ''} ${b.lastName || ''}`.toLowerCase().trim();
+        const getName = (u) => {
+          if (u.profile && (u.profile.fname || u.profile.lname)) {
+            return `${u.profile.fname || ""} ${u.profile.lname || ""}`.trim();
+          }
+          if (u.profile && (u.profile.firstName || u.profile.lastName)) {
+            return `${u.profile.firstName || ""} ${u.profile.lastName || ""}`.trim();
+          }
+          return (u.name || `${u.firstName || ''} ${u.lastName || ''}`).trim();
+        };
+
+        const nameA = getName(a).toLowerCase();
+        const nameB = getName(b).toLowerCase();
 
         if (nameA === nameB) {
           return (a.email || '').toLowerCase().localeCompare((b.email || '').toLowerCase());
@@ -277,59 +418,91 @@ function UserManagement() {
     return () => clearTimeout(timer);
   }, [activeFilter, userData, dataLoaded, searchTerm]);
 
-  // Handle input change for form
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+  // Delete confirmation dialog state logic handled below
+
+
+  // Get status color with background
+  const getStatusColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case "active":
+        return { color: "white", bg: "#9d4edd" };
+      case "inactive":
+        return { color: "white", bg: "red.500" };
+      case "pending":
+        return { color: "white", bg: "yellow.500" };
+      default:
+        return { color: "white", bg: "#9d4edd" };
+    }
   };
 
-  // Handle search input change
+  // Card click handlers
+  const handleCardClick = (filterType) => {
+    setActiveFilter(filterType);
+  };
+
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
   };
 
-  // Clear search
   const handleClearSearch = () => {
     setSearchTerm("");
   };
 
-  // Handle edit user - show edit form
-  const handleEditUser = (user) => {
-    setFormData({
-      firstName: user.firstName || "",
-      lastName: user.lastName || "",
-      phone: user.phone || "",
-      email: user.email || "",
-      password: "", // Don't pre-fill password for security
-      confirmPassword: "",
-      profileImage: user.profileImage || "",
-      role: user.role || "user"
+  const handleViewDetails = (user) => {
+    setSelectedUserDetails(user);
+    setIsDetailsModalOpen(true);
+  };
+
+  const handleViewTechnicianAllocation = (user) => {
+    // Determine the user ID to match against bookings
+    const userId = user._id;
+
+    // Filter bookings for this user using customerId
+    const userBookings = allBookingsState.filter(booking => {
+      // Check if customerId is populated object or string ID
+      const customerId = booking.customerId?._id || booking.customerId;
+      return customerId === userId;
     });
-    setEditingUser(user);
-    setCurrentView("edit");
-    setError("");
-    setSuccess("");
-    setShowPassword(false); // Reset password visibility
-    setShowConfirmPassword(false); // Reset confirm password visibility
+
+    setSelectedUserForTech({ ...user, bookings: userBookings });
+    setIsTechModalOpen(true);
   };
 
-  // Handle back to list
-  const handleBackToList = () => {
-    setCurrentView("list");
-    setEditingUser(null);
-    setError("");
-    setSuccess("");
-    setShowPassword(false); // Reset password visibility
-    setShowConfirmPassword(false); // Reset confirm password visibility
+  const handleViewPaymentDetails = (user) => {
+    // Determine the user ID to match against bookings
+    const userId = user._id;
+
+    // Filter bookings for this user using customerId
+    const userBookings = allBookingsState.filter(booking => {
+      const customerId = booking.customerId?._id || booking.customerId;
+      return customerId === userId;
+    });
+
+    // Filter successful payments
+    const successfulBookings = userBookings.filter(b =>
+      (b.paymentStatus === 'paid' || b.paymentStatus === 'success')
+    );
+
+    // Calculate total amount
+    const totalPaidAmount = successfulBookings.reduce((sum, b) => {
+      const amount = parseFloat(b.paidAmount || 0);
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
+
+    setSelectedUserForPayment({
+      user: user,
+      totalBookings: userBookings.length,
+      successfulPaymentsCount: successfulBookings.length,
+      totalPaidAmount: totalPaidAmount
+    });
+    setIsPaymentModalOpen(true);
   };
 
-  // Handle delete user confirmation
   const handleDeleteClick = (user) => {
     setUserToDelete(user);
     setIsDeleteDialogOpen(true);
   };
 
-  // Handle actual user deletion
   const handleConfirmDelete = async () => {
     if (!userToDelete) return;
 
@@ -344,31 +517,6 @@ function UserManagement() {
         duration: 3000,
         isClosable: true,
       });
-
-      // Refresh user list with alphabetical sorting
-      const fetchUsers = async () => {
-        try {
-          const usersResponse = await getAllUsers();
-          const users = usersResponse.data?.users || usersResponse.data || usersResponse?.users || usersResponse || [];
-
-          // Sort users in alphabetical order
-          const sortedUsers = users.sort((a, b) => {
-            const nameA = `${a.firstName || ''} ${a.lastName || ''}`.toLowerCase().trim();
-            const nameB = `${b.firstName || ''} ${b.lastName || ''}`.toLowerCase().trim();
-
-            if (nameA === nameB) {
-              return (a.email || '').toLowerCase().localeCompare((b.email || '').toLowerCase());
-            }
-
-            return nameA.localeCompare(nameB);
-          });
-
-          setUserData(sortedUsers);
-          setFilteredData(sortedUsers);
-        } catch (err) {
-          console.error("Error refreshing users:", err);
-        }
-      };
 
       await fetchUsers();
 
@@ -389,228 +537,9 @@ function UserManagement() {
     }
   };
 
-  // Handle cancel delete
   const handleCancelDelete = () => {
     setIsDeleteDialogOpen(false);
     setUserToDelete(null);
-  };
-
-  // Handle form submit for both add and edit
-  const handleSubmit = async () => {
-    // Frontend validation
-    if (!formData.firstName || !formData.lastName || !formData.email) {
-      return toast({
-        title: "Validation Error",
-        description: "First name, last name, and email are required",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      return toast({
-        title: "Validation Error",
-        description: "Invalid email format",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-
-    // For add user, password is required
-    if (currentView === "add" && !formData.password) {
-      return toast({
-        title: "Validation Error",
-        description: "Password is required for new users",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-
-    // Validate password strength if provided
-    if (formData.password) {
-      const passwordRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$/;
-      if (!passwordRegex.test(formData.password)) {
-        return toast({
-          title: "Validation Error",
-          description:
-            "Password must be at least 8 characters, include uppercase, lowercase, and a number",
-          status: "error",
-          duration: 3000,
-          isClosable: true,
-        });
-      }
-    }
-
-    // Check password confirmation for add user
-    if (currentView === "add" && formData.password !== formData.confirmPassword) {
-      return toast({
-        title: "Validation Error",
-        description: "Passwords do not match",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-
-    setLoading(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      // Prepare data for API with exact structure
-      const userDataToSend = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        phone: formData.phone,
-        email: formData.email,
-        role: formData.role,
-        profileImage: formData.profileImage || "",
-        ...(formData.password && { password: formData.password })
-      };
-
-      let response;
-      let successMessage;
-
-      if (currentView === "edit" && editingUser) {
-        // Update existing user
-        response = await updateUser(editingUser._id, userDataToSend);
-        successMessage = `User ${response.data?.firstName || formData.firstName} updated successfully`;
-      } else {
-        // Create new user
-        response = await createUser(userDataToSend);
-        successMessage = `User ${response.data?.firstName || formData.firstName} created successfully`;
-      }
-
-      console.log("User operation response:", response);
-
-      // Extract user data from response
-      const userResponse = response.data || response;
-
-      toast({
-        title: currentView === "edit" ? "User Updated" : "User Created",
-        description: successMessage,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-
-      // Refresh user list with alphabetical sorting
-      const fetchUsers = async () => {
-        try {
-          const usersResponse = await getAllUsers();
-          const users = usersResponse.data?.users || usersResponse.data || usersResponse?.users || usersResponse || [];
-
-          // Sort users in alphabetical order
-          const sortedUsers = users.sort((a, b) => {
-            const nameA = `${a.firstName || ''} ${a.lastName || ''}`.toLowerCase().trim();
-            const nameB = `${b.firstName || ''} ${b.lastName || ''}`.toLowerCase().trim();
-
-            if (nameA === nameB) {
-              return (a.email || '').toLowerCase().localeCompare((b.email || '').toLowerCase());
-            }
-
-            return nameA.localeCompare(nameB);
-          });
-
-          setUserData(sortedUsers);
-          setFilteredData(sortedUsers);
-        } catch (err) {
-          console.error("Error refreshing users:", err);
-        }
-      };
-
-      await fetchUsers();
-
-      setSuccess(successMessage);
-
-      // Reset form and go back to list
-      setFormData({
-        firstName: "",
-        lastName: "",
-        phone: "",
-        email: "",
-        password: "",
-        confirmPassword: "",
-        profileImage: "",
-        role: "user"
-      });
-      setEditingUser(null);
-      setCurrentView("list");
-
-    } catch (err) {
-      console.error("API Error:", err);
-      const errorMessage =
-        err.response?.data?.message || err.message || "API error. Try again.";
-      setError(errorMessage);
-      toast({
-        title: "Error",
-        description: errorMessage,
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-    setLoading(false);
-  };
-
-  // Auto-hide success/error messages after 3 seconds
-  useEffect(() => {
-    if (success || error) {
-      const timer = setTimeout(() => {
-        setSuccess("");
-        setError("");
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [success, error]);
-
-  // Get status color with background
-  const getStatusColor = (status) => {
-    switch (status?.toLowerCase()) {
-      case "active":
-        return { color: "white", bg: "#9d4edd" };
-      case "inactive":
-        return { color: "white", bg: "red.500" };
-      case "pending":
-        return { color: "white", bg: "yellow.500" };
-      default:
-        return { color: "white", bg: "#9d4edd" };
-    }
-  };
-
-  // Get verification badge
-  const getVerificationBadge = (isVerified) => {
-    if (isVerified) {
-      return { text: "Verified", color: "green" };
-    } else {
-      return { text: "Not Verified", color: "red" };
-    }
-  };
-
-  // Card click handlers
-  const handleCardClick = (filterType) => {
-    setActiveFilter(filterType);
-  };
-
-  // Pagination handlers
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-    }
-  };
-
-  const handlePrevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
-  };
-
-  const handlePageClick = (pageNumber) => {
-    setCurrentPage(pageNumber);
   };
 
   if (!currentUser) {
@@ -621,286 +550,15 @@ function UserManagement() {
     );
   }
 
-  // Render Form View (Add/Edit)
-  if (currentView === "add" || currentView === "edit") {
-    return (
-      <Flex
-        flexDirection="column"
-        pt={{ base: "120px", md: "75px" }}
-        height="100vh"
-        overflow="auto"
-        css={{
-          '&::-webkit-scrollbar': {
-            width: '8px',
-          },
-          '&::-webkit-scrollbar-track': {
-            background: 'transparent',
-            borderRadius: '24px',
-          },
-          '&::-webkit-scrollbar-thumb': {
-            background: 'transparent',
-            borderRadius: '24px',
-            transition: 'background 0.3s ease',
-          },
-          '&:hover::-webkit-scrollbar-thumb': {
-            background: '#cbd5e1',
-          },
-          '&:hover::-webkit-scrollbar-thumb:hover': {
-            background: '#94a3b8',
-          },
-          // For Firefox
-          scrollbarWidth: 'thin',
-          scrollbarColor: 'transparent transparent',
-          '&:hover': {
-            scrollbarColor: '#cbd5e1 transparent',
-          },
-        }}
-      >
-        <Card bg="white" shadow="xl" height="100%" display="flex" flexDirection="column">
-          <CardHeader bg="white" flexShrink={0}>
-            <Flex align="center" mb={4}>
-              <Button
-                variant="ghost"
-                leftIcon={<FaArrowLeft />}
-                onClick={handleBackToList}
-                mr={4}
-                color={customColor}
-                _hover={{ bg: `${customColor}10` }}
-              >
-                {/* Removed "Back to List" text, only icon */}
-              </Button>
-              <Heading size="md" color="gray.700">
-                {currentView === "add" ? "Add New User" : "Edit User"}
-              </Heading>
-            </Flex>
-          </CardHeader>
-          <CardBody bg="white" flex="1" overflow="auto">
-            {/* Success/Error Message Display */}
-            {error && (
-              <Text
-                color="red.500"
-                mb={4}
-                p={3}
-                border="1px"
-                borderColor="red.200"
-                borderRadius="md"
-                bg="red.50"
-              >
-                {error}
-              </Text>
-            )}
-            {success && (
-              <Text
-                color="green.500"
-                mb={4}
-                p={3}
-                border="1px"
-                borderColor="green.200"
-                borderRadius="md"
-                bg="green.50"
-              >
-                {success}
-              </Text>
-            )}
-
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
-              <FormControl isRequired>
-                <FormLabel htmlFor="firstName" color="gray.700">First Name</FormLabel>
-                <Input
-                  id="firstName"
-                  name="firstName"
-                  placeholder="First Name"
-                  onChange={handleInputChange}
-                  value={formData.firstName}
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                  bg="white"
-                />
-              </FormControl>
-
-              <FormControl isRequired>
-                <FormLabel htmlFor="lastName" color="gray.700">Last Name</FormLabel>
-                <Input
-                  id="lastName"
-                  name="lastName"
-                  placeholder="Last Name"
-                  onChange={handleInputChange}
-                  value={formData.lastName}
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                  bg="white"
-                />
-              </FormControl>
-            </SimpleGrid>
-
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
-              <FormControl isRequired>
-                <FormLabel htmlFor="email" color="gray.700">Email</FormLabel>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="Email Address"
-                  onChange={handleInputChange}
-                  value={formData.email}
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                  bg="white"
-                />
-              </FormControl>
-
-              <FormControl>
-                <FormLabel htmlFor="phone" color="gray.700">Phone</FormLabel>
-                <Input
-                  id="phone"
-                  name="phone"
-                  placeholder="Phone Number"
-                  onChange={handleInputChange}
-                  value={formData.phone}
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                  bg="white"
-                />
-              </FormControl>
-            </SimpleGrid>
-
-            <FormControl mb="24px">
-              <FormLabel htmlFor="role" color="gray.700">Role</FormLabel>
-              <Select
-                id="role"
-                name="role"
-                onChange={handleInputChange}
-                value={formData.role}
-                borderColor={`${customColor}50`}
-                _hover={{ borderColor: customColor }}
-                _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                bg="white"
-              >
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
-                <option value="super admin">Super Admin</option>
-              </Select>
-            </FormControl>
-
-            <FormControl mb="24px">
-              <FormLabel htmlFor="profileImage" color="gray.700">Profile Image URL</FormLabel>
-              <Input
-                id="profileImage"
-                name="profileImage"
-                placeholder="Profile Image URL"
-                onChange={handleInputChange}
-                value={formData.profileImage}
-                borderColor={`${customColor}50`}
-                _hover={{ borderColor: customColor }}
-                _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                bg="white"
-              />
-            </FormControl>
-
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
-              <FormControl isRequired={currentView === "add"}>
-                <FormLabel htmlFor="password" color="gray.700">
-                  {currentView === "add" ? "Password *" : "New Password (optional)"}
-                </FormLabel>
-                <InputGroup>
-                  <Input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder={currentView === "add" ? "Password" : "New Password"}
-                    onChange={handleInputChange}
-                    value={formData.password}
-                    borderColor={`${customColor}50`}
-                    _hover={{ borderColor: customColor }}
-                    _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                    bg="white"
-                  />
-                  <InputRightElement>
-                    <IconButton
-                      variant="ghost"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                      icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
-                      onClick={() => setShowPassword(!showPassword)}
-                      color="gray.500"
-                      _hover={{ color: customColor, bg: "transparent" }}
-                      size="sm"
-                    />
-                  </InputRightElement>
-                </InputGroup>
-              </FormControl>
-
-              {currentView === "add" && (
-                <FormControl isRequired>
-                  <FormLabel htmlFor="confirmPassword" color="gray.700">
-                    Confirm Password *
-                  </FormLabel>
-                  <InputGroup>
-                    <Input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type={showConfirmPassword ? "text" : "password"}
-                      placeholder="Confirm Password"
-                      onChange={handleInputChange}
-                      value={formData.confirmPassword}
-                      borderColor={`${customColor}50`}
-                      _hover={{ borderColor: customColor }}
-                      _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                      bg="white"
-                    />
-                    <InputRightElement>
-                      <IconButton
-                        variant="ghost"
-                        aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
-                        icon={showConfirmPassword ? <ViewOffIcon /> : <ViewIcon />}
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        color="gray.500"
-                        _hover={{ color: customColor, bg: "transparent" }}
-                        size="sm"
-                      />
-                    </InputRightElement>
-                  </InputGroup>
-                </FormControl>
-              )}
-            </SimpleGrid>
-
-            <Flex justify="flex-end" mt={6} flexShrink={0}>
-              <Button
-                variant="outline"
-                mr={3}
-                onClick={handleBackToList}
-                border="1px"
-                borderColor="gray.300"
-              >
-                Cancel
-              </Button>
-              <Button
-                bg={customColor}
-                _hover={{ bg: customHoverColor }}
-                color="white"
-                onClick={handleSubmit}
-                isLoading={loading}
-              >
-                {currentView === "add" ? "Create User" : "Update User"}
-              </Button>
-            </Flex>
-          </CardBody>
-        </Card>
-      </Flex>
-    );
-  }
-
   // Render List View with Fixed Layout
   return (
     <>
       <Flex
         flexDirection="column"
-        pt={{ base: "5px", md: "45px" }}
-        height="100vh"
-        overflow="auto"
+        pt={{ base: "140px", md: "75px" }}
+        height={{ base: "auto", lg: "100vh" }}
+        minHeight="100vh"
+        overflowY="auto"
         css={{
           '&::-webkit-scrollbar': {
             width: '8px',
@@ -931,32 +589,10 @@ function UserManagement() {
         {/* Fixed Statistics Cards */}
         <Box mb="24px">
           {/* Horizontal Cards Container */}
-          <Flex
-            direction="row"
-            wrap="wrap"
-            justify="center"
-            gap={{ base: 3, md: 4 }}
-            overflowX="auto"
-            py={2}
-            css={{
-              '&::-webkit-scrollbar': {
-                height: '6px',
-              },
-              '&::-webkit-scrollbar-track': {
-                background: 'transparent',
-              },
-              '&::-webkit-scrollbar-thumb': {
-                background: 'transparent',
-                borderRadius: '3px',
-                transition: 'background 0.3s ease',
-              },
-              '&:hover::-webkit-scrollbar-thumb': {
-                background: '#cbd5e1',
-              },
-              '&:hover::-webkit-scrollbar-thumb:hover': {
-                background: '#94a3b8',
-              },
-            }}
+          <SimpleGrid
+            columns={{ base: 1, sm: 2, lg: 3 }}
+            spacing={{ base: 3, md: 4 }}
+            w="100%"
           >
             {/* Total Users Card */}
             <Card
@@ -969,9 +605,7 @@ function UserManagement() {
               bg="white"
               position="relative"
               overflow="hidden"
-              w={{ base: "32%", md: "30%", lg: "25%" }}
-              minW="100px"
-              flex="1"
+              w="100%"
               _before={{
                 content: '""',
                 position: "absolute",
@@ -994,12 +628,13 @@ function UserManagement() {
             >
               <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
                 <Flex flexDirection="row" align="center" justify="space-between" w="100%">
-                  <Stat me="auto">
+                  <Stat me="2">
                     <StatLabel
                       fontSize={{ base: "sm", md: "md" }}
                       color="gray.600"
                       fontWeight="bold"
                       pb="0px"
+                      lineHeight="1.2"
                     >
                       Total Users
                     </StatLabel>
@@ -1009,7 +644,7 @@ function UserManagement() {
                       </StatNumber>
                     </Flex>
                   </Stat>
-                  <IconBox
+                  <CustomIconBox
                     as="box"
                     h={{ base: "35px", md: "45px" }}
                     w={{ base: "35px", md: "45px" }}
@@ -1022,25 +657,23 @@ function UserManagement() {
                       w={{ base: "18px", md: "24px" }}
                       color="white"
                     />
-                  </IconBox>
+                  </CustomIconBox>
                 </Flex>
               </CardBody>
             </Card>
 
-            {/* Active Users Card */}
+            {/* Technician Allocation Card */}
             <Card
               minH="83px"
               cursor="pointer"
-              onClick={() => handleCardClick("Active")}
-              border={activeFilter === "Active" ? "2px solid" : "1px solid"}
-              borderColor={activeFilter === "Active" ? customColor : `${customColor}30`}
+              onClick={() => handleCardClick("all")}
+              border={activeFilter === "all" ? "2px solid" : "1px solid"}
+              borderColor={activeFilter === "all" ? customColor : `${customColor}30`}
               transition="all 0.2s ease-in-out"
               bg="white"
               position="relative"
               overflow="hidden"
-              w={{ base: "32%", md: "30%", lg: "25%" }}
-              minW="100px"
-              flex="1"
+              w="100%"
               _before={{
                 content: '""',
                 position: "absolute",
@@ -1063,22 +696,26 @@ function UserManagement() {
             >
               <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
                 <Flex flexDirection="row" align="center" justify="space-between" w="100%">
-                  <Stat me="auto">
+                  <Stat me="2">
                     <StatLabel
                       fontSize={{ base: "sm", md: "md" }}
                       color="gray.600"
                       fontWeight="bold"
                       pb="2px"
+                      lineHeight="1.2"
                     >
-                      Active Users
+                      User payment details
                     </StatLabel>
                     <Flex>
                       <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
-                        {userData.filter((a) => a.status === "Active").length}
+                        ₹ {userData.reduce((total, user) => {
+                          const userTotal = user.bookings ? user.bookings.filter(b => b.paymentStatus === 'paid' || b.paymentStatus === 'success').reduce((sum, b) => sum + (parseFloat(b.paidAmount) || 0), 0) : 0;
+                          return total + userTotal;
+                        }, 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </StatNumber>
                     </Flex>
                   </Stat>
-                  <IconBox
+                  <CustomIconBox
                     as="box"
                     h={{ base: "35px", md: "45px" }}
                     w={{ base: "35px", md: "45px" }}
@@ -1094,25 +731,23 @@ function UserManagement() {
                       w={{ base: "18px", md: "24px" }}
                       color="white"
                     />
-                  </IconBox>
+                  </CustomIconBox>
                 </Flex>
               </CardBody>
             </Card>
 
-            {/* Verified Users Card */}
+            {/* Users with Bookings Card */}
             <Card
               minH="83px"
               cursor="pointer"
-              onClick={() => handleCardClick("verified")}
-              border={activeFilter === "verified" ? "2px solid" : "1px solid"}
-              borderColor={activeFilter === "verified" ? customColor : `${customColor}30`}
+              onClick={() => handleCardClick("withBookings")}
+              border={activeFilter === "withBookings" ? "2px solid" : "1px solid"}
+              borderColor={activeFilter === "withBookings" ? customColor : `${customColor}30`}
               transition="all 0.2s ease-in-out"
               bg="white"
               position="relative"
               overflow="hidden"
-              w={{ base: "32%", md: "30%", lg: "25%" }}
-              minW="100px"
-              flex="1"
+              w="100%"
               _before={{
                 content: '""',
                 position: "absolute",
@@ -1135,22 +770,23 @@ function UserManagement() {
             >
               <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
                 <Flex flexDirection="row" align="center" justify="space-between" w="100%">
-                  <Stat me="auto">
+                  <Stat me="2">
                     <StatLabel
                       fontSize={{ base: "sm", md: "md" }}
                       color="gray.600"
                       fontWeight="bold"
                       pb="2px"
+                      lineHeight="1.2"
                     >
-                      Verified Users
+                      Successfull Bookings Details
                     </StatLabel>
                     <Flex>
                       <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
-                        {userData.filter((a) => a.isVerified === true).length}
+                        {userData.filter((u) => (u.bookingCount || 0) > 0).length}
                       </StatNumber>
                     </Flex>
                   </Stat>
-                  <IconBox
+                  <CustomIconBox
                     as="box"
                     h={{ base: "35px", md: "45px" }}
                     w={{ base: "35px", md: "45px" }}
@@ -1161,16 +797,16 @@ function UserManagement() {
                     }}
                   >
                     <Icon
-                      as={MdPerson}
+                      as={IoCheckmarkDoneCircleSharp}
                       h={{ base: "18px", md: "24px" }}
                       w={{ base: "18px", md: "24px" }}
                       color="white"
                     />
-                  </IconBox>
+                  </CustomIconBox>
                 </Flex>
               </CardBody>
             </Card>
-          </Flex>
+          </SimpleGrid>
 
           {/* Success/Error Message Display */}
           {error && (
@@ -1203,9 +839,9 @@ function UserManagement() {
           {/* Active Filter Display */}
           <Flex justify="space-between" align="center" mb={4}>
             <Text fontSize="lg" fontWeight="bold" color={textColor}>
-              {activeFilter === "Active" && "Active Users"}
+              {activeFilter === "technicianAllocation" && "Technician Allocation"}
               {activeFilter === "Inactive" && "Inactive Users"}
-              {activeFilter === "verified" && "Verified Users"}
+              {activeFilter === "withBookings" && "Users with Bookings"}
               {activeFilter === "all" && "All Users"}
             </Text>
             {activeFilter !== "all" && (
@@ -1226,7 +862,7 @@ function UserManagement() {
 
         {/* Table Container - Removed background box */}
         <Box
-          mt={-8}
+          mt={{ base: "0px", md: "-32px" }}
           flex="1"
           display="flex"
           flexDirection="column"
@@ -1262,7 +898,7 @@ function UserManagement() {
                 {/* Search Bar */}
                 <Flex align="center" flex="1" maxW="400px">
                   <Input
-                    placeholder="Search by name, email, phone, or role..."
+                    placeholder="Search by name, email, or phone..."
                     value={searchTerm}
                     onChange={handleSearchChange}
                     size="sm"
@@ -1327,40 +963,42 @@ function UserManagement() {
                         flex="1"
                         display="flex"
                         flexDirection="column"
-                        height="400px" // Fixed height for exactly 5 rows
+                        height="auto"
+                        minH="0"
                         overflow="hidden"
                       >
                         {/* Scrollable Table Area */}
                         <Box
                           flex="1"
-                          overflowY="hidden"
-                          overflowX="hidden"
-                          _hover={{
-                            overflowY: "auto",
-                            overflowX: "auto",
-                          }}
+                          overflowY="auto"
+                          overflowX="auto"
                           css={{
                             '&::-webkit-scrollbar': {
-                              width: '8px',
-                              height: '8px',
+                              width: '4px',
+                              height: '4px',
                             },
                             '&::-webkit-scrollbar-track': {
                               background: 'transparent',
                             },
                             '&::-webkit-scrollbar-thumb': {
-                              background: 'transparent',
-                              borderRadius: '4px',
-                              transition: 'background 0.3s ease',
+                              background: 'rgba(0,0,0,0.1)',
+                              borderRadius: '10px',
+                            },
+                            '@media screen and (max-width: 768px)': {
+                              '&::-webkit-scrollbar': {
+                                width: '2px',
+                                height: '2px',
+                              },
+                              '&::-webkit-scrollbar-thumb': {
+                                background: 'rgba(0,0,0,0.2)',
+                              },
                             },
                             '&:hover::-webkit-scrollbar-thumb': {
-                              background: '#cbd5e1',
-                            },
-                            '&:hover::-webkit-scrollbar-thumb:hover': {
-                              background: '#94a3b8',
+                              background: 'rgba(0,0,0,0.2)',
                             },
                           }}
                         >
-                          <Table variant="simple" size="md" bg="transparent">
+                          <Table variant="simple" size={{ base: "sm", md: "md" }} bg="transparent" minW={{ base: "800px", lg: "100%" }}>
                             {/* Fixed Header */}
                             <Thead>
                               <Tr>
@@ -1407,7 +1045,7 @@ function UserManagement() {
                                   borderBottom="2px solid"
                                   borderBottomColor={`${customColor}50`}
                                 >
-                                  Role
+                                  Bookings
                                 </Th>
                                 <Th
                                   color="gray.100"
@@ -1422,7 +1060,7 @@ function UserManagement() {
                                   borderBottom="2px solid"
                                   borderBottomColor={`${customColor}50`}
                                 >
-                                  Status
+                                  Technician
                                 </Th>
                                 <Th
                                   color="gray.100"
@@ -1460,8 +1098,6 @@ function UserManagement() {
                                   );
                                 }
 
-                                const statusColors = getStatusColor(user.status);
-                                const verification = getVerificationBadge(user.isVerified);
                                 return (
                                   <Tr
                                     key={user._id || index}
@@ -1473,69 +1109,87 @@ function UserManagement() {
                                   >
                                     <Td borderColor={`${customColor}20`}>
                                       <Flex align="center">
-                                        <Avatar
-                                          size="sm"
-                                          name={`${user.firstName} ${user.lastName}`}
-                                          src={user.profileImage}
-                                          mr={3}
-                                        />
-                                        <Box>
-                                          <Text fontWeight="medium">{`${user.firstName} ${user.lastName}`}</Text>
-                                          <Text fontSize="sm" color="gray.600">
-                                            {user.email}
-                                          </Text>
-                                        </Box>
+                                        {(() => {
+                                          let userName = "Unknown User";
+                                          if (user.profile && (user.profile.fname || user.profile.lname)) {
+                                            userName = `${user.profile.fname || ""} ${user.profile.lname || ""}`.trim();
+                                          } else if (user.profile && (user.profile.firstName || user.profile.lastName)) {
+                                            userName = `${user.profile.firstName || ""} ${user.profile.lastName || ""}`.trim();
+                                          } else if (user.name) {
+                                            userName = user.name;
+                                          } else if (user.firstName || user.lastName) {
+                                            userName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+                                          }
+                                          if (!userName) userName = "Unknown User";
+
+                                          return (
+                                            <>
+                                              <Avatar
+                                                size="sm"
+                                                name={userName}
+                                                src={user.profileImage}
+                                                mr={3}
+                                              />
+                                              <Box>
+                                                <Text fontWeight="medium">{userName}</Text>
+                                                <Text fontSize="sm" color="gray.600">
+                                                  {user.email || "No email"}
+                                                </Text>
+                                              </Box>
+                                            </>
+                                          );
+                                        })()}
                                       </Flex>
                                     </Td>
                                     <Td borderColor={`${customColor}20`}>
                                       <Box>
-                                        <Text>{user.email}</Text>
                                         <Text fontSize="sm" color="gray.600">
-                                          {user.phone || "No phone"}
+                                          {user.mobileNumber || user.phone || "No contact"}
                                         </Text>
                                       </Box>
                                     </Td>
                                     <Td borderColor={`${customColor}20`}>
-                                      <Badge
-                                        colorScheme={
-                                          user.role === "super admin" ? "purple" :
-                                            user.role === "admin" ? "blue" : "gray"
-                                        }
-                                        px={3}
-                                        py={1}
-                                        borderRadius="full"
-                                        fontSize="sm"
-                                        fontWeight="bold"
-                                      >
-                                        {user.role || "user"}
-                                      </Badge>
+                                      <Text fontWeight="bold">
+                                        {user.bookingCount}
+                                      </Text>
                                     </Td>
                                     <Td borderColor={`${customColor}20`}>
-                                      <Badge
-                                        bg={statusColors.bg}
-                                        color={statusColors.color}
-                                        px={3}
-                                        py={1}
-                                        borderRadius="full"
-                                        fontSize="sm"
-                                        fontWeight="bold"
-                                      >
-                                        {user.status || "Active"}
-                                      </Badge>
+                                      <IconButton
+                                        aria-label="View Technician Allocation"
+                                        icon={<FaEye />}
+                                        bg="white"
+                                        color="green.500"
+                                        border="1px"
+                                        borderColor="green.500"
+                                        _hover={{ bg: "green.500", color: "white" }}
+                                        size="sm"
+                                        onClick={() => handleViewTechnicianAllocation(user)}
+                                      />
                                     </Td>
                                     <Td borderColor={`${customColor}20`}>
                                       <Flex gap={2}>
-                                        {/* <IconButton
-                                          aria-label="Edit user"
-                                          icon={<FaEdit />}
+                                        <IconButton
+                                          aria-label="View Payment Details"
+                                          icon={<FaWallet />}
+                                          bg="white"
+                                          color="orange.500"
+                                          border="1px"
+                                          borderColor="orange.500"
+                                          _hover={{ bg: "orange.500", color: "white" }}
+                                          size="sm"
+                                          onClick={() => handleViewPaymentDetails(user)}
+                                        />
+                                        <IconButton
+                                          aria-label="View user details"
+                                          icon={<FaEye />}
                                           bg="white"
                                           color={customColor}
                                           border="1px"
                                           borderColor={customColor}
                                           _hover={{ bg: customColor, color: "white" }}
                                           size="sm"
-                                          onClick={() => handleEditUser(user)}
-                                        /> */}
+                                          onClick={() => handleViewDetails(user)}
+                                        />
                                         <IconButton
                                           aria-label="Delete user"
                                           icon={<FaTrash />}
@@ -1558,7 +1212,7 @@ function UserManagement() {
                       </Box>
 
                       {/* Pagination Bar - Positioned at bottom right corner */}
-                      {currentItems.length > 0 && (
+                      {filteredData.length > 0 && (
                         <Box
                           flexShrink={0}
                           p="16px"
@@ -1567,20 +1221,18 @@ function UserManagement() {
                           bg="transparent"
                         >
                           <Flex
-                            justify="flex-end" // Align to the right
+                            justify="flex-end"
                             align="center"
                             gap={3}
                           >
-                            {/* Page Info */}
                             <Text fontSize="sm" color="gray.600" display={{ base: "none", sm: "block" }}>
                               Showing {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, filteredData.length)} of {filteredData.length} users
                             </Text>
 
-                            {/* Pagination Controls */}
                             <Flex align="center" gap={2}>
                               <Button
                                 size="sm"
-                                onClick={handlePrevPage}
+                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                                 isDisabled={currentPage === 1}
                                 leftIcon={<FaChevronLeft />}
                                 bg="white"
@@ -1588,18 +1240,10 @@ function UserManagement() {
                                 border="1px"
                                 borderColor={customColor}
                                 _hover={{ bg: customColor, color: "white" }}
-                                _disabled={{
-                                  opacity: 0.5,
-                                  cursor: "not-allowed",
-                                  bg: "gray.100",
-                                  color: "gray.400",
-                                  borderColor: "gray.300"
-                                }}
                               >
                                 <Text display={{ base: "none", sm: "block" }}>Previous</Text>
                               </Button>
 
-                              {/* Page Number Display */}
                               <Flex
                                 align="center"
                                 gap={2}
@@ -1623,7 +1267,7 @@ function UserManagement() {
 
                               <Button
                                 size="sm"
-                                onClick={handleNextPage}
+                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                                 isDisabled={currentPage === totalPages}
                                 rightIcon={<FaChevronRight />}
                                 bg="white"
@@ -1631,13 +1275,6 @@ function UserManagement() {
                                 border="1px"
                                 borderColor={customColor}
                                 _hover={{ bg: customColor, color: "white" }}
-                                _disabled={{
-                                  opacity: 0.5,
-                                  cursor: "not-allowed",
-                                  bg: "gray.100",
-                                  color: "gray.400",
-                                  borderColor: "gray.300"
-                                }}
                               >
                                 <Text display={{ base: "none", sm: "block" }}>Next</Text>
                               </Button>
@@ -1714,12 +1351,252 @@ function UserManagement() {
           </AlertDialogContent>
         </AlertDialogOverlay>
       </AlertDialog>
+
+      {/* User Details Modal */}
+      <Modal isOpen={isDetailsModalOpen} onClose={() => setIsDetailsModalOpen(false)} size="xl">
+        <ModalOverlay backdropFilter="blur(5px)" />
+        <ModalContent borderRadius="15px" shadow="2xl">
+          <ModalHeader borderBottom="1px solid" borderColor="gray.100" py={4}>
+            <Flex align="center">
+              <Avatar
+                size="md"
+                name={selectedUserDetails ? (selectedUserDetails.profile?.firstName ? `${selectedUserDetails.profile.firstName} ${selectedUserDetails.profile.lastName || ''}` : selectedUserDetails.name || 'User Details') : 'User Details'}
+                src={selectedUserDetails?.profileImage}
+                mr={4}
+              />
+              <Box>
+                <Text fontSize="lg" fontWeight="bold">
+                  {selectedUserDetails ? (selectedUserDetails.profile?.firstName ? `${selectedUserDetails.profile.firstName} ${selectedUserDetails.profile.lastName || ''}`.trim() : selectedUserDetails.name || 'Unknown User') : 'User Details'}
+                </Text>
+                <Badge colorScheme="teal" borderRadius="full" px={2} fontSize="xs">
+                  {selectedUserDetails?.status || 'Active'}
+                </Badge>
+              </Box>
+            </Flex>
+          </ModalHeader>
+          <ModalCloseButton />
+
+          <ModalBody py={6}>
+            {selectedUserDetails && (
+              <VStack align="stretch" spacing={6}>
+                {/* Basic Information */}
+                <Box>
+                  <Heading size="xs" textTransform="uppercase" color="gray.500" mb={3} letterSpacing="wider">
+                    Contact Information
+                  </Heading>
+                  <Grid templateColumns="repeat(2, 1fr)" gap={4}>
+                    <GridItem>
+                      <Text fontSize="sm" color="gray.500">Email Address</Text>
+                      <Text fontWeight="medium">{selectedUserDetails.email || 'N/A'}</Text>
+                    </GridItem>
+                    <GridItem>
+                      <Text fontSize="sm" color="gray.500">Phone Number</Text>
+                      <Text fontWeight="medium">{selectedUserDetails.mobileNumber || selectedUserDetails.phone || 'N/A'}</Text>
+                    </GridItem>
+                  </Grid>
+                </Box>
+
+                {/* Job Stats - The part the user requested */}
+                <Box bg={`${customColor}05`} p={4} borderRadius="12px" border="1px solid" borderColor={`${customColor}10`}>
+                  <Heading size="xs" textTransform="uppercase" color={customColor} mb={4} letterSpacing="wider">
+                    Booking Statistics (jobStats)
+                  </Heading>
+                  <SimpleGrid columns={2} spacing={4}>
+                    {/* Service Stats */}
+                    <Box p={3} bg="white" borderRadius="8px" shadow="sm">
+                      <Text fontSize="sm" fontWeight="bold" color="gray.600" mb={2}>Service Bookings</Text>
+                      <Flex justify="space-between" mb={1}>
+                        <Text fontSize="xs" color="gray.500">Total</Text>
+                        <Text fontSize="xs" fontWeight="bold">{selectedUserDetails.jobStats?.service?.total || 0}</Text>
+                      </Flex>
+                      <Flex justify="space-between" mb={1}>
+                        <Text fontSize="xs" color="gray.500">Completed</Text>
+                        <Text fontSize="xs" fontWeight="bold" color="green.500">{selectedUserDetails.jobStats?.service?.completed || 0}</Text>
+                      </Flex>
+                      <Flex justify="space-between">
+                        <Text fontSize="xs" color="gray.500">Cancelled</Text>
+                        <Text fontSize="xs" fontWeight="bold" color="red.500">{selectedUserDetails.jobStats?.service?.cancelled || 0}</Text>
+                      </Flex>
+                    </Box>
+
+                    {/* Product Stats */}
+                    <Box p={3} bg="white" borderRadius="8px" shadow="sm">
+                      <Text fontSize="sm" fontWeight="bold" color="gray.600" mb={2}>Product Orders</Text>
+                      <Flex justify="space-between" mb={1}>
+                        <Text fontSize="xs" color="gray.500">Total</Text>
+                        <Text fontSize="xs" fontWeight="bold">{selectedUserDetails.jobStats?.product?.total || 0}</Text>
+                      </Flex>
+                      {/* Add more product stats if available in the future */}
+                    </Box>
+                  </SimpleGrid>
+                </Box>
+
+                {/* Account Details */}
+                <Box>
+                  <Heading size="xs" textTransform="uppercase" color="gray.500" mb={3} letterSpacing="wider">
+                    Account Details
+                  </Heading>
+                  <Grid templateColumns="repeat(2, 1fr)" gap={4}>
+                    <GridItem>
+                      <Text fontSize="sm" color="gray.500">Joined Date</Text>
+                      <Text fontWeight="medium">
+                        {selectedUserDetails.createdAt ? new Date(selectedUserDetails.createdAt).toLocaleDateString() : 'N/A'}
+                      </Text>
+                    </GridItem>
+                    <GridItem>
+                      <Text fontSize="sm" color="gray.500">Last Login</Text>
+                      <Text fontWeight="medium">
+                        {selectedUserDetails.lastLoginAt ? new Date(selectedUserDetails.lastLoginAt).toLocaleString() : 'N/A'}
+                      </Text>
+                    </GridItem>
+                  </Grid>
+                </Box>
+              </VStack>
+            )}
+          </ModalBody>
+
+          <ModalFooter borderTop="1px solid" borderColor="gray.100">
+            <Button colorScheme="teal" mr={3} onClick={() => setIsDetailsModalOpen(false)}>
+              Close
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Technician Allocation Modal */}
+      <Modal isOpen={isTechModalOpen} onClose={() => setIsTechModalOpen(false)} size="xl">
+        <ModalOverlay backdropFilter="blur(5px)" />
+        <ModalContent borderRadius="15px" shadow="2xl">
+          <ModalHeader borderBottom="1px solid" borderColor="gray.100" py={4}>
+            <Text fontSize="lg" fontWeight="bold">Technician Allocation Details</Text>
+          </ModalHeader>
+          <ModalCloseButton />
+
+          <ModalBody py={6} maxH="70vh" overflowY="auto">
+            {selectedUserForTech && selectedUserForTech.bookings && selectedUserForTech.bookings.length > 0 ? (
+              <VStack spacing={4} align="stretch">
+                {selectedUserForTech.bookings.map((booking, idx) => (
+                  <Box key={idx} p={4} borderRadius="lg" border="1px solid" borderColor="gray.200" shadow="sm" bg="gray.50">
+                    <Heading size="xs" textTransform="uppercase" color="gray.500" mb={3}>
+                      Booking #{idx + 1}
+                    </Heading>
+
+                    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                      {/* Technician Details */}
+                      <Box>
+                        <Text fontSize="xs" fontWeight="bold" color="teal.500" mb={1} textTransform="uppercase">Technician Details</Text>
+                        {booking.technicianId ? (
+                          <>
+                            <Text fontSize="sm"><strong>Name:</strong> {booking.technicianId.userId?.fname} {booking.technicianId.userId?.lname}</Text>
+                            <Text fontSize="sm"><strong>Mobile:</strong> {booking.technicianId.userId?.mobileNumber || "N/A"}</Text>
+                            <Text fontSize="sm"><strong>Status:</strong> {booking.technicianId.workStatus || "N/A"}</Text>
+                            <Text fontSize="sm"><strong>Assigned At:</strong> {booking.assignedAt ? new Date(booking.assignedAt).toLocaleString() : "N/A"}</Text>
+                          </>
+                        ) : (
+                          <Text fontSize="sm" color="red.500" fontStyle="italic">No technician has been allocated for this booking.</Text>
+                        )}
+                      </Box>
+
+                      {/* Service & Booking Details */}
+                      <Box>
+                        <Text fontSize="xs" fontWeight="bold" color="blue.500" mb={1} textTransform="uppercase">Service & Booking</Text>
+                        <Text fontSize="sm"><strong>Service:</strong> {booking.serviceId?.serviceName || "N/A"}</Text>
+                        <Text fontSize="sm"><strong>Type:</strong> {booking.serviceId?.serviceType || "N/A"}</Text>
+                        <Text fontSize="sm"><strong>Cost:</strong> ₹{booking.serviceId?.serviceCost || 0}</Text>
+                        <Text fontSize="sm" mt={1}><strong>Booking Status:</strong> <Badge colorScheme={booking.status === 'completed' ? 'green' : booking.status === 'cancelled' ? 'red' : 'yellow'}>{booking.status}</Badge></Text>
+                      </Box>
+                    </SimpleGrid>
+                  </Box>
+                ))}
+              </VStack>
+            ) : (
+              <Flex justify="center" align="center" minH="100px">
+                <Text color="gray.500">No bookings found for this user.</Text>
+              </Flex>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button colorScheme="teal" onClick={() => setIsTechModalOpen(false)}>Close</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Payment Details Modal */}
+      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} size="lg">
+        <ModalOverlay backdropFilter="blur(5px)" />
+        <ModalContent borderRadius="15px" shadow="2xl">
+          <ModalHeader borderBottom="1px solid" borderColor="gray.100" py={4} bg="gray.50" borderTopRadius="15px">
+            <Flex align="center">
+              <Icon as={FaWallet} color="orange.500" mr={3} w={6} h={6} />
+              <Text fontSize="lg" fontWeight="bold">User Payment Summary</Text>
+            </Flex>
+          </ModalHeader>
+          <ModalCloseButton />
+
+          <ModalBody py={6}>
+            {selectedUserForPayment ? (
+              <VStack spacing={0} align="stretch" border="1px solid" borderColor="gray.200" borderRadius="lg" overflow="hidden">
+                <Box bg="gray.50" p={2} borderBottom="1px solid" borderColor="gray.200">
+                  <Text fontSize="xs" fontWeight="bold" textTransform="uppercase" color="gray.500" letterSpacing="wider">User Details</Text>
+                </Box>
+                <Flex p={4} borderBottom="1px solid" borderColor="gray.100" justify="space-between" align="center">
+                  <Text color="gray.600" fontSize="sm">User Name</Text>
+                  <Text fontWeight="bold">
+                    {(() => {
+                      const u = selectedUserForPayment.user;
+                      if (u.profile && (u.profile.fname || u.profile.lname)) return `${u.profile.fname || ""} ${u.profile.lname || ""}`.trim();
+                      if (u.profile && (u.profile.firstName || u.profile.lastName)) return `${u.profile.firstName || ""} ${u.profile.lastName || ""}`.trim();
+                      return (u.name || `${u.firstName || ''} ${u.lastName || ''}`).trim() || "Unknown";
+                    })()}
+                  </Text>
+                </Flex>
+                <Flex p={4} borderBottom="1px solid" borderColor="gray.100" justify="space-between" align="center">
+                  <Text color="gray.600" fontSize="sm">Mobile Number</Text>
+                  <Text fontWeight="bold">{selectedUserForPayment.user.mobileNumber || selectedUserForPayment.user.phone || "N/A"}</Text>
+                </Flex>
+
+                <Box bg="gray.50" p={2} borderBottom="1px solid" borderColor="gray.200" mt={2}>
+                  <Text fontSize="xs" fontWeight="bold" textTransform="uppercase" color="gray.500" letterSpacing="wider">Payment Stats</Text>
+                </Box>
+                <Flex p={4} borderBottom="1px solid" borderColor="gray.100" justify="space-between" align="center">
+                  <Text color="gray.600" fontSize="sm">Total Bookings</Text>
+                  <Text fontWeight="bold">{selectedUserForPayment.totalBookings}</Text>
+                </Flex>
+                <Flex p={4} borderBottom="1px solid" borderColor="gray.100" justify="space-between" align="center">
+                  <Text color="gray.600" fontSize="sm">Successful Paid</Text>
+                  <Badge colorScheme={selectedUserForPayment.successfulPaymentsCount > 0 ? "green" : "gray"}>
+                    {selectedUserForPayment.successfulPaymentsCount}
+                  </Badge>
+                </Flex>
+
+                <Box bg="teal.50" p={4}>
+                  <Flex justify="space-between" align="center">
+                    <Text color="teal.700" fontWeight="bold">Total Amount Paid</Text>
+                    <Text fontSize="xl" fontWeight="extrabold" color="teal.600">
+                      ₹ {selectedUserForPayment.totalPaidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </Text>
+                  </Flex>
+                </Box>
+
+                {selectedUserForPayment.successfulPaymentsCount === 0 && (
+                  <Box p={3} bg="red.50" borderTop="1px solid" borderColor="red.100">
+                    <Text fontSize="sm" color="red.500" textAlign="center">No successful payments found for this user.</Text>
+                  </Box>
+                )}
+              </VStack>
+            ) : null}
+          </ModalBody>
+          <ModalFooter>
+            <Button colorScheme="teal" onClick={() => setIsPaymentModalOpen(false)}>Close</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </>
   );
 }
 
 // Custom IconBox component
-function IconBox({ children, ...rest }) {
+function CustomIconBox({ children, ...rest }) {
   return (
     <Box
       display="flex"

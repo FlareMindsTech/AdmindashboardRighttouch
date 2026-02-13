@@ -64,7 +64,7 @@ import { FiMoreVertical, FiEye, FiDownload, FiUser, FiCalendar, FiTruck } from "
 import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdCategory } from "react-icons/md";
 
-import { UpdatePaymentStatus, getAllServiceBooking, getAllOrders, updateOrders } from "../utils/axiosInstance";
+import { UpdatePaymentStatus, getAllServiceBooking, updateOrders, getAllUsers, getAllWallets, approveWithdrawal, rejectWithdrawal, getTotalWalletsDetails, getTechnicianById } from "../utils/axiosInstance";
 
 // Lightweight presentational Card components so this file is self-contained.
 const Card = ({ children, ...props }) => <Box borderRadius="12px" p={0} {...props}>{children}</Box>;
@@ -194,23 +194,45 @@ export default function CleanedBilling() {
     }
   });
 
-  const [orders, setOrders] = useState([]);
+  const [wallets, setWallets] = useState([]);
+  const [walletDetails, setWalletDetails] = useState({
+    totalCollected: 0,
+    totalCommission: 0,
+    availableBalance: 0
+  });
+  const [technicianMap, setTechnicianMap] = useState({}); // Cache for technician details
   const [serviceBookings, setServiceBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState(null);
 
   const payments = useMemo(() => {
     const list = [];
-    (orders || []).forEach((o) => {
-      const p = safeGet(o, "payment", null) || safeGet(o, "payment_response", null) || safeGet(o, "paymentResponse", null);
-      if (p && typeof p === "object") {
-        list.push({ ...p, orderId: safeGet(o, "_id", null), orderRef: o });
+
+    // Include Paid Service Bookings in Payments Table
+    (serviceBookings || []).forEach((s) => {
+      const status = (safeGet(s, "paymentStatus", "") || "").toString().toLowerCase();
+      if (status === "paid" || status === "success") {
+        const pObj = safeGet(s, "payment", {}) || {};
+        list.push({
+          _id: safeGet(s, "paymentId") || safeGet(s, "payment._id") || safeGet(s, "razorpayPaymentId") || `SB-${safeGet(s, "_id")}`,
+          razorpayOrderId: safeGet(s, "razorpayOrderId") || safeGet(pObj, "razorpayOrderId") || "N/A",
+          orderId: safeGet(s, "_id", "UNKNOWN"), // Use Booking ID
+          amount: safeGet(s, "baseAmount", 0),
+          method: safeGet(s, "paymentMethod", safeGet(pObj, "method", "Online")),
+          status: status,
+          createdAt: safeGet(s, "createdAt", safeGet(s, "scheduledAt", Date.now())),
+          orderRef: s,
+          isService: true
+        });
       }
     });
-    return list;
-  }, [orders]);
 
-  const [currentView, setCurrentView] = useState("orders");
+    return list;
+  }, [serviceBookings]);
+
+  const [users, setUsers] = useState([]); // Add users state
+
+  const [currentView, setCurrentView] = useState("services");
   const [filteredData, setFilteredData] = useState([]);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -228,7 +250,9 @@ export default function CleanedBilling() {
   const [itemsPerPage, setItemsPerPage] = useState(5);
 
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedBooking, setSelectedBooking] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
 
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -255,28 +279,8 @@ export default function CleanedBilling() {
   }, []);
 
   // Fetching orders
-  const fetchOrders = useCallback(async () => {
-    setIsLoading(true);
-    setFetchError(null);
-    try {
-      const res = await getAllOrders();
-      if (Array.isArray(res)) setOrders(res);
-      else if (res && Array.isArray(res.orders)) setOrders(res.orders);
-      else if (res && Array.isArray(res.data)) setOrders(res.data);
-      else {
-        const maybeArray = Object.values(res || {}).find((v) => Array.isArray(v));
-        if (Array.isArray(maybeArray)) setOrders(maybeArray);
-        else setOrders([]);
-      }
-    } catch (err) {
-      console.error("Error fetching orders:", err);
-      setFetchError(err?.message || "Unknown error");
-      toast({ title: "Failed to load orders", description: err?.message || "See console", status: "error", duration: 4000, isClosable: true });
-      setOrders([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
+  // Fetching orders removed
+
 
   const fetchServiceBookings = useCallback(async () => {
     setIsLoading(true);
@@ -297,45 +301,136 @@ export default function CleanedBilling() {
     }
   }, [toast]);
 
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await getAllUsers();
+      // Handle different response formats similar to UserManagement.js
+      const usersRaw = res.result || res.data?.users || res.data || res?.users || res || [];
+      setUsers(Array.isArray(usersRaw) ? usersRaw : []);
+    } catch (err) {
+      console.error("Error fetching users:", err);
+    }
+  }, []);
+
+
+  const fetchWallets = useCallback(async () => {
+    try {
+      const res = await getAllWallets();
+      console.log("Wallets fetched:", res);
+      const walletList = Array.isArray(res) ? res : (res.data || res.result || res.wallets || []);
+      setWallets(Array.isArray(walletList) ? walletList : []);
+    } catch (err) {
+      console.error("Error fetching wallets:", err);
+      toast({ status: "error", title: "Wallet Fetch Error", description: err.message });
+    }
+  }, [toast]);
+
+  // Fetch technician details for wallets
   useEffect(() => {
-    fetchOrders();
+    const fetchTechnicianDetails = async () => {
+      if (!wallets || wallets.length === 0) return;
+
+      const uniqueTechIds = [...new Set(wallets.map(w => w.technicianId?._id || w.technicianProfileId || w.providerId?._id || w.providerId).filter(id => id && typeof id === 'string'))];
+
+      const newIdsToFetch = uniqueTechIds.filter(id => !technicianMap[id]);
+
+      if (newIdsToFetch.length === 0) return;
+
+      // Update map with loading placeholders (optional, or just fetch directly)
+      // setTechnicianMap(prev => { ...prev, ...Object.fromEntries(newIdsToFetch.map(id => [id, { loading: true }])) });
+
+      try {
+        const results = await Promise.allSettled(
+          newIdsToFetch.map(async (id) => {
+            try {
+              const data = await getTechnicianById(id);
+              // Handle different response structures: result, data, or direct object
+              const tech = data.result || data.data || data;
+              return { id, tech };
+            } catch (e) {
+              console.error(`Failed to fetch technician ${id}`, e);
+              return { id, error: true };
+            }
+          })
+        );
+
+        setTechnicianMap(prev => {
+          const newMap = { ...prev };
+          results.forEach(res => {
+            if (res.status === 'fulfilled' && res.value && !res.value.error) {
+              newMap[res.value.id] = res.value.tech;
+            }
+          });
+          return newMap;
+        });
+
+      } catch (error) {
+        console.error("Error fetching technician details batch:", error);
+      }
+    };
+
+    fetchTechnicianDetails();
+  }, [wallets]); // Depend on wallets list updates
+
+  const fetchWalletDetails = useCallback(async () => {
+    try {
+      const res = await getTotalWalletsDetails();
+      if (res && res.result) {
+        setWalletDetails(res.result);
+      }
+    } catch (err) {
+      console.error("Error fetching wallet details:", err);
+    }
+  }, []);
+
+  useEffect(() => {
     fetchServiceBookings();
-  }, [fetchOrders, fetchServiceBookings]);
+    fetchUsers();
+    fetchWallets();
+    fetchWalletDetails();
+  }, [fetchServiceBookings, fetchUsers, fetchWallets, fetchWalletDetails]);
+
+
+  const handleApproveWithdrawal = async (withdrawId) => {
+    if (!withdrawId) return;
+    setIsLoading(true);
+    try {
+      await approveWithdrawal(withdrawId);
+      toast({ title: "Approved", status: "success", description: "Withdrawal request approved." });
+      fetchWallets();
+    } catch (error) {
+      toast({ title: "Error", status: "error", description: error.message });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRejectWithdrawal = async (withdrawId) => {
+    if (!withdrawId) return;
+    setIsLoading(true);
+    try {
+      await rejectWithdrawal(withdrawId);
+      toast({ title: "Rejected", status: "info", description: "Withdrawal request rejected." });
+      fetchWallets();
+    } catch (error) {
+      toast({ title: "Error", status: "error", description: error.message });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
 
 
   // Filtering logic
-  const filteredOrders = useMemo(() => {
-    const q = (debouncedSearch || "").trim().toLowerCase();
-    const [orderStart, orderEnd] = getDateRangePreset(orderDatePreset);
+  // Fixed: Removed filteredOrders since orders are removed.
 
-    return (orders || []).filter((o) => {
-      const status = (safeGet(o, "status", "") || "").toString().toLowerCase();
-      if (orderStatusFilter !== "all" && status !== orderStatusFilter) return false;
 
-      if (orderStart != null) {
-        const created = new Date(safeGet(o, "createdAt", Date.now())).getTime();
-        if (!(created >= orderStart && created <= orderEnd)) return false;
-      }
-
-      if (!q) return true;
-      const id = (safeGet(o, "_id", "") || "").toString().toLowerCase();
-      const email = (safeGet(o, "user.email", "") || "").toString().toLowerCase();
-      const userId = (safeGet(o, "user._id", "") || "").toString().toLowerCase();
-      const city = (safeGet(o, "address.city", "") || "").toString().toLowerCase();
-      const pincode = (safeGet(o, "address.pincode", "") || "").toString().toLowerCase();
-      const itemNames = (safeGet(o, "orderItems", []) || []).map((it) => `${safeGet(it, "name", "")}`).join(" ").toLowerCase();
-
-      return (
-        id.includes(q) ||
-        email.includes(q) ||
-        userId.includes(q) ||
-        city.includes(q) ||
-        pincode.includes(q) ||
-        itemNames.includes(q)
-      );
+  const filteredWallets = useMemo(() => {
+    return (wallets || []).filter((w) => {
+      // Basic filtering - extend as needed
+      return true;
     });
-  }, [orders, debouncedSearch, orderStatusFilter, orderDatePreset]);
+  }, [wallets]);
 
   const filteredPayments = useMemo(() => {
     const q = (debouncedSearch || "").trim().toLowerCase();
@@ -369,7 +464,14 @@ export default function CleanedBilling() {
     const q = (debouncedSearch || "").trim().toLowerCase();
     return (serviceBookings || []).filter((s) => {
       const id = (safeGet(s, "_id", "") || "").toString().toLowerCase();
-      const customerName = `${safeGet(s, "customerProfileId.firstName", "")} ${safeGet(s, "customerProfileId.lastName", "")}`.toLowerCase();
+
+      const customerName = (
+        (s.customerId?.fname || s.customerId?.lname) ? `${s.customerId.fname || ""} ${s.customerId.lname || ""}` :
+          (s.addressSnapshot?.name) ? s.addressSnapshot.name :
+            (s.customerProfileId?.firstName || s.customerProfileId?.lastName) ? `${s.customerProfileId.firstName || ""} ${s.customerProfileId.lastName || ""}` :
+              "—"
+      ).toLowerCase();
+
       const serviceName = (safeGet(s, "serviceId.serviceName", "") || "").toLowerCase();
       const status = (safeGet(s, "status", "") || "").toString().toLowerCase();
       const paymentStatus = (safeGet(s, "paymentStatus", "") || "").toString().toLowerCase();
@@ -387,13 +489,14 @@ export default function CleanedBilling() {
   }, [serviceBookings, debouncedSearch]);
 
   // Pagination
+
   const totalPages = useMemo(() => {
     let len = 0;
-    if (currentView === "orders") len = filteredOrders.length;
-    else if (currentView === "services") len = filteredServices.length;
+    if (currentView === "services") len = filteredServices.length;
+    else if (currentView === "wallets") len = filteredWallets.length;
     else len = filteredPayments.length;
     return Math.max(1, Math.ceil(len / itemsPerPage));
-  }, [currentView, filteredOrders, filteredPayments, filteredServices, itemsPerPage]);
+  }, [currentView, filteredPayments, filteredServices, filteredWallets, itemsPerPage]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -402,10 +505,10 @@ export default function CleanedBilling() {
   const currentSlice = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     const end = start + itemsPerPage;
-    if (currentView === "orders") return filteredOrders.slice(start, end);
     if (currentView === "services") return filteredServices.slice(start, end);
+    if (currentView === "wallets") return filteredWallets.slice(start, end);
     return filteredPayments.slice(start, end);
-  }, [currentPage, itemsPerPage, currentView, filteredOrders, filteredPayments, filteredServices]);
+  }, [currentPage, itemsPerPage, currentView, filteredPayments, filteredServices, filteredWallets]);
 
   // UI helpers
   const getStatusColor = (status) => {
@@ -423,6 +526,15 @@ export default function CleanedBilling() {
     setSelectedOrder(null);
   };
 
+
+  const openModalForBooking = (booking) => {
+    setSelectedBooking(booking);
+    setIsBookingModalOpen(true);
+  };
+  const closeBookingModal = () => {
+    setIsBookingModalOpen(false);
+    setSelectedBooking(null);
+  };
 
   const handleNextPage = () => {
     if (currentPage < totalPages) {
@@ -576,7 +688,7 @@ export default function CleanedBilling() {
         duration: 3000,
         isClosable: true,
       });
-      await fetchOrders();
+      await fetchServiceBookings(); // replaced fetchOrders
     } catch (error) {
       console.error("Error updating payment status:", error);
       toast({
@@ -592,14 +704,14 @@ export default function CleanedBilling() {
   };
 
   useEffect(() => {
-    if (currentView === "orders") {
-      setFilteredData(filteredOrders);
-    } else if (currentView === "services") {
+    if (currentView === "services") {
       setFilteredData(filteredServices);
+    } else if (currentView === "wallets") {
+      setFilteredData(filteredWallets);
     } else {
       setFilteredData(filteredPayments);
     }
-  }, [currentView, filteredOrders, filteredPayments, filteredServices]);
+  }, [currentView, filteredPayments, filteredServices, filteredWallets]);
 
   // Row components
   const OrderRow = ({ order }) => {
@@ -688,6 +800,7 @@ export default function CleanedBilling() {
             variant="ghost"
             onClick={() => handleUpdatePaymentStatus(paymentId)}
             tooltip="Refresh Payment Status"
+            isDisabled={!paymentId || (typeof paymentId === 'string' && paymentId.startsWith('SB-'))}
           />
         </Td>
       </Tr>
@@ -697,12 +810,34 @@ export default function CleanedBilling() {
   const ServiceBookingRow = ({ booking }) => {
     const status = safeGet(booking, "status", "requested");
     const payStatus = safeGet(booking, "paymentStatus", "pending");
+
+    // Helper to find user if customerProfileId is a string
+    const foundUser = (typeof booking.customerProfileId === 'string')
+      ? users.find(u => u._id === booking.customerProfileId || u.userId === booking.customerProfileId)
+      : null;
+
+    const customerName = (
+      (booking.customerId?.fname || booking.customerId?.lname) ? `${booking.customerId.fname || ""} ${booking.customerId.lname || ""}` :
+        (booking.addressSnapshot?.name) ? booking.addressSnapshot.name :
+          (typeof booking.customerProfileId === 'object' && (booking.customerProfileId?.firstName || booking.customerProfileId?.lastName)) ? `${booking.customerProfileId.firstName || ""} ${booking.customerProfileId.lastName || ""}` :
+            (foundUser) ? (`${foundUser.firstName || ""} ${foundUser.lastName || ""}`.trim() || foundUser.name) :
+              "—"
+    ).trim() || "—";
+
+    const customerPhone = (
+      booking.customerId?.mobileNumber ||
+      booking.addressSnapshot?.phone ||
+      (typeof booking.customerProfileId === 'object' ? booking.customerProfileId?.mobileNumber : null) ||
+      (foundUser?.mobileNumber || foundUser?.phone) ||
+      "—"
+    );
+
     return (
-      <Tr borderBottom="1px solid" borderColor="gray.100">
+      <Tr borderBottom="1px solid" borderColor="gray.100" _hover={{ bg: "gray.50" }}>
         <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}>
           <VStack align="start" spacing={1}>
-            <Text fontWeight="semibold" fontSize={isMobile ? "sm" : "md"}>{safeGet(booking, "customerProfileId.firstName", "—")} {safeGet(booking, "customerProfileId.lastName", "")}</Text>
-            <Text fontSize="xs" color="gray.500">{safeGet(booking, "customerProfileId.mobileNumber", "—")}</Text>
+            <Text fontWeight="semibold" fontSize={isMobile ? "sm" : "md"}>{customerName}</Text>
+            <Text fontSize="xs" color="gray.500">{customerPhone}</Text>
           </VStack>
         </Td>
         <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}><Text fontSize={isMobile ? "sm" : "md"}>{safeGet(booking, "serviceId.serviceName", "—")}</Text></Td>
@@ -719,18 +854,87 @@ export default function CleanedBilling() {
         </Td>
         <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}><Text fontSize="xs" color="gray.500">{new Date(safeGet(booking, "scheduledAt", Date.now())).toLocaleDateString()}</Text></Td>
         <Td>
-          <IconButton
-            aria-label="Update Payment Status"
-            icon={<FaCheckCircle />}
-            size="sm"
-            colorScheme="blue"
-            variant="ghost"
-            onClick={() => {
-              const payId = safeGet(booking, "paymentId") || safeGet(booking, "payment._id") || safeGet(booking, "razorpayPaymentId");
-              handleUpdatePaymentStatus(payId);
-            }}
-            tooltip="Refresh Payment Status"
-          />
+          <Flex gap={2}>
+            <IconButton
+              aria-label="View booking details"
+              icon={<FaEye />}
+              size="sm"
+              colorScheme="teal"
+              variant="outline"
+              onClick={() => openModalForBooking(booking)}
+            />
+            {(() => {
+              const payId = safeGet(booking, "paymentId") || safeGet(booking, "payment._id");
+              // Only show button if we have a valid Mongo ID
+              if (payId && /^[0-9a-fA-F]{24}$/.test(payId)) {
+                return (
+                  <IconButton
+                    aria-label="Update Payment Status"
+                    icon={<FaCheckCircle />}
+                    size="sm"
+                    colorScheme="blue"
+                    variant="ghost"
+                    onClick={() => handleUpdatePaymentStatus(payId)}
+                    tooltip="Refresh Payment Status"
+                  />
+                );
+              }
+              return null;
+            })()}
+          </Flex>
+        </Td>
+      </Tr>
+    );
+  };
+
+  const WalletRow = ({ wallet, technicianMap }) => {
+    // Determine technician name safely
+    const techId = wallet.technicianId?._id || wallet.technicianProfileId || wallet.providerId?._id || (typeof wallet.providerId === 'string' ? wallet.providerId : null);
+
+    // Check map first, then existing object structure
+    const techData = technicianMap && techId ? technicianMap[techId] : null;
+
+    let displayName = "Unknown";
+
+    if (techData) {
+      // Data from API fetch
+      // API returns userId object inside technician response
+      if (techData.userId && (techData.userId.fname || techData.userId.lname)) {
+        displayName = `${techData.userId.fname || ""} ${techData.userId.lname || ""}`.trim();
+      } else if (techData.userId && (techData.userId.firstName || techData.userId.lastName)) {
+        displayName = `${techData.userId.firstName || ""} ${techData.userId.lastName || ""}`.trim();
+      } else if (techData.name) {
+        displayName = techData.name;
+      } else if (techData.firstName) {
+        displayName = `${techData.firstName} ${techData.lastName || ""}`.trim();
+      }
+    } else {
+      // Fallback to embedded data if fetch failed or not yet loaded
+      displayName =
+        wallet.providerId?.name ||
+        wallet.providerId?.firstName ||
+        (wallet.providerId?.firstName && wallet.providerId?.lastName ? `${wallet.providerId.firstName} ${wallet.providerId.lastName}` : null) ||
+        "Unknown";
+    }
+
+    return (
+      <Tr borderBottom="1px solid" borderColor="gray.100">
+        <Td><Text fontSize="sm">{displayName}</Text></Td>
+        <Td><Text fontWeight="bold" color="green.600">{formatINR(wallet.technicianId?.walletBalance)}</Text></Td>
+        <Td><Text fontWeight="bold">{formatINR(wallet.amount)}</Text></Td>
+        <Td>
+          <Badge colorScheme={wallet.status === "approved" ? "green" : wallet.status === "rejected" ? "red" : "yellow"}>
+            {wallet.status}
+          </Badge>
+        </Td>
+        <Td><Text fontSize="xs">{new Date(wallet.createdAt).toLocaleDateString()}</Text></Td>
+        <Td>
+          {wallet.status === "pending" && (
+            <HStack spacing={2}>
+              <Button size="xs" colorScheme="green" onClick={() => handleApproveWithdrawal(wallet._id)}>Approve</Button>
+              <Button size="xs" colorScheme="red" onClick={() => handleRejectWithdrawal(wallet._id)}>Reject</Button>
+            </HStack>
+          )}
         </Td>
       </Tr>
     );
@@ -817,9 +1021,9 @@ export default function CleanedBilling() {
           <Card
             minH="83px"
             cursor="pointer"
-            onClick={() => setCurrentView("orders")}
-            border={currentView === "orders" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "orders" ? customColor : `${customColor}30`}
+            onClick={() => setCurrentView("wallets")}
+            border={currentView === "wallets" ? "2px solid" : "1px solid"}
+            borderColor={currentView === "wallets" ? customColor : `${customColor}30`}
             transition="all 0.2s ease-in-out"
             bg="white"
             position="relative"
@@ -841,38 +1045,125 @@ export default function CleanedBilling() {
             _hover={{
               transform: "translateY(-4px)",
               shadow: "xl",
-              _before: {
-                opacity: 1,
-              },
+              _before: { opacity: 1 },
               borderColor: customColor,
             }}
           >
-
-            <CardBody
-              position="relative"
-              zIndex={1} p={{ base: 3, md: 4 }}>
-
-              <Flex
-                flexDirection="row" align="center" justify="space-between" w="100%" padding={5}>
-
+            <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
+              <Flex flexDirection="row" align="center" justify="space-between" w="100%" padding={5}>
                 <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "sm", md: "md" }}
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="0px"
-                  >All Orders</StatLabel>
+                  <StatLabel fontSize={{ base: "sm", md: "md" }} color="gray.600" fontWeight="bold" pb="0px">
+                    Available Balance
+                  </StatLabel>
                   <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
-                    {isLoading ? <Spinner size="xs" /> : orders.length}</StatNumber>
+                    {isLoading ? <Spinner size="xs" /> : formatINR(walletDetails.availableBalance)}
+                  </StatNumber>
                 </Stat>
-
                 <Box display="flex" alignItems="center" justifyContent="center" borderRadius="10px" h="34px" w="34px" bg={customColor}>
                   <Icon as={MdCategory} h="16px" w="16px" color="white" />
                 </Box>
-
               </Flex>
             </CardBody>
           </Card>
+
+          {/* Total Collected Card */}
+          <Card
+            minH="83px"
+            cursor="pointer"
+            onClick={() => setCurrentView("wallets")}
+            border={currentView === "wallets" ? "2px solid" : "1px solid"}
+            borderColor={currentView === "wallets" ? customColor : `${customColor}30`}
+            transition="all 0.2s ease-in-out"
+            bg="white"
+            position="relative"
+            overflow="hidden"
+            w={{ base: "32%", md: "30%", lg: "25%" }}
+            minW="100px"
+            flex="1"
+            _before={{
+              content: '""',
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+              opacity: 0,
+              transition: "opacity 0.2s ease-in-out",
+            }}
+            _hover={{
+              transform: "translateY(-4px)",
+              shadow: "xl",
+              _before: { opacity: 1 },
+              borderColor: customColor,
+            }}
+          >
+            <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
+              <Flex flexDirection="row" align="center" justify="space-between" w="100%" padding={5}>
+                <Stat me="auto">
+                  <StatLabel fontSize={{ base: "sm", md: "md" }} color="gray.600" fontWeight="bold" pb="0px">
+                    Total Collected
+                  </StatLabel>
+                  <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
+                    {isLoading ? <Spinner size="xs" /> : formatINR(walletDetails.totalCollected)}
+                  </StatNumber>
+                </Stat>
+                <Box display="flex" alignItems="center" justifyContent="center" borderRadius="10px" h="34px" w="34px" bg={customColor}>
+                  <Icon as={MdCategory} h="16px" w="16px" color="white" />
+                </Box>
+              </Flex>
+            </CardBody>
+          </Card>
+
+          {/* Total Commission Card */}
+          <Card
+            minH="83px"
+            cursor="pointer"
+            onClick={() => setCurrentView("wallets")}
+            border={currentView === "wallets" ? "2px solid" : "1px solid"}
+            borderColor={currentView === "wallets" ? customColor : `${customColor}30`}
+            transition="all 0.2s ease-in-out"
+            bg="white"
+            position="relative"
+            overflow="hidden"
+            w={{ base: "32%", md: "30%", lg: "25%" }}
+            minW="100px"
+            flex="1"
+            _before={{
+              content: '""',
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+              opacity: 0,
+              transition: "opacity 0.2s ease-in-out",
+            }}
+            _hover={{
+              transform: "translateY(-4px)",
+              shadow: "xl",
+              _before: { opacity: 1 },
+              borderColor: customColor,
+            }}
+          >
+            <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
+              <Flex flexDirection="row" align="center" justify="space-between" w="100%" padding={5}>
+                <Stat me="auto">
+                  <StatLabel fontSize={{ base: "sm", md: "md" }} color="gray.600" fontWeight="bold" pb="0px">
+                    Total Commission
+                  </StatLabel>
+                  <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
+                    {isLoading ? <Spinner size="xs" /> : formatINR(walletDetails.totalCommission)}
+                  </StatNumber>
+                </Stat>
+                <Box display="flex" alignItems="center" justifyContent="center" borderRadius="10px" h="34px" w="34px" bg={customColor}>
+                  <Icon as={MdCategory} h="16px" w="16px" color="white" />
+                </Box>
+              </Flex>
+            </CardBody>
+          </Card>
+
 
           <Card
             minH="83px"
@@ -1082,11 +1373,12 @@ export default function CleanedBilling() {
           )} */}
         </Flex>
 
-      </Box>
+      </Box >
 
       {/* Table Container */}
-      <Box
-        mt={-8}
+      < Box
+        mt={- 8
+        }
         flex="1"
         display="flex"
         flexDirection="column"
@@ -1292,95 +1584,27 @@ export default function CleanedBilling() {
                       },
                     }}
                   >
-                    {currentView === "orders" ? (
+                    {currentView === "wallets" ? (
                       <Table variant="simple" size="md" bg="transparent">
                         <Thead>
                           <Tr>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={`${customColor}`}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="sm"
-                              py={3}
-                              borderBottom="2px solid"
-                              borderBottomColor={`${customColor}50`}
-                            >
-                              Order Details</Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={`${customColor}`}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="sm"
-                              py={3}
-                              borderBottom="2px solid"
-                              borderBottomColor={`${customColor}50`}
-                            >
-                              Address</Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={`${customColor}`}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="sm"
-                              py={3}
-                              borderBottom="2px solid"
-                              borderBottomColor={`${customColor}50`}
-                            >Amount</Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={`${customColor}`}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="sm"
-                              py={3}
-                              borderBottom="2px solid"
-                              borderBottomColor={`${customColor}50`}
-                            >Status</Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={`${customColor}`}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="sm"
-                              py={3}
-                              borderBottom="2px solid"
-                              borderBottomColor={`${customColor}50`}
-                            >Actions</Th>
+                            <Th color="gray.600">Technician</Th>
+                            <Th color="gray.600">Wallet Balance</Th>
+                            <Th color="gray.600">Amount</Th>
+                            <Th color="gray.600">Status</Th>
+                            <Th color="gray.600">Date</Th>
+                            <Th color="gray.600">Actions</Th>
                           </Tr>
                         </Thead>
-                        <Tbody bg="transparent">
-                          {currentSlice.length === 0 ? (
-                            <Tr
-                              bg="transparent"
-                              height="60px">
-                              <Td borderColor={`${customColor}20`} colSpan={currentView === "orders" ? 4 : 6}>
-                                <Box height="60px" />
-                              </Td>
-                            </Tr>
-                          ) : (
-                            currentSlice.map((order) => (
-                              <OrderRow
-                                key={safeGet(order, "_id", Math.random().toString())}
-                                order={order}
-                              />
+                        <Tbody>
+                          {currentSlice.length > 0 ? (
+                            currentSlice.map((w) => (
+                              <WalletRow key={w._id} wallet={w} technicianMap={technicianMap} />
                             ))
+                          ) : (
+                            <Tr>
+                              <Td colSpan={6} textAlign="center" py={4}>No wallet records found</Td>
+                            </Tr>
                           )}
                         </Tbody>
                       </Table>
@@ -1399,7 +1623,7 @@ export default function CleanedBilling() {
                         </Thead>
                         <Tbody>
                           {currentSlice.length === 0 ? (
-                            <Tr><Td colSpan={6}><Center py={6}><Text color="gray.500">No bookings found.</Text></Center></Td></Tr>
+                            <Tr><Td colSpan={7}><Center py={6}><Text color="gray.500">No bookings found.</Text></Center></Td></Tr>
                           ) : (
                             currentSlice.map((booking) => (
                               <ServiceBookingRow key={booking._id} booking={booking} />
@@ -1612,10 +1836,10 @@ export default function CleanedBilling() {
             )}
           </CardBody>
         </Card>
-      </Box>
+      </Box >
 
       {/* Order Details Modal */}
-      <Modal isOpen={isModalOpen} onClose={closeModal} size="4xl" isCentered>
+      < Modal isOpen={isModalOpen} onClose={closeModal} size="4xl" isCentered >
         <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(4px)" />
         <ModalContent bg={cardBg} borderRadius="2xl" overflow="hidden">
           <ModalHeader bg={`${customColor}`} borderBottom="1px solid" borderColor="gray.200">
@@ -1704,8 +1928,146 @@ export default function CleanedBilling() {
 
           <ModalFooter><Button onClick={closeModal}>Close</Button></ModalFooter>
         </ModalContent>
-      </Modal>
-    </Flex>
+      </Modal >
+
+      {/* Service Booking Details Modal */}
+      < Modal isOpen={isBookingModalOpen} onClose={closeBookingModal} size="4xl" isCentered >
+        <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(4px)" />
+        <ModalContent bg={cardBg} borderRadius="2xl" overflow="hidden">
+          <ModalHeader bg={`${customColor}`} borderBottom="1px solid" borderColor="gray.200">
+            <VStack align="start" spacing={2}>
+              <Heading size="md" color={"white"}>Service Booking Details</Heading>
+              <Text color="gray.200" fontSize="sm">Full details for the selected service booking</Text>
+            </VStack>
+          </ModalHeader>
+          <ModalCloseButton color={"white"} />
+          <ModalBody py={6}>
+            {selectedBooking ? (
+              <VStack spacing={6} align="stretch">
+                <HStack justify="space-between" align="start">
+                  <VStack align="start" spacing={1}>
+                    <Text fontSize="2xl" fontWeight="bold" color="gray.800">{safeGet(selectedBooking, "_id", "—")}</Text>
+                    <HStack spacing={4}>
+                      <HStack>
+                        <Icon as={FiUser} color="gray.500" />
+                        <Text color="gray.600">
+                          {(() => {
+                            const foundUser = (typeof selectedBooking.customerProfileId === 'string')
+                              ? users.find(u => u._id === selectedBooking.customerProfileId || u.userId === selectedBooking.customerProfileId)
+                              : null;
+
+                            let name = "—";
+                            if (selectedBooking.customerId?.fname || selectedBooking.customerId?.lname) {
+                              name = `${selectedBooking.customerId.fname || ""} ${selectedBooking.customerId.lname || ""}`;
+                            } else if (selectedBooking.addressSnapshot?.name) {
+                              name = selectedBooking.addressSnapshot.name;
+                            } else if (typeof selectedBooking.customerProfileId === 'object' && (selectedBooking.customerProfileId?.firstName || selectedBooking.customerProfileId?.lastName)) {
+                              name = `${selectedBooking.customerProfileId.firstName || ""} ${selectedBooking.customerProfileId.lastName || ""}`;
+                            } else if (foundUser) {
+                              name = (`${foundUser.firstName || ""} ${foundUser.lastName || ""}`.trim() || foundUser.name);
+                            }
+                            return name.trim() || "—";
+                          })()}
+                        </Text>
+                      </HStack>
+                      <HStack><Icon as={FiCalendar} color="gray.500" /><Text color="gray.600">{new Date(safeGet(selectedBooking, "createdAt", Date.now())).toLocaleString()}</Text></HStack>
+                    </HStack>
+                  </VStack>
+
+                  <Badge bg={getStatusColor(safeGet(selectedBooking, "status", "")).bg} color={getStatusColor(safeGet(selectedBooking, "status", "")).color} px={4} py={2} borderRadius="full" fontSize="md" fontWeight="bold">
+                    {String(safeGet(selectedBooking, "status", "UNKNOWN")).toUpperCase()}
+                  </Badge>
+                </HStack>
+
+                <Divider />
+
+                <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={6}>
+                  <Box>
+                    <Text fontSize="lg" fontWeight="semibold" mb={3}>Service Information</Text>
+                    <VStack align="start" p={4} bg="gray.50" borderRadius="lg" spacing={2} width="100%">
+                      <HStack justify="space-between" width="100%">
+                        <Text color="gray.600">Service Name:</Text>
+                        <Text fontWeight="medium">{safeGet(selectedBooking, "serviceId.serviceName", "—")}</Text>
+                      </HStack>
+                      <HStack justify="space-between" width="100%">
+                        <Text color="gray.600">Service Type:</Text>
+                        <Text fontWeight="medium">{safeGet(selectedBooking, "serviceId.serviceType", "—")}</Text>
+                      </HStack>
+                      <HStack justify="space-between" width="100%">
+                        <Text color="gray.600">Service Cost:</Text>
+                        <Text fontWeight="medium">{formatINR(safeGet(selectedBooking, "serviceId.serviceCost", 0))}</Text>
+                      </HStack>
+                      <HStack justify="space-between" width="100%">
+                        <Text color="gray.600">Scheduled For:</Text>
+                        <Text fontWeight="medium" color="blue.600">{new Date(safeGet(selectedBooking, "scheduledAt", Date.now())).toLocaleString()}</Text>
+                      </HStack>
+                    </VStack>
+                  </Box>
+
+                  <Box>
+                    <Text fontSize="lg" fontWeight="semibold" mb={3}>Address & Contact</Text>
+                    <VStack align="start" p={4} bg="gray.50" borderRadius="lg" spacing={2} width="100%">
+                      <HStack align="start" width="100%">
+                        <Icon as={FiTruck} mt={1} color="gray.500" />
+                        <VStack align="start" spacing={0}>
+                          <Text color="gray.600" fontSize="xs">Service Address:</Text>
+                          <Text fontWeight="medium">{safeGet(selectedBooking, "address", "—")}</Text>
+                          {selectedBooking.addressSnapshot && (
+                            <Text fontSize="xs" color="gray.500">
+                              {selectedBooking.addressSnapshot.city}, {selectedBooking.addressSnapshot.state} - {selectedBooking.addressSnapshot.pincode}
+                            </Text>
+                          )}
+                        </VStack>
+                      </HStack>
+                      <HStack align="start" width="100%">
+                        <Icon as={FiUser} mt={1} color="gray.500" />
+                        <VStack align="start" spacing={0}>
+                          <Text color="gray.600" fontSize="xs">Contact Number:</Text>
+                          <Text fontWeight="medium">
+                            {(() => {
+                              const foundUser = (typeof selectedBooking.customerProfileId === 'string')
+                                ? users.find(u => u._id === selectedBooking.customerProfileId || u.userId === selectedBooking.customerProfileId)
+                                : null;
+
+                              return selectedBooking.customerId?.mobileNumber ||
+                                selectedBooking.addressSnapshot?.phone ||
+                                (typeof selectedBooking.customerProfileId === 'object' ? selectedBooking.customerProfileId?.mobileNumber : null) ||
+                                (foundUser?.mobileNumber || foundUser?.phone) ||
+                                "—";
+                            })()}
+                          </Text>
+                        </VStack>
+                      </HStack>
+                    </VStack>
+                  </Box>
+                </Grid>
+
+                <Box bg={`${customColor}05`} p={4} borderRadius="lg">
+                  <HStack justify="space-between">
+                    <VStack align="start" spacing={0}>
+                      <Text fontSize="lg" fontWeight="bold">Total Base Amount</Text>
+                      <Text fontSize="xs" color="gray.500">Payment Status: {safeGet(selectedBooking, "paymentStatus", "pending").toUpperCase()}</Text>
+                    </VStack>
+                    <Text fontSize="2xl" fontWeight="bold" color={customColor}>{formatINR(safeGet(selectedBooking, "baseAmount", 0))}</Text>
+                  </HStack>
+                </Box>
+
+                <HStack spacing={3} justify="flex-end">
+                  <Button leftIcon={<FaCheckCircle />} bg="purple.500" _hover={{ bg: "purple.600" }} color="white" onClick={() => {
+                    const payId = safeGet(selectedBooking, "paymentId") || safeGet(selectedBooking, "payment._id") || safeGet(selectedBooking, "razorpayPaymentId") || safeGet(selectedBooking, "paymentProviderPaymentId");
+                    handleUpdatePaymentStatus(payId);
+                  }}>Update Payment</Button>
+                  <Button variant="ghost" onClick={closeBookingModal}>Close</Button>
+                </HStack>
+              </VStack>
+            ) : (
+              <Center py={6}><Text color="gray.500">No booking selected.</Text></Center>
+            )}
+          </ModalBody>
+          <ModalFooter><Button onClick={closeBookingModal}>Close</Button></ModalFooter>
+        </ModalContent>
+      </Modal >
+    </Flex >
   );
 }
 

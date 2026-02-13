@@ -13,10 +13,10 @@ import {
   deleteProducts,
   uploadProductImage,
   uploadProductImages,
-  deleteProductImage,
   uploadImage,
-  uploadImageCategory, 
+  uploadImageCategory,
   removeCategoryImage,
+  deleteProductImage,
 } from "../utils/axiosInstance";
 
 import {
@@ -116,7 +116,7 @@ export default function ProductManagement() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [viewModalType, setViewModalType] = useState("");
-  
+
   // Loading states
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
@@ -140,8 +140,8 @@ export default function ProductManagement() {
   const [itemsPerPage] = useState(5);
 
   // Category doesn't have status field
-  const initialCategory = { name: "", description: "", image: "" ,categoryType: "product"};
-  
+  const initialCategory = { name: "", description: "", image: "", categoryType: "product" };
+
   // Product has status field
   const initialProduct = {
     name: "",
@@ -161,25 +161,25 @@ export default function ProductManagement() {
     amcAvailable: true,
     amcPricePerYear: ""
   };
-  
+
   const statusOptions = ["Available", "Out of Stock", "Discontinued"];
-  
+
   const [newCategory, setNewCategory] = useState(initialCategory);
   const [categoryFile, setCategoryFile] = useState("");
   const [newProduct, setNewProduct] = useState(initialProduct);
-  
+
   // Color management states
   const [availableColors, setAvailableColors] = useState([
-    'Red', 'Blue', 'Green', 'Black', 'White', 
+    'Red', 'Blue', 'Green', 'Black', 'White',
     'Yellow', 'Pink', 'Gray', 'Maroon', 'Purple'
   ]);
   const [customColorInput, setCustomColorInput] = useState("");
 
   // Variants management
   const [variants, setVariants] = useState([]);
-// Add this state variable
-const [imageFiles, setImageFiles] = useState([]);
-const [formerImages, setFormerImages] = useState([]);
+  // Add this state variable
+  const [imageFiles, setImageFiles] = useState([]);
+  const [formerImages, setFormerImages] = useState([]);
 
   const [deletedImageIds, setDeletedImageIds] = useState([]);
 
@@ -198,80 +198,95 @@ const [formerImages, setFormerImages] = useState([]);
   const handleRemoveCategoryImg = async () => {
     // If we are editing a category and it has a saved image, and we haven't just uploaded a new one (which is in categoryFile)
     if (currentView === "editCategory" && selectedCategory && (selectedCategory.image || selectedCategory.url) && !categoryFile) {
-        try {
-            setIsSubmitting(true);
-            await removeCategoryImage(selectedCategory._id);
-            
-            // Update UI state
-            setNewCategory(prev => ({ ...prev, image: "", url: "" }));
-            setSelectedCategory(prev => ({ ...prev, image: "", url: "" }));
-             // Update local list
-            const updatedCategories = categories.map(c => c._id === selectedCategory._id ? { ...c, image: "", url: "" } : c);
-            // Assuming setCategories is available, if not we might need to fetch data again
-             // But fetchData() is called on update success usually.
-             // For immediate UI update:
-            // setCategories(updatedCategories); 
+      try {
+        setIsSubmitting(true);
+        await removeCategoryImage(selectedCategory._id);
 
-            toast({ title: "Image Removed", status: "success", duration: 3000, isClosable: true });
-        } catch(e) {
-             toast({ title: "Error Removing Image", description: e.message, status: "error", duration: 3000, isClosable: true });
-        } finally {
-            setIsSubmitting(false);
-        }
+        // Update UI state
+        setNewCategory(prev => ({ ...prev, image: "", url: "" }));
+        setSelectedCategory(prev => ({ ...prev, image: "", url: "" }));
+        // Update local list
+        const updatedCategories = categories.map(c => c._id === selectedCategory._id ? { ...c, image: "", url: "" } : c);
+        // Assuming setCategories is available, if not we might need to fetch data again
+        // But fetchData() is called on update success usually.
+        // For immediate UI update:
+        // setCategories(updatedCategories); 
+
+        toast({ title: "Image Removed", status: "success", duration: 3000, isClosable: true });
+      } catch (e) {
+        toast({ title: "Error Removing Image", description: e.message, status: "error", duration: 3000, isClosable: true });
+      } finally {
+        setIsSubmitting(false);
+      }
     } else {
-        // Just clear the preview if it's a new file upload or in add mode
-        setCategoryFile(null);
-        setNewCategory(prev => ({ ...prev, image: "" }));
+      // Just clear the preview if it's a new file upload or in add mode
+      setCategoryFile(null);
+      setNewCategory(prev => ({ ...prev, image: "" }));
     }
   };
 
-// Update your handleImageUpload function
-const handleImageUpload = (e) => {
-  const files = Array.from(e.target.files);
-  
-  // Store the actual File objects
-  setImageFiles(prev => [...prev, ...files]);
-  
-  // Also create preview URLs for display
-  const previewUrls = files.map(file => ({
-    url: URL.createObjectURL(file),
-    preview: URL.createObjectURL(file),
-    file: file
-  }));
-  
-  setNewProduct(prev => ({
-    ...prev,
-    images: [...(prev.images || []), ...previewUrls]
-  }));
-};
+  // Update your handleImageUpload function
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files);
 
-// Updated handleRemoveImage to track deleted server images
-const handleRemoveImage = (indexOrId) => {
-  // Local state cleanup
-  if (typeof indexOrId === 'number') {
-    // This looks like an index for a newly uploaded file (client-side only)
-    setImageFiles(prev => prev.filter((_, i) => i !== indexOrId));
+    // Store the actual File objects
+    setImageFiles(prev => [...prev, ...files]);
+
+    // Also create preview URLs for display
+    const previewUrls = files.map(file => ({
+      url: URL.createObjectURL(file),
+      preview: URL.createObjectURL(file),
+      file: file
+    }));
+
     setNewProduct(prev => ({
       ...prev,
-      images: (prev.images || []).filter((_, i) => i !== indexOrId)
+      images: [...(prev.images || []), ...previewUrls]
     }));
-  } else {
-    // This is a public_id string from the server
-    
-    // Add to deletion queue
-    setDeletedImageIds(prev => [...prev, indexOrId]);
+  };
 
-    setImageFiles(prev => prev.filter(file => !(file.public_id && file.public_id === indexOrId)));
+  // Updated handleRemoveImage to track deleted server images
+  const handleRemoveImage = (item, index) => {
+    let serverIdentifier = null;
+
+    if (item && item.preventDefault) return;
+
+    // Handle string (URL or ID)
+    if (typeof item === 'string' && !item.startsWith('blob:') && !item.includes('://localhost')) {
+      serverIdentifier = item;
+    }
+    // Handle object (server image object)
+    else if (typeof item === 'object' && item !== null && !item.file) {
+      serverIdentifier = item.public_id || item.publicId || item.url || item.secure_url;
+    }
+
+    if (serverIdentifier) {
+      setDeletedImageIds(prev => [...prev, serverIdentifier]);
+    }
+
+    // Remove from imageFiles if it's a new upload (has .file property)
+    if (item && item.file) {
+      setImageFiles(prev => prev.filter(f => f !== item.file));
+    }
+
+    // Update the UI list
     setNewProduct(prev => ({
       ...prev,
-      images: (prev.images || []).filter(img => !(img.public_id && img.public_id === indexOrId))
+      images: (prev.images || []).filter((_, i) => i !== index)
     }));
-  }
-};
+
+    toast({
+      title: "Image Removed",
+      description: "Image successfully removed from the list. Save changes to apply.",
+      status: "success",
+      duration: 2000,
+      isClosable: true,
+    });
+  };
   // Calculate pagination
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  
+
   // Filtered data
   const filteredCategories = categories.filter((cat) =>
     (cat.category || cat.name)?.toLowerCase().includes(categorySearch.toLowerCase()) ||
@@ -282,14 +297,14 @@ const handleRemoveImage = (indexOrId) => {
     (prod) =>
       prod.name?.toLowerCase().includes(productSearch.toLowerCase()) &&
       (productCategoryFilter ? (
-        (prod.category?._id || prod.category) === productCategoryFilter || 
+        (prod.category?._id || prod.category) === productCategoryFilter ||
         (prod.categoryId?._id || prod.categoryId) === productCategoryFilter
       ) : true)
   );
 
   const currentCategories = filteredCategories.slice(indexOfFirstItem, indexOfLastItem);
   const currentProducts = filteredProducts.slice(indexOfFirstItem, indexOfLastItem);
-  
+
   const totalCategoryPages = Math.ceil(filteredCategories.length / itemsPerPage);
   const totalProductPages = Math.ceil(filteredProducts.length / itemsPerPage);
 
@@ -301,21 +316,21 @@ const handleRemoveImage = (indexOrId) => {
     }
 
     const totalOrderedQuantity = orders.reduce((total, order) => {
-      const validStatus = order.status && 
-        (order.status.toLowerCase() === 'confirmed' || 
-         order.status.toLowerCase() === 'completed' || 
-         order.status.toLowerCase() === 'delivered' ||
-         order.status.toLowerCase() === 'pending');
+      const validStatus = order.status &&
+        (order.status.toLowerCase() === 'confirmed' ||
+          order.status.toLowerCase() === 'completed' ||
+          order.status.toLowerCase() === 'delivered' ||
+          order.status.toLowerCase() === 'pending');
 
       if (!validStatus) return total;
 
       let orderedQty = 0;
       const items = order.items || order.orderItems || order.products || order.orderProducts || [];
-      
+
       items.forEach(item => {
         const itemProductId = item.productId?._id || item.productId || item.product?._id || item.product;
         const itemName = item.name || item.productId?.name || item.product?.name || item.productName || item.productId?.productName || item.product?.productName;
-        
+
         if (itemProductId === product._id || itemName === product.name) {
           orderedQty += item.quantity || item.qty || 0;
         }
@@ -366,20 +381,20 @@ const handleRemoveImage = (indexOrId) => {
     const stockProducts = [...products]
       .filter(product => {
         const availableStock = calculateAvailableStock(product);
-        return availableStock > 0; 
+        return availableStock > 0;
       })
       .sort((a, b) => {
         const stockA = calculateAvailableStock(a);
         const stockB = calculateAvailableStock(b);
         return stockB - stockA;
       })
-      .slice(0, 10); 
-    const categories = stockProducts.map(product => 
+      .slice(0, 10);
+    const categories = stockProducts.map(product =>
       product.name.length > 20 ? product.name.substring(0, 20) + '...' : product.name
     );
-    
+
     const availableStockData = stockProducts.map(product => calculateAvailableStock(product));
-    const totalStockData = stockProducts.map(product => 
+    const totalStockData = stockProducts.map(product =>
       product.variants?.reduce((sum, variant) => sum + (variant.stock || 0), 0) || 0
     );
 
@@ -465,12 +480,12 @@ const handleRemoveImage = (indexOrId) => {
     const alertProducts = [...getOutOfStockProducts(), ...getLowStockProducts()]
       .slice(0, 10);
 
-    const categories = alertProducts.map(product => 
+    const categories = alertProducts.map(product =>
       product.name.length > 20 ? product.name.substring(0, 20) + '...' : product.name
     );
-    
+
     const availableStockData = alertProducts.map(product => calculateAvailableStock(product));
-    const totalStockData = alertProducts.map(product => 
+    const totalStockData = alertProducts.map(product =>
       product.variants?.reduce((sum, variant) => sum + (variant.stock || 0), 0) || 0
     );
 
@@ -555,13 +570,13 @@ const handleRemoveImage = (indexOrId) => {
   const handleSearchChange = (e) => {
     const value = e.target.value;
     setSearchTerm(value);
-    
+
     if (currentView === "categories") {
       setCategorySearch(value);
     } else if (currentView === "products") {
       setProductSearch(value);
     }
-    
+
     setCurrentPage(1);
   };
 
@@ -575,7 +590,7 @@ const handleRemoveImage = (indexOrId) => {
   // Color management functions
   const handleAddCustomColor = () => {
     const color = customColorInput.trim();
-    
+
     if (!color) {
       toast({
         title: "Empty Color",
@@ -586,7 +601,7 @@ const handleRemoveImage = (indexOrId) => {
       });
       return;
     }
-    
+
     if (availableColors.includes(color)) {
       toast({
         title: "Color Exists",
@@ -597,10 +612,10 @@ const handleRemoveImage = (indexOrId) => {
       });
       return;
     }
-    
+
     setAvailableColors(prev => [...prev, color]);
     setCustomColorInput("");
-    
+
     toast({
       title: "Color Added",
       description: `Color "${color}" added successfully`,
@@ -623,9 +638,9 @@ const handleRemoveImage = (indexOrId) => {
       });
       return;
     }
-    
+
     setAvailableColors(prev => prev.filter(color => color !== colorToRemove));
-    
+
     toast({
       title: "Color Removed",
       description: `Color "${colorToRemove}" removed from available colors`,
@@ -639,12 +654,12 @@ const handleRemoveImage = (indexOrId) => {
   const handleAddVariant = () => {
     setVariants([
       ...variants,
-      { 
-        color: '', 
-        size: '', 
-        price: '', 
-        stock: '', 
-        sku: `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}` 
+      {
+        color: '',
+        size: '',
+        price: '',
+        stock: '',
+        sku: `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`
       }
     ]);
   };
@@ -660,21 +675,21 @@ const handleRemoveImage = (indexOrId) => {
       });
       return;
     }
-    
+
     setVariants(variants.filter((_, i) => i !== index));
   };
 
   const handleVariantChange = (index, field, value) => {
     const updatedVariants = [...variants];
     updatedVariants[index][field] = value;
-    
+
     // Auto-generate SKU if color and size are set
     if ((field === 'color' || field === 'size') && updatedVariants[index].color && updatedVariants[index].size) {
       const colorCode = updatedVariants[index].color.substring(0, 3).toUpperCase();
       const sizeCode = updatedVariants[index].size.toUpperCase();
       updatedVariants[index].sku = `SKU-${colorCode}-${sizeCode}-${Date.now().toString().slice(-6)}`;
     }
-    
+
     setVariants(updatedVariants);
   };
 
@@ -750,7 +765,7 @@ const handleRemoveImage = (indexOrId) => {
 
   //     setCategories(categoryData.categories || categoryData.data || []);
   //     setProducts(productData.products || productData.data || []);
-      
+
   //     let ordersArray = [];
   //     if (Array.isArray(ordersData)) {
   //       ordersArray = ordersData;
@@ -765,7 +780,7 @@ const handleRemoveImage = (indexOrId) => {
   //       }
   //     }
   //     setOrders(ordersArray);
-      
+
   //   } catch (err) {
   //     console.error("Fetch error:", err);
   //     toast({
@@ -782,95 +797,95 @@ const handleRemoveImage = (indexOrId) => {
   //     setIsLoadingOrders(false);
   //   }
   // }, [toast]);
-const fetchData = useCallback(async () => {
-  try {
-    setIsLoadingData(true);
-    setIsLoadingCategories(true);
-    setIsLoadingProducts(true);
-    setIsLoadingOrders(true);
+  const fetchData = useCallback(async () => {
+    try {
+      setIsLoadingData(true);
+      setIsLoadingCategories(true);
+      setIsLoadingProducts(true);
+      setIsLoadingOrders(true);
 
-    const [categoryData, productData] = await Promise.all([
-      getAllCategories(),
-      getAllProducts()
-    ]);
+      const [categoryData, productData] = await Promise.all([
+        getAllCategories(),
+        getAllProducts()
+      ]);
 
-    console.log("Raw category data:", categoryData); // Add this
-    
-    // Handle different possible response structures
-    let categoriesArray = [];
-    if (Array.isArray(categoryData)) {
-      categoriesArray = categoryData;
-    } else if (categoryData && Array.isArray(categoryData.categories)) {
-      categoriesArray = categoryData.categories;
-    } else if (categoryData && Array.isArray(categoryData.data)) {
-      categoriesArray = categoryData.data;
-    } else if (categoryData?.data?.categories) {
-      categoriesArray = categoryData.data.categories;
-    } else if (categoryData?.result && Array.isArray(categoryData.result)) {
-      // Handle { success: true, result: [...] } format
-      categoriesArray = categoryData.result;
-    } else if (categoryData?.result?.categories) {
-      // Handle { success: true, result: { categories: [...] } } format
-      categoriesArray = categoryData.result.categories;
-    } else {
-      // Try to extract any array from the response
-      const maybeArray = Object.values(categoryData || {}).find((v) => Array.isArray(v));
-      if (Array.isArray(maybeArray)) {
-        categoriesArray = maybeArray;
+      console.log("Raw category data:", categoryData); // Add this
+
+      // Handle different possible response structures
+      let categoriesArray = [];
+      if (Array.isArray(categoryData)) {
+        categoriesArray = categoryData;
+      } else if (categoryData && Array.isArray(categoryData.categories)) {
+        categoriesArray = categoryData.categories;
+      } else if (categoryData && Array.isArray(categoryData.data)) {
+        categoriesArray = categoryData.data;
+      } else if (categoryData?.data?.categories) {
+        categoriesArray = categoryData.data.categories;
+      } else if (categoryData?.result && Array.isArray(categoryData.result)) {
+        // Handle { success: true, result: [...] } format
+        categoriesArray = categoryData.result;
+      } else if (categoryData?.result?.categories) {
+        // Handle { success: true, result: { categories: [...] } } format
+        categoriesArray = categoryData.result.categories;
+      } else {
+        // Try to extract any array from the response
+        const maybeArray = Object.values(categoryData || {}).find((v) => Array.isArray(v));
+        if (Array.isArray(maybeArray)) {
+          categoriesArray = maybeArray;
+        }
       }
-    }
 
-    console.log("Processed categories:", categoriesArray); // Add this
-    
-    setCategories(categoriesArray);
-    
-    // Rest of your existing code...
-    let productsArray = [];
-    if (Array.isArray(productData)) {
-      productsArray = productData;
-    } else if (productData && Array.isArray(productData.products)) {
-      productsArray = productData.products;
-    } else if (productData && Array.isArray(productData.data)) {
-      productsArray = productData.data;
-    } else if (productData?.data?.products) {
-      productsArray = productData.data.products;
-    } else if (productData?.result && Array.isArray(productData.result)) {
-      productsArray = productData.result;
-    } else if (productData?.result?.products) {
-      productsArray = productData.result.products;
-    } else {
-      const maybeArray = Object.values(productData || {}).find((v) => Array.isArray(v));
-      if (Array.isArray(maybeArray)) {
-        productsArray = maybeArray;
+      console.log("Processed categories:", categoriesArray); // Add this
+
+      setCategories(categoriesArray);
+
+      // Rest of your existing code...
+      let productsArray = [];
+      if (Array.isArray(productData)) {
+        productsArray = productData;
+      } else if (productData && Array.isArray(productData.products)) {
+        productsArray = productData.products;
+      } else if (productData && Array.isArray(productData.data)) {
+        productsArray = productData.data;
+      } else if (productData?.data?.products) {
+        productsArray = productData.data.products;
+      } else if (productData?.result && Array.isArray(productData.result)) {
+        productsArray = productData.result;
+      } else if (productData?.result?.products) {
+        productsArray = productData.result.products;
+      } else {
+        const maybeArray = Object.values(productData || {}).find((v) => Array.isArray(v));
+        if (Array.isArray(maybeArray)) {
+          productsArray = maybeArray;
+        }
       }
+
+      // Normalize products to ensure name property exists
+      const normalizedProducts = productsArray.map(product => ({
+        ...product,
+        name: product.name || product.productName || "Unnamed Product"
+      }));
+
+      setProducts(normalizedProducts);
+
+      // ... rest of orders handling
+
+    } catch (err) {
+      console.error("Fetch error:", err);
+      toast({
+        title: "Fetch Error",
+        description: err.message || "Failed to load dashboard data.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoadingData(false);
+      setIsLoadingCategories(false);
+      setIsLoadingProducts(false);
+      // setIsLoadingOrders(false);
     }
-    
-    // Normalize products to ensure name property exists
-    const normalizedProducts = productsArray.map(product => ({
-      ...product,
-      name: product.name || product.productName || "Unnamed Product"
-    }));
-    
-    setProducts(normalizedProducts);
-    
-    // ... rest of orders handling
-    
-  } catch (err) {
-    console.error("Fetch error:", err);
-    toast({
-      title: "Fetch Error",
-      description: err.message || "Failed to load dashboard data.",
-      status: "error",
-      duration: 3000,
-      isClosable: true,
-    });
-  } finally {
-    setIsLoadingData(false);
-    setIsLoadingCategories(false);
-    setIsLoadingProducts(false);
-    // setIsLoadingOrders(false);
-  }
-}, [toast]);
+  }, [toast]);
   useEffect(() => {
     if (currentUser) {
       fetchData();
@@ -989,92 +1004,92 @@ const fetchData = useCallback(async () => {
   //     setIsSubmitting(false);
   //   }
   // };
-const handleSubmitCategory = async () => {
-  const categoryName = newCategory.name || "";
-  const categoryDesc = newCategory.description || "";
+  const handleSubmitCategory = async () => {
+    const categoryName = newCategory.name || "";
+    const categoryDesc = newCategory.description || "";
 
-  if (!categoryName.trim()) {
-    return toast({
-      title: "Validation Error",
-      description: "Category name is required.",
-      status: "error",
-      duration: 3000,
-      isClosable: true,
-    });
-  }
-
-  if (!categoryDesc.trim()) {
-    return toast({
-      title: "Validation Error",
-      description: "Category description is required.",
-      status: "error",
-      duration: 3000,
-      isClosable: true,
-    });
-  }
-
-  if (!categoryFile) {
-    return toast({
-      title: "Validation Error",
-      description: "Category image is required.",
-      status: "error",
-      duration: 3000,
-      isClosable: true,
-    });
-  }
-
-  try {
-    setIsSubmitting(true);
-
-    // 1️⃣ CREATE CATEGORY (WITHOUT IMAGE)
-    const categoryData = {
-      category: newCategory.name,
-      description: newCategory.description,
-      categoryType: newCategory.categoryType,
-    };
-
-    const resData = await createCategories(categoryData);
-
-    const categoryId =
-      resData._id ||
-      resData.category?._id ||
-      resData.data?._id ||
-      resData.data?.category?._id ||
-      resData.result?._id; // ✅ Added support for 'result' key based on console output
-
-    if (!categoryId) {
-      console.error("No category ID found in response structure:", resData);
-      throw new Error(`Category created but ID was not found in response. Received: ${JSON.stringify(resData)}`);
+    if (!categoryName.trim()) {
+      return toast({
+        title: "Validation Error",
+        description: "Category name is required.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
     }
 
-    // 2️⃣ UPLOAD IMAGE
-    await uploadImageCategory(categoryId, categoryFile);
+    if (!categoryDesc.trim()) {
+      return toast({
+        title: "Validation Error",
+        description: "Category description is required.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
 
-    toast({
-      title: "Category Created",
-      description: `"${resData.category?.category || resData.category || categoryData.category}" added successfully.`,
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
+    if (!categoryFile) {
+      return toast({
+        title: "Validation Error",
+        description: "Category image is required.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
 
-    setNewCategory(initialCategory);
-    setCategoryFile("");
-    fetchData();
-    handleBack();
+    try {
+      setIsSubmitting(true);
 
-  } catch (err) {
-    toast({
-      title: "Error Creating Category",
-      description: err.message || "Failed to create category",
-      status: "error",
-      duration: 3000,
-      isClosable: true,
-    });
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+      // 1️⃣ CREATE CATEGORY (WITHOUT IMAGE)
+      const categoryData = {
+        category: newCategory.name,
+        description: newCategory.description,
+        categoryType: newCategory.categoryType,
+      };
+
+      const resData = await createCategories(categoryData);
+
+      const categoryId =
+        resData._id ||
+        resData.category?._id ||
+        resData.data?._id ||
+        resData.data?.category?._id ||
+        resData.result?._id; // ✅ Added support for 'result' key based on console output
+
+      if (!categoryId) {
+        console.error("No category ID found in response structure:", resData);
+        throw new Error(`Category created but ID was not found in response. Received: ${JSON.stringify(resData)}`);
+      }
+
+      // 2️⃣ UPLOAD IMAGE
+      await uploadImageCategory(categoryId, categoryFile);
+
+      toast({
+        title: "Category Created",
+        description: `"${resData.category?.category || resData.category || categoryData.category}" added successfully.`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+
+      setNewCategory(initialCategory);
+      setCategoryFile("");
+      fetchData();
+      handleBack();
+
+    } catch (err) {
+      toast({
+        title: "Error Creating Category",
+        description: err.message || "Failed to create category",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Update Category
   const handleUpdateCategory = async () => {
@@ -1107,9 +1122,9 @@ const handleSubmitCategory = async () => {
         description: categoryDesc.trim(),
         categoryType: newCategory.categoryType
       };
-      
+
       const response = await updateCategories(selectedCategory._id, updateData);
-      
+
       // Handle image upload if a new file was selected
       if (categoryFile && selectedCategory._id) {
         try {
@@ -1133,7 +1148,7 @@ const handleSubmitCategory = async () => {
         duration: 3000,
         isClosable: true,
       });
-      
+
       setCategoryFile(null);
       await fetchData();
       handleBack();
@@ -1170,12 +1185,12 @@ const handleSubmitCategory = async () => {
 
     try {
       setIsDeleting(true);
-      
+
       if (deleteType === "category") {
         const productsInCategory = products.filter(
           p => p.category?._id === itemToDelete._id || p.category === itemToDelete._id
         );
-        
+
         if (productsInCategory.length > 0) {
           toast({
             title: "Cannot Delete Category",
@@ -1229,215 +1244,233 @@ const handleSubmitCategory = async () => {
     setIsDeleting(false);
   };
 
- // Product Submit (Add/Edit) - Updated for new API format
-const handleSubmitProduct = async () => {
-  if (!newProduct.name) {
-    return toast({
-      title: "Validation Error",
-      description: "Product name is required.",
-      status: "error",
-      duration: 3000,
-      isClosable: true,
-    });
-  }
-  
+  // Product Submit (Add/Edit) - Updated for new API format
+  const handleSubmitProduct = async () => {
+    if (!newProduct.name) {
+      return toast({
+        title: "Validation Error",
+        description: "Product name is required.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
 
-  // Enhanced validation
-  if (!newProduct.name || !newProduct.name.trim()) {
-    return toast({
-      title: "Validation Error",
-      description: "Product name is required.",
-      status: "error",
-      duration: 3000,
-      isClosable: true,
-    });
-  }
 
-  // Determine the Category ID for the payload - Ensure it's ALWAYS a non-empty string
-  let finalCategoryId = 
-    getSafeId(selectedCategory) || 
-    getSafeId(newProduct.categoryId) ||
-    getSafeId(newProduct.category) ||
-    getSafeId(selectedProduct?.category) || 
-    getSafeId(selectedProduct?.categoryId) ||
-    getSafeId(selectedProduct?.category?._id) ||
-    getSafeId(selectedProduct?.categoryId?._id);
+    // Enhanced validation
+    if (!newProduct.name || !newProduct.name.trim()) {
+      return toast({
+        title: "Validation Error",
+        description: "Product name is required.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
 
-  // Debugging: If we still don't have it, try every possible path
-  if (!finalCategoryId && selectedProduct) {
-    const possibleFieldNames = ['category', 'categoryId', 'category_id', 'CategoryId'];
-    for (const field of possibleFieldNames) {
-      const val = selectedProduct[field];
-      if (val) {
-        if (typeof val === 'string' && val.trim() !== "") {
-          finalCategoryId = val;
-          break;
-        } else if (typeof val === 'object' && val._id) {
-          finalCategoryId = val._id;
-          break;
+    // Determine the Category ID for the payload - Ensure it's ALWAYS a non-empty string
+    let finalCategoryId =
+      getSafeId(selectedCategory) ||
+      getSafeId(newProduct.categoryId) ||
+      getSafeId(newProduct.category) ||
+      getSafeId(selectedProduct?.category) ||
+      getSafeId(selectedProduct?.categoryId) ||
+      getSafeId(selectedProduct?.category?._id) ||
+      getSafeId(selectedProduct?.categoryId?._id);
+
+    // Debugging: If we still don't have it, try every possible path
+    if (!finalCategoryId && selectedProduct) {
+      const possibleFieldNames = ['category', 'categoryId', 'category_id', 'CategoryId'];
+      for (const field of possibleFieldNames) {
+        const val = selectedProduct[field];
+        if (val) {
+          if (typeof val === 'string' && val.trim() !== "") {
+            finalCategoryId = val;
+            break;
+          } else if (typeof val === 'object' && val._id) {
+            finalCategoryId = val._id;
+            break;
+          }
         }
       }
     }
-  }
 
-  if (!finalCategoryId) {
-    return toast({
-      title: "Validation Error",
-      description: "Category is required. Please ensure this product is linked to a category.",
-      status: "error",
-      duration: 3000,
-      isClosable: true,
-    });
-  }
-
-  // Price validation - only alert if completely empty
-  if (newProduct.estimatedPriceFrom === "" || newProduct.estimatedPriceTo === "") {
-    return toast({
-      title: "Validation Error",
-      description: "Price range (From/To) is required.",
-      status: "error",
-      duration: 3000,
-      isClosable: true,
-    });
-  }
-
-  try {
-    setIsSubmitting(true);
-
-    // Prepare product data according to new API format
-    const productData = {
-      productName: (newProduct.name || "").trim(),
-      productType: newProduct.productType || "Hardware",
-      description: (newProduct.description || "").trim(),
-      pricingModel: newProduct.pricingModel || "fixed",
-      estimatedPriceFrom: Number(newProduct.estimatedPriceFrom) || 0,
-      estimatedPriceTo: Number(newProduct.estimatedPriceTo) || 0,
-      siteInspectionRequired: !!newProduct.siteInspectionRequired,
-      installationDuration: newProduct.installationDuration || "2-3 hours",
-      usageType: newProduct.usageType || "Residential",
-      whatIncluded: Array.isArray(newProduct.whatIncluded) ? newProduct.whatIncluded.map(i => i.trim()).filter(i => i !== "") : [],
-      whatNotIncluded: Array.isArray(newProduct.whatNotIncluded) ? newProduct.whatNotIncluded.map(i => i.trim()).filter(i => i !== "") : [],
-      warrantyPeriod: newProduct.warrantyPeriod || "2 years",
-      amcAvailable: !!newProduct.amcAvailable,
-      amcPricePerYear: Number(newProduct.amcPricePerYear) || 0,
-      status: newProduct.status || "Available",
-      productImages: Array.isArray(newProduct.images) ? newProduct.images.filter(img => !img.file) : [],
-      images: Array.isArray(newProduct.images) ? newProduct.images.filter(img => !img.file) : []
-    };
-
-    // Only add categoryId if it exists to avoid null errors on update
-    if (finalCategoryId) {
-      productData.categoryId = finalCategoryId;
-    }
-
-    // Only add variants if they exist to avoid empty array validation issues
-    if (variants && variants.length > 0) {
-      productData.variants = variants;
-    }
-
-    console.log("Sending product data:", productData);
-
-    let response;
-    if (selectedProduct) {
-      if (!selectedProduct._id) {
-        throw new Error("Cannot update: Product ID is missing.");
-      }
-      // For editing - update product
-      response = await updateProducts(selectedProduct._id, productData);
-      
-      // Handle deleted images
-      if (deletedImageIds.length > 0) {
-        await Promise.all(
-          deletedImageIds.map((publicId) => 
-            deleteProductImage(selectedProduct._id, publicId)
-          )
-        );
-        setDeletedImageIds([]); // Clear after processing
-      }
-
-      // Handle image uploads for existing product
-      if (imageFiles.length > 0) {
-        await uploadProductImages(selectedProduct._id, imageFiles);
-      }
-      
-      toast({
-        title: "Product Updated",
-        description: `"${productData.productName}" updated successfully.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-    } else {
-      // For new product - create first, then upload images
-      response = await createProducts(productData);
-      
-      // Get the created product ID - Support data, result, or direct ID
-      const createdProductId = 
-        response.result?._id || 
-        response.data?._id || 
-        response._id || 
-        response.productId ||
-        response.result?.productId;
-      
-      console.log("Submit product response:", response);
-      
-      // Handle image uploads for new product
-      if (imageFiles.length > 0 && createdProductId) {
-        await uploadProductImages(createdProductId, imageFiles);
-      }
-      
-      toast({
-        title: "Product Created",
-        description: `"${productData.productName}" added successfully.`,
-        status: "success",
+    if (!finalCategoryId) {
+      return toast({
+        title: "Validation Error",
+        description: "Category is required. Please ensure this product is linked to a category.",
+        status: "error",
         duration: 3000,
         isClosable: true,
       });
     }
 
-    // Reset local image files state after successful submission
-    setImageFiles([]);
-    await fetchData();
-    handleBack();
-  } catch (err) {
-    console.error("Product submission error:", err);
-    
-    let errorTitle = selectedProduct ? "Error Updating Product" : "Error Creating Product";
-    let errorDescription = err.message;
-    
-    if (err.message?.includes("500")) {
-      errorDescription = "Server error. Please check backend connection.";
-    } else if (err.message?.includes("401") || err.message?.includes("403")) {
-      errorDescription = "Authentication error. Please log in again.";
-    } else if (err.message?.includes("Network")) {
-      errorDescription = "Network error. Check your internet connection.";
-    } else if (err.message?.includes("category")) {
-      errorDescription = "Category error. Please select a valid category.";
-    } else if (err.status === 500) {
-      errorDescription = "Server error (500). Please check backend logs.";
-    } else if (err.response?.data?.message) {
-      errorDescription = err.response.data.message;
+    // Price validation - only alert if completely empty
+    if (newProduct.estimatedPriceFrom === "" || newProduct.estimatedPriceTo === "") {
+      return toast({
+        title: "Validation Error",
+        description: "Price range (From/To) is required.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
     }
-    
-    toast({
-      title: errorTitle,
-      description: errorDescription,
-      status: "error",
-      duration: 5000,
-      isClosable: true,
-      position: "top",
-    });
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+
+    try {
+      setIsSubmitting(true);
+
+      // Prepare product data according to new API format
+      const productData = {
+        productName: (newProduct.name || "").trim(),
+        productType: newProduct.productType || "Hardware",
+        description: (newProduct.description || "").trim(),
+        pricingModel: newProduct.pricingModel || "fixed",
+        estimatedPriceFrom: Number(newProduct.estimatedPriceFrom) || 0,
+        estimatedPriceTo: Number(newProduct.estimatedPriceTo) || 0,
+        siteInspectionRequired: !!newProduct.siteInspectionRequired,
+        installationDuration: newProduct.installationDuration || "2-3 hours",
+        usageType: newProduct.usageType || "Residential",
+        whatIncluded: Array.isArray(newProduct.whatIncluded) ? newProduct.whatIncluded.map(i => i.trim()).filter(i => i !== "") : [],
+        whatNotIncluded: Array.isArray(newProduct.whatNotIncluded) ? newProduct.whatNotIncluded.map(i => i.trim()).filter(i => i !== "") : [],
+        warrantyPeriod: newProduct.warrantyPeriod || "2 years",
+        amcAvailable: !!newProduct.amcAvailable,
+        amcPricePerYear: Number(newProduct.amcPricePerYear) || 0,
+        status: newProduct.status || "Available",
+        productImages: Array.isArray(newProduct.images) ? newProduct.images.filter(img => !img.file) : [],
+        images: Array.isArray(newProduct.images) ? newProduct.images.filter(img => !img.file) : []
+      };
+
+      // Only add categoryId if it exists to avoid null errors on update
+      if (finalCategoryId) {
+        productData.categoryId = finalCategoryId;
+      }
+
+      // Only add variants if they exist to avoid empty array validation issues
+      if (variants && variants.length > 0) {
+        productData.variants = variants;
+      }
+
+      console.log("Sending product data:", productData);
+
+      let response;
+      if (selectedProduct) {
+        if (!selectedProduct._id) {
+          throw new Error("Cannot update: Product ID is missing.");
+        }
+
+        // 1. DELETE IMAGES FIRST (Before update)
+        // This ensures backend has processed deletions before we update the product with the new list
+        if (deletedImageIds.length > 0) {
+          console.log("Deleting images:", deletedImageIds);
+          try {
+            await Promise.all(
+              deletedImageIds.map((publicId) =>
+                deleteProductImage(selectedProduct._id, publicId)
+              )
+            );
+            console.log("Images deleted successfully");
+          } catch (deleteErr) {
+            console.error("Failed to delete some images:", deleteErr);
+            // We continue with update even if some deletes fail, but warn user
+            toast({
+              title: "Warning",
+              description: "Some images could not be deleted from server.",
+              status: "warning",
+              duration: 3000,
+              isClosable: true,
+            });
+          }
+          setDeletedImageIds([]); // Clear after processing
+        }
+
+        // 2. UPDATE PRODUCT DATA
+        // Ensure the productImages sent in payload reflects the current UI state (minus deleted ones)
+        // The backend update might replace the array, so it's critical this list is correct
+        response = await updateProducts(selectedProduct._id, productData);
+
+        // 3. UPLOAD NEW IMAGES
+        if (imageFiles.length > 0) {
+          await uploadProductImages(selectedProduct._id, imageFiles);
+        }
+
+        toast({
+          title: "Product Updated",
+          description: `"${productData.productName}" updated successfully.`,
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+      } else {
+        // For new product - create first, then upload images
+        response = await createProducts(productData);
+
+        // Get the created product ID - Support data, result, or direct ID
+        const createdProductId =
+          response.result?._id ||
+          response.data?._id ||
+          response._id ||
+          response.productId ||
+          response.result?.productId;
+
+        console.log("Submit product response:", response);
+
+        // Handle image uploads for new product
+        if (imageFiles.length > 0 && createdProductId) {
+          await uploadProductImages(createdProductId, imageFiles);
+        }
+
+        toast({
+          title: "Product Created",
+          description: `"${productData.productName}" added successfully.`,
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+
+      // Reset local image files state after successful submission
+      setImageFiles([]);
+      await fetchData();
+      handleBack();
+    } catch (err) {
+      console.error("Product submission error:", err);
+
+      let errorTitle = selectedProduct ? "Error Updating Product" : "Error Creating Product";
+      let errorDescription = err.message;
+
+      if (err.message?.includes("500")) {
+        errorDescription = "Server error. Please check backend connection.";
+      } else if (err.message?.includes("401") || err.message?.includes("403")) {
+        errorDescription = "Authentication error. Please log in again.";
+      } else if (err.message?.includes("Network")) {
+        errorDescription = "Network error. Check your internet connection.";
+      } else if (err.message?.includes("category")) {
+        errorDescription = "Category error. Please select a valid category.";
+      } else if (err.status === 500) {
+        errorDescription = "Server error (500). Please check backend logs.";
+      } else if (err.response?.data?.message) {
+        errorDescription = err.response.data.message;
+      }
+
+      toast({
+        title: errorTitle,
+        description: errorDescription,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+        position: "top",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   // Edit Product handler
   const handleEditProduct = (product) => {
     setSelectedProduct(product);
     // Simplified category detection - trust the ID from the product
     const catId = getSafeId(product.category) || getSafeId(product.categoryId);
     let cat = categories.find((c) => c._id === catId);
-    
+
     if (!cat && catId) {
       if (typeof product.categoryId === 'object') {
         cat = product.categoryId;
@@ -1447,20 +1480,20 @@ const handleSubmitProduct = async () => {
         cat = { _id: catId, name: product.categoryName || "Current Category" };
       }
     }
-    
+
     if (cat) {
       setSelectedCategory(cat);
     }
-    
+
     const existingImages = Array.isArray(product.productImages) ? product.productImages : (Array.isArray(product.images) ? product.images : []);
     setFormerImages(existingImages);
-    
+
     // Set variants from product data
     if (Array.isArray(product.variants) && product.variants.length > 0) {
       setVariants(product.variants.map(variant => {
         const color = Array.isArray(variant.color) ? variant.color[0] || '' : variant.color || '';
         const size = Array.isArray(variant.size) ? variant.size[0] || '' : variant.size || '';
-        
+
         return {
           color: color,
           size: size,
@@ -1472,7 +1505,7 @@ const handleSubmitProduct = async () => {
     } else {
       setVariants([]);
     }
-    
+
     setNewProduct({
       name: product.productName || product.name || '',
       description: product.description || '',
@@ -1507,8 +1540,8 @@ const handleSubmitProduct = async () => {
   const handleEditCategory = (category) => {
     setSelectedCategory(category);
     setCategoryFile(null);
-    setNewCategory({ 
-      name: category.name || category.category, 
+    setNewCategory({
+      name: category.name || category.category,
       description: category.description || "",
       image: category.image || category.url || "",
       categoryType: category.categoryType || "product"
@@ -1547,7 +1580,7 @@ const handleSubmitProduct = async () => {
   const StockStatusBadge = ({ product }) => {
     const availableStock = calculateAvailableStock(product);
     const totalStock = product.variants?.reduce((sum, variant) => sum + (variant.stock || 0), 0) || 0;
-    
+
     if (availableStock <= 0) {
       return (
         <Badge colorScheme="red" fontSize="xs" px={2} py={1}>
@@ -1604,18 +1637,18 @@ const handleSubmitProduct = async () => {
   // Render Form Views (Add/Edit Category/Product)
   if (currentView === "addCategory" || currentView === "editCategory" || currentView === "addProduct") {
     return (
-      <Flex 
-        flexDirection="column" 
-        pt={{ base: "120px", md: "75px" }} 
-        height="100vh" 
+      <Flex
+        flexDirection="column"
+        pt={{ base: "120px", md: "75px" }}
+        height="100vh"
         overflow="hidden"
         css={globalScrollbarStyles}
       >
-        <Card 
-          bg="white" 
-          shadow="xl" 
-          height="100%" 
-          display="flex" 
+        <Card
+          bg="white"
+          shadow="xl"
+          height="100%"
+          display="flex"
           flexDirection="column"
           overflow="hidden"
         >
@@ -1639,9 +1672,9 @@ const handleSubmitProduct = async () => {
               </Heading>
             </Flex>
           </CardHeader>
-          <CardBody 
-            bg="white" 
-            flex="1" 
+          <CardBody
+            bg="white"
+            flex="1"
             overflow="auto"
             css={globalScrollbarStyles}
           >
@@ -1682,11 +1715,11 @@ const handleSubmitProduct = async () => {
                   <FormLabel color="gray.700" fontSize="sm">Category Image</FormLabel>
                   <Flex direction="column" gap={3}>
                     {newCategory.image && (
-                      <Box 
-                        border="1px solid" 
-                        borderColor="gray.200" 
-                        borderRadius="md" 
-                        p={2} 
+                      <Box
+                        border="1px solid"
+                        borderColor="gray.200"
+                        borderRadius="md"
+                        p={2}
                         width="fit-content"
                         position="relative"
                       >
@@ -1748,11 +1781,11 @@ const handleSubmitProduct = async () => {
                     </Box>
                   </Flex>
                 </FormControl>
-                
+
                 <Flex justify="flex-end" mt={4} flexShrink={0}>
-                  <Button 
-                    variant="outline" 
-                    mr={3} 
+                  <Button
+                    variant="outline"
+                    mr={3}
                     onClick={handleResetCategory}
                     border="1px"
                     borderColor="gray.300"
@@ -1776,10 +1809,10 @@ const handleSubmitProduct = async () => {
 
             {/* Product Form - WITH STATUS FIELD */}
             {currentView === "addProduct" && (
-              <Box 
-                flex="1" 
-                display="flex" 
-                flexDirection="column" 
+              <Box
+                flex="1"
+                display="flex"
+                flexDirection="column"
                 overflow="hidden"
                 bg="transparent"
               >
@@ -1792,28 +1825,28 @@ const handleSubmitProduct = async () => {
                   <Box p={4}>
                     {/* Category Selection - Always visible */}
                     <FormControl mb="20px">
-                        <FormLabel htmlFor="category" color="gray.700" fontSize="sm">Category *</FormLabel>
-                        <Select
-                          id="category"
-                          placeholder="Select category"
-                          value={
-                            (typeof selectedCategory === 'object' ? selectedCategory?._id : selectedCategory) || ""
-                          }
-                          onChange={(e) => {
-                            const category = categories.find(c => c._id === e.target.value);
-                            setSelectedCategory(category || { _id: e.target.value });
-                          }}
-                          borderColor={`${customColor}50`}
-                          _hover={{ borderColor: customColor }}
-                          _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                          bg="white"
-                          size="sm"
-                        >
-                          {categories.map((cat) => (
-                            <option key={cat._id} value={cat._id}>{cat.category || cat.name}</option>
-                          ))}
-                        </Select>
-                      </FormControl>
+                      <FormLabel htmlFor="category" color="gray.700" fontSize="sm">Category *</FormLabel>
+                      <Select
+                        id="category"
+                        placeholder="Select category"
+                        value={
+                          (typeof selectedCategory === 'object' ? selectedCategory?._id : selectedCategory) || ""
+                        }
+                        onChange={(e) => {
+                          const category = categories.find(c => c._id === e.target.value);
+                          setSelectedCategory(category || { _id: e.target.value });
+                        }}
+                        borderColor={`${customColor}50`}
+                        _hover={{ borderColor: customColor }}
+                        _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                        bg="white"
+                        size="sm"
+                      >
+                        {categories.map((cat) => (
+                          <option key={cat._id} value={cat._id}>{cat.category || cat.name}</option>
+                        ))}
+                      </Select>
+                    </FormControl>
 
                     <Grid templateColumns={["1fr", "1fr 1fr"]} gap={4} mb={4}>
                       <FormControl isRequired>
@@ -1846,7 +1879,7 @@ const handleSubmitProduct = async () => {
                           size="sm"
                         />
                       </FormControl>
-                      
+
                       <FormControl isRequired>
                         <FormLabel color="gray.700" fontSize="sm">Estimated Price To (₹) *</FormLabel>
                         <Input
@@ -2043,12 +2076,12 @@ const handleSubmitProduct = async () => {
                         {newProduct.images && newProduct.images.length > 0 && (
                           <Flex wrap="wrap" gap={3}>
                             {newProduct.images.map((img, index) => (
-                              <Box 
-                                key={img.public_id || index} 
-                                border="1px solid" 
-                                borderColor="gray.200" 
-                                borderRadius="md" 
-                                p={2} 
+                              <Box
+                                key={img.public_id || img.publicId || index}
+                                border="1px solid"
+                                borderColor="gray.200"
+                                borderRadius="md"
+                                p={2}
                                 width="fit-content"
                                 position="relative"
                               >
@@ -2067,7 +2100,7 @@ const handleSubmitProduct = async () => {
                                   top={-2}
                                   right={-2}
                                   borderRadius="full"
-                                  onClick={() => handleRemoveImage(img.public_id || index)}
+                                  onClick={() => handleRemoveImage(img, index)}
                                   aria-label="Remove image"
                                 />
                               </Box>
@@ -2117,17 +2150,17 @@ const handleSubmitProduct = async () => {
                 </Box>
 
                 {/* Fixed Footer with Buttons */}
-                <Box 
-                  flexShrink={0} 
-                  p={4} 
-                  borderTop="1px solid" 
+                <Box
+                  flexShrink={0}
+                  p={4}
+                  borderTop="1px solid"
                   borderColor={`${customColor}20`}
                   bg="transparent"
                 >
                   <Flex justify="flex-end">
-                    <Button 
-                      variant="outline" 
-                      mr={3} 
+                    <Button
+                      variant="outline"
+                      mr={3}
                       onClick={handleResetProduct}
                       border="1px"
                       borderColor="gray.300"
@@ -2158,28 +2191,28 @@ const handleSubmitProduct = async () => {
 
   // Main Dashboard View with Fixed Layout
   return (
-    <Flex 
-      flexDirection="column" 
-      pt={{ base: "120px", md: "45px" }} 
-      height="100vh" 
+    <Flex
+      flexDirection="column"
+      pt={{ base: "120px", md: "45px" }}
+      height="100vh"
       overflow="hidden"
       css={globalScrollbarStyles}
     >
       {/* Fixed Statistics Cards */}
       <Box
         flexShrink={0}
-        p={{ base: 1, md: 4 }} 
+        p={{ base: 1, md: 4 }}
         pb={0}
         mt={{ base: 0, md: 0 }}
       >
         <Grid
           templateColumns={{ base: "1fr 1fr", md: "1fr 1fr" }}
-          gap={{ base: "10px", md: "15px" }} 
+          gap={{ base: "10px", md: "15px" }}
           mb={{ base: "15px", md: "20px" }}
         >
           {/* All Categories Card */}
           <Card
-            minH={{ base: "65px", md: "75px" }} 
+            minH={{ base: "65px", md: "75px" }}
             cursor="pointer"
             onClick={() => setCurrentView("categories")}
             border={currentView === "categories" ? "2px solid" : "1px solid"}
@@ -2200,7 +2233,7 @@ const handleSubmitProduct = async () => {
               transition: "opacity 0.2s ease-in-out",
             }}
             _hover={{
-              transform: { base: "none", md: "translateY(-2px)" }, 
+              transform: { base: "none", md: "translateY(-2px)" },
               shadow: { base: "none", md: "lg" },
               _before: {
                 opacity: 1,
@@ -2212,7 +2245,7 @@ const handleSubmitProduct = async () => {
               <Flex flexDirection="row" align="center" justify="center" w="100%">
                 <Stat me="auto">
                   <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }} 
+                    fontSize={{ base: "2xs", md: "xs" }}
                     color="gray.600"
                     fontWeight="bold"
                     pb="1px"
@@ -2225,17 +2258,17 @@ const handleSubmitProduct = async () => {
                     </StatNumber>
                   </Flex>
                 </Stat>
-                <IconBox 
-                  as="box" 
-                  h={{ base: "30px", md: "35px" }} 
-                  w={{ base: "30px", md: "35px" }} 
+                <IconBox
+                  as="box"
+                  h={{ base: "30px", md: "35px" }}
+                  w={{ base: "30px", md: "35px" }}
                   bg={customColor}
                   transition="all 0.2s ease-in-out"
                 >
                   <Icon
                     as={MdCategory}
                     h={{ base: "14px", md: "18px" }}
-                    w={{ base: "14px", md: "18px" }} 
+                    w={{ base: "14px", md: "18px" }}
                     color="white"
                   />
                 </IconBox>
@@ -2266,7 +2299,7 @@ const handleSubmitProduct = async () => {
               transition: "opacity 0.2s ease-in-out",
             }}
             _hover={{
-              transform: { base: "none", md: "translateY(-2px)" }, 
+              transform: { base: "none", md: "translateY(-2px)" },
               shadow: { base: "none", md: "lg" },
               _before: {
                 opacity: 1,
@@ -2274,11 +2307,11 @@ const handleSubmitProduct = async () => {
               borderColor: customColor,
             }}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}> 
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}>
               <Flex flexDirection="row" align="center" justify="center" w="100%">
                 <Stat me="auto">
                   <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }} 
+                    fontSize={{ base: "2xs", md: "xs" }}
                     color="gray.600"
                     fontWeight="bold"
                     pb="1px"
@@ -2286,14 +2319,14 @@ const handleSubmitProduct = async () => {
                     All Products
                   </StatLabel>
                   <Flex>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}> 
+                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
                       {isLoadingProducts ? <Spinner size="xs" /> : products.length}
                     </StatNumber>
                   </Flex>
                 </Stat>
-                <IconBox 
-                  as="box" 
-                  h={{ base: "30px", md: "35px" }} 
+                <IconBox
+                  as="box"
+                  h={{ base: "30px", md: "35px" }}
                   w={{ base: "30px", md: "35px" }}
                   bg={customColor}
                   transition="all 0.2s ease-in-out"
@@ -2318,30 +2351,30 @@ const handleSubmitProduct = async () => {
       </Box>
 
       {/* Scrollable Table Container */}
-      <Box 
-        flex="1" 
-        display="flex" 
-        flexDirection="column" 
+      <Box
+        flex="1"
+        display="flex"
+        flexDirection="column"
         p={4}
         pt={0}
         overflow="hidden"
       >
-        <Card 
-          shadow="lg" 
-          bg="white" 
+        <Card
+          shadow="lg"
+          bg="white"
           border="1px solid"
           borderColor={customBorderColor}
-          display="flex" 
+          display="flex"
           flexDirection="column"
           height="100%"
           minH="0"
           overflow="hidden"
         >
           {/* Fixed Table Header */}
-          <CardHeader 
-            p="16px" 
+          <CardHeader
+            p="16px"
             pb="12px"
-            bg="white" 
+            bg="white"
             flexShrink={0}
             borderBottom="1px solid"
             borderColor={`${customColor}20`}
@@ -2360,8 +2393,8 @@ const handleSubmitProduct = async () => {
                 <Flex align="center" flex="1" maxW="350px" minW="200px">
                   <Input
                     placeholder={
-                      currentView === "categories" 
-                        ? "Search categories..." 
+                      currentView === "categories"
+                        ? "Search categories..."
                         : "Search products..."
                     }
                     value={searchTerm}
@@ -2397,9 +2430,9 @@ const handleSubmitProduct = async () => {
                   )}
                   <Icon as={FaSearch} color="gray.400" boxSize={3} />
                   {searchTerm && (
-                    <Button 
-                      size="sm" 
-                      ml={2} 
+                    <Button
+                      size="sm"
+                      ml={2}
                       onClick={handleClearSearch}
                       bg="white"
                       color={customColor}
@@ -2428,12 +2461,12 @@ const handleSubmitProduct = async () => {
                       setSelectedCategory(null);
                       setSelectedProduct(null);
                       setNewProduct(initialProduct);
-                      setVariants([{ 
-                        color: '', 
-                        size: '', 
-                        price: '', 
-                        stock: '', 
-                        sku: `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}` 
+                      setVariants([{
+                        color: '',
+                        size: '',
+                        price: '',
+                        stock: '',
+                        sku: `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`
                       }]);
                       setCurrentView("addProduct");
                     }
@@ -2450,14 +2483,14 @@ const handleSubmitProduct = async () => {
               )}
             </Flex>
           </CardHeader>
-          
+
           {/* Scrollable Table Content Area */}
-          <CardBody 
-            bg="white" 
-            flex="1" 
-            display="flex" 
-            flexDirection="column" 
-            p={0} 
+          <CardBody
+            bg="white"
+            flex="1"
+            display="flex"
+            flexDirection="column"
+            p={0}
             overflow="hidden"
           >
             {isLoadingData ? (
@@ -2471,7 +2504,7 @@ const handleSubmitProduct = async () => {
                 {currentView === "categories" && (
                   <>
                     {/* Table Container */}
-                    <Box 
+                    <Box
                       flex="1"
                       display="flex"
                       flexDirection="column"
@@ -2487,8 +2520,8 @@ const handleSubmitProduct = async () => {
                           {/* Fixed Header */}
                           <Thead>
                             <Tr>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -2502,8 +2535,8 @@ const handleSubmitProduct = async () => {
                               >
                                 #
                               </Th>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -2517,8 +2550,8 @@ const handleSubmitProduct = async () => {
                               >
                                 Name
                               </Th>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -2532,8 +2565,8 @@ const handleSubmitProduct = async () => {
                               >
                                 Description
                               </Th>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -2547,8 +2580,8 @@ const handleSubmitProduct = async () => {
                               >
                                 Status
                               </Th>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -2562,9 +2595,9 @@ const handleSubmitProduct = async () => {
                               >
                                 Add Product
                               </Th>
-                              
-                              <Th 
-                                color="gray.100" 
+
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -2586,7 +2619,7 @@ const handleSubmitProduct = async () => {
                           <Tbody bg="transparent">
                             {currentCategories.length > 0 ? (
                               currentCategories.map((cat, idx) => (
-                                <Tr 
+                                <Tr
                                   key={cat._id || idx}
                                   bg="transparent"
                                   _hover={{ bg: `${customColor}10` }}
@@ -2618,7 +2651,7 @@ const handleSubmitProduct = async () => {
                                       {cat.status || "Active"}
                                     </Badge>
                                   </Td>
-                                 
+
                                   <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                     <Button
                                       leftIcon={<FaPlus />}
@@ -2633,7 +2666,7 @@ const handleSubmitProduct = async () => {
                                       Add Product
                                     </Button>
                                   </Td>
-                                 
+
                                   <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                     <Flex gap={2}>
                                       <IconButton
@@ -2680,8 +2713,8 @@ const handleSubmitProduct = async () => {
                                     {categories.length === 0
                                       ? "No categories found. Click 'Add Category' to create one."
                                       : categorySearch
-                                      ? "No categories match your search."
-                                      : "No categories available."}
+                                        ? "No categories match your search."
+                                        : "No categories available."}
                                   </Text>
                                 </Td>
                               </Tr>
@@ -2693,7 +2726,7 @@ const handleSubmitProduct = async () => {
 
                     {/* Pagination Controls */}
                     {filteredCategories.length > 0 && (
-                      <Box 
+                      <Box
                         flexShrink={0}
                         p="16px"
                         borderTop="1px solid"
@@ -2722,8 +2755,8 @@ const handleSubmitProduct = async () => {
                               border="1px"
                               borderColor={customColor}
                               _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{ 
-                                opacity: 0.5, 
+                              _disabled={{
+                                opacity: 0.5,
                                 cursor: "not-allowed",
                                 bg: "gray.100",
                                 color: "gray.400",
@@ -2734,8 +2767,8 @@ const handleSubmitProduct = async () => {
                             </Button>
 
                             {/* Page Number Display */}
-                            <Flex 
-                              align="center" 
+                            <Flex
+                              align="center"
                               gap={2}
                               bg={`${customColor}10`}
                               px={3}
@@ -2765,8 +2798,8 @@ const handleSubmitProduct = async () => {
                               border="1px"
                               borderColor={customColor}
                               _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{ 
-                                opacity: 0.5, 
+                              _disabled={{
+                                opacity: 0.5,
                                 cursor: "not-allowed",
                                 bg: "gray.100",
                                 color: "gray.400",
@@ -2786,7 +2819,7 @@ const handleSubmitProduct = async () => {
                 {currentView === "products" && (
                   <>
                     {/* Table Container */}
-                    <Box 
+                    <Box
                       flex="1"
                       display="flex"
                       flexDirection="column"
@@ -2802,8 +2835,8 @@ const handleSubmitProduct = async () => {
                           {/* Fixed Header */}
                           <Thead>
                             <Tr>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -2817,8 +2850,8 @@ const handleSubmitProduct = async () => {
                               >
                                 #
                               </Th>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -2832,8 +2865,8 @@ const handleSubmitProduct = async () => {
                               >
                                 Name
                               </Th>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -2847,8 +2880,8 @@ const handleSubmitProduct = async () => {
                               >
                                 Category
                               </Th>
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -2864,8 +2897,8 @@ const handleSubmitProduct = async () => {
                               </Th>
                               {/* Stock Status Hidden */}
                               {/* <Th ... >Stock Status</Th> */}
-                              <Th 
-                                color="gray.100" 
+                              <Th
+                                color="gray.100"
                                 borderColor={`${customColor}30`}
                                 position="sticky"
                                 top={0}
@@ -2888,15 +2921,15 @@ const handleSubmitProduct = async () => {
                               currentProducts.map((prod, idx) => {
                                 const availableStock = calculateAvailableStock(prod);
                                 const totalStock = prod.variants?.reduce((sum, variant) => sum + (variant.stock || 0), 0) || 0;
-                                
-                                const priceRange = prod.estimatedPriceFrom && prod.estimatedPriceTo ? 
-                                  `₹${prod.estimatedPriceFrom} - ₹${prod.estimatedPriceTo}` : 
-                                  (prod.variants?.length > 0 ? 
-                                    `₹${Math.min(...prod.variants.map(v => v.price || 0))} - ₹${Math.max(...prod.variants.map(v => v.price || 0))}` : 
+
+                                const priceRange = prod.estimatedPriceFrom && prod.estimatedPriceTo ?
+                                  `₹${prod.estimatedPriceFrom} - ₹${prod.estimatedPriceTo}` :
+                                  (prod.variants?.length > 0 ?
+                                    `₹${Math.min(...prod.variants.map(v => v.price || 0))} - ₹${Math.max(...prod.variants.map(v => v.price || 0))}` :
                                     (prod.price ? `₹${prod.price}` : "N/A"));
-                                
+
                                 return (
-                                  <Tr 
+                                  <Tr
                                     key={prod._id || idx}
                                     bg="transparent"
                                     _hover={{ bg: `${customColor}10` }}
@@ -2912,50 +2945,50 @@ const handleSubmitProduct = async () => {
                                         {prod.name}
                                       </Text>
                                     </Td>
-                                      <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
-                                        <Flex align="center" gap={2}>
-                                          {(() => {
-                                            // Extract Category Object and ID
-                                            const categoryData = prod.categoryId || prod.category;
-                                            const isObject = typeof categoryData === 'object' && categoryData !== null;
-                                            
-                                            const catId = isObject ? categoryData._id : categoryData;
-                                            
-                                            // Find in categories list OR use embedded object
-                                            const catObj = categories.find(c => c._id === catId) || (isObject ? categoryData : null);
-                                            
-                                            const catName = catObj?.category || catObj?.name || "N/A";
-                                            const catImage = catObj?.image;
+                                    <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
+                                      <Flex align="center" gap={2}>
+                                        {(() => {
+                                          // Extract Category Object and ID
+                                          const categoryData = prod.categoryId || prod.category;
+                                          const isObject = typeof categoryData === 'object' && categoryData !== null;
 
-                                            return (
-                                              <>
-                                                {catImage && (
-                                                  <Box w="24px" h="24px" borderRadius="full" overflow="hidden" flexShrink={0}>
-                                                    <Image 
-                                                      src={catImage} 
-                                                      w="100%" 
-                                                      h="100%" 
-                                                      objectFit="cover"
-                                                      fallbackSrc="/placeholder.png"
-                                                    />
-                                                  </Box>
-                                                )}
-                                                <Badge
-                                                  bg={`${customColor}10`}
-                                                  color={customColor}
-                                                  px={2}
-                                                  py={0.5}
-                                                  borderRadius="md"
-                                                  fontSize="xs"
-                                                  fontWeight="medium"
-                                                >
-                                                  {catName}
-                                                </Badge>
-                                              </>
-                                            );
-                                          })()}
-                                        </Flex>
-                                      </Td>
+                                          const catId = isObject ? categoryData._id : categoryData;
+
+                                          // Find in categories list OR use embedded object
+                                          const catObj = categories.find(c => c._id === catId) || (isObject ? categoryData : null);
+
+                                          const catName = catObj?.category || catObj?.name || "N/A";
+                                          const catImage = catObj?.image;
+
+                                          return (
+                                            <>
+                                              {catImage && (
+                                                <Box w="24px" h="24px" borderRadius="full" overflow="hidden" flexShrink={0}>
+                                                  <Image
+                                                    src={catImage}
+                                                    w="100%"
+                                                    h="100%"
+                                                    objectFit="cover"
+                                                    fallbackSrc="/placeholder.png"
+                                                  />
+                                                </Box>
+                                              )}
+                                              <Badge
+                                                bg={`${customColor}10`}
+                                                color={customColor}
+                                                px={2}
+                                                py={0.5}
+                                                borderRadius="md"
+                                                fontSize="xs"
+                                                fontWeight="medium"
+                                              >
+                                                {catName}
+                                              </Badge>
+                                            </>
+                                          );
+                                        })()}
+                                      </Flex>
+                                    </Td>
                                     <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
                                       {priceRange}
                                     </Td>
@@ -3008,8 +3041,8 @@ const handleSubmitProduct = async () => {
                                     {products.length === 0
                                       ? "No products found. Click 'Add Product' to create one."
                                       : productSearch
-                                      ? "No products match your search."
-                                      : "No products available."}
+                                        ? "No products match your search."
+                                        : "No products available."}
                                   </Text>
                                 </Td>
                               </Tr>
@@ -3021,7 +3054,7 @@ const handleSubmitProduct = async () => {
 
                     {/* Pagination Controls */}
                     {filteredProducts.length > 0 && (
-                      <Box 
+                      <Box
                         flexShrink={0}
                         p="16px"
                         borderTop="1px solid"
@@ -3050,8 +3083,8 @@ const handleSubmitProduct = async () => {
                               border="1px"
                               borderColor={customColor}
                               _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{ 
-                                opacity: 0.5, 
+                              _disabled={{
+                                opacity: 0.5,
                                 cursor: "not-allowed",
                                 bg: "gray.100",
                                 color: "gray.400",
@@ -3062,8 +3095,8 @@ const handleSubmitProduct = async () => {
                             </Button>
 
                             {/* Page Number Display */}
-                            <Flex 
-                              align="center" 
+                            <Flex
+                              align="center"
                               gap={2}
                               bg={`${customColor}10`}
                               px={3}
@@ -3093,8 +3126,8 @@ const handleSubmitProduct = async () => {
                               border="1px"
                               borderColor={customColor}
                               _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{ 
-                                opacity: 0.5, 
+                              _disabled={{
+                                opacity: 0.5,
                                 cursor: "not-allowed",
                                 bg: "gray.100",
                                 color: "gray.400",
@@ -3132,17 +3165,17 @@ const handleSubmitProduct = async () => {
           <ModalBody>
             {viewModalType === "category" && selectedCategory && (
               <SimpleGrid columns={1} spacing={4}>
-                 {(selectedCategory.image || selectedCategory.url) && (
-                   <Box mb={4} borderRadius="xl" overflow="hidden" height="200px" border="1px" borderColor="gray.200">
-                      <Image 
-                        src={selectedCategory.image || selectedCategory.url} 
-                        alt={selectedCategory.name || selectedCategory.category} 
-                        w="100%" 
-                        h="100%" 
-                        objectFit="contain" 
-                        bg="gray.50"
-                      />
-                   </Box>
+                {(selectedCategory.image || selectedCategory.url) && (
+                  <Box mb={4} borderRadius="xl" overflow="hidden" height="200px" border="1px" borderColor="gray.200">
+                    <Image
+                      src={selectedCategory.image || selectedCategory.url}
+                      alt={selectedCategory.name || selectedCategory.category}
+                      w="100%"
+                      h="100%"
+                      objectFit="contain"
+                      bg="gray.50"
+                    />
+                  </Box>
                 )}
                 <Box>
                   <Text fontWeight="bold" color="gray.600" fontSize="sm">Name:</Text>
@@ -3202,7 +3235,7 @@ const handleSubmitProduct = async () => {
                     <Text fontSize="lg" fontWeight="bold" mb={1} noOfLines={2}>
                       {selectedProduct.productName || selectedProduct.name}
                     </Text>
-                    
+
                     <SimpleGrid columns={1} spacing={2} mt={2}>
                       <Box>
                         <Text fontSize="xs" color="gray.500">Category</Text>
@@ -3211,15 +3244,15 @@ const handleSubmitProduct = async () => {
                           const isObject = typeof categoryData === 'object' && categoryData !== null;
                           const catId = isObject ? categoryData._id : categoryData;
                           const catObj = categories.find(c => c._id === catId) || (isObject ? categoryData : null);
-                          
+
                           return (
                             <Flex align="center" gap={2} mt={1}>
                               {catObj?.image && (
-                                <Image 
-                                  src={catObj.image} 
-                                  w="20px" 
-                                  h="20px" 
-                                  borderRadius="full" 
+                                <Image
+                                  src={catObj.image}
+                                  w="20px"
+                                  h="20px"
+                                  borderRadius="full"
                                   objectFit="cover"
                                   fallbackSrc="/placeholder.png"
                                 />
@@ -3231,14 +3264,14 @@ const handleSubmitProduct = async () => {
                           );
                         })()}
                       </Box>
-                      
+
                       <Box>
                         <Text fontSize="xs" color="gray.500">Status</Text>
                         <Flex gap={2} mt={1}>
                           <Badge
                             colorScheme={
-                              selectedProduct.status === "Available" ? "green" : 
-                              selectedProduct.status === "Out of Stock" ? "orange" : "red"
+                              selectedProduct.status === "Available" ? "green" :
+                                selectedProduct.status === "Out of Stock" ? "orange" : "red"
                             }
                             fontSize="xs"
                             px={2}
@@ -3352,14 +3385,14 @@ const handleSubmitProduct = async () => {
                       {selectedProduct.createdAt ? new Date(selectedProduct.createdAt).toLocaleDateString() : "N/A"}
                     </Text>
                   </Box>
-                  
-                {/* Description */}
-                <Box mb={4}>
-                  <Text fontWeight="bold" color="gray.500" fontSize="sm" mb={1}>Description</Text>
-                  <Text fontSize="sm" lineHeight="1.4" color="gray.700">
-                    {selectedProduct.description || "No description available"}
-                  </Text>
-                </Box>
+
+                  {/* Description */}
+                  <Box mb={4}>
+                    <Text fontWeight="bold" color="gray.500" fontSize="sm" mb={1}>Description</Text>
+                    <Text fontSize="sm" lineHeight="1.4" color="gray.700">
+                      {selectedProduct.description || "No description available"}
+                    </Text>
+                  </Box>
 
                 </SimpleGrid>
 
@@ -3367,7 +3400,7 @@ const handleSubmitProduct = async () => {
                 {(() => {
                   const allImages = [...(selectedProduct.images || []), ...(selectedProduct.productImages || [])];
                   if (allImages.length === 0) return null;
-                  
+
                   return (
                     <Box>
                       <Text fontWeight="bold" color="gray.500" fontSize="sm" mb={2}>All Images ({allImages.length})</Text>
@@ -3397,8 +3430,8 @@ const handleSubmitProduct = async () => {
             )}
           </ModalBody>
           <ModalFooter>
-            <Button 
-              colorScheme="blue" 
+            <Button
+              colorScheme="blue"
               onClick={closeModal}
               size="sm"
             >
@@ -3427,13 +3460,13 @@ const handleSubmitProduct = async () => {
               </Text>
               ? This action cannot be undone.
             </Text>
-            
+
             {deleteType === "category" && (
-              <Box 
-                bg="orange.50" 
-                p={3} 
-                borderRadius="md" 
-                border="1px" 
+              <Box
+                bg="orange.50"
+                p={3}
+                borderRadius="md"
+                border="1px"
                 borderColor="orange.200"
               >
                 <Flex align="center" gap={2} mb={2}>
@@ -3443,15 +3476,15 @@ const handleSubmitProduct = async () => {
                   </Text>
                 </Flex>
                 <Text fontSize="sm" color="orange.600">
-                  This category must be empty (no products) before it can be deleted. 
+                  This category must be empty (no products) before it can be deleted.
                 </Text>
               </Box>
             )}
           </ModalBody>
           <ModalFooter>
-            <Button 
-              variant="outline" 
-              mr={3} 
+            <Button
+              variant="outline"
+              mr={3}
               onClick={closeDeleteModal}
               isDisabled={isDeleting}
               size="sm"

@@ -29,7 +29,7 @@ function AdminLogin() {
   const navigate = useNavigate();
 
 
-  const [mobileNumber, setMobileNumber] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -72,104 +72,104 @@ function AdminLogin() {
     100% { transform: rotate(-5deg); }
   `;
 
-const handleLogin = async () => {
-  if (!mobileNumber || !password) {
-    toast({
-      title: "Missing fields",
-      description: "Mobile number and password are required",
-      status: "warning",
-      duration: 3000,
-      isClosable: true,
-    });
-    return;
-  }
+  const handleLogin = async () => {
+    if (!identifier || !password) {
+      toast({
+        title: "Missing fields",
+        description: "Mobile number and password are required",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
 
-  if (!mobileRegex.test(mobileNumber)) {
-    toast({
-      title: "Invalid Mobile Number",
-      description: "Please enter a valid 10-digit mobile number",
-      status: "warning",
-      duration: 3000,
-      isClosable: true,
-    });
-    return;
-  }
-
-  
-  if (!passwordRegex.test(password)) {
-    toast({
-      title: "Invalid Password",
-      description:
-        "Password must be at least 8 characters, include uppercase, lowercase, and a number",
-      status: "warning",
-      duration: 4000,
-      isClosable: true,
-    });
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    const res = await axios.post(
-      "https://righttouch.onrender.com/api/user/login",
-      { 
-        mobileNumber: mobileNumber, 
-        password: password,
-        role: "Owner" 
-      },
-      { headers: { "Content-Type": "application/json" } }
-    );
+    if (!mobileRegex.test(identifier)) {
+      toast({
+        title: "Invalid Mobile Number",
+        description: "Please enter a valid 10-digit mobile number",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
 
 
-if (!res.data?.result) {
-  throw new Error("Invalid server response");
-}
+    if (!passwordRegex.test(password)) {
+      toast({
+        title: "Invalid Password",
+        description:
+          "Password must be at least 8 characters, include uppercase, lowercase, and a number",
+        status: "warning",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
 
-const { token, role, id } = res.data.result;
+    setLoading(true);
+
+    try {
+      const res = await axios.post(
+        "https://fullrighttouch.onrender.com/api/user/login/owner",
+        {
+          identifier: identifier,
+          password: password,
+          role: "Owner"
+        },
+        { headers: { "Content-Type": "application/json" } }
+      );
 
 
-sessionStorage.setItem("token", token);
+      if (!res.data?.result) {
+        throw new Error("Invalid server response");
+      }
 
-localStorage.setItem(
-  "user",
-  JSON.stringify({
-    mobileNumber: mobileNumber,
-    role: role,   
-    id,
-  })
-);
+      const { token, role, id } = res.data.result;
 
-    toast({
-      title: "Login Successful",
-      description: `Welcome ${role}!`,
-      status: "success",
-      duration: 2000,
-      isClosable: true,
-    });
 
-    // Small delay to let toast show, then navigate
-    setTimeout(() => {
-      // Direct hash navigation for HashRouter
-      window.location.hash = "/owner/dashboard";
-      // Force reload to ensure routes.js and layouts re-render with new auth state
-      window.location.reload();
-    }, 500);
+      sessionStorage.setItem("token", token);
 
-  } catch (err) {
-    console.error("Login error object:", err);
-    console.error("Login error response:", err.response);
-    toast({
-      title: err.response?.status === 429 ? "Too Many Attempts" : "Login Failed",
-      description: err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : null) || err.message || "Server error",
-      status: "error",
-      duration: 5000,
-      isClosable: true,
-    });
-  } finally {
-    setLoading(false);
-  }
-};
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          identifier: identifier,
+          role: role,
+          id,
+        })
+      );
+
+      toast({
+        title: "Login Successful",
+        description: `Welcome ${role}!`,
+        status: "success",
+        duration: 2000,
+        isClosable: true,
+      });
+
+      // Small delay to let toast show, then navigate
+      setTimeout(() => {
+        // Direct hash navigation for HashRouter
+        window.location.hash = "/owner/dashboard";
+        // Force reload to ensure routes.js and layouts re-render with new auth state
+        window.location.reload();
+      }, 500);
+
+    } catch (err) {
+      console.error("Login error object:", err);
+      console.error("Login error response:", err.response);
+      toast({
+        title: err.response?.status === 429 ? "Too Many Attempts" : "Login Failed",
+        description: err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : null) || err.message || "Server error",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
 
@@ -232,10 +232,10 @@ localStorage.setItem(
           transition="all 0.5s ease"
           transform={isGlow ? "scale(1.1) rotate(180deg)" : "scale(1) rotate(180deg)"}
         >
-          <Icon 
-            as={MdLightbulb} 
-            w="120px" 
-            h="120px" 
+          <Icon
+            as={MdLightbulb}
+            w="120px"
+            h="120px"
             color={isGlow ? "#FFD700" : "rgba(255, 215, 0, 0.3)"}
             filter={isGlow ? "drop-shadow(0 0 50px #FFD700)" : "none"}
             animation={isGlow ? `${bulbGlow} 2s infinite ease-in-out` : "none"}
@@ -262,17 +262,17 @@ localStorage.setItem(
         position="absolute"
         top="15%"
         left="5%"
-        w={{ 
+        w={{
           base: "30px",      // 320px-480px
           sm: "40px",        // 481px-767px  
           md: "50px",        // 768px-1024px
           lg: "60px",        // 1025px-1280px
           xl: "70px"         // 1281px+
         }}
-        h={{ 
+        h={{
           base: "30px",
           sm: "40px",
-          md: "50px", 
+          md: "50px",
           lg: "60px",
           xl: "70px"
         }}
@@ -281,21 +281,21 @@ localStorage.setItem(
         animation={`${floatAnimation} 4s ease-in-out infinite`}
         zIndex="1"
       />
-      
+
       <Box
         position="absolute"
         bottom="25%"
         right="8%"
-        w={{ 
+        w={{
           base: "25px",
           sm: "35px",
           md: "45px",
           lg: "55px",
           xl: "65px"
         }}
-        h={{ 
+        h={{
           base: "25px",
-          sm: "35px", 
+          sm: "35px",
           md: "45px",
           lg: "55px",
           xl: "65px"
@@ -310,16 +310,16 @@ localStorage.setItem(
         position="absolute"
         top="60%"
         left="85%"
-        w={{ 
+        w={{
           base: "20px",
           sm: "30px",
           md: "40px",
           lg: "50px",
           xl: "60px"
         }}
-        h={{ 
+        h={{
           base: "20px",
-          sm: "30px", 
+          sm: "30px",
           md: "40px",
           lg: "50px",
           xl: "60px"
@@ -333,7 +333,7 @@ localStorage.setItem(
       {/* Main Login Container */}
       <Flex
         direction="column"
-        w={{ 
+        w={{
           base: "90%",        // 320px-480px
           sm: "85%",          // 481px-767px
           md: "75%",          // 768px-1024px
@@ -341,9 +341,9 @@ localStorage.setItem(
           xl: "55%"           // 1281px+
         }}
         h={{
-          xl:"90%"
+          xl: "90%"
         }}
-        maxW={{ 
+        maxW={{
           base: "400px",      // 320px-480px
           sm: "450px",        // 481px-767px
           md: "500px",        // 768px-1024px
@@ -351,7 +351,7 @@ localStorage.setItem(
           xl: "500px"         // 1281px+
         }}
         bg={bgForm}
-        borderRadius={{ 
+        borderRadius={{
           base: "20px",       // 320px-480px
           sm: "25px",         // 481px-767px
           md: "30px",         // 768px-1024px
@@ -372,7 +372,7 @@ localStorage.setItem(
         <Flex
           bg="linear-gradient(135deg, #008080 0%, #006666 100%)"
           color="white"
-          p={{ 
+          p={{
             base: "25px",     // 320px-480px
             sm: "30px",       // 481px-767px
             md: "35px",       // 768px-1024px
@@ -400,17 +400,17 @@ localStorage.setItem(
           }}
         >
           <Box
-            w={{ 
+            w={{
               base: "60px",   // 320px-480px
               sm: "70px",     // 481px-767px
               md: "80px",     // 768px-1024px
               lg: "90px",     // 1025px-1280px
               xl: "15%"     // 1281px+
             }}
-            h={{ 
+            h={{
               base: "60px",
               sm: "70px",
-              md: "80px", 
+              md: "80px",
               lg: "90px",
               xl: "100%"
             }}
@@ -425,9 +425,9 @@ localStorage.setItem(
           >
             <Icon as={MdAdminPanelSettings} h="60px" w="60px" color="#FFD700" />
           </Box>
-          
+
           <Text
-            fontSize={{ 
+            fontSize={{
               base: "22px",   // 320px-480px
               sm: "24px",     // 481px-767px
               md: "26px",     // 768px-1024px
@@ -446,7 +446,7 @@ localStorage.setItem(
         <Flex
           direction="column"
           justify="center"
-          p={{ 
+          p={{
             base: "25px",     // 320px-480px
             sm: "30px",       // 481px-767px
             md: "35px",       // 768px-1024px  
@@ -454,7 +454,7 @@ localStorage.setItem(
             xl: "45px"        // 1281px+
           }}
         >
-          <VStack spacing={{ 
+          <VStack spacing={{
             base: "20px",     // 320px-480px
             sm: "22px",       // 481px-767px
             md: "25px",       // 768px-1024px
@@ -462,8 +462,8 @@ localStorage.setItem(
             xl: "30px"        // 1281px+
           }} align="stretch">
             <FormControl>
-              <FormLabel 
-                fontSize={{ 
+              <FormLabel
+                fontSize={{
                   base: "14px",  // 320px-480px
                   sm: "15px",    // 481px-767px
                   md: "16px",    // 768px-1024px
@@ -492,16 +492,16 @@ localStorage.setItem(
               <Input
                 type="tel"
                 placeholder="Enter Mobile Number"
-                value={mobileNumber}
-                onChange={(e) => setMobileNumber(e.target.value)}
-                size={{ 
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                size={{
                   base: "md",    // 320px-480px
                   sm: "lg",      // 481px-767px
                   md: "lg",      // 768px-1024px
                   lg: "lg",      // 1025px-1280px
                   xl: "lg"       // 1281px+
                 }}
-                h={{ 
+                h={{
                   base: "45px",  // 320px-480px
                   sm: "48px",    // 481px-767px
                   md: "50px",    // 768px-1024px
@@ -514,8 +514,8 @@ localStorage.setItem(
                 borderColor="gray.200"
                 bg="white"
                 _hover={{ borderColor: "teal.300" }}
-                _focus={{ 
-                  borderColor: "#008080", 
+                _focus={{
+                  borderColor: "#008080",
                   boxShadow: "0 0 0 3px rgba(0, 128, 128, 0.15)",
                   bg: "white"
                 }}
@@ -524,10 +524,10 @@ localStorage.setItem(
             </FormControl>
 
             <FormControl>
-              <FormLabel 
-                fontSize={{ 
+              <FormLabel
+                fontSize={{
                   base: "14px",
-                  sm: "15px", 
+                  sm: "15px",
                   md: "16px",
                   lg: "16px",
                   xl: "17px"
@@ -551,10 +551,10 @@ localStorage.setItem(
                 </Box>
                 Password
               </FormLabel>
-              <InputGroup size={{ 
+              <InputGroup size={{
                 base: "md",
                 sm: "lg",
-                md: "lg", 
+                md: "lg",
                 lg: "lg",
                 xl: "lg"
               }}>
@@ -563,7 +563,7 @@ localStorage.setItem(
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  h={{ 
+                  h={{
                     base: "45px",
                     sm: "48px",
                     md: "50px",
@@ -576,22 +576,22 @@ localStorage.setItem(
                   borderColor="gray.200"
                   bg="white"
                   _hover={{ borderColor: "teal.300" }}
-                  _focus={{ 
-                    borderColor: "#008080", 
+                  _focus={{
+                    borderColor: "#008080",
                     boxShadow: "0 0 0 3px rgba(0, 128, 128, 0.15)",
                     bg: "white"
                   }}
                   transition="all 0.3s ease"
                 />
-                <InputRightElement 
-                  h={{ 
+                <InputRightElement
+                  h={{
                     base: "45px",
-                    sm: "48px", 
+                    sm: "48px",
                     md: "50px",
                     lg: "52px",
                     xl: "55px"
                   }}
-                  w={{ 
+                  w={{
                     base: "55px",
                     sm: "60px",
                     md: "60px",
@@ -600,14 +600,14 @@ localStorage.setItem(
                   }}
                 >
                   <Button
-                    h={{ 
+                    h={{
                       base: "32px",
                       sm: "34px",
-                      md: "36px", 
+                      md: "36px",
                       lg: "38px",
                       xl: "40px"
                     }}
-                    w={{ 
+                    w={{
                       base: "32px",
                       sm: "34px",
                       md: "36px",
@@ -629,7 +629,7 @@ localStorage.setItem(
 
             <Button
               w="100%"
-              h={{ 
+              h={{
                 base: "48px",   // 320px-480px
                 sm: "50px",     // 481px-767px
                 md: "52px",     // 768px-1024px
@@ -642,7 +642,7 @@ localStorage.setItem(
               onClick={handleLogin}
               isLoading={loading}
               loadingText="Authenticating..."
-              fontSize={{ 
+              fontSize={{
                 base: "16px",   // 320px-480px
                 sm: "17px",     // 481px-767px
                 md: "18px",     // 768px-1024px
@@ -650,12 +650,12 @@ localStorage.setItem(
                 xl: "19px"      // 1281px+
               }}
               fontWeight="bold"
-              _hover={{ 
+              _hover={{
                 bg: "linear-gradient(135deg, #F5B700 0%, #FFD700 100%)",
                 transform: "translateY(-2px)",
                 boxShadow: "0 12px 30px rgba(255, 215, 0, 0.4)"
               }}
-              _active={{ 
+              _active={{
                 transform: "translateY(0)",
                 boxShadow: "0 6px 20px rgba(255, 215, 0, 0.3)"
               }}
@@ -671,10 +671,10 @@ localStorage.setItem(
             </Button>
 
             {/* Security Footer */}
-            <HStack 
-              justify="center" 
+            <HStack
+              justify="center"
               spacing="8px"
-              mt={{ 
+              mt={{
                 base: "10px",   // 320px-480px
                 sm: "12px",     // 481px-767px
                 md: "15px",     // 768px-1024px
@@ -689,8 +689,8 @@ localStorage.setItem(
                 borderRadius="50%"
                 animation={`${floatAnimation} 2s ease-in-out infinite`}
               />
-              <Text 
-                fontSize={{ 
+              <Text
+                fontSize={{
                   base: "12px",   // 320px-480px
                   sm: "13px",     // 481px-767px
                   md: "14px",     // 768px-1024px

@@ -95,26 +95,63 @@ import { useNavigate } from "react-router-dom";
 const getTechnicianName = (tech) => {
   if (!tech) return "Unknown";
 
+  const isDeleted = (str) => str && (typeof str === 'string') && (str.startsWith("deleted_") || str.includes("example.invalid"));
+
   // Top level specific fields
-  if (tech.name && tech.name.trim() !== "") return tech.name;
-  if (tech.firstName) return `${tech.firstName} ${tech.lastName || ""}`.trim();
-  if (tech.fname) return `${tech.fname} ${tech.lname || ""}`.trim();
+  if (tech.name && tech.name.trim() !== "") {
+    if (isDeleted(tech.name)) return "Deleted Technician";
+    return tech.name;
+  }
+
+  if (tech.firstName) {
+    const fullName = `${tech.firstName} ${tech.lastName || ""}`.trim();
+    if (isDeleted(fullName)) return "Deleted Technician";
+    return fullName;
+  }
+
+  if (tech.fname) {
+    const fullName = `${tech.fname} ${tech.lname || ""}`.trim();
+    if (isDeleted(fullName)) return "Deleted Technician";
+    return fullName;
+  }
 
   // Profile fields
-  if (tech.profile?.name) return tech.profile.name;
-  if (tech.profile?.firstName) return `${tech.profile.firstName} ${tech.profile.lastName || ""}`.trim();
+  if (tech.profile?.name) {
+    if (isDeleted(tech.profile.name)) return "Deleted Technician";
+    return tech.profile.name;
+  }
+
+  if (tech.profile?.firstName) {
+    const fullName = `${tech.profile.firstName} ${tech.profile.lastName || ""}`.trim();
+    if (isDeleted(fullName)) return "Deleted Technician";
+    return fullName;
+  }
 
   // Nested userId fields (for when admin is a populated technician object)
   if (tech.userId) {
     if (typeof tech.userId === 'object') {
-      if (tech.userId.name) return tech.userId.name;
-      if (tech.userId.firstName) return `${tech.userId.firstName} ${tech.userId.lastName || ""}`.trim();
-      if (tech.userId.fname) return `${tech.userId.fname} ${tech.userId.lname || ""}`.trim();
+      if (tech.userId.name) {
+        if (isDeleted(tech.userId.name)) return "Deleted Technician";
+        return tech.userId.name;
+      }
+      if (tech.userId.firstName) {
+        const fullName = `${tech.userId.firstName} ${tech.userId.lastName || ""}`.trim();
+        if (isDeleted(fullName)) return "Deleted Technician";
+        return fullName;
+      }
+      if (tech.userId.fname) {
+        const fullName = `${tech.userId.fname} ${tech.userId.lname || ""}`.trim();
+        if (isDeleted(fullName)) return "Deleted Technician";
+        return fullName;
+      }
     }
   }
 
   // Fallback email or ID
-  if (tech.email) return tech.email.split('@')[0];
+  if (tech.email) {
+    if (isDeleted(tech.email)) return "Deleted Technician";
+    return tech.email.split('@')[0];
+  }
 
   return "Unknown";
 };

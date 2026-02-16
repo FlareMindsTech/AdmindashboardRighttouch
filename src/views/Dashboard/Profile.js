@@ -501,8 +501,18 @@ export default function OwnerProfile() {
                         {currentTechnicians.length > 0 ? (
                           currentTechnicians.map((tech, i) => {
                             const user = tech.userId || {};
-                            const displayName = user.name || (tech.firstName ? `${tech.firstName} ${tech.lastName || ''}` : (user.firstName ? `${user.firstName} ${user.lastName || ''}` : user.email || "Technician"));
-                            const displayPhone = tech.mobileNumber || user.mobileNumber || user.phoneNumber || user.phone || tech.phoneNumber || "N/A";
+                            let displayName = user.name || (tech.firstName ? `${tech.firstName} ${tech.lastName || ''}` : (user.firstName ? `${user.firstName} ${user.lastName || ''}` : user.email || "Deleted Technician"));
+
+                            // Check for deleted user pattern or if name is just "Technician" without user details
+                            if (displayName && (typeof displayName === 'string') && (displayName.toLowerCase().startsWith('deleted_') || displayName.toLowerCase().includes('example.invalid'))) {
+                              displayName = "Deleted Technician";
+                            } else if (displayName === "Technician" && (!user.email && !tech.email)) {
+                              displayName = "Deleted Technician";
+                            }
+                            let displayPhone = tech.mobileNumber || user.mobileNumber || user.phoneNumber || user.phone || tech.phoneNumber || "N/A";
+                            if (displayPhone && (typeof displayPhone === 'string') && (displayPhone.toLowerCase().startsWith('deleted_') || displayPhone.toLowerCase().includes('example.invalid'))) {
+                              displayPhone = "N/A";
+                            }
                             const isApproved = tech.status === 'approved' || tech.isActive === true;
 
                             return (

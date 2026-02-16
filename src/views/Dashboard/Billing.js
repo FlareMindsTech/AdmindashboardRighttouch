@@ -1,15 +1,3 @@
-// billing
-// CleanedBilling.js (Mobile-friendly table / compact-scroll version)
-// Updated to keep table layout but be responsive & mobile-friendly.
-// - Horizontal scroll on small screens
-// - Compact table sizes on mobile
-// - Filters & search stacked on mobile
-// - Pagination buttons full-width / touch-friendly on mobile
-// - Bugfix: Confirm_Order calls fetchOrders()
-// - Keep rest of features identical to original file
-
-/* eslint-disable react/prop-types */
-/* eslint-disable no-unused-vars */
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {

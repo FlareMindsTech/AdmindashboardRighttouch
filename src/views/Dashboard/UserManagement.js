@@ -1487,7 +1487,14 @@ function UserManagement() {
                         <Text fontSize="xs" fontWeight="bold" color="teal.500" mb={1} textTransform="uppercase">Technician Details</Text>
                         {booking.technicianId ? (
                           <>
-                            <Text fontSize="sm"><strong>Name:</strong> {booking.technicianId.userId?.fname} {booking.technicianId.userId?.lname}</Text>
+                            <Text fontSize="sm"><strong>Name:</strong> {
+                              (() => {
+                                const tUser = booking.technicianId.userId;
+                                const name = `${tUser?.fname || tUser?.firstName || ''} ${tUser?.lname || tUser?.lastName || ''}`.trim() || tUser?.name || tUser?.email || "Unknown";
+                                if (name && (name.toLowerCase().startsWith('deleted_') || name.includes('example.invalid'))) return "Deleted Technician";
+                                return name;
+                              })()
+                            }</Text>
                             <Text fontSize="sm"><strong>Mobile:</strong> {booking.technicianId.userId?.mobileNumber || "N/A"}</Text>
                             <Text fontSize="sm"><strong>Status:</strong> {booking.technicianId.workStatus || "N/A"}</Text>
                             <Text fontSize="sm"><strong>Assigned At:</strong> {booking.assignedAt ? new Date(booking.assignedAt).toLocaleString() : "N/A"}</Text>

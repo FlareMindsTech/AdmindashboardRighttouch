@@ -1041,11 +1041,14 @@ export default function CleanedBilling() {
               <Flex flexDirection="row" align="center" justify="space-between" w="100%" padding={5}>
                 <Stat me="auto">
                   <StatLabel fontSize={{ base: "sm", md: "md" }} color="gray.600" fontWeight="bold" pb="0px">
-                    Available Balance
+                    Technician Available Balance
                   </StatLabel>
                   <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
-                    {isLoading ? <Spinner size="xs" /> : formatINR(walletDetails.availableBalance)}
+                    {isLoading ? <Spinner size="xs" /> : formatINR((walletDetails.availableBalance || 0) - (walletDetails.totalCommission || 0))}
                   </StatNumber>
+                  {/* <Text fontSize="xs" color="gray.500" mt={1}>
+                    (After commission deduction)
+                  </Text> */}
                 </Stat>
                 <Box display="flex" alignItems="center" justifyContent="center" borderRadius="10px" h="34px" w="34px" bg={customColor}>
                   <Icon as={MdCategory} h="16px" w="16px" color="white" />
@@ -1058,9 +1061,9 @@ export default function CleanedBilling() {
           <Card
             minH="83px"
             cursor="pointer"
-            onClick={() => setCurrentView("wallets")}
-            border={currentView === "wallets" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "wallets" ? customColor : `${customColor}30`}
+            onClick={() => setCurrentView("revenue_breakdown")}
+            border={currentView === "revenue_breakdown" ? "2px solid" : "1px solid"}
+            borderColor={currentView === "revenue_breakdown" ? customColor : `${customColor}30`}
             transition="all 0.2s ease-in-out"
             bg="white"
             position="relative"
@@ -1401,7 +1404,7 @@ export default function CleanedBilling() {
             >
 
               <Heading size="md" flexShrink={0} color="gray.700">
-                {currentView === "orders" ? "🛒 Orders" : currentView === "services" ? "🛠️ Service Bookings" : "💳 Payments"}
+                {currentView === "revenue_breakdown" ? "💰 Revenue Breakdown" : currentView === "orders" ? "🛒 Orders" : currentView === "services" ? "🛠️ Service Bookings" : "💳 Payments"}
               </Heading>
 
               <Flex align="center" flex="1" maxW="400px">
@@ -1446,7 +1449,7 @@ export default function CleanedBilling() {
                   setPaymentStatusFilter("all");
                   setOrderDatePreset("all");
                   setPaymentDatePreset("all");
-                  setCurrentView("orders");
+                  setCurrentView("services");
                 }}>Reset</Button>
 
                 <Button variant="outline" size="sm" borderColor="gray.200" bg={cardBg} onClick={() => {
@@ -1594,6 +1597,59 @@ export default function CleanedBilling() {
                               <Td colSpan={6} textAlign="center" py={4}>No wallet records found</Td>
                             </Tr>
                           )}
+                        </Tbody>
+                      </Table>
+                    ) : currentView === "revenue_breakdown" ? (
+                      <Table variant="simple" size="md" bg="transparent">
+                        <Thead>
+                          <Tr>
+                            <Th color="gray.600">Metric</Th>
+                            <Th color="gray.600" isNumeric>Amount (₹)</Th>
+                          </Tr>
+                        </Thead>
+                        <Tbody>
+                          {(() => {
+                            // Calculate total withdrawals (excluding rejected ones)
+                            const totalWithdrawals = wallets.reduce((sum, w) => {
+                              return w.status !== 'rejected' ? sum + (Number(w.amount) || 0) : sum;
+                            }, 0);
+
+                            const totalCollected = walletDetails.totalCollected || 0;
+                            const totalCommission = walletDetails.totalCommission || 0;
+
+                            // Technician Balance = Collected - Commission
+                            const technicianBalance = totalCollected - totalCommission;
+
+                            // Final Available = Technician Balance - Withdrawals
+                            const availableBalance = technicianBalance - totalWithdrawals;
+
+                            return (
+                              <>
+                                <Tr _hover={{ bg: "gray.50" }}>
+                                  <Td fontWeight="medium">Total Collected</Td>
+                                  <Td isNumeric fontWeight="bold">{formatINR(totalCollected)}</Td>
+                                </Tr>
+                                <Tr _hover={{ bg: "gray.50" }}>
+                                  <Td fontWeight="medium">Total Commission</Td>
+                                  <Td isNumeric color="red.500">- {formatINR(totalCommission)}</Td>
+                                </Tr>
+                                <Tr bg="gray.100" _hover={{ bg: "gray.200" }}>
+                                  <Td fontWeight="bold" color="gray.700">Technician Balance (Collected - Commission)</Td>
+                                  <Td isNumeric fontWeight="bold" color="gray.800">
+                                    {formatINR(technicianBalance)}
+                                  </Td>
+                                </Tr>
+                                <Tr _hover={{ bg: "gray.50" }}>
+                                  <Td fontWeight="medium">Technician Withdraw Request Amount</Td>
+                                  <Td isNumeric color="red.500">- {formatINR(totalWithdrawals)}</Td>
+                                </Tr>
+                                <Tr bg="green.50" _hover={{ bg: "green.100" }}>
+                                  <Td fontWeight="bold" color="green.800">Available Balance</Td>
+                                  <Td isNumeric fontWeight="bold" color="blue.600">{formatINR(availableBalance)}</Td>
+                                </Tr>
+                              </>
+                            );
+                          })()}
                         </Tbody>
                       </Table>
                     ) : currentView === "services" ? (

@@ -7,7 +7,7 @@ import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalFooter,
   ModalBody, ModalCloseButton, useDisclosure, Box, HStack, Heading
 } from "@chakra-ui/react";
-import { FaUsers, FaBoxOpen, FaEdit, FaSignOutAlt, FaSave, FaTimes, FaChartPie, FaCrown } from "react-icons/fa";
+import { FaUsers, FaBoxOpen, FaEdit, FaSignOutAlt, FaSave, FaTimes, FaChartPie, FaCrown, FaStar } from "react-icons/fa";
 import Card from "components/Card/Card";
 import { useNavigate } from "react-router-dom";
 import { getAllBookings, getAllServiceBooking, getAllTechnicians, getAllProduct, getAllServices } from "views/utils/axiosInstance";
@@ -74,6 +74,7 @@ const getInitialOwnerData = () => {
 };
 
 
+
 const getRoleColor = (role) => {
   switch (role?.toLowerCase()) {
     case 'owner': return 'purple';
@@ -83,6 +84,75 @@ const getRoleColor = (role) => {
     default: return 'gray';
   }
 };
+
+const getTechnicianName = (tech) => {
+  if (!tech) return "Unknown";
+
+  const isDeleted = (str) => str && (typeof str === 'string') && (str.startsWith("deleted_") || str.includes("example.invalid"));
+
+  // Top level specific fields
+  if (tech.name && tech.name.trim() !== "") {
+    if (isDeleted(tech.name)) return "Deleted Technician";
+    return tech.name;
+  }
+
+  if (tech.firstName) {
+    const fullName = `${tech.firstName} ${tech.lastName || ""}`.trim();
+    if (isDeleted(fullName)) return "Deleted Technician";
+    return fullName;
+  }
+
+  if (tech.fname) {
+    const fullName = `${tech.fname} ${tech.lname || ""}`.trim();
+    if (isDeleted(fullName)) return "Deleted Technician";
+    return fullName;
+  }
+
+  // Profile fields
+  if (tech.profile?.name) {
+    if (isDeleted(tech.profile.name)) return "Deleted Technician";
+    return tech.profile.name;
+  }
+
+  if (tech.profile?.firstName) {
+    const fullName = `${tech.profile.firstName} ${tech.profile.lastName || ""}`.trim();
+    if (isDeleted(fullName)) return "Deleted Technician";
+    return fullName;
+  }
+
+  // Nested userId fields (for when admin is a populated technician object)
+  if (tech.userId) {
+    if (typeof tech.userId === 'object') {
+      if (tech.userId.name) {
+        if (isDeleted(tech.userId.name)) return "Deleted Technician";
+        return tech.userId.name;
+      }
+      if (tech.userId.firstName) {
+        const fullName = `${tech.userId.firstName} ${tech.userId.lastName || ""}`.trim();
+        if (isDeleted(fullName)) return "Deleted Technician";
+        return fullName;
+      }
+      if (tech.userId.fname) {
+        const fullName = `${tech.userId.fname} ${tech.userId.lname || ""}`.trim();
+        if (isDeleted(fullName)) return "Deleted Technician";
+        return fullName;
+      }
+    }
+  }
+
+  // Fallback email or ID
+  if (tech.email) {
+    if (isDeleted(tech.email)) return "Deleted Technician";
+    return tech.email.split('@')[0];
+  }
+
+  return "Unknown";
+};
+
+const getTechnicianImage = (tech) => {
+  return tech?.profileImage || tech?.profile?.profileImage || (typeof tech?.userId === 'object' ? tech?.userId?.profileImage : "") || "";
+};
+
 
 
 
@@ -493,7 +563,7 @@ export default function OwnerProfile() {
                           <Th>Technician</Th>
                           <Th>Experience</Th>
                           <Th>Phone</Th>
-                          <Th>Status</Th>
+                          <Th>Rating</Th>
                           <Th>Joined</Th>
                         </Tr>
                       </Thead>
@@ -501,14 +571,8 @@ export default function OwnerProfile() {
                         {currentTechnicians.length > 0 ? (
                           currentTechnicians.map((tech, i) => {
                             const user = tech.userId || {};
-                            let displayName = user.name || (tech.firstName ? `${tech.firstName} ${tech.lastName || ''}` : (user.firstName ? `${user.firstName} ${user.lastName || ''}` : user.email || "Deleted Technician"));
+                            const displayName = getTechnicianName(tech);
 
-                            // Check for deleted user pattern or if name is just "Technician" without user details
-                            if (displayName && (typeof displayName === 'string') && (displayName.toLowerCase().startsWith('deleted_') || displayName.toLowerCase().includes('example.invalid'))) {
-                              displayName = "Deleted Technician";
-                            } else if (displayName === "Technician" && (!user.email && !tech.email)) {
-                              displayName = "Deleted Technician";
-                            }
                             let displayPhone = tech.mobileNumber || user.mobileNumber || user.phoneNumber || user.phone || tech.phoneNumber || "N/A";
                             if (displayPhone && (typeof displayPhone === 'string') && (displayPhone.toLowerCase().startsWith('deleted_') || displayPhone.toLowerCase().includes('example.invalid'))) {
                               displayPhone = "N/A";
@@ -518,7 +582,7 @@ export default function OwnerProfile() {
                             return (
                               <Tr key={tech._id || i} display={{ base: "block", md: "table-row" }} mb={{ base: 4, md: 0 }}>
                                 <Td display="flex" alignItems="center" gap={3} border="none">
-                                  <Avatar size="sm" name={displayName} src={user.profileImage || tech.profileImage} />
+                                  <Avatar size="sm" name={displayName} src={getTechnicianImage(tech)} />
                                   <Text fontWeight="medium" display={{ base: "block", md: "block" }}>{displayName}</Text>
                                 </Td>
                                 <Td display={{ base: "none", md: "table-cell" }}>
@@ -526,9 +590,11 @@ export default function OwnerProfile() {
                                 </Td>
                                 <Td>{displayPhone}</Td>
                                 <Td>
-                                  <Badge colorScheme={isApproved ? "green" : "red"}>
-                                    {tech.status || (tech.isActive ? "Active" : "Inactive")}
-                                  </Badge>
+                                  <Flex align="center">
+                                    <Text fontWeight="bold">{tech.rating?.avg?.toFixed(1) || "0.0"}</Text>
+                                    <Box as={FaStar} color="yellow.400" ml={1} />
+                                    <Text fontSize="xs" color="gray.500" ml={1}>({tech.rating?.count || 0})</Text>
+                                  </Flex>
                                 </Td>
                                 <Td>{new Date(tech.createdAt).toLocaleDateString()}</Td>
                               </Tr>

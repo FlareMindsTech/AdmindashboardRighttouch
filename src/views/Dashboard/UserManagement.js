@@ -1455,11 +1455,7 @@ function UserManagement() {
             )}
           </ModalBody>
 
-          <ModalFooter borderTop="1px solid" borderColor="gray.100">
-            <Button colorScheme="teal" mr={3} onClick={() => setIsDetailsModalOpen(false)}>
-              Close
-            </Button>
-          </ModalFooter>
+
         </ModalContent>
       </Modal>
 
@@ -1522,9 +1518,7 @@ function UserManagement() {
               </Flex>
             )}
           </ModalBody>
-          <ModalFooter>
-            <Button colorScheme="teal" onClick={() => setIsTechModalOpen(false)}>Close</Button>
-          </ModalFooter>
+
         </ModalContent>
       </Modal>
 
@@ -1593,9 +1587,7 @@ function UserManagement() {
               </VStack>
             ) : null}
           </ModalBody>
-          <ModalFooter>
-            <Button colorScheme="teal" onClick={() => setIsPaymentModalOpen(false)}>Close</Button>
-          </ModalFooter>
+
         </ModalContent>
       </Modal>
     </>

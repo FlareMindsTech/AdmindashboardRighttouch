@@ -3667,15 +3667,7 @@ export default function ServiceManagement() {
               </Box>
             )}
           </ModalBody>
-          <ModalFooter>
-            <Button
-              colorScheme="blue"
-              onClick={closeModal}
-              size="sm"
-            >
-              Close
-            </Button>
-          </ModalFooter>
+
         </ModalContent>
       </Modal>
 

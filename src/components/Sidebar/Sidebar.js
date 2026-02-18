@@ -37,7 +37,7 @@ import { SidebarHelp } from "components/Sidebar/SidebarHelp";
 import React, { useRef, useState } from "react";
 import { Scrollbars } from "react-custom-scrollbars";
 import { NavLink } from "react-router-dom";
-import FlareMindslogo from "assets/img/fm logo.png"; 
+import FlareMindslogo from "assets/img/fm logo.png";
 
 function Sidebar(props) {
   const { sidebarVariant, logo, routes } = props;
@@ -106,7 +106,7 @@ function Sidebar(props) {
             <Text
               color={activeColor}
               fontWeight="bold"
-              mb={{ 
+              mb={{
                 base: "4px",    // 320px - 480px
                 sm: "5px",      // 481px - 767px
                 md: "6px",      // 768px - 1024px
@@ -114,7 +114,7 @@ function Sidebar(props) {
                 xl: "6px"       // 1281px +
               }}
               mx="auto"
-              ps={{ 
+              ps={{
                 base: "8px",    // 320px - 480px
                 sm: "9px",      // 481px - 767px
                 md: "10px",     // 768px - 1024px
@@ -201,21 +201,21 @@ function Sidebar(props) {
               boxSize="initial"
               justifyContent="flex-start"
               alignItems="center"
-              mb={{ 
+              mb={{
                 base: "4px",    // 320px - 480px
                 sm: "5px",      // 481px - 767px
                 md: "6px",      // 768px - 1024px
                 lg: "6px",      // 1025px - 1280px
                 xl: "6px"       // 1281px +
               }}
-              mx={{ 
+              mx={{
                 base: "auto",   // 320px - 480px
                 sm: "auto",     // 481px - 767px
                 md: "auto",     // 768px - 1024px
                 lg: "auto",     // 1025px - 1280px
                 xl: "auto"      // 1281px +
               }}
-              ps={{ 
+              ps={{
                 base: "8px",    // 320px - 480px
                 sm: "9px",      // 481px - 767px
                 md: "10px",     // 768px - 1024px
@@ -322,7 +322,7 @@ function Sidebar(props) {
     <Box ref={mainPanel}>
       {/* Desktop Sidebar - Show on lg screens and above */}
       <Box
-        display={{ 
+        display={{
           base: "none",  // 320px - 480px
           sm: "none",    // 481px - 767px
           md: "none",    // 768px - 1024px
@@ -344,7 +344,7 @@ function Sidebar(props) {
           lg: "16px",    // 1025px - 1280px
           xl: "16px"     // 1281px +
         }}
-        zIndex="9999"
+        zIndex="1200"
       >
         <Box
           bg={sidebarBg}
@@ -405,32 +405,32 @@ function Sidebar(props) {
               </Box>
             </Stack>
           </Box>
-   <Box
-  textAlign="center"
-  py={{ base: "10px", md: "12px", lg: "12px" }}
-  fontSize={{ base: "11px", sm: "12px", md: "13px", lg: "13px" }}
-  color="#888"
-  flexShrink={0}
->
-  <Flex align="center" justify="center">
-    <Text
-      fontSize={{ base: "12px", sm: "13px", md: "14px", lg: "14px" }}
-      display="flex"
-      alignItems="center"
-      gap={{ base: "6px", md: "6px", lg: "6px" }}
-      whiteSpace="nowrap"
-    >
-      Developed by
-      <Image
-        src={FlareMindslogo}
-        alt="FlareMinds Logo"
-        boxSize={{ base: "20px", sm: "18px", md: "20px", lg: "20px" }}
-        objectFit="contain"
-      />
-      <strong>FlareMinds</strong> 
-    </Text>
-  </Flex>
-</Box>
+          <Box
+            textAlign="center"
+            py={{ base: "10px", md: "12px", lg: "12px" }}
+            fontSize={{ base: "11px", sm: "12px", md: "13px", lg: "13px" }}
+            color="#888"
+            flexShrink={0}
+          >
+            <Flex align="center" justify="center">
+              <Text
+                fontSize={{ base: "12px", sm: "13px", md: "14px", lg: "14px" }}
+                display="flex"
+                alignItems="center"
+                gap={{ base: "6px", md: "6px", lg: "6px" }}
+                whiteSpace="nowrap"
+              >
+                Developed by
+                <Image
+                  src={FlareMindslogo}
+                  alt="FlareMinds Logo"
+                  boxSize={{ base: "20px", sm: "18px", md: "20px", lg: "20px" }}
+                  objectFit="contain"
+                />
+                <strong>FlareMinds</strong>
+              </Text>
+            </Flex>
+          </Box>
 
 
         </Box>
@@ -541,13 +541,13 @@ export function SidebarResponsive(props) {
             <Text
               color={activeColor}
               fontWeight="bold"
-              mb={{ 
+              mb={{
                 base: "4px",    // 320px - 480px
                 sm: "5px",      // 481px - 767px
                 md: "6px"       // 768px - 1024px
               }}
               mx="auto"
-              ps={{ 
+              ps={{
                 base: "8px",    // 320px - 480px
                 sm: "9px",      // 481px - 767px
                 md: "10px"      // 768px - 1024px
@@ -627,17 +627,17 @@ export function SidebarResponsive(props) {
               boxSize="initial"
               justifyContent="flex-start"
               alignItems="center"
-              mb={{ 
+              mb={{
                 base: "4px",    // 320px - 480px
                 sm: "5px",      // 481px - 767px
                 md: "6px"       // 768px - 1024px
               }}
-              mx={{ 
+              mx={{
                 base: "auto",   // 320px - 480px
                 sm: "auto",     // 481px - 767px
                 md: "auto"      // 768px - 1024px
               }}
-              ps={{ 
+              ps={{
                 base: "8px",    // 320px - 480px
                 sm: "9px",      // 481px - 767px
                 md: "10px"      // 768px - 1024px
@@ -724,7 +724,7 @@ export function SidebarResponsive(props) {
 
   return (
     <Flex
-      display={{ 
+      display={{
         base: "flex",  // 320px - 480px
         sm: "flex",    // 481px - 767px
         md: "flex",    // 768px - 1024px
@@ -750,7 +750,7 @@ export function SidebarResponsive(props) {
         onClick={onOpen}
         cursor="pointer"
       /> */}
-      
+
       {/* Mobile Sidebar Drawer */}
       <Drawer
         isOpen={isOpen}
@@ -834,7 +834,7 @@ export function SidebarResponsive(props) {
               flexDirection="column"
               justifyContent="space-between"
             >
-                <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
+              <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
                 <Box>{brand}</Box>
                 <Stack direction="column" mb={{
                   base: "30px", // 320px - 480px
@@ -849,33 +849,33 @@ export function SidebarResponsive(props) {
               </Box>
 
               <Box
-  textAlign="center"
-  py={{ base: "10px", md: "12px" }}
-  fontSize={{ base: "11px", sm: "12px", md: "13px" }}
-  color="#888"
-  flexShrink={0}
->
-  <Flex 
-    align="center"
-    justify="center"
-  >
-    <Text
-      fontSize={{ base: "12px", sm: "13px", md: "14px" }}
-      display="flex"
-      alignItems="center"
-      gap="6px"
-    >
-      Developed by
-      <Image
-        src={FlareMindslogo}
-        alt="FlareMinds Logo"
-        boxSize={{ base: "20px", sm: "20px", md: "22px" }}
-        objectFit="contain"
-      />
-      <strong>FlareMinds</strong> 
-    </Text>
-  </Flex>
-</Box>
+                textAlign="center"
+                py={{ base: "10px", md: "12px" }}
+                fontSize={{ base: "11px", sm: "12px", md: "13px" }}
+                color="#888"
+                flexShrink={0}
+              >
+                <Flex
+                  align="center"
+                  justify="center"
+                >
+                  <Text
+                    fontSize={{ base: "12px", sm: "13px", md: "14px" }}
+                    display="flex"
+                    alignItems="center"
+                    gap="6px"
+                  >
+                    Developed by
+                    <Image
+                      src={FlareMindslogo}
+                      alt="FlareMinds Logo"
+                      boxSize={{ base: "20px", sm: "20px", md: "22px" }}
+                      objectFit="contain"
+                    />
+                    <strong>FlareMinds</strong>
+                  </Text>
+                </Flex>
+              </Box>
 
             </Box>
           </DrawerBody>
@@ -884,11 +884,11 @@ export function SidebarResponsive(props) {
             <AlertDialogOverlay>
               <AlertDialogContent>
                 <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#008080">Not signed in</AlertDialogHeader>
-                  <AlertDialogBody>You are not signed in yet. Do you want to go to the Sign-in page?</AlertDialogBody>
-                  <AlertDialogFooter>
-                    <Button ref={signinCancelRefResp} onClick={closeSigninPromptResp} variant="ghost">Cancel</Button>
-                    <Button colorScheme="purple" onClick={handleGoToSignInResp} ml={3}>Go to Sign In</Button>
-                  </AlertDialogFooter>
+                <AlertDialogBody>You are not signed in yet. Do you want to go to the Sign-in page?</AlertDialogBody>
+                <AlertDialogFooter>
+                  <Button ref={signinCancelRefResp} onClick={closeSigninPromptResp} variant="ghost">Cancel</Button>
+                  <Button colorScheme="purple" onClick={handleGoToSignInResp} ml={3}>Go to Sign In</Button>
+                </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialogOverlay>
           </AlertDialog>

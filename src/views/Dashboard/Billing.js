@@ -1970,7 +1970,7 @@ export default function CleanedBilling() {
             )}
           </ModalBody>
 
-          <ModalFooter><Button onClick={closeModal}>Close</Button></ModalFooter>
+
         </ModalContent>
       </Modal >
 
@@ -2108,7 +2108,7 @@ export default function CleanedBilling() {
               <Center py={6}><Text color="gray.500">No booking selected.</Text></Center>
             )}
           </ModalBody>
-          <ModalFooter><Button onClick={closeBookingModal}>Close</Button></ModalFooter>
+
         </ModalContent>
       </Modal >
     </Flex >

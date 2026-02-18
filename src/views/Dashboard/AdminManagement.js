@@ -2487,9 +2487,7 @@ function AdminManagement() {
           </ModalBody>
 
           <ModalFooter>
-            <Button variant="outline" mr={3} onClick={closeKYCModal}>
-              Close
-            </Button>
+
             {kycData && (
               <Button
                 colorScheme="orange"
@@ -2765,9 +2763,7 @@ function AdminManagement() {
                 {selectedTechnician.trainingCompleted ? "Mark Training as Incomplete" : "Approve Training"}
               </Button>
             )}
-            <Button colorScheme="blue" mr={3} onClick={closeDetailsModal}>
-              Close
-            </Button>
+
           </ModalFooter>
         </ModalContent>
       </Modal>

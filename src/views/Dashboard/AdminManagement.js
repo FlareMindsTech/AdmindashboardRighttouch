@@ -1546,7 +1546,7 @@ function AdminManagement() {
           justify="center"
           gap={{ base: 2, md: 3 }}
           overflowX="auto"
-          py={1}
+          py={5}
           css={{
             '&::-webkit-scrollbar': { height: '4px' },
             '&::-webkit-scrollbar-track': { background: 'transparent' },

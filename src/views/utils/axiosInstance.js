@@ -200,6 +200,43 @@ export const updateTrainingStatus = async (technicianId, status) => {
   }
 };
 
+export const getTechnicianJobHistory = async () => {
+  try {
+    const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
+    const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const token = adminToken || userToken;
+
+    if (!token) {
+      throw new Error("Authentication token not found. Please log in.");
+    }
+
+    const response = await fetch(`${BASE_URL}/technician/admin/jobs/history`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Error: ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorJson.error || errorMessage;
+      } catch (e) {
+        // Could not parse error
+      }
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error fetching technician job history:", error);
+    throw error;
+  }
+};
+
 export const deleteTechnician = async (technicianId) => {
   try {
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");

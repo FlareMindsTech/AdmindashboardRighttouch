@@ -1303,24 +1303,31 @@ export default function ServiceManagement() {
                   </Checkbox>
                 </FormControl>
 
-                <Flex justify="flex-end" mt={4} flexShrink={0}>
+                <Flex justify="flex-end" mt={6} gap={4} flexShrink={0}>
                   <Button
                     variant="outline"
-                    mr={3}
                     onClick={handleResetCategory}
-                    border="1px"
                     borderColor="gray.300"
-                    size="sm"
+                    color="gray.600"
+                    size="md"
+                    px={8}
+                    borderRadius="lg"
+                    _hover={{ bg: "gray.50", borderColor: "gray.400" }}
                   >
                     Reset
                   </Button>
                   <Button
                     bg={customColor}
-                    _hover={{ bg: customHoverColor }}
+                    _hover={{ bg: "#006666", transform: "translateY(-1px)", boxShadow: "lg" }}
+                    _active={{ bg: "#004d4d", transform: "translateY(0)" }}
                     color="white"
                     onClick={currentView === "addCategory" ? handleSubmitCategory : handleUpdateCategory}
                     isLoading={isSubmitting}
-                    size="sm"
+                    size="md"
+                    px={10}
+                    borderRadius="lg"
+                    leftIcon={<FaPlusCircle />}
+                    transition="all 0.2s"
                   >
                     {currentView === "addCategory" ? "Create Category" : "Update Category"}
                   </Button>
@@ -2066,30 +2073,40 @@ export default function ServiceManagement() {
 
                 {/* Fixed Footer with Buttons */}
                 <Box
-                  flexShrink={0}
-                  p={4}
+                  position="sticky"
+                  bottom={0}
+                  zIndex={10}
+                  p={6}
                   borderTop="1px solid"
                   borderColor={`${customColor}20`}
-                  bg="transparent"
+                  bg="white"
+                  boxShadow="0 -4px 6px -1px rgba(0, 0, 0, 0.05)"
                 >
-                  <Flex justify="flex-end">
+                  <Flex justify="flex-end" gap={4}>
                     <Button
                       variant="outline"
-                      mr={3}
                       onClick={handleResetService}
-                      border="1px"
                       borderColor="gray.300"
-                      size="sm"
+                      color="gray.600"
+                      size="md"
+                      px={8}
+                      borderRadius="lg"
+                      _hover={{ bg: "gray.50", borderColor: "gray.400" }}
                     >
                       Reset
                     </Button>
+
                     <Button
                       bg={customColor}
-                      _hover={{ bg: customHoverColor }}
+                      _hover={{ bg: "#006666" }}
+                      _active={{ bg: "#004d4d" }}
                       color="white"
                       onClick={handleSubmitService}
                       isLoading={isSubmitting}
-                      size="sm"
+                      size="md"
+                      px={10}
+                      borderRadius="lg"
+                      leftIcon={selectedService ? <FaEdit /> : <FaPlusCircle />}
                     >
                       {selectedService ? "Update Service" : "Create Service"}
                     </Button>

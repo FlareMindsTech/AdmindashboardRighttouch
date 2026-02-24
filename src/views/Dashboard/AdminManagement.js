@@ -591,7 +591,7 @@ function AdminManagement() {
 
     } catch (err) {
       console.error("Error deleting admin:", err);
-      const errorMessage = err.response?.data?.message || err.message || "Failed to delete admin.";
+      const errorMessage = err.response?.data?.message || err.message || "Failed to delete Technician.";
       toast({
         title: "Delete Error",
         description: errorMessage,
@@ -1482,22 +1482,31 @@ function AdminManagement() {
               )}
             </SimpleGrid>
 
-            <Flex justify="flex-end" mt={6} flexShrink={0}>
+            <Flex justify="flex-end" mt={10} gap={4}>
               <Button
                 variant="outline"
-                mr={3}
                 onClick={handleBackToList}
-                border="1px"
                 borderColor="gray.300"
+                color="gray.600"
+                size="md"
+                px={8}
+                borderRadius="lg"
+                _hover={{ bg: "gray.50", borderColor: "gray.400" }}
               >
                 Cancel
               </Button>
               <Button
                 bg={customColor}
-                _hover={{ bg: customHoverColor }}
+                _hover={{ bg: "#006666", transform: "translateY(-1px)", boxShadow: "lg" }}
+                _active={{ bg: "#004d4d", transform: "translateY(0)" }}
                 color="white"
                 onClick={handleSubmit}
                 isLoading={loading}
+                size="md"
+                px={10}
+                borderRadius="lg"
+                leftIcon={currentView === "add" ? <FaUserPlus /> : <FaEdit />}
+                transition="all 0.2s"
               >
                 {currentView === "add" ? "Create Admin" : "Update Admin"}
               </Button>
@@ -1539,25 +1548,13 @@ function AdminManagement() {
       }}
     >
       {/* Fixed Statistics Cards */}
+      {/* Fixed Statistics Cards */}
       <Box mb="16px">
-        <Flex
-          direction="row"
-          wrap="wrap"
-          justify="center"
-          gap={{ base: 2, md: 3 }}
-          overflowX="auto"
+        <SimpleGrid
+          columns={{ base: 1, sm: 2, lg: 4 }}
+          spacing={{ base: 3, md: 4 }}
+          px={{ base: 2, md: 4 }}
           py={5}
-          css={{
-            '&::-webkit-scrollbar': { height: '4px' },
-            '&::-webkit-scrollbar-track': { background: 'transparent' },
-            '&::-webkit-scrollbar-thumb': {
-              background: 'transparent',
-              borderRadius: '2px',
-            },
-            '&:hover::-webkit-scrollbar-thumb': {
-              background: '#cbd5e1',
-            },
-          }}
         >
 
           {/* TOTAL TECHNICIANS */}
@@ -1568,7 +1565,7 @@ function AdminManagement() {
             border={activeFilter === "all" ? "2px solid" : "1px solid"}
             borderColor={customBorderColor}
             bg="white"
-            w={{ base: "32%", md: "30%", lg: "25%" }}
+            w="100%"
             minW="120px"
             flex="1"
             transition="all 0.15s ease"
@@ -1597,7 +1594,7 @@ function AdminManagement() {
             border={activeFilter === "Active" ? "2px solid" : "1px solid"}
             borderColor={customBorderColor}
             bg="white"
-            w={{ base: "32%", md: "30%", lg: "25%" }}
+            w="100%"
             minW="120px"
             flex="1"
             transition="all 0.15s ease"
@@ -1639,7 +1636,7 @@ function AdminManagement() {
             border={activeFilter === "TrainingCompleted" ? "2px solid" : "1px solid"}
             borderColor={customBorderColor}
             bg="white"
-            w={{ base: "32%", md: "30%", lg: "25%" }}
+            w="100%"
             minW="120px"
             flex="1"
             transition="all 0.15s ease"
@@ -1670,7 +1667,7 @@ function AdminManagement() {
             border={activeFilter === "KYCVerified" ? "2px solid" : "1px solid"}
             borderColor={customBorderColor}
             bg="white"
-            w={{ base: "32%", md: "30%", lg: "25%" }}
+            w="100%"
             minW="120px"
             flex="1"
             transition="all 0.15s ease"
@@ -1702,8 +1699,7 @@ function AdminManagement() {
               </Flex>
             </CardBody>
           </Card>
-
-        </Flex>
+        </SimpleGrid>
 
         {/* ACTIVE FILTER TITLE */}
         <Flex justify="space-between" align="center" mt={4}>
@@ -1769,9 +1765,9 @@ function AdminManagement() {
               </Heading>
 
               {/* Search Bar */}
-              <Flex align="center" flex="1" maxW="400px">
+              <Flex align="center" flex="1" maxW={{ base: "100%", md: "400px" }} mt={{ base: 2, md: 0 }}>
                 <Input
-                  placeholder="Search by name, email, phone, or role..."
+                  placeholder="Search..."
                   value={searchTerm}
                   onChange={handleSearchChange}
                   size="sm"
@@ -1842,12 +1838,8 @@ function AdminManagement() {
                       >
                         <Box
                           flex="1"
-                          overflowY="hidden"
-                          overflowX="hidden"
-                          _hover={{
-                            overflowY: "auto",
-                            overflowX: "auto",
-                          }}
+                          overflowY="auto"
+                          overflowX="auto"
                           css={{
                             '&::-webkit-scrollbar': {
                               width: '8px',
@@ -1955,12 +1947,8 @@ function AdminManagement() {
                       >
                         <Box
                           flex="1"
-                          overflowY="hidden"
-                          overflowX="hidden"
-                          _hover={{
-                            overflowY: "auto",
-                            overflowX: "auto",
-                          }}
+                          overflowY="auto"
+                          overflowX="auto"
                           css={{
                             '&::-webkit-scrollbar': {
                               width: '8px',
@@ -2259,11 +2247,11 @@ function AdminManagement() {
                         ? activeFilter === "Active"
                           ? historyLoading ? "Loading history..." : "No History Found"
                           : adminData.length === 0
-                            ? "No admins found."
+                            ? "No Technicians found."
                             : searchTerm
-                              ? "No admins match your search."
-                              : "No admins match the selected filter."
-                        : "Loading admins..."}
+                              ? "No Technicians match your search."
+                              : "No Technicians match the selected filter."
+                        : "Loading Technicians..."}
                     </Text>
                   </Flex>
                 )}
@@ -2578,7 +2566,7 @@ function AdminManagement() {
                 ml={3}
                 size="sm"
               >
-                Delete Admin
+                Delete Technician
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

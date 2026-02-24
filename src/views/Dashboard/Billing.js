@@ -946,8 +946,8 @@ export default function CleanedBilling() {
   return (
     <Flex
       flexDirection="column"
-      pt={{ base: "5px", md: "45px" }}
-      height="100vh"
+      pt={{ base: "65px", md: "85px", lg: "95px" }} // Perfectly clear the 70-85px fixed navbar
+      height={{ base: "auto", md: "calc(100vh - 40px)" }} // Accounts for PanelContainer padding to prevent cutoff
       overflow="auto"
       css={{
         '&::-webkit-scrollbar': {
@@ -976,25 +976,25 @@ export default function CleanedBilling() {
       }}
     >
 
-      <Box mb="24px">
+      <Box mb="16px"> {/* Reduced from 24px */}
 
         <Flex
           direction="row"
           wrap="wrap"
           justify="center"
-          gap={{ base: 3, md: 4 }}
+          gap={{ base: 2, md: 3 }}
           overflowX="auto"
-          py={2}
+          py={1}
           css={{
             '&::-webkit-scrollbar': {
-              height: '6px',
+              height: '4px', // Smaller scrollbar
             },
             '&::-webkit-scrollbar-track': {
               background: 'transparent',
             },
             '&::-webkit-scrollbar-thumb': {
               background: 'transparent',
-              borderRadius: '3px',
+              borderRadius: '2px',
               transition: 'background 0.3s ease',
             },
             '&:hover::-webkit-scrollbar-thumb': {
@@ -1005,9 +1005,9 @@ export default function CleanedBilling() {
             },
           }}
         >
-
+          {/* Technician Available Balance Card */}
           <Card
-            minH="83px"
+            minH={{ base: "70px", md: "75px" }} // Reduced height
             cursor="pointer"
             onClick={() => setCurrentView("wallets")}
             border={currentView === "wallets" ? "2px solid" : "1px solid"}
@@ -1016,9 +1016,9 @@ export default function CleanedBilling() {
             bg="white"
             position="relative"
             overflow="hidden"
-            w={{ base: "32%", md: "30%", lg: "25%" }}
-            minW="100px"
-            flex="1"
+            w={{ base: "48%", sm: "32%", md: "30%", lg: "18%" }} // Adjusted widths
+            minW={{ base: "140px", sm: "120px", md: "150px" }} // Smaller min width
+            flex={{ base: "0 0 auto", md: "1" }} // Better mobile behavior
             _before={{
               content: '""',
               position: "absolute",
@@ -1031,27 +1031,38 @@ export default function CleanedBilling() {
               transition: "opacity 0.2s ease-in-out",
             }}
             _hover={{
-              transform: "translateY(-4px)",
-              shadow: "xl",
+              transform: { base: "translateY(-2px)", md: "translateY(-4px)" }, // Smaller hover on mobile
+              shadow: "lg",
               _before: { opacity: 1 },
               borderColor: customColor,
             }}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
-              <Flex flexDirection="row" align="center" justify="space-between" w="100%" padding={5}>
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}> {/* Reduced padding */}
+              <Flex flexDirection="row" align="center" justify="space-between" w="100%">
                 <Stat me="auto">
-                  <StatLabel fontSize={{ base: "sm", md: "md" }} color="gray.600" fontWeight="bold" pb="0px">
-                    Technician Available Balance
+                  <StatLabel
+                    fontSize={{ base: "xs", md: "sm" }} // Smaller font
+                    color="gray.600"
+                    fontWeight="semibold" // Reduced from bold
+                    pb="0px"
+                    lineHeight="1.2" // Tighter line height
+                  >
+                    Tech Balance
                   </StatLabel>
-                  <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
+                  <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}> {/* Smaller number */}
                     {isLoading ? <Spinner size="xs" /> : formatINR((walletDetails.availableBalance || 0) - (walletDetails.totalCommission || 0))}
                   </StatNumber>
-                  {/* <Text fontSize="xs" color="gray.500" mt={1}>
-                    (After commission deduction)
-                  </Text> */}
                 </Stat>
-                <Box display="flex" alignItems="center" justifyContent="center" borderRadius="10px" h="34px" w="34px" bg={customColor}>
-                  <Icon as={MdCategory} h="16px" w="16px" color="white" />
+                <Box
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  borderRadius="8px" // Smaller radius
+                  h={{ base: "28px", md: "32px" }} // Smaller icon container
+                  w={{ base: "28px", md: "32px" }}
+                  bg={customColor}
+                >
+                  <Icon as={MdCategory} h={{ base: "14px", md: "16px" }} w={{ base: "14px", md: "16px" }} color="white" />
                 </Box>
               </Flex>
             </CardBody>
@@ -1059,7 +1070,7 @@ export default function CleanedBilling() {
 
           {/* Total Collected Card */}
           <Card
-            minH="83px"
+            minH={{ base: "70px", md: "75px" }}
             cursor="pointer"
             onClick={() => setCurrentView("revenue_breakdown")}
             border={currentView === "revenue_breakdown" ? "2px solid" : "1px solid"}
@@ -1068,9 +1079,9 @@ export default function CleanedBilling() {
             bg="white"
             position="relative"
             overflow="hidden"
-            w={{ base: "32%", md: "30%", lg: "25%" }}
-            minW="100px"
-            flex="1"
+            w={{ base: "48%", sm: "32%", md: "30%", lg: "18%" }}
+            minW={{ base: "140px", sm: "120px", md: "150px" }}
+            flex={{ base: "0 0 auto", md: "1" }}
             _before={{
               content: '""',
               position: "absolute",
@@ -1083,24 +1094,38 @@ export default function CleanedBilling() {
               transition: "opacity 0.2s ease-in-out",
             }}
             _hover={{
-              transform: "translateY(-4px)",
-              shadow: "xl",
+              transform: { base: "translateY(-2px)", md: "translateY(-4px)" },
+              shadow: "lg",
               _before: { opacity: 1 },
               borderColor: customColor,
             }}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
-              <Flex flexDirection="row" align="center" justify="space-between" w="100%" padding={5}>
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+              <Flex flexDirection="row" align="center" justify="space-between" w="100%">
                 <Stat me="auto">
-                  <StatLabel fontSize={{ base: "sm", md: "md" }} color="gray.600" fontWeight="bold" pb="0px">
+                  <StatLabel
+                    fontSize={{ base: "xs", md: "sm" }}
+                    color="gray.600"
+                    fontWeight="semibold"
+                    pb="0px"
+                    lineHeight="1.2"
+                  >
                     Total Collected
                   </StatLabel>
-                  <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
+                  <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
                     {isLoading ? <Spinner size="xs" /> : formatINR(walletDetails.totalCollected)}
                   </StatNumber>
                 </Stat>
-                <Box display="flex" alignItems="center" justifyContent="center" borderRadius="10px" h="34px" w="34px" bg={customColor}>
-                  <Icon as={MdCategory} h="16px" w="16px" color="white" />
+                <Box
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  borderRadius="8px"
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
+                  bg={customColor}
+                >
+                  <Icon as={MdCategory} h={{ base: "14px", md: "16px" }} w={{ base: "14px", md: "16px" }} color="white" />
                 </Box>
               </Flex>
             </CardBody>
@@ -1108,7 +1133,7 @@ export default function CleanedBilling() {
 
           {/* Total Commission Card */}
           <Card
-            minH="83px"
+            minH={{ base: "70px", md: "75px" }}
             cursor="pointer"
             onClick={() => setCurrentView("wallets")}
             border={currentView === "wallets" ? "2px solid" : "1px solid"}
@@ -1117,9 +1142,9 @@ export default function CleanedBilling() {
             bg="white"
             position="relative"
             overflow="hidden"
-            w={{ base: "32%", md: "30%", lg: "25%" }}
-            minW="100px"
-            flex="1"
+            w={{ base: "48%", sm: "32%", md: "30%", lg: "18%" }}
+            minW={{ base: "140px", sm: "120px", md: "150px" }}
+            flex={{ base: "0 0 auto", md: "1" }}
             _before={{
               content: '""',
               position: "absolute",
@@ -1132,32 +1157,46 @@ export default function CleanedBilling() {
               transition: "opacity 0.2s ease-in-out",
             }}
             _hover={{
-              transform: "translateY(-4px)",
-              shadow: "xl",
+              transform: { base: "translateY(-2px)", md: "translateY(-4px)" },
+              shadow: "lg",
               _before: { opacity: 1 },
               borderColor: customColor,
             }}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
-              <Flex flexDirection="row" align="center" justify="space-between" w="100%" padding={5}>
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+              <Flex flexDirection="row" align="center" justify="space-between" w="100%">
                 <Stat me="auto">
-                  <StatLabel fontSize={{ base: "sm", md: "md" }} color="gray.600" fontWeight="bold" pb="0px">
+                  <StatLabel
+                    fontSize={{ base: "xs", md: "sm" }}
+                    color="gray.600"
+                    fontWeight="semibold"
+                    pb="0px"
+                    lineHeight="1.2"
+                  >
                     Total Commission
                   </StatLabel>
-                  <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
+                  <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
                     {isLoading ? <Spinner size="xs" /> : formatINR(walletDetails.totalCommission)}
                   </StatNumber>
                 </Stat>
-                <Box display="flex" alignItems="center" justifyContent="center" borderRadius="10px" h="34px" w="34px" bg={customColor}>
-                  <Icon as={MdCategory} h="16px" w="16px" color="white" />
+                <Box
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  borderRadius="8px"
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
+                  bg={customColor}
+                >
+                  <Icon as={MdCategory} h={{ base: "14px", md: "16px" }} w={{ base: "14px", md: "16px" }} color="white" />
                 </Box>
               </Flex>
             </CardBody>
           </Card>
 
-
+          {/* All Payments Card */}
           <Card
-            minH="83px"
+            minH={{ base: "70px", md: "75px" }}
             cursor="pointer"
             onClick={() => setCurrentView("payments")}
             border={currentView === "payments" ? "2px solid" : "1px solid"}
@@ -1166,9 +1205,9 @@ export default function CleanedBilling() {
             bg="white"
             position="relative"
             overflow="hidden"
-            w={{ base: "32%", md: "30%", lg: "25%" }}
-            minW="100px"
-            flex="1"
+            w={{ base: "48%", sm: "32%", md: "30%", lg: "18%" }}
+            minW={{ base: "140px", sm: "120px", md: "150px" }}
+            flex={{ base: "0 0 auto", md: "1" }}
             _before={{
               content: '""',
               position: "absolute",
@@ -1181,34 +1220,46 @@ export default function CleanedBilling() {
               transition: "opacity 0.2s ease-in-out",
             }}
             _hover={{
-              transform: "translateY(-4px)",
-              shadow: "xl",
-              _before: {
-                opacity: 1,
-              },
+              transform: { base: "translateY(-2px)", md: "translateY(-4px)" },
+              shadow: "lg",
+              _before: { opacity: 1 },
               borderColor: customColor,
             }}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
-              <Flex flexDirection="row" align="center" justify="space-between" w="100%" padding={5}>
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+              <Flex flexDirection="row" align="center" justify="space-between" w="100%">
                 <Stat me="auto">
                   <StatLabel
-                    fontSize={{ base: "sm", md: "md" }}
+                    fontSize={{ base: "xs", md: "sm" }}
                     color="gray.600"
-                    fontWeight="bold"
-                    pb="2px"
-                  >All Payments</StatLabel>
-                  <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>{isLoading ? <Spinner size="xs" /> : payments.length}</StatNumber>
+                    fontWeight="semibold"
+                    pb="0px"
+                    lineHeight="1.2"
+                  >
+                    All Payments
+                  </StatLabel>
+                  <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
+                    {isLoading ? <Spinner size="xs" /> : payments.length}
+                  </StatNumber>
                 </Stat>
-                <Box display="flex" alignItems="center" justifyContent="center" borderRadius="10px" h="34px" w="34px" bg={customColor}>
-                  <Icon as={IoCheckmarkDoneCircleSharp} h="16px" w="16px" color="white" />
+                <Box
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  borderRadius="8px"
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
+                  bg={customColor}
+                >
+                  <Icon as={IoCheckmarkDoneCircleSharp} h={{ base: "14px", md: "16px" }} w={{ base: "14px", md: "16px" }} color="white" />
                 </Box>
               </Flex>
             </CardBody>
           </Card>
 
+          {/* Service Bookings Card */}
           <Card
-            minH="83px"
+            minH={{ base: "70px", md: "75px" }}
             cursor="pointer"
             onClick={() => setCurrentView("services")}
             border={currentView === "services" ? "2px solid" : "1px solid"}
@@ -1217,9 +1268,9 @@ export default function CleanedBilling() {
             bg="white"
             position="relative"
             overflow="hidden"
-            w={{ base: "32%", md: "30%", lg: "25%" }}
-            minW="100px"
-            flex="1"
+            w={{ base: "48%", sm: "32%", md: "30%", lg: "18%" }}
+            minW={{ base: "140px", sm: "120px", md: "150px" }}
+            flex={{ base: "0 0 auto", md: "1" }}
             _before={{
               content: '""',
               position: "absolute",
@@ -1232,144 +1283,61 @@ export default function CleanedBilling() {
               transition: "opacity 0.2s ease-in-out",
             }}
             _hover={{
-              transform: "translateY(-4px)",
-              shadow: "xl",
-              _before: {
-                opacity: 1,
-              },
+              transform: { base: "translateY(-2px)", md: "translateY(-4px)" },
+              shadow: "lg",
+              _before: { opacity: 1 },
               borderColor: customColor,
             }}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
-              <Flex flexDirection="row" align="center" justify="space-between" w="100%" padding={5}>
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+              <Flex flexDirection="row" align="center" justify="space-between" w="100%">
                 <Stat me="auto">
                   <StatLabel
-                    fontSize={{ base: "sm", md: "md" }}
+                    fontSize={{ base: "xs", md: "sm" }}
                     color="gray.600"
-                    fontWeight="bold"
-                    pb="2px"
-                  >Service Bookings</StatLabel>
-                  <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>{isLoading ? <Spinner size="xs" /> : serviceBookings.length}</StatNumber>
+                    fontWeight="semibold"
+                    pb="0px"
+                    lineHeight="1.2"
+                  >
+                    Service Bookings
+                  </StatLabel>
+                  <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
+                    {isLoading ? <Spinner size="xs" /> : serviceBookings.length}
+                  </StatNumber>
                 </Stat>
-                <Box display="flex" alignItems="center" justifyContent="center" borderRadius="10px" h="34px" w="34px" bg={customColor}>
-                  <Icon as={FiCalendar} h="16px" w="16px" color="white" />
+                <Box
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  borderRadius="8px"
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
+                  bg={customColor}
+                >
+                  <Icon as={FiCalendar} h={{ base: "14px", md: "16px" }} w={{ base: "14px", md: "16px" }} color="white" />
                 </Box>
               </Flex>
             </CardBody>
           </Card>
 
-          {/* <Card 
-          minH="83px" 
-          cursor="pointer" 
-          onClick={() => setCurrentView("payments")} 
-          border={currentView === "payments" ? "2px solid" : "1px solid"} 
-          borderColor={currentView === "payments" ? customColor : `${customColor}30`} 
-          transition="all 0.2s ease-in-out" 
-          bg="white"
-            position="relative"
-            overflow="hidden"
-            w={{ base: "32%", md: "30%", lg: "25%" }}
-            minW="100px"
-            flex="1"
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: "translateY(-4px)",
-              shadow: "xl",
-              _before: {
-                opacity: 1,
-              },
-              borderColor: customColor,
-            }}>
-
-            <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
-              
-            <Flex flexDirection="row" align="center" justify="space-between" w="100%">
-                <Stat me="auto">
-                  <StatLabel 
-                    fontSize={{ base: "sm", md: "md" }}
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="2px"
-                  >All Payments</StatLabel>
-                  <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>{isLoading ? <Spinner size="xs" /> : payments.length}</StatNumber>
-                </Stat>
-
-                <Box display="flex" alignItems="center" justifyContent="center" borderRadius="10px" h="34px" w="34px" bg={customColor}>
-                  <Icon as={IoCheckmarkDoneCircleSharp} h="16px" w="16px" color="white" />
-                </Box>
-
-              </Flex>
-            </CardBody>
-          </Card> */}
-
         </Flex>
 
-        {/* Success/Error Message Display */}
-        {/* {error && (
-          <Text
-            color="red.500"
-            mb={4}
-            p={3}
-            border="1px"
-            borderColor="red.200"
-            borderRadius="md"
-            bg="red.50"
-          >
-            {error}
-          </Text>
-        )}
-        {success && (
-          <Text
-            color="green.500"
-            mb={4}
-            p={3}
-            border="1px"
-            borderColor="green.200"
-            borderRadius="md"
-            bg="green.50"
-          >
-            {success}
-          </Text>
-        )} */}
-
         {/* Active Filter Display */}
-        <Flex justify="space-between" align="center" mb={4}>
-          <Text fontSize="lg" fontWeight="bold" color={textColor}>
+        <Flex justify="space-between" align="center" mt={3} mb={2}> {/* Added mt and adjusted mb */}
+          <Text fontSize={{ base: "md", md: "lg" }} fontWeight="semibold" color={textColor}>
             {currentView === "payments" && "All Payments"}
             {currentView === "orders" && "All Orders"}
             {currentView === "services" && "Service Bookings"}
+            {currentView === "wallets" && "Wallet Details"}
+            {currentView === "revenue_breakdown" && "Revenue Breakdown"}
           </Text>
-          {/* {currentView !== "all" && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleCardClick("all")}
-              border="1px"
-              borderColor={customColor}
-              color={customColor}
-              _hover={{ bg: customColor, color: "white" }}
-            >
-              Show All Products
-            </Button>
-          )} */}
         </Flex>
 
-      </Box >
+      </Box>
 
       {/* Table Container */}
       < Box
-        mt={- 8
-        }
+        mt={4} // Removed negative margin hack, changed to positive spacing
         flex="1"
         display="flex"
         flexDirection="column"
@@ -2022,7 +1990,6 @@ export default function CleanedBilling() {
                     {String(safeGet(selectedBooking, "status", "UNKNOWN")).toUpperCase()}
                   </Badge>
                 </HStack>
-
                 <Divider />
 
                 <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={6}>

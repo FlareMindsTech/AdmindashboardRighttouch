@@ -946,8 +946,8 @@ export default function CleanedBilling() {
   return (
     <Flex
       flexDirection="column"
-      pt={{ base: "65px", md: "85px", lg: "95px" }} // Perfectly clear the 70-85px fixed navbar
-      height={{ base: "auto", md: "calc(100vh - 40px)" }} // Accounts for PanelContainer padding to prevent cutoff
+      pt={{ base: "65px", md: "85px", lg: "95px" }}
+      minH="calc(100vh - 40px)"
       overflow="auto"
       css={{
         '&::-webkit-scrollbar': {
@@ -1336,22 +1336,18 @@ export default function CleanedBilling() {
       </Box>
 
       {/* Table Container */}
-      < Box
-        mt={4} // Removed negative margin hack, changed to positive spacing
-        flex="1"
+      <Box
+        mt={4}
         display="flex"
         flexDirection="column"
         p={2}
         pt={0}
-        overflow="hidden"
       >
         <Card
           shadow="xl"
           bg="transparent"
           display="flex"
           flexDirection="column"
-          height="90%"
-          minH="0"
           border="none"
         >
           <CardHeader
@@ -1491,11 +1487,9 @@ export default function CleanedBilling() {
 
           <CardBody
             bg="transparent"
-            flex="1"
             display="flex"
             flexDirection="column"
             p={0}
-            overflow="hidden"
           >
             {isLoading ? (
               <Flex justify="center" align="center" py={10} flex="1">
@@ -1507,21 +1501,12 @@ export default function CleanedBilling() {
 
 
                 <Box
-                  flex="1"
                   display="flex"
                   flexDirection="column"
-                  height="400px"
-                  overflow="hidden"
                 >
                   {/* Responsive Table Wrapper */}
                   <Box
-                    flex="1"
-                    overflowY="hidden"
-                    overflowX="hidden"
-                    _hover={{
-                      overflowY: "auto",
-                      overflowX: "auto",
-                    }}
+                    overflowX="auto"
                     css={{
                       '&::-webkit-scrollbar': {
                         width: '8px',
@@ -2063,13 +2048,13 @@ export default function CleanedBilling() {
                   </HStack>
                 </Box>
 
-                <HStack spacing={3} justify="flex-end">
+                {/* <HStack spacing={3} justify="flex-end">
                   <Button leftIcon={<FaCheckCircle />} bg="purple.500" _hover={{ bg: "purple.600" }} color="white" onClick={() => {
                     const payId = safeGet(selectedBooking, "paymentId") || safeGet(selectedBooking, "payment._id") || safeGet(selectedBooking, "razorpayPaymentId") || safeGet(selectedBooking, "paymentProviderPaymentId");
                     handleUpdatePaymentStatus(payId);
                   }}>Update Payment</Button>
                   <Button variant="ghost" onClick={closeBookingModal}>Close</Button>
-                </HStack>
+                </HStack> */}
               </VStack>
             ) : (
               <Center py={6}><Text color="gray.500">No booking selected.</Text></Center>

@@ -116,15 +116,13 @@ function UserManagement() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(5);
 
-  // Calculate pagination
+  // Calculate current slice based on active view
+  const currentItems = filteredData;
+  const totalPages = Math.ceil(currentItems.length / itemsPerPage) || 1;
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-  const displayItems = [...currentItems];
-  while (displayItems.length < itemsPerPage && displayItems.length > 0) {
-    displayItems.push({ _id: `empty-${displayItems.length}`, isEmpty: true });
-  }
+  const currentSlice = currentItems.slice(indexOfFirstItem, indexOfLastItem);
+  const displayItems = [...currentSlice];
 
   // Fetch current user from localStorage
   useEffect(() => {
@@ -555,10 +553,9 @@ function UserManagement() {
     <>
       <Flex
         flexDirection="column"
-        pt={{ base: "140px", md: "75px" }}
-        height={{ base: "auto", lg: "100vh" }}
-        minHeight="100vh"
-        overflowY="auto"
+        pt={{ base: "120px", md: "75px" }}
+        minH="calc(100vh - 40px)"
+        overflow="auto"
         css={{
           '&::-webkit-scrollbar': {
             width: '8px',
@@ -873,12 +870,12 @@ function UserManagement() {
           {/* Table Card with transparent background */}
           <Card
             shadow="xl"
-            bg="transparent"
+            bg="white"
             display="flex"
             flexDirection="column"
-            height="100%"
-            minH="0"
-            border="none"
+            overflow="auto"
+            border="1px solid"
+            borderColor={customColor}
           >
             {/* Table Header */}
             <CardHeader
@@ -943,11 +940,9 @@ function UserManagement() {
             {/* Table Content Area - Scrollable Body with Fixed Header */}
             <CardBody
               bg="transparent"
-              flex="1"
               display="flex"
               flexDirection="column"
               p={0}
-              overflow="hidden"
             >
               {tableLoading ? (
                 <Flex justify="center" align="center" py={10} flex="1">
@@ -955,21 +950,17 @@ function UserManagement() {
                   <Text ml={4}>Loading users...</Text>
                 </Flex>
               ) : (
-                <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
+                <Box display="flex" flexDirection="column">
                   {currentItems.length > 0 ? (
                     <>
                       {/* Fixed Table Container - Exact height for 5 rows */}
                       <Box
-                        flex="1"
                         display="flex"
                         flexDirection="column"
-                        height="auto"
                         minH="0"
-                        overflow="hidden"
                       >
                         {/* Scrollable Table Area */}
                         <Box
-                          flex="1"
                           overflowY="auto"
                           overflowX="auto"
                           css={{
@@ -1083,20 +1074,6 @@ function UserManagement() {
                             {/* Scrollable Body */}
                             <Tbody bg="transparent">
                               {displayItems.map((user, index) => {
-                                // Handle empty rows
-                                if (user.isEmpty) {
-                                  return (
-                                    <Tr
-                                      key={user._id}
-                                      bg="transparent"
-                                      height="60px"
-                                    >
-                                      <Td borderColor={`${customColor}20`} colSpan={5}>
-                                        <Box height="60px" />
-                                      </Td>
-                                    </Tr>
-                                  );
-                                }
 
                                 return (
                                   <Tr
@@ -1190,7 +1167,7 @@ function UserManagement() {
                                           size="sm"
                                           onClick={() => handleViewDetails(user)}
                                         />
-                                        <IconButton
+                                        {/* <IconButton
                                           aria-label="Delete user"
                                           icon={<FaTrash />}
                                           bg="white"
@@ -1200,7 +1177,7 @@ function UserManagement() {
                                           _hover={{ bg: "red.500", color: "white" }}
                                           size="sm"
                                           onClick={() => handleDeleteClick(user)}
-                                        />
+                                        /> */}
                                       </Flex>
                                     </Td>
                                   </Tr>

@@ -7,7 +7,7 @@ import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalFooter,
   ModalBody, ModalCloseButton, useDisclosure, Box, HStack, Heading
 } from "@chakra-ui/react";
-import { FaUsers, FaBoxOpen, FaEdit, FaSignOutAlt, FaSave, FaTimes, FaChartPie, FaCrown, FaStar } from "react-icons/fa";
+import { FaUsers, FaBoxOpen, FaEdit, FaSignOutAlt, FaSave, FaTimes, FaChartPie, FaCrown, FaStar, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import Card from "components/Card/Card";
 import { useNavigate } from "react-router-dom";
 import { getAllBookings, getAllServiceBooking, getAllTechnicians, getAllProduct, getAllServices } from "views/utils/axiosInstance";
@@ -586,7 +586,7 @@ export default function OwnerProfile() {
                                   <Text fontWeight="medium" display={{ base: "block", md: "block" }}>{displayName}</Text>
                                 </Td>
                                 <Td display={{ base: "none", md: "table-cell" }}>
-                                  {tech.experienceYears ? `${tech.experienceYears} Years` : "N/A"}
+                                  {(tech.experienceYears !== undefined && tech.experienceYears !== null) ? `${tech.experienceYears} Years` : "N/A"}
                                 </Td>
                                 <Td>{displayPhone}</Td>
                                 <Td>
@@ -605,13 +605,38 @@ export default function OwnerProfile() {
                         )}
                       </Tbody>
                     </Table>
-                    {totalTechnicianPages > 1 && (
-                      <Flex justify="space-between" mt={4}>
-                        <Button size="sm" onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} isDisabled={currentPage === 1}>Previous</Button>
-                        <Text>Page {currentPage} of {totalTechnicianPages}</Text>
-                        <Button size="sm" onClick={() => setCurrentPage(p => Math.min(p + 1, totalTechnicianPages))} isDisabled={currentPage === totalTechnicianPages}>Next</Button>
-                      </Flex>
-                    )}
+                    <Flex justify="space-between" align="center" mt={6} pt={4} borderTop="1px solid" borderColor="gray.100">
+                      <Text fontSize="sm" color="gray.500" fontWeight="medium">
+                        Showing <Text as="span" color="gray.800" fontWeight="bold">{(currentPage - 1) * technicianPerPage + 1}</Text> to <Text as="span" color="gray.800" fontWeight="bold">{Math.min(currentPage * technicianPerPage, technicians.length)}</Text> of <Text as="span" color="gray.800" fontWeight="bold">{technicians.length}</Text> technicians
+                      </Text>
+                      <HStack spacing={2}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          leftIcon={<FaChevronLeft />}
+                          onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                          isDisabled={currentPage === 1}
+                          _hover={{ bg: "gray.50" }}
+                        >
+                          Previous
+                        </Button>
+                        <Flex align="center" px={4}>
+                          <Text fontSize="sm" fontWeight="bold" color="#5a189a">
+                            Page {currentPage} of {totalTechnicianPages || 1}
+                          </Text>
+                        </Flex>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          rightIcon={<FaChevronRight />}
+                          onClick={() => setCurrentPage(p => Math.min(p + 1, totalTechnicianPages))}
+                          isDisabled={currentPage === totalTechnicianPages || totalTechnicianPages === 0}
+                          _hover={{ bg: "gray.50" }}
+                        >
+                          Next
+                        </Button>
+                      </HStack>
+                    </Flex>
                   </>
                 )}
               </Card>
@@ -669,18 +694,37 @@ export default function OwnerProfile() {
                       </Tbody>
                     </Table>
 
-                    <Flex justify="space-between" mt={4}>
-                      <Button size="sm" onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} isDisabled={currentPage === 1}>Previous</Button>
-                      <Text>
-                        Page {currentPage} of {totalServicePages}
+                    <Flex justify="space-between" align="center" mt={6} pt={4} borderTop="1px solid" borderColor="gray.100">
+                      <Text fontSize="sm" color="gray.500" fontWeight="medium">
+                        Showing <Text as="span" color="gray.800" fontWeight="bold">{(currentPage - 1) * servicePerPage + 1}</Text> to <Text as="span" color="gray.800" fontWeight="bold">{Math.min(currentPage * servicePerPage, services.length)}</Text> of <Text as="span" color="gray.800" fontWeight="bold">{services.length}</Text> services
                       </Text>
-                      <Button
-                        size="sm"
-                        onClick={() => setCurrentPage(p => Math.min(p + 1, totalServicePages))}
-                        isDisabled={currentPage === totalServicePages}
-                      >
-                        Next
-                      </Button>
+                      <HStack spacing={2}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          leftIcon={<FaChevronLeft />}
+                          onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                          isDisabled={currentPage === 1}
+                          _hover={{ bg: "gray.50" }}
+                        >
+                          Previous
+                        </Button>
+                        <Flex align="center" px={4}>
+                          <Text fontSize="sm" fontWeight="bold" color="#5a189a">
+                            Page {currentPage} of {totalServicePages || 1}
+                          </Text>
+                        </Flex>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          rightIcon={<FaChevronRight />}
+                          onClick={() => setCurrentPage(p => Math.min(p + 1, totalServicePages))}
+                          isDisabled={currentPage === totalServicePages || totalServicePages === 0}
+                          _hover={{ bg: "gray.50" }}
+                        >
+                          Next
+                        </Button>
+                      </HStack>
                     </Flex>
                   </>
                 )}
@@ -717,7 +761,7 @@ export default function OwnerProfile() {
                             )
                           }
                           type="pie"
-                          height={350}
+                          height={280}
                         />
                       </Box>
 
@@ -736,7 +780,7 @@ export default function OwnerProfile() {
                             )
                           }
                           type="donut"
-                          height={350}
+                          height={280}
                         />
                       </Box>
                     </Grid>
@@ -744,7 +788,7 @@ export default function OwnerProfile() {
 
                   <Divider />
 
-                  <Box>
+                  {/* <Box>
                     <Text fontWeight="bold" mb={4}>Recent Service Bookings</Text>
                     <Table variant="simple" size="sm">
                       <Thead display={{ base: "none", md: "table-header-group" }}>
@@ -777,7 +821,7 @@ export default function OwnerProfile() {
                         )}
                       </Tbody>
                     </Table>
-                  </Box>
+                  </Box> */}
                 </VStack>
               </Card>
             )}

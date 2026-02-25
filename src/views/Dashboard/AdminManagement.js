@@ -73,6 +73,7 @@ import {
   FaTrash,
   FaTimes,
   FaIdCard,
+  FaHistory,
 } from "react-icons/fa";
 import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdAdminPanelSettings, MdPerson, MdBlock, MdWarning } from "react-icons/md";
@@ -220,6 +221,8 @@ function AdminManagement() {
   // Job History State
   const [jobHistory, setJobHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [selectedTechForHistory, setSelectedTechForHistory] = useState(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -241,18 +244,13 @@ function AdminManagement() {
   // Calculate pagination
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const paginatedData = activeFilter === "Active" ? jobHistory : filteredData;
+  const paginatedData = activeFilter === "History" ? jobHistory : filteredData;
   const totalPages = Math.ceil(paginatedData.length / itemsPerPage);
 
   // Calculate current slice based on active view
-  const currentItems = activeFilter === "Active"
-    ? jobHistory.slice(indexOfFirstItem, indexOfLastItem)
-    : filteredData.slice(indexOfFirstItem, indexOfLastItem);
+  const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
 
   const displayItems = [...currentItems];
-  while (displayItems.length < itemsPerPage && displayItems.length > 0) {
-    displayItems.push({ _id: `empty-${displayItems.length}`, isEmpty: true });
-  }
 
   // Toggle password visibility
   const handleTogglePassword = () => setShowPassword(!showPassword);
@@ -402,7 +400,11 @@ function AdminManagement() {
       // Apply role/status filter
       switch (activeFilter) {
         case "Active":
-          filtered = adminData.filter((admin) => admin.status?.toLowerCase() === "approved" || admin.status?.toLowerCase() === "active");
+          filtered = adminData.filter((admin) =>
+            admin.isActiveTechnician === true ||
+            admin.status?.toLowerCase() === "approved" ||
+            admin.status?.toLowerCase() === "active"
+          );
           break;
         case "Inactive":
           filtered = adminData.filter((admin) => admin.status === "Inactive");
@@ -454,56 +456,24 @@ function AdminManagement() {
     return () => clearTimeout(timer);
   }, [activeFilter, adminData, dataLoaded, searchTerm]);
 
-  // Fetch Job History when Active filter is selected
+  // Fetch Job History when History Modal is opened
   useEffect(() => {
     const fetchHistory = async () => {
-      if (activeFilter === "Active") {
+      if (isHistoryModalOpen) {
         setHistoryLoading(true);
         try {
           const result = await getTechnicianJobHistory();
-          // The API returns an array of job history objects
           const historyData = Array.isArray(result) ? result : (result.data || []);
 
-          // Filter technicians where isActiveTechnician is true
-          // Fallback to status check if isActiveTechnician is not explicitly present
-          const activeTechs = adminData.filter(t =>
-            t.isActiveTechnician === true ||
-            (t.status?.toLowerCase() === "approved" || t.status?.toLowerCase() === "active")
-          );
-
-          const activeTechIds = new Set(activeTechs.map(t => t._id));
-
-          // Filter jobs:
-          // 1. Job assigned (technicianId is not null OR technicianInfo.deleted === false)
-          // 2. Assigned to an active technician
-          const filteredHistory = historyData.filter(job => {
-            const isAssigned = job.technicianId || job.technicianInfo?.deleted === false;
-            if (!isAssigned) return false;
-
-            // Check if the assigned technician is active
-            // technicianId can be populated object or id string
-            const techId = job.technicianId?._id || job.technicianId;
-
-            // If technicianId is null but technicianInfo exists (deleted case handled by next check?),
-            // The requirement says "technicianId is not null OR technicianInfo.deleted === false".
-            // If technicianId is null, we rely on technicianInfo.
-            // But we need to know if that technician (even if deleted/snapshot) WAS active? 
-            // "show only jobs assigned to active technicians".
-            // If the technician is current active, their ID must be in activeTechIds.
-
-            if (techId) {
-              return activeTechIds.has(techId);
-            }
-
-            // If technicianId is null, likely deleted. But if they are deleted, they are NOT active.
-            // So we probably don't show them.
-            return false;
-          });
-
-          // Sort by createdAt descending
-          filteredHistory.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-          setJobHistory(filteredHistory);
+          if (selectedTechForHistory) {
+            const filtered = historyData.filter(job =>
+              (job.technicianId?._id || job.technicianId) === selectedTechForHistory._id
+            );
+            filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            setJobHistory(filtered);
+          } else {
+            setJobHistory(historyData);
+          }
         } catch (err) {
           console.error("Error fetching job history:", err);
           toast({
@@ -520,7 +490,7 @@ function AdminManagement() {
     };
 
     fetchHistory();
-  }, [activeFilter, adminData, toast]);
+  }, [isHistoryModalOpen, selectedTechForHistory, toast]);
 
   // Handle delete admin - show confirmation dialog
   const handleDeleteAdmin = async (admin) => {
@@ -1228,6 +1198,17 @@ function AdminManagement() {
     setSelectedTechnician(null);
   };
 
+  const handleViewTechnicianHistory = (technician) => {
+    setSelectedTechForHistory(technician);
+    setIsHistoryModalOpen(true);
+  };
+
+  const closeHistoryModal = () => {
+    setIsHistoryModalOpen(false);
+    setSelectedTechForHistory(null);
+    setJobHistory([]);
+  };
+
   // If currentUser is null (still checking or not owner), show loading
   if (!currentUser) {
     return (
@@ -1244,7 +1225,7 @@ function AdminManagement() {
       <Flex
         flexDirection="column"
         pt={{ base: "120px", md: "75px" }}
-        height="100vh"
+        minH="calc(100vh - 40px)"
         overflow="auto"
         css={{
           '&::-webkit-scrollbar': {
@@ -1524,7 +1505,7 @@ function AdminManagement() {
     <Flex
       flexDirection="column"
       pt={{ base: "5px", md: "45px" }}
-      height="100vh"
+      minH="calc(100vh - 40px)"
       overflow="auto"
       css={{
         '&::-webkit-scrollbar': {
@@ -1552,14 +1533,14 @@ function AdminManagement() {
       <Box mb="16px">
         <SimpleGrid
           columns={{ base: 1, sm: 2, lg: 4 }}
-          spacing={{ base: 3, md: 4 }}
+          spacing={{ base: 2, md: 3 }}
           px={{ base: 2, md: 4 }}
-          py={5}
+          py={3}
         >
 
           {/* TOTAL TECHNICIANS */}
           <Card
-            minH="64px"
+            minH="48px"
             cursor="pointer"
             onClick={() => handleCardClick("all")}
             border={activeFilter === "all" ? "2px solid" : "1px solid"}
@@ -1571,16 +1552,16 @@ function AdminManagement() {
             transition="all 0.15s ease"
             _hover={{ transform: "translateY(-2px)", shadow: "md" }}
           >
-            <CardBody p={{ base: 2, md: 3 }}>
+            <CardBody p={2}>
               <Flex align="center" justify="space-between">
                 <Stat>
-                  <StatLabel fontSize="sm" fontWeight="semibold" color="gray.600">
+                  <StatLabel fontSize="xs" fontWeight="semibold" color="gray.600">
                     Total Technician
                   </StatLabel>
-                  <StatNumber fontSize="lg">{adminData.length}</StatNumber>
+                  <StatNumber fontSize="md">{adminData.length}</StatNumber>
                 </Stat>
-                <IconBox h="36px" w="36px" bg={customColor}>
-                  <Icon as={FaUsers} h="18px" w="18px" color="white" />
+                <IconBox h="28px" w="28px" bg={customColor}>
+                  <Icon as={FaUsers} h="14px" w="14px" color="white" />
                 </IconBox>
               </Flex>
             </CardBody>
@@ -1588,7 +1569,7 @@ function AdminManagement() {
 
           {/* ACTIVE TECHNICIANS */}
           <Card
-            minH="64px"
+            minH="48px"
             cursor="pointer"
             onClick={() => handleCardClick("Active")}
             border={activeFilter === "Active" ? "2px solid" : "1px solid"}
@@ -1600,13 +1581,13 @@ function AdminManagement() {
             transition="all 0.15s ease"
             _hover={{ transform: "translateY(-2px)", shadow: "md" }}
           >
-            <CardBody p={{ base: 2, md: 3 }}>
+            <CardBody p={2}>
               <Flex align="center" justify="space-between">
                 <Stat>
-                  <StatLabel fontSize="sm" fontWeight="semibold" color="gray.600">
-                    Technician History
+                  <StatLabel fontSize="xs" fontWeight="semibold" color="gray.600">
+                    Active Technician
                   </StatLabel>
-                  <StatNumber fontSize="lg">
+                  <StatNumber fontSize="md">
                     {
                       adminData.filter(
                         a =>
@@ -1616,11 +1597,11 @@ function AdminManagement() {
                     }
                   </StatNumber>
                 </Stat>
-                <IconBox h="36px" w="36px" bg={customColor}>
+                <IconBox h="28px" w="28px" bg={customColor}>
                   <Icon
                     as={IoCheckmarkDoneCircleSharp}
-                    h="18px"
-                    w="18px"
+                    h="14px"
+                    w="14px"
                     color="white"
                   />
                 </IconBox>
@@ -1630,7 +1611,7 @@ function AdminManagement() {
 
           {/* TRAINING COMPLETED */}
           <Card
-            minH="64px"
+            minH="48px"
             cursor="pointer"
             onClick={() => handleCardClick("TrainingCompleted")}
             border={activeFilter === "TrainingCompleted" ? "2px solid" : "1px solid"}
@@ -1642,18 +1623,18 @@ function AdminManagement() {
             transition="all 0.15s ease"
             _hover={{ transform: "translateY(-2px)", shadow: "md" }}
           >
-            <CardBody p={{ base: 2, md: 3 }}>
+            <CardBody p={2}>
               <Flex align="center" justify="space-between">
                 <Stat>
-                  <StatLabel fontSize="sm" fontWeight="semibold" color="gray.600">
+                  <StatLabel fontSize="xs" fontWeight="semibold" color="gray.600">
                     Training Completed
                   </StatLabel>
-                  <StatNumber fontSize="lg">
+                  <StatNumber fontSize="md">
                     {adminData.filter(a => a.trainingCompleted === true).length}
                   </StatNumber>
                 </Stat>
-                <IconBox h="36px" w="36px" bg={customColor}>
-                  <Icon as={FaUserGraduate} h="18px" w="18px" color="white" />
+                <IconBox h="28px" w="28px" bg={customColor}>
+                  <Icon as={FaUserGraduate} h="14px" w="14px" color="white" />
                 </IconBox>
               </Flex>
             </CardBody>
@@ -1661,7 +1642,7 @@ function AdminManagement() {
 
           {/* KYC VERIFIED */}
           <Card
-            minH="64px"
+            minH="48px"
             cursor="pointer"
             onClick={() => handleCardClick("KYCVerified")}
             border={activeFilter === "KYCVerified" ? "2px solid" : "1px solid"}
@@ -1673,13 +1654,13 @@ function AdminManagement() {
             transition="all 0.15s ease"
             _hover={{ transform: "translateY(-2px)", shadow: "md" }}
           >
-            <CardBody p={{ base: 2, md: 3 }}>
+            <CardBody p={2}>
               <Flex align="center" justify="space-between">
                 <Stat>
-                  <StatLabel fontSize="sm" fontWeight="semibold" color="gray.600">
+                  <StatLabel fontSize="xs" fontWeight="semibold" color="gray.600">
                     KYC Verified
                   </StatLabel>
-                  <StatNumber fontSize="lg">
+                  <StatNumber fontSize="md">
                     {
                       adminData.filter(a => {
                         const kyc = allKycRecords.find(
@@ -1693,8 +1674,8 @@ function AdminManagement() {
                     }
                   </StatNumber>
                 </Stat>
-                <IconBox h="36px" w="36px" bg={customColor}>
-                  <Icon as={FaIdCard} h="18px" w="18px" color="white" />
+                <IconBox h="28px" w="28px" bg={customColor}>
+                  <Icon as={FaIdCard} h="14px" w="14px" color="white" />
                 </IconBox>
               </Flex>
             </CardBody>
@@ -1721,7 +1702,10 @@ function AdminManagement() {
               borderColor={customColor}
               color={customColor}
               _hover={{ bg: customColor, color: "white" }}
-              onClick={() => setActiveFilter("all")}
+              onClick={() => {
+                setActiveFilter("all");
+                setSelectedTechForHistory(null);
+              }}
             >
               Show All
             </Button>
@@ -1732,20 +1716,16 @@ function AdminManagement() {
 
       {/* Table Container */}
       <Box
-        flex="1"
         display="flex"
         flexDirection="column"
         p={2}
         pt={0}
-        overflow="hidden"
       >
         <Card
-          shadow="xl"
+          shadow="sm"
           bg="white"
           display="flex"
           flexDirection="column"
-          height="100%"
-          minH="0"
           border="1px solid"
           borderColor={customBorderColor}
         >
@@ -1812,11 +1792,9 @@ function AdminManagement() {
           {/* Table Content Area */}
           <CardBody
             bg="transparent"
-            flex="1"
             display="flex"
             flexDirection="column"
             p={0}
-            overflow="hidden"
           >
             {tableLoading ? (
               <Flex justify="center" align="center" py={10} flex="1">
@@ -1824,326 +1802,202 @@ function AdminManagement() {
                 <Text ml={4}>Loading admins...</Text>
               </Flex>
             ) : (
-              <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
+              <Box display="flex" flexDirection="column">
                 {currentItems.length > 0 ? (
                   <>
-                    {activeFilter === "Active" ? (
-                      /* Job History Table */
+                    {/* Standard Technician Table (Existing Code) */}
+                    <Box
+                      display="flex"
+                      flexDirection="column"
+                    >
                       <Box
-                        flex="1"
-                        display="flex"
-                        flexDirection="column"
-                        height="400px"
-                        overflow="hidden"
+                        overflowY="auto"
+                        overflowX="auto"
+                        css={{
+                          '&::-webkit-scrollbar': {
+                            width: '8px',
+                            height: '8px',
+                          },
+                          '&::-webkit-scrollbar-track': {
+                            background: 'transparent',
+                          },
+                          '&::-webkit-scrollbar-thumb': {
+                            background: 'transparent',
+                            borderRadius: '4px',
+                            transition: 'background 0.3s ease',
+                          },
+                          '&:hover::-webkit-scrollbar-thumb': {
+                            background: '#cbd5e1',
+                          },
+                          '&:hover::-webkit-scrollbar-thumb:hover': {
+                            background: '#94a3b8',
+                          },
+                        }}
                       >
-                        <Box
-                          flex="1"
-                          overflowY="auto"
-                          overflowX="auto"
-                          css={{
-                            '&::-webkit-scrollbar': {
-                              width: '8px',
-                              height: '8px',
-                            },
-                            '&::-webkit-scrollbar-track': {
-                              background: 'transparent',
-                            },
-                            '&::-webkit-scrollbar-thumb': {
-                              background: 'transparent',
-                              borderRadius: '4px',
-                              transition: 'background 0.3s ease',
-                            },
-                            '&:hover::-webkit-scrollbar-thumb': {
-                              background: '#cbd5e1',
-                            },
-                            '&:hover::-webkit-scrollbar-thumb:hover': {
-                              background: '#94a3b8',
-                            },
-                          }}
-                        >
-                          <Table variant="simple" size="sm" bg="transparent">
-                            <Thead>
-                              <Tr>
-                                {["Job ID", "Technician", "Tech Mobile", "Customer", "Cust Mobile", "Service", "Type", "Amount", "City", "Status", "Payment", "Scheduled", "Created"].map((header) => (
-                                  <Th
-                                    key={header}
-                                    color="gray.100"
-                                    borderColor={`${customColor}30`}
-                                    position="sticky"
-                                    top={0}
-                                    bg={customColor}
-                                    zIndex={10}
-                                    fontWeight="bold"
-                                    fontSize="xs"
-                                    py={3}
-                                    whiteSpace="nowrap"
-                                  >
-                                    {header}
-                                  </Th>
-                                ))}
-                              </Tr>
-                            </Thead>
-                            <Tbody>
-                              {displayItems.map((job) => {
-                                if (job.isEmpty) {
-                                  return (
-                                    <Tr key={job._id || Math.random()} height="60px">
-                                      <Td colSpan={13} borderColor={`${customColor}20`}><Box height="60px" /></Td>
-                                    </Tr>
-                                  );
-                                }
-                                const techName = job.technicianInfo?.name || job.technicianSnapshot?.name || "N/A";
-                                const techMobile = job.technicianInfo?.mobile || job.technicianSnapshot?.mobile || "N/A";
-                                const custName = job.customerId ? `${job.customerId.fname || ""} ${job.customerId.lname || ""}`.trim() : "N/A";
-                                const custMobile = job.customerId?.mobileNumber || "N/A";
-                                const serviceName = job.serviceId?.serviceName || "N/A";
-                                const serviceType = job.serviceId?.serviceType || "N/A";
-                                const city = job.addressSnapshot?.city || "N/A";
+                        <Table variant="simple" size="md" bg="transparent">
+                          <Thead>
+                            <Tr>
+                              {[
+                                "Technician Name",
+                                "Specialization",
+                                "Experience",
+                                "City",
+                                "Rating",
+                                "Total Jobs",
+                                "Actions",
+                              ].map((label) => (
+                                <Th
+                                  key={label}
+                                  color="gray.100"
+                                  borderColor={`${customColor}30`}
+                                  position="sticky"
+                                  top={0}
+                                  bg={customColor}
+                                  zIndex={10}
+                                  fontWeight="semibold"
+                                  fontSize="xs"          // ↓ smaller header text
+                                  py={2}                 // ↓ vertical padding reduced
+                                  px={3}                 // controlled horizontal padding
+                                  borderBottom="2px solid"
+                                  borderBottomColor={`${customColor}50`}
+                                  whiteSpace="nowrap"
+                                >
+                                  {label}
+                                </Th>
+                              ))}
+                            </Tr>
 
-                                const getStatusBadge = (status) => {
-                                  let color = "gray";
-                                  if (status === "completed") color = "green";
-                                  else if (status === "pending") color = "orange";
-                                  else if (status === "cancelled") color = "red";
-                                  else if (status === "ongoing") color = "blue";
+                          </Thead>
 
-                                  return <Badge colorScheme={color} fontSize="xs">{status}</Badge>;
-                                };
+                          <Tbody bg="transparent">
+                            {displayItems.map((admin, index) => {
 
-                                return (
-                                  <Tr key={job._id || Math.random()} _hover={{ bg: `${customColor}10` }}>
-                                    <Td fontSize="xs" fontWeight="bold">{job._id?.substring(job._id.length - 6)}</Td>
-                                    <Td fontSize="xs">{techName}</Td>
-                                    <Td fontSize="xs">{techMobile}</Td>
-                                    <Td fontSize="xs">{custName}</Td>
-                                    <Td fontSize="xs">{custMobile}</Td>
-                                    <Td fontSize="xs" maxW="150px" isTruncated title={serviceName}>{serviceName}</Td>
-                                    <Td fontSize="xs">{serviceType}</Td>
-                                    <Td fontSize="xs">₹{job.baseAmount || 0}</Td>
-                                    <Td fontSize="xs">{city}</Td>
-                                    <Td>{getStatusBadge(job.status)}</Td>
-                                    <Td>
-                                      <Badge colorScheme={job.paymentStatus === "paid" ? "green" : "red"} fontSize="xs">
-                                        {job.paymentStatus || "Pending"}
-                                      </Badge>
-                                    </Td>
-                                    <Td fontSize="xs">{new Date(job.scheduledAt).toLocaleDateString()}</Td>
-                                    <Td fontSize="xs">{new Date(job.createdAt).toLocaleDateString()}</Td>
-                                  </Tr>
-                                );
-                              })}
-                            </Tbody>
-                          </Table>
-                        </Box>
-                      </Box>
-                    ) : (
-                      /* Standard Technician Table (Existing Code) */
-                      <Box
-                        flex="1"
-                        display="flex"
-                        flexDirection="column"
-                        height="400px"
-                        overflow="hidden"
-                      >
-                        <Box
-                          flex="1"
-                          overflowY="auto"
-                          overflowX="auto"
-                          css={{
-                            '&::-webkit-scrollbar': {
-                              width: '8px',
-                              height: '8px',
-                            },
-                            '&::-webkit-scrollbar-track': {
-                              background: 'transparent',
-                            },
-                            '&::-webkit-scrollbar-thumb': {
-                              background: 'transparent',
-                              borderRadius: '4px',
-                              transition: 'background 0.3s ease',
-                            },
-                            '&:hover::-webkit-scrollbar-thumb': {
-                              background: '#cbd5e1',
-                            },
-                            '&:hover::-webkit-scrollbar-thumb:hover': {
-                              background: '#94a3b8',
-                            },
-                          }}
-                        >
-                          <Table variant="simple" size="md" bg="transparent">
-                            <Thead>
-                              <Tr>
-                                {[
-                                  "Technician Name",
-                                  "Specialization",
-                                  "Experience",
-                                  "City",
-                                  "Rating",
-                                  "Total Jobs",
-                                  "Actions",
-                                ].map((label) => (
-                                  <Th
-                                    key={label}
-                                    color="gray.100"
-                                    borderColor={`${customColor}30`}
-                                    position="sticky"
-                                    top={0}
-                                    bg={customColor}
-                                    zIndex={10}
-                                    fontWeight="semibold"
-                                    fontSize="xs"          // ↓ smaller header text
-                                    py={2}                 // ↓ vertical padding reduced
-                                    px={3}                 // controlled horizontal padding
-                                    borderBottom="2px solid"
-                                    borderBottomColor={`${customColor}50`}
-                                    whiteSpace="nowrap"
-                                  >
-                                    {label}
-                                  </Th>
-                                ))}
-                              </Tr>
-
-                            </Thead>
-
-                            <Tbody bg="transparent">
-                              {displayItems.map((admin, index) => {
-                                if (admin.isEmpty) {
-                                  return (
-                                    <Tr
-                                      key={admin._id}
-                                      bg="transparent"
-                                      height="60px"
-                                    >
-                                      <Td borderColor={`${customColor}20`} colSpan={8}>
-                                        <Box height="60px" />
-                                      </Td>
-                                    </Tr>
-                                  );
-                                }
-
-                                return (
-                                  <Tr
-                                    key={admin._id || index}
-                                    bg="transparent"
-                                    _hover={{ bg: `${customColor}08` }}   // reduced hover intensity
-                                    borderBottom="1px"
-                                    borderColor={`${customColor}20`}
-                                    height="48px"                         // ↓ from 60px
-                                  >
-                                    <Td borderColor={`${customColor}20`} px={3} py={2}>
-                                      <Flex align="center">
-                                        <Avatar
-                                          size="xs"                       // ↓ from sm
-                                          name={getTechnicianName(admin)}
-                                          src={getTechnicianImage(admin)}
-                                          mr={2}                          // ↓ margin
-                                        />
-                                        <Box>
-                                          <Text fontWeight="medium" fontSize="sm" color="gray.700">
-                                            {getTechnicianName(admin)}
-                                          </Text>
-                                          {admin.availability?.isOnline && (
-                                            <Badge colorScheme="green" fontSize="10px" mt={0.5}>
-                                              Online
-                                            </Badge>
-                                          )}
-                                        </Box>
-                                      </Flex>
-                                    </Td>
-
-                                    <Td borderColor={`${customColor}20`} px={3} py={2}>
-                                      <Text fontWeight="medium" fontSize="sm" color="gray.700">
-                                        {admin.specialization ||
-                                          admin.profile?.specialization ||
-                                          admin.userId?.specialization ||
-                                          admin.userId?.profile?.specialization ||
-                                          "N/A"}
-                                      </Text>
-                                    </Td>
-
-                                    <Td borderColor={`${customColor}20`} px={3} py={2}>
-                                      <Text fontWeight="medium" fontSize="sm" color="gray.700">
-                                        {(admin.experienceYears ||
-                                          admin.profile?.experienceYears ||
-                                          admin.userId?.experienceYears ||
-                                          admin.userId?.profile?.experienceYears)
-                                          ? `${admin.experienceYears ||
-                                          admin.profile?.experienceYears ||
-                                          admin.userId?.experienceYears ||
-                                          admin.userId?.profile?.experienceYears} Years`
-                                          : "N/A"}
-                                      </Text>
-                                    </Td>
-
-                                    <Td borderColor={`${customColor}20`} px={3} py={2}>
-                                      <Text fontWeight="medium" fontSize="sm" color="gray.700">
-                                        {admin.city ||
-                                          admin.profile?.city ||
-                                          admin.locality ||
-                                          admin.userId?.city ||
-                                          admin.userId?.profile?.city ||
-                                          admin.addressSnapshot?.city ||
-                                          "N/A"}
-                                      </Text>
-                                    </Td>
-
-                                    <Td borderColor={`${customColor}20`} px={3} py={2}>
-                                      <Flex align="center">
-                                        <Icon as={FaSearch} color="yellow.400" mr={1} boxSize={3} />
-                                        <Text fontWeight="bold" fontSize="sm">
-                                          {admin.rating?.avg?.toFixed(1) || "0.0"}
+                              return (
+                                <Tr
+                                  key={admin._id || index}
+                                  bg="transparent"
+                                  _hover={{ bg: `${customColor}08` }}   // reduced hover intensity
+                                  borderBottom="1px"
+                                  borderColor={`${customColor}20`}
+                                  height="48px"                         // ↓ from 60px
+                                >
+                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                    <Flex align="center">
+                                      <Avatar
+                                        size="xs"                       // ↓ from sm
+                                        name={getTechnicianName(admin)}
+                                        src={getTechnicianImage(admin)}
+                                        mr={2}                          // ↓ margin
+                                      />
+                                      <Box>
+                                        <Text fontWeight="medium" fontSize="sm" color="gray.700">
+                                          {getTechnicianName(admin)}
                                         </Text>
-                                        <Text fontSize="xs" color="gray.500" ml={1}>
-                                          ({admin.rating?.count || 0})
-                                        </Text>
-                                      </Flex>
-                                    </Td>
+                                        {admin.availability?.isOnline && (
+                                          <Badge colorScheme="green" fontSize="10px" mt={0.5}>
+                                            Online
+                                          </Badge>
+                                        )}
+                                      </Box>
+                                    </Flex>
+                                  </Td>
 
-                                    <Td borderColor={`${customColor}20`} px={3} py={2}>
-                                      <Text fontWeight="medium" fontSize="sm">
-                                        {admin.totalJobsCompleted || admin.jobStats?.completed || 0}
+                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                    <Text fontWeight="medium" fontSize="sm" color="gray.700">
+                                      {admin.specialization ||
+                                        admin.profile?.specialization ||
+                                        admin.userId?.specialization ||
+                                        admin.userId?.profile?.specialization ||
+                                        "N/A"}
+                                    </Text>
+                                  </Td>
+
+                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                    <Text fontWeight="medium" fontSize="sm" color="gray.700">
+                                      {(() => {
+                                        const exp = admin.experienceYears ??
+                                          admin.profile?.experienceYears ??
+                                          admin.userId?.experienceYears ??
+                                          admin.userId?.profile?.experienceYears;
+                                        return (exp !== undefined && exp !== null) ? `${exp} Years` : "N/A";
+                                      })()}
+                                    </Text>
+                                  </Td>
+
+                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                    <Text fontWeight="medium" fontSize="sm" color="gray.700">
+                                      {admin.city ||
+                                        admin.profile?.city ||
+                                        admin.locality ||
+                                        admin.userId?.city ||
+                                        admin.userId?.profile?.city ||
+                                        admin.addressSnapshot?.city ||
+                                        "N/A"}
+                                    </Text>
+                                  </Td>
+
+                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                    <Flex align="center">
+                                      <Icon as={FaSearch} color="yellow.400" mr={1} boxSize={3} />
+                                      <Text fontWeight="bold" fontSize="sm">
+                                        {admin.rating?.avg?.toFixed(1) || "0.0"}
                                       </Text>
-                                    </Td>
+                                      <Text fontSize="xs" color="gray.500" ml={1}>
+                                        ({admin.rating?.count || 0})
+                                      </Text>
+                                    </Flex>
+                                  </Td>
 
-                                    <Td borderColor={`${customColor}20`} px={3} py={2}>
-                                      <Flex gap={1}>
-                                        <IconButton
-                                          aria-label="View Details"
-                                          icon={<FaEye />}
-                                          size="xs"                       // ↓ smaller buttons
-                                          variant="outline"
-                                          colorScheme="purple"
-                                          onClick={() => handleViewDetails(admin)}
-                                        />
-                                        <IconButton
-                                          aria-label="View KYC"
-                                          icon={<MdAdminPanelSettings />}
-                                          size="xs"
-                                          variant="outline"
-                                          colorScheme="blue"
-                                          onClick={() => handleViewKYC(admin)}
-                                        />
-                                        <IconButton
-                                          aria-label="Delete technician"
-                                          icon={<FaTrash />}
-                                          size="xs"
-                                          variant="outline"
-                                          colorScheme="red"
-                                          onClick={() => handleDeleteAdmin(admin)}
-                                        />
-                                      </Flex>
-                                    </Td>
-                                  </Tr>
+                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                    <Text fontWeight="medium" fontSize="sm">
+                                      {admin.totalJobsCompleted || admin.jobStats?.completed || 0}
+                                    </Text>
+                                  </Td>
 
-                                );
-                              })}
-                            </Tbody>
-                          </Table>
+                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                    <Flex gap={1}>
+                                      <IconButton
+                                        aria-label="View Details"
+                                        icon={<FaEye />}
+                                        size="xs"                       // ↓ smaller buttons
+                                        variant="outline"
+                                        colorScheme="purple"
+                                        onClick={() => handleViewDetails(admin)}
+                                      />
+                                      <IconButton
+                                        aria-label="View KYC"
+                                        icon={<MdAdminPanelSettings />}
+                                        size="xs"
+                                        variant="outline"
+                                        colorScheme="blue"
+                                        onClick={() => handleViewKYC(admin)}
+                                      />
+                                      <IconButton
+                                        aria-label="View History"
+                                        icon={<FaHistory />}
+                                        size="xs"
+                                        variant="outline"
+                                        colorScheme="orange"
+                                        onClick={() => handleViewTechnicianHistory(admin)}
+                                      />
+                                      <IconButton
+                                        aria-label="Delete technician"
+                                        icon={<FaTrash />}
+                                        size="xs"
+                                        variant="outline"
+                                        colorScheme="red"
+                                        onClick={() => handleDeleteAdmin(admin)}
+                                      />
+                                    </Flex>
+                                  </Td>
+                                </Tr>
 
-                        </Box>
+                              );
+                            })}
+                          </Tbody>
+                        </Table>
                       </Box>
-
-                    )}
+                    </Box>
 
                     {/* Pagination Bar */}
                     {currentItems.length > 0 && (
@@ -2245,7 +2099,7 @@ function AdminManagement() {
                     <Text textAlign="center" color="gray.500" fontSize="lg">
                       {dataLoaded
                         ? activeFilter === "Active"
-                          ? historyLoading ? "Loading history..." : "No History Found"
+                          ? "No Active Technicians Found"
                           : adminData.length === 0
                             ? "No Technicians found."
                             : searchTerm
@@ -2260,6 +2114,83 @@ function AdminManagement() {
           </CardBody>
         </Card >
       </Box >
+
+      {/* Job History Modal */}
+      <Modal isOpen={isHistoryModalOpen} onClose={closeHistoryModal} size="4xl" scrollBehavior="inside">
+        <ModalOverlay />
+        <ModalContent maxWidth="50vw">
+          <ModalHeader color="gray.700" borderBottom="1px solid" borderColor="gray.100">
+            Job History: {selectedTechForHistory ? getTechnicianName(selectedTechForHistory) : "Technician"}
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody p={0}>
+            {historyLoading ? (
+              <Flex justify="center" align="center" py={20}>
+                <Spinner size="xl" color={customColor} />
+                <Text ml={4}>Fetching job history...</Text>
+              </Flex>
+            ) : jobHistory.length > 0 ? (
+              <Box overflowX="auto">
+                <Table variant="simple" size="sm">
+                  <Thead bg="gray.50">
+                    <Tr>
+                      {["Job ID", "Customer", "Cust Mobile", "Service", "Type", "Amount", "City", "Status", "Payment", "Scheduled", "Created"].map((header) => (
+                        <Th key={header} py={4} fontSize="xs" color="gray.600">{header}</Th>
+                      ))}
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {jobHistory.map((job) => {
+                      const custName = job.customerId ? `${job.customerId.fname || ""} ${job.customerId.lname || ""}`.trim() : "N/A";
+                      const custMobile = job.customerId?.mobileNumber || "N/A";
+                      const serviceName = job.serviceId?.serviceName || "N/A";
+                      const serviceType = job.serviceId?.serviceType || "N/A";
+                      const city = job.addressSnapshot?.city || "N/A";
+
+                      const getStatusBadge = (status) => {
+                        let color = "gray";
+                        if (status === "completed") color = "green";
+                        else if (status === "pending") color = "orange";
+                        else if (status === "cancelled") color = "red";
+                        else if (status === "ongoing") color = "blue";
+                        return <Badge colorScheme={color} fontSize="2xs" variant="subtle">{status}</Badge>;
+                      };
+
+                      return (
+                        <Tr key={job._id || Math.random()} _hover={{ bg: "gray.50" }}>
+                          <Td fontSize="xs" fontWeight="bold">{job._id?.substring(job._id.length - 6)}</Td>
+                          <Td fontSize="xs">{custName}</Td>
+                          <Td fontSize="xs">{custMobile}</Td>
+                          <Td fontSize="xs" maxW="200px" isTruncated title={serviceName}>{serviceName}</Td>
+                          <Td fontSize="xs">{serviceType}</Td>
+                          <Td fontSize="xs" fontWeight="semibold">₹{job.baseAmount || 0}</Td>
+                          <Td fontSize="xs">{city}</Td>
+                          <Td>{getStatusBadge(job.status)}</Td>
+                          <Td>
+                            <Badge colorScheme={job.paymentStatus === "paid" ? "green" : "red"} fontSize="2xs" variant="outline">
+                              {job.paymentStatus || "Pending"}
+                            </Badge>
+                          </Td>
+                          <Td fontSize="xs">{new Date(job.scheduledAt).toLocaleDateString()}</Td>
+                          <Td fontSize="xs">{new Date(job.createdAt).toLocaleDateString()}</Td>
+                        </Tr>
+                      );
+                    })}
+                  </Tbody>
+                </Table>
+              </Box>
+            ) : (
+              <Flex justify="center" align="center" py={20} flexDirection="column">
+                <Icon as={FaHistory} w={10} h={10} color="gray.300" mb={4} />
+                <Text color="gray.500" fontSize="lg">No job history found for this technician.</Text>
+              </Flex>
+            )}
+          </ModalBody>
+          <ModalFooter borderTop="1px solid" borderColor="gray.100">
+
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       <Modal isOpen={isKYCModalOpen} onClose={closeKYCModal} size="xl" scrollBehavior="inside">
         <ModalOverlay />
@@ -2402,8 +2333,16 @@ function AdminManagement() {
                               <Text fontSize="sm" color="gray.500">{kycRecord.bankDetails.branchName || ""}</Text>
                             </Box>
                             <Box>
+                              <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Account Number</Text>
+                              <Text fontSize="md" fontWeight="semibold" color="teal.600">{kycRecord.bankDetails.accountNumber || "N/A"}</Text>
+                            </Box>
+                            <Box>
                               <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">IFSC Code</Text>
                               <Text fontSize="md" fontWeight="semibold" color="gray.800" fontFamily="monospace">{kycRecord.bankDetails.ifscCode || "N/A"}</Text>
+                            </Box>
+                            <Box>
+                              <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Account Number</Text>
+                              <Text fontSize="md" fontWeight="semibold" color="teal.600">{kycRecord.bankDetails.accountNumber || "N/A"}</Text>
                             </Box>
                             <Box>
                               <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">UPI ID</Text>
@@ -2635,7 +2574,10 @@ function AdminManagement() {
 
                   <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
                     <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Professional Info</Text>
-                    <Text mb={2}><strong>Experience:</strong> {selectedTechnician.experienceYears || selectedTechnician.profile?.experienceYears || "0"} Years</Text>
+                    <Text mb={2}><strong>Experience:</strong> {(() => {
+                      const exp = selectedTechnician.experienceYears ?? selectedTechnician.profile?.experienceYears;
+                      return (exp !== undefined && exp !== null) ? `${exp} Years` : "0 Years";
+                    })()}</Text>
                     <Text mb={2}><strong>Specialization:</strong> {selectedTechnician.specialization || selectedTechnician.profile?.specialization || "N/A"}</Text>
                     <Text mb={2}><strong>Total Jobs:</strong> {selectedTechnician.totalJobsCompleted || selectedTechnician.jobStats?.completed || 0}</Text>
                     <Text mb={2}>
@@ -2704,6 +2646,7 @@ function AdminManagement() {
                           <Text mb={1} fontSize="sm"><strong>Bank:</strong> {kycMatch.bankDetails.bankName || "N/A"}</Text>
                           <Text mb={1} fontSize="sm"><strong>A/C Holder:</strong> {kycMatch.bankDetails.accountHolderName || "N/A"}</Text>
                           <Text mb={1} fontSize="sm"><strong>IFSC:</strong> {kycMatch.bankDetails.ifscCode || "N/A"}</Text>
+                          <Text mb={1} fontSize="sm"><strong>Account Number:</strong> {kycMatch.bankDetails.accountNumber || "N/A"}</Text>
                           <Text fontSize="sm"><strong>UPI:</strong> {kycMatch.bankDetails.upiId || "N/A"}</Text>
                         </Box>
                       );

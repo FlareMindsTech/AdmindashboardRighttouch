@@ -1640,16 +1640,16 @@ export default function ProductManagement() {
       <Flex
         flexDirection="column"
         pt={{ base: "120px", md: "75px" }}
-        height="100vh"
+        height={{ base: "calc(100vh - 20px)", md: "calc(100vh - 40px)" }}
         overflow="hidden"
         css={globalScrollbarStyles}
       >
         <Card
           bg="white"
           shadow="xl"
-          height="100%"
           display="flex"
           flexDirection="column"
+          height="100%"
           overflow="hidden"
         >
           <CardHeader bg="white" flexShrink={0}>
@@ -1675,135 +1675,153 @@ export default function ProductManagement() {
           <CardBody
             bg="white"
             flex="1"
-            overflow="auto"
+            display="flex"
+            flexDirection="column"
+            overflow="hidden"
+            p={0}
             css={globalScrollbarStyles}
           >
             {/* Category Form - NO STATUS FIELD */}
             {(currentView === "addCategory" || currentView === "editCategory") && (
-              <Box p={4}>
-                <FormControl mb="20px">
-                  <FormLabel htmlFor="name" color="gray.700" fontSize="sm">Name *</FormLabel>
-                  <Input
-                    id="name"
-                    placeholder="Enter category name"
-                    onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
-                    value={newCategory.name}
-                    borderColor={`${customColor}50`}
-                    _hover={{ borderColor: customColor }}
-                    _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                    bg="white"
-                    size="sm"
-                  />
-                </FormControl>
-                <FormControl mb="20px">
-                  <FormLabel htmlFor="description" color="gray.700" fontSize="sm">Description</FormLabel>
-                  <Textarea
-                    id="description"
-                    placeholder="Enter category description"
-                    onChange={(e) => setNewCategory({ ...newCategory, description: e.target.value })}
-                    value={newCategory.description}
-                    borderColor={`${customColor}50`}
-                    _hover={{ borderColor: customColor }}
-                    _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                    bg="white"
-                    rows={2}
-                    size="sm"
-                  />
-                </FormControl>
+              <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
+                <Box
+                  flex="1"
+                  overflowY="auto"
+                  p={4}
+                  css={globalScrollbarStyles}
+                >
+                  <FormControl mb="20px">
+                    <FormLabel htmlFor="name" color="gray.700" fontSize="sm">Name *</FormLabel>
+                    <Input
+                      id="name"
+                      placeholder="Enter category name"
+                      onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
+                      value={newCategory.name}
+                      borderColor={`${customColor}50`}
+                      _hover={{ borderColor: customColor }}
+                      _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                      bg="white"
+                      size="sm"
+                    />
+                  </FormControl>
+                  <FormControl mb="20px">
+                    <FormLabel htmlFor="description" color="gray.700" fontSize="sm">Description</FormLabel>
+                    <Textarea
+                      id="description"
+                      placeholder="Enter category description"
+                      onChange={(e) => setNewCategory({ ...newCategory, description: e.target.value })}
+                      value={newCategory.description}
+                      borderColor={`${customColor}50`}
+                      _hover={{ borderColor: customColor }}
+                      _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                      bg="white"
+                      rows={2}
+                      size="sm"
+                    />
+                  </FormControl>
 
-                <FormControl mb="20px">
-                  <FormLabel color="gray.700" fontSize="sm">Category Image</FormLabel>
-                  <Flex direction="column" gap={3}>
-                    {newCategory.image && (
+                  <FormControl mb="20px">
+                    <FormLabel color="gray.700" fontSize="sm">Category Image</FormLabel>
+                    <Flex direction="column" gap={3}>
+                      {newCategory.image && (
+                        <Box
+                          border="1px solid"
+                          borderColor="gray.200"
+                          borderRadius="md"
+                          p={2}
+                          width="fit-content"
+                          position="relative"
+                        >
+                          <Image
+                            src={newCategory.image}
+                            alt="Category Preview"
+                            boxSize="100px"
+                            objectFit="cover"
+                            borderRadius="md"
+                          />
+                          <IconButton
+                            icon={<FaTrash />}
+                            size="xs"
+                            colorScheme="red"
+                            position="absolute"
+                            top={-2}
+                            right={-2}
+                            borderRadius="full"
+                            onClick={handleRemoveCategoryImg}
+                            aria-label="Remove image"
+                          />
+                        </Box>
+                      )}
                       <Box
-                        border="1px solid"
-                        borderColor="gray.200"
+                        border="1px dashed"
+                        borderColor={customColor}
                         borderRadius="md"
-                        p={2}
-                        width="fit-content"
+                        p={4}
+                        textAlign="center"
+                        cursor="pointer"
+                        _hover={{ bg: `${customColor}05` }}
                         position="relative"
                       >
-                        <Image
-                          src={newCategory.image}
-                          alt="Category Preview"
-                          boxSize="100px"
-                          objectFit="cover"
-                          borderRadius="md"
-                        />
-                        <IconButton
-                          icon={<FaTrash />}
-                          size="xs"
-                          colorScheme="red"
-                          position="absolute"
-                          top={-2}
-                          right={-2}
-                          borderRadius="full"
-                          onClick={handleRemoveCategoryImg}
-                          aria-label="Remove image"
-                        />
+                        {isSubmitting ? (
+                          <Spinner size="sm" color={customColor} />
+                        ) : (
+                          <>
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              height="100%"
+                              width="100%"
+                              position="absolute"
+                              top="0"
+                              left="0"
+                              opacity="0"
+                              cursor="pointer"
+                              onChange={handleCategoryImageUpload}
+                              disabled={isSubmitting}
+                            />
+                            <Flex direction="column" align="center" justify="center" gap={2}>
+                              <Icon as={FaPlusCircle} w={6} h={6} color={customColor} />
+                              <Text fontSize="sm" color="gray.500">
+                                Click to upload category image
+                              </Text>
+                            </Flex>
+                          </>
+                        )}
                       </Box>
-                    )}
-                    <Box
-                      border="1px dashed"
-                      borderColor={customColor}
-                      borderRadius="md"
-                      p={4}
-                      textAlign="center"
-                      cursor="pointer"
-                      _hover={{ bg: `${customColor}05` }}
-                      position="relative"
-                    >
-                      {isSubmitting ? (
-                        <Spinner size="sm" color={customColor} />
-                      ) : (
-                        <>
-                          <Input
-                            type="file"
-                            accept="image/*"
-                            height="100%"
-                            width="100%"
-                            position="absolute"
-                            top="0"
-                            left="0"
-                            opacity="0"
-                            cursor="pointer"
-                            onChange={handleCategoryImageUpload}
-                            disabled={isSubmitting}
-                          />
-                          <Flex direction="column" align="center" justify="center" gap={2}>
-                            <Icon as={FaPlusCircle} w={6} h={6} color={customColor} />
-                            <Text fontSize="sm" color="gray.500">
-                              Click to upload category image
-                            </Text>
-                          </Flex>
-                        </>
-                      )}
-                    </Box>
-                  </Flex>
-                </FormControl>
+                    </Flex>
+                  </FormControl>
+                </Box>
 
-                <Flex justify="flex-end" mt={4} flexShrink={0}>
-                  <Button
-                    variant="outline"
-                    mr={3}
-                    onClick={handleResetCategory}
-                    border="1px"
-                    borderColor="gray.300"
-                    size="sm"
-                  >
-                    Reset
-                  </Button>
-                  <Button
-                    bg={customColor}
-                    _hover={{ bg: customHoverColor }}
-                    color="white"
-                    onClick={currentView === "addCategory" ? handleSubmitCategory : handleUpdateCategory}
-                    isLoading={isSubmitting}
-                    size="sm"
-                  >
-                    {currentView === "addCategory" ? "Create Category" : "Update Category"}
-                  </Button>
-                </Flex>
+                <Box
+                  p={4}
+                  borderTop="1px solid"
+                  borderColor="gray.100"
+                  bg="white"
+                  flexShrink={0}
+                >
+                  <Flex justify="flex-end">
+                    <Button
+                      variant="outline"
+                      mr={3}
+                      onClick={handleResetCategory}
+                      border="1px"
+                      borderColor="gray.300"
+                      size="sm"
+                    >
+                      Reset
+                    </Button>
+                    <Button
+                      bg={customColor}
+                      _hover={{ bg: customHoverColor }}
+                      color="white"
+                      onClick={currentView === "addCategory" ? handleSubmitCategory : handleUpdateCategory}
+                      isLoading={isSubmitting}
+                      size="sm"
+                    >
+                      {currentView === "addCategory" ? "Create Category" : "Update Category"}
+                    </Button>
+                  </Flex>
+                </Box>
               </Box>
             )}
 
@@ -1819,7 +1837,8 @@ export default function ProductManagement() {
                 {/* Scrollable Form Container */}
                 <Box
                   flex="1"
-                  overflowY="visible"
+                  overflowY="auto"
+                  css={globalScrollbarStyles}
                   pr={2}
                 >
                   <Box p={4}>
@@ -2152,10 +2171,11 @@ export default function ProductManagement() {
                 {/* Fixed Footer with Buttons */}
                 <Box
                   flexShrink={0}
-                  p={4}
+                  p={6}
                   borderTop="1px solid"
                   borderColor={`${customColor}20`}
-                  bg="transparent"
+                  bg="white"
+                  boxShadow="0 -4px 6px -1px rgba(0, 0, 0, 0.05)"
                 >
                   <Flex justify="flex-end">
                     <Button
@@ -2194,7 +2214,7 @@ export default function ProductManagement() {
     <Flex
       flexDirection="column"
       pt={{ base: "120px", md: "45px" }}
-      height="100vh"
+      height={{ base: "calc(100vh - 20px)", md: "calc(100vh - 40px)" }}
       overflow="hidden"
       css={globalScrollbarStyles}
     >
@@ -2352,11 +2372,11 @@ export default function ProductManagement() {
 
       {/* Scrollable Table Container */}
       <Box
-        flex="1"
         display="flex"
         flexDirection="column"
         p={4}
         pt={0}
+        flex="1"
         overflow="hidden"
       >
         <Card
@@ -2367,7 +2387,6 @@ export default function ProductManagement() {
           display="flex"
           flexDirection="column"
           height="100%"
-          minH="0"
           overflow="hidden"
         >
           {/* Fixed Table Header */}
@@ -2487,10 +2506,10 @@ export default function ProductManagement() {
           {/* Scrollable Table Content Area */}
           <CardBody
             bg="white"
-            flex="1"
             display="flex"
             flexDirection="column"
             p={0}
+            flex="1"
             overflow="hidden"
           >
             {isLoadingData ? (
@@ -2499,20 +2518,17 @@ export default function ProductManagement() {
                 <Text ml={3} fontSize="sm">Loading data...</Text>
               </Flex>
             ) : (
-              <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
+              <Box display="flex" flexDirection="column" flex="1" overflow="hidden">
                 {/* Categories Table */}
                 {currentView === "categories" && (
                   <>
                     {/* Table Container */}
                     <Box
-                      flex="1"
                       display="flex"
                       flexDirection="column"
-                      overflow="hidden"
                     >
                       {/* Scrollable Table Area */}
                       <Box
-                        flex="1"
                         overflow="auto"
                         css={globalScrollbarStyles}
                       >
@@ -2820,14 +2836,11 @@ export default function ProductManagement() {
                   <>
                     {/* Table Container */}
                     <Box
-                      flex="1"
                       display="flex"
                       flexDirection="column"
-                      overflow="hidden"
                     >
                       {/* Scrollable Table Area */}
                       <Box
-                        flex="1"
                         overflow="auto"
                         css={globalScrollbarStyles}
                       >

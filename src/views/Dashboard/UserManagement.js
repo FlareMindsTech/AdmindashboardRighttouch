@@ -902,145 +902,172 @@ function UserManagement() {
 
             {/* Body */}
             <CardBody p={0} display="flex" flexDirection="column">
-              <Box overflow="auto">
-                <Table
-                  size="sm"
-                  variant="simple"
-                  minW={{ base: "800px", lg: "100%" }}
-                  sx={{
-                    "th, td": {
-                      px: 2,
-                      py: 1,
-                    },
-                  }}
-                >
-                  <Thead>
-                    <Tr>
-                      {["User", "Contact", "Bookings", "Technician", "Actions"].map(h => (
-                        <Th
-                          key={h}
-                          position="sticky"
-                          top={0}
-                          bg={customColor}
-                          color="white"
-                          fontSize="xs"
-                          fontWeight="bold"
-                          zIndex={10}
-                        >
-                          {h}
-                        </Th>
-                      ))}
-                    </Tr>
-                  </Thead>
+              {tableLoading ? (
+                <Flex justify="center" align="center" py={10} flex="1">
+                  <Spinner size="xl" color={customColor} />
+                  <Text ml={4}>Loading Users...</Text>
+                </Flex>
+              ) : (
+                <Box display="flex" flexDirection="column">
+                  {displayItems.length > 0 ? (
+                    <Box overflow="auto">
+                      <Table
+                        size="sm"
+                        variant="simple"
+                        minW={{ base: "800px", lg: "100%" }}
+                        sx={{
+                          "th, td": {
+                            px: 2,
+                            py: 1,
+                          },
+                        }}
+                      >
+                        <Thead>
+                          <Tr>
+                            {["User", "Contact", "Bookings", "Technician", "Actions"].map(h => (
+                              <Th
+                                key={h}
+                                position="sticky"
+                                top={0}
+                                bg={customColor}
+                                color="white"
+                                fontSize="xs"
+                                fontWeight="bold"
+                                zIndex={10}
+                              >
+                                {h}
+                              </Th>
+                            ))}
+                          </Tr>
+                        </Thead>
 
-                  <Tbody>
-                    {displayItems.map((user, index) => {
-                      const userName =
-                        user?.profile?.fname ||
-                        user?.profile?.firstName ||
-                        user?.name ||
-                        "Unknown User";
+                        <Tbody>
+                          {displayItems.map((user, index) => {
+                            const userName =
+                              user?.profile?.fname ||
+                              user?.profile?.firstName ||
+                              user?.name ||
+                              "Unknown User";
 
-                      return (
-                        <Tr
-                          key={user._id || index}
-                          _hover={{ bg: `${customColor}10` }}
-                          borderBottom="1px solid"
-                          borderColor={`${customColor}20`}
-                        >
-                          {/* User */}
-                          <Td>
-                            <Flex align="center" gap={2}>
-                              <Avatar size="xs" name={userName} src={user.profileImage} />
-                              <Box>
-                                <Text fontSize="sm" fontWeight="medium" lineHeight="short">
-                                  {userName}
-                                </Text>
-                                <Text fontSize="xs" color="gray.600" lineHeight="shorter">
-                                  {user.email || "No email"}
-                                </Text>
-                              </Box>
-                            </Flex>
-                          </Td>
+                            return (
+                              <Tr
+                                key={user._id || index}
+                                _hover={{ bg: `${customColor}10` }}
+                                borderBottom="1px solid"
+                                borderColor={`${customColor}20`}
+                              >
+                                {/* User */}
+                                <Td>
+                                  <Flex align="center" gap={2}>
+                                    <Avatar size="xs" name={userName} src={user.profileImage} />
+                                    <Box>
+                                      <Text fontSize="sm" fontWeight="medium" lineHeight="short">
+                                        {userName}
+                                      </Text>
+                                      <Text fontSize="xs" color="gray.600" lineHeight="shorter">
+                                        {user.email || "No email"}
+                                      </Text>
+                                    </Box>
+                                  </Flex>
+                                </Td>
 
-                          {/* Contact */}
-                          <Td fontSize="sm" color="gray.600">
-                            {user.mobileNumber || user.phone || "-"}
-                          </Td>
+                                {/* Contact */}
+                                <Td fontSize="sm" color="gray.600">
+                                  {user.mobileNumber || user.phone || "-"}
+                                </Td>
 
-                          {/* Bookings */}
-                          <Td fontSize="sm" fontWeight="bold">
-                            {user.bookingCount}
-                          </Td>
+                                {/* Bookings */}
+                                <Td fontSize="sm" fontWeight="bold">
+                                  {user.bookingCount}
+                                </Td>
 
-                          {/* Technician */}
-                          <Td>
-                            <IconButton
-                              size="xs"
-                              icon={<FaEye />}
-                              aria-label="View Technician"
-                              variant="outline"
-                              colorScheme="green"
-                              onClick={() => handleViewTechnicianAllocation(user)}
-                            />
-                          </Td>
+                                {/* Technician */}
+                                <Td>
+                                  <IconButton
+                                    size="xs"
+                                    icon={<FaEye />}
+                                    aria-label="View Technician"
+                                    variant="outline"
+                                    colorScheme="green"
+                                    onClick={() => handleViewTechnicianAllocation(user)}
+                                  />
+                                </Td>
 
-                          {/* Actions */}
-                          <Td>
-                            <Flex gap={1}>
-                              <IconButton
-                                size="xs"
-                                icon={<FaWallet />}
-                                aria-label="Payments"
-                                variant="outline"
-                                colorScheme="orange"
-                                onClick={() => handleViewPaymentDetails(user)}
-                              />
-                              <IconButton
-                                size="xs"
-                                icon={<FaEye />}
-                                aria-label="Details"
-                                variant="outline"
-                                colorScheme="teal"
-                                onClick={() => handleViewDetails(user)}
-                              />
-                            </Flex>
-                          </Td>
-                        </Tr>
-                      );
-                    })}
-                  </Tbody>
-                </Table>
-              </Box>
-
-              {/* Pagination */}
-              {filteredData.length > 0 && (
-                <Box
-                  p={2}
-                  borderTop="1px solid"
-                  borderColor={`${customColor}20`}
-                >
-                  <Flex justify="flex-end" align="center" gap={2}>
-                    <Button
-                      size="sm"
-                      onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-                      isDisabled={currentPage === 1}
+                                {/* Actions */}
+                                <Td>
+                                  <Flex gap={1}>
+                                    <IconButton
+                                      size="xs"
+                                      icon={<FaWallet />}
+                                      aria-label="Payments"
+                                      variant="outline"
+                                      colorScheme="orange"
+                                      onClick={() => handleViewPaymentDetails(user)}
+                                    />
+                                    <IconButton
+                                      size="xs"
+                                      icon={<FaEye />}
+                                      aria-label="Details"
+                                      variant="outline"
+                                      colorScheme="teal"
+                                      onClick={() => handleViewDetails(user)}
+                                    />
+                                  </Flex>
+                                </Td>
+                              </Tr>
+                            );
+                          })}
+                        </Tbody>
+                      </Table>
+                    </Box>
+                  ) : (
+                    <Flex
+                      height="200px"
+                      justify="center"
+                      align="center"
+                      border="1px dashed"
+                      borderColor={`${customColor}30`}
+                      borderRadius="md"
+                      m={4}
                     >
-                      Prev
-                    </Button>
+                      <Text textAlign="center" color="gray.500" fontSize="lg">
+                        {dataLoaded
+                          ? "No users found."
+                          : "Loading users..."}
+                      </Text>
+                    </Flex>
+                  )}
 
-                    <Text fontSize="sm" fontWeight="bold">
-                      {currentPage} / {totalPages}
-                    </Text>
-
-                    <Button
-                      size="sm"
-                      onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-                      isDisabled={currentPage === totalPages}
+                  {/* Pagination */}
+                  {filteredData.length > 0 && (
+                    <Box
+                      p={2}
+                      borderTop="1px solid"
+                      borderColor={`${customColor}20`}
                     >
-                      Next
-                    </Button>
-                  </Flex>
+                      <Flex justify="flex-end" align="center" gap={2}>
+                        <Button
+                          size="sm"
+                          onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                          isDisabled={currentPage === 1}
+                        >
+                          Prev
+                        </Button>
+
+                        <Text fontSize="sm" fontWeight="bold">
+                          {currentPage} / {totalPages}
+                        </Text>
+
+                        <Button
+                          size="sm"
+                          onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                          isDisabled={currentPage === totalPages}
+                        >
+                          Next
+                        </Button>
+                      </Flex>
+                    </Box>
+                  )}
                 </Box>
               )}
             </CardBody>

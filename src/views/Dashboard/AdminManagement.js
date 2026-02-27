@@ -1831,7 +1831,7 @@ function AdminManagement() {
             {tableLoading ? (
               <Flex justify="center" align="center" py={10} flex="1">
                 <Spinner size="xl" color={customColor} />
-                <Text ml={4}>Loading admins...</Text>
+                <Text ml={4}>Loading Technicians...</Text>
               </Flex>
             ) : (
               <Box display="flex" flexDirection="column">

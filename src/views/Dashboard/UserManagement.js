@@ -553,8 +553,9 @@ function UserManagement() {
     <>
       <Flex
         flexDirection="column"
-        pt={{ base: "120px", md: "75px" }}
+        pt={{ base: "45px", md: "65px", lg: "75px" }}
         minH="calc(100vh - 40px)"
+        pb="150px"
         overflow="auto"
         css={{
           '&::-webkit-scrollbar': {
@@ -593,7 +594,7 @@ function UserManagement() {
           >
             {/* Total Users Card */}
             <Card
-              minH="83px"
+              minH="75px"
               cursor="pointer"
               onClick={() => handleCardClick("all")}
               border={activeFilter === "all" ? "2px solid" : "1px solid"}
@@ -623,7 +624,7 @@ function UserManagement() {
                 borderColor: customColor,
               }}
             >
-              <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
+              <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
                 <Flex flexDirection="row" align="center" justify="space-between" w="100%">
                   <Stat me="2">
                     <StatLabel
@@ -636,7 +637,7 @@ function UserManagement() {
                       Total Users
                     </StatLabel>
                     <Flex>
-                      <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
+                      <StatNumber fontSize={{ base: "md", md: "lg" }} color={textColor}>
                         {userData.length}
                       </StatNumber>
                     </Flex>
@@ -661,7 +662,7 @@ function UserManagement() {
 
             {/* Technician Allocation Card */}
             <Card
-              minH="83px"
+              minH="75px"
               cursor="pointer"
               onClick={() => handleCardClick("all")}
               border={activeFilter === "all" ? "2px solid" : "1px solid"}
@@ -691,7 +692,7 @@ function UserManagement() {
                 borderColor: customColor,
               }}
             >
-              <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
+              <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
                 <Flex flexDirection="row" align="center" justify="space-between" w="100%">
                   <Stat me="2">
                     <StatLabel
@@ -704,7 +705,7 @@ function UserManagement() {
                       User payment details
                     </StatLabel>
                     <Flex>
-                      <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
+                      <StatNumber fontSize={{ base: "md", md: "lg" }} color={textColor}>
                         ₹ {userData.reduce((total, user) => {
                           const userTotal = user.bookings ? user.bookings.filter(b => b.paymentStatus === 'paid' || b.paymentStatus === 'success').reduce((sum, b) => sum + (parseFloat(b.paidAmount) || 0), 0) : 0;
                           return total + userTotal;
@@ -735,7 +736,7 @@ function UserManagement() {
 
             {/* Users with Bookings Card */}
             <Card
-              minH="83px"
+              minH="75px"
               cursor="pointer"
               onClick={() => handleCardClick("withBookings")}
               border={activeFilter === "withBookings" ? "2px solid" : "1px solid"}
@@ -765,7 +766,7 @@ function UserManagement() {
                 borderColor: customColor,
               }}
             >
-              <CardBody position="relative" zIndex={1} p={{ base: 3, md: 4 }}>
+              <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
                 <Flex flexDirection="row" align="center" justify="space-between" w="100%">
                   <Stat me="2">
                     <StatLabel
@@ -778,7 +779,7 @@ function UserManagement() {
                       Successfull Bookings Details
                     </StatLabel>
                     <Flex>
-                      <StatNumber fontSize={{ base: "lg", md: "xl" }} color={textColor}>
+                      <StatNumber fontSize={{ base: "md", md: "lg" }} color={textColor}>
                         {userData.filter((u) => (u.bookingCount || 0) > 0).length}
                       </StatNumber>
                     </Flex>
@@ -865,423 +866,181 @@ function UserManagement() {
           flexDirection="column"
           p={2}
           pt={0}
-          overflow="hidden"
         >
-          {/* Table Card with transparent background */}
           <Card
             shadow="xl"
             bg="white"
             display="flex"
             flexDirection="column"
-            overflow="auto"
             border="1px solid"
             borderColor={customColor}
           >
-            {/* Table Header */}
+            {/* Header */}
             <CardHeader
-              p="5px"
-              pb="5px"
-              bg="transparent"
+              p={2}
+              pb={2}
               flexShrink={0}
               borderBottom="1px solid"
               borderColor={`${customColor}20`}
             >
-              <Flex justify="space-between" align="center" flexWrap="wrap" gap={4}>
-                {/* Title */}
-                <Heading size="md" flexShrink={0} color="gray.700">
+              <Flex justify="space-between" align="center" flexWrap="wrap" gap={3}>
+                <Heading size="sm" color="gray.700">
                   👥 Users Table
                 </Heading>
 
-                {/* Search Bar */}
-                <Flex align="center" flex="1" maxW="400px">
+                <Flex align="center" maxW="350px" w="100%">
                   <Input
-                    placeholder="Search by name, email, or phone..."
+                    placeholder="Search..."
+                    size="sm"
                     value={searchTerm}
                     onChange={handleSearchChange}
-                    size="sm"
-                    mr={2}
-                    borderColor={`${customColor}50`}
-                    _hover={{ borderColor: customColor }}
-                    _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                    bg="white"
                   />
-                  <Icon as={FaSearch} color="gray.400" />
-                  {searchTerm && (
-                    <Button
-                      size="sm"
-                      ml={2}
-                      onClick={handleClearSearch}
-                      bg="white"
-                      color={customColor}
-                      border="1px"
-                      borderColor={customColor}
-                      _hover={{ bg: customColor, color: "white" }}
-                    >
-                      Clear
-                    </Button>
-                  )}
+                  <Icon as={FaSearch} ml={2} color="gray.400" />
                 </Flex>
-
-                {/* Add User Button */}
-                {/* <Button
-                  bg={customColor}
-                  _hover={{ bg: customHoverColor }}
-                  color="white"
-                  onClick={handleAddUser}
-                  fontSize="sm"
-                  borderRadius="8px"
-                  flexShrink={0}
-                >
-                  + Add User
-                </Button> */}
               </Flex>
             </CardHeader>
 
-            {/* Table Content Area - Scrollable Body with Fixed Header */}
-            <CardBody
-              bg="transparent"
-              display="flex"
-              flexDirection="column"
-              p={0}
-            >
-              {tableLoading ? (
-                <Flex justify="center" align="center" py={10} flex="1">
-                  <Spinner size="xl" color={customColor} />
-                  <Text ml={4}>Loading users...</Text>
-                </Flex>
-              ) : (
-                <Box display="flex" flexDirection="column">
-                  {currentItems.length > 0 ? (
-                    <>
-                      {/* Fixed Table Container - Exact height for 5 rows */}
-                      <Box
-                        display="flex"
-                        flexDirection="column"
-                        minH="0"
-                      >
-                        {/* Scrollable Table Area */}
-                        <Box
-                          overflowY="auto"
-                          overflowX="auto"
-                          css={{
-                            '&::-webkit-scrollbar': {
-                              width: '4px',
-                              height: '4px',
-                            },
-                            '&::-webkit-scrollbar-track': {
-                              background: 'transparent',
-                            },
-                            '&::-webkit-scrollbar-thumb': {
-                              background: 'rgba(0,0,0,0.1)',
-                              borderRadius: '10px',
-                            },
-                            '@media screen and (max-width: 768px)': {
-                              '&::-webkit-scrollbar': {
-                                width: '2px',
-                                height: '2px',
-                              },
-                              '&::-webkit-scrollbar-thumb': {
-                                background: 'rgba(0,0,0,0.2)',
-                              },
-                            },
-                            '&:hover::-webkit-scrollbar-thumb': {
-                              background: 'rgba(0,0,0,0.2)',
-                            },
-                          }}
+            {/* Body */}
+            <CardBody p={0} display="flex" flexDirection="column">
+              <Box overflow="auto">
+                <Table
+                  size="sm"
+                  variant="simple"
+                  minW={{ base: "800px", lg: "100%" }}
+                  sx={{
+                    "th, td": {
+                      px: 2,
+                      py: 1,
+                    },
+                  }}
+                >
+                  <Thead>
+                    <Tr>
+                      {["User", "Contact", "Bookings", "Technician", "Actions"].map(h => (
+                        <Th
+                          key={h}
+                          position="sticky"
+                          top={0}
+                          bg={customColor}
+                          color="white"
+                          fontSize="xs"
+                          fontWeight="bold"
+                          zIndex={10}
                         >
-                          <Table variant="simple" size={{ base: "sm", md: "md" }} bg="transparent" minW={{ base: "800px", lg: "100%" }}>
-                            {/* Fixed Header */}
-                            <Thead>
-                              <Tr>
-                                <Th
-                                  color="gray.100"
-                                  borderColor={`${customColor}30`}
-                                  position="sticky"
-                                  top={0}
-                                  bg={`${customColor}`}
-                                  zIndex={10}
-                                  fontWeight="bold"
-                                  fontSize="sm"
-                                  py={3}
-                                  borderBottom="2px solid"
-                                  borderBottomColor={`${customColor}50`}
-                                >
-                                  User
-                                </Th>
-                                <Th
-                                  color="gray.100"
-                                  borderColor={`${customColor}30`}
-                                  position="sticky"
-                                  top={0}
-                                  bg={`${customColor}`}
-                                  zIndex={10}
-                                  fontWeight="bold"
-                                  fontSize="sm"
-                                  py={3}
-                                  borderBottom="2px solid"
-                                  borderBottomColor={`${customColor}50`}
-                                >
-                                  Contact
-                                </Th>
-                                <Th
-                                  color="gray.100"
-                                  borderColor={`${customColor}30`}
-                                  position="sticky"
-                                  top={0}
-                                  bg={`${customColor}`}
-                                  zIndex={10}
-                                  fontWeight="bold"
-                                  fontSize="sm"
-                                  py={3}
-                                  borderBottom="2px solid"
-                                  borderBottomColor={`${customColor}50`}
-                                >
-                                  Bookings
-                                </Th>
-                                <Th
-                                  color="gray.100"
-                                  borderColor={`${customColor}30`}
-                                  position="sticky"
-                                  top={0}
-                                  bg={`${customColor}`}
-                                  zIndex={10}
-                                  fontWeight="bold"
-                                  fontSize="sm"
-                                  py={3}
-                                  borderBottom="2px solid"
-                                  borderBottomColor={`${customColor}50`}
-                                >
-                                  Technician
-                                </Th>
-                                <Th
-                                  color="gray.100"
-                                  borderColor={`${customColor}30`}
-                                  position="sticky"
-                                  top={0}
-                                  bg={`${customColor}`}
-                                  zIndex={10}
-                                  fontWeight="bold"
-                                  fontSize="sm"
-                                  py={3}
-                                  borderBottom="2px solid"
-                                  borderBottomColor={`${customColor}50`}
-                                >
-                                  Actions
-                                </Th>
-                              </Tr>
-                            </Thead>
+                          {h}
+                        </Th>
+                      ))}
+                    </Tr>
+                  </Thead>
 
-                            {/* Scrollable Body */}
-                            <Tbody bg="transparent">
-                              {displayItems.map((user, index) => {
+                  <Tbody>
+                    {displayItems.map((user, index) => {
+                      const userName =
+                        user?.profile?.fname ||
+                        user?.profile?.firstName ||
+                        user?.name ||
+                        "Unknown User";
 
-                                return (
-                                  <Tr
-                                    key={user._id || index}
-                                    bg="transparent"
-                                    _hover={{ bg: `${customColor}10` }}
-                                    borderBottom="1px"
-                                    borderColor={`${customColor}20`}
-                                    height="60px"
-                                  >
-                                    <Td borderColor={`${customColor}20`}>
-                                      <Flex align="center">
-                                        {(() => {
-                                          let userName = "Unknown User";
-                                          if (user.profile && (user.profile.fname || user.profile.lname)) {
-                                            userName = `${user.profile.fname || ""} ${user.profile.lname || ""}`.trim();
-                                          } else if (user.profile && (user.profile.firstName || user.profile.lastName)) {
-                                            userName = `${user.profile.firstName || ""} ${user.profile.lastName || ""}`.trim();
-                                          } else if (user.name) {
-                                            userName = user.name;
-                                          } else if (user.firstName || user.lastName) {
-                                            userName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
-                                          }
-                                          if (!userName) userName = "Unknown User";
-
-                                          return (
-                                            <>
-                                              <Avatar
-                                                size="sm"
-                                                name={userName}
-                                                src={user.profileImage}
-                                                mr={3}
-                                              />
-                                              <Box>
-                                                <Text fontWeight="medium">{userName}</Text>
-                                                <Text fontSize="sm" color="gray.600">
-                                                  {user.email || "No email"}
-                                                </Text>
-                                              </Box>
-                                            </>
-                                          );
-                                        })()}
-                                      </Flex>
-                                    </Td>
-                                    <Td borderColor={`${customColor}20`}>
-                                      <Box>
-                                        <Text fontSize="sm" color="gray.600">
-                                          {user.mobileNumber || user.phone || "No contact"}
-                                        </Text>
-                                      </Box>
-                                    </Td>
-                                    <Td borderColor={`${customColor}20`}>
-                                      <Text fontWeight="bold">
-                                        {user.bookingCount}
-                                      </Text>
-                                    </Td>
-                                    <Td borderColor={`${customColor}20`}>
-                                      <IconButton
-                                        aria-label="View Technician Allocation"
-                                        icon={<FaEye />}
-                                        bg="white"
-                                        color="green.500"
-                                        border="1px"
-                                        borderColor="green.500"
-                                        _hover={{ bg: "green.500", color: "white" }}
-                                        size="sm"
-                                        onClick={() => handleViewTechnicianAllocation(user)}
-                                      />
-                                    </Td>
-                                    <Td borderColor={`${customColor}20`}>
-                                      <Flex gap={2}>
-                                        <IconButton
-                                          aria-label="View Payment Details"
-                                          icon={<FaWallet />}
-                                          bg="white"
-                                          color="orange.500"
-                                          border="1px"
-                                          borderColor="orange.500"
-                                          _hover={{ bg: "orange.500", color: "white" }}
-                                          size="sm"
-                                          onClick={() => handleViewPaymentDetails(user)}
-                                        />
-                                        <IconButton
-                                          aria-label="View user details"
-                                          icon={<FaEye />}
-                                          bg="white"
-                                          color={customColor}
-                                          border="1px"
-                                          borderColor={customColor}
-                                          _hover={{ bg: customColor, color: "white" }}
-                                          size="sm"
-                                          onClick={() => handleViewDetails(user)}
-                                        />
-                                        {/* <IconButton
-                                          aria-label="Delete user"
-                                          icon={<FaTrash />}
-                                          bg="white"
-                                          color="red.500"
-                                          border="1px"
-                                          borderColor="red.500"
-                                          _hover={{ bg: "red.500", color: "white" }}
-                                          size="sm"
-                                          onClick={() => handleDeleteClick(user)}
-                                        /> */}
-                                      </Flex>
-                                    </Td>
-                                  </Tr>
-                                );
-                              })}
-                            </Tbody>
-                          </Table>
-                        </Box>
-                      </Box>
-
-                      {/* Pagination Bar - Positioned at bottom right corner */}
-                      {filteredData.length > 0 && (
-                        <Box
-                          flexShrink={0}
-                          p="16px"
-                          borderTop="1px solid"
+                      return (
+                        <Tr
+                          key={user._id || index}
+                          _hover={{ bg: `${customColor}10` }}
+                          borderBottom="1px solid"
                           borderColor={`${customColor}20`}
-                          bg="transparent"
                         >
-                          <Flex
-                            justify="flex-end"
-                            align="center"
-                            gap={3}
-                          >
-                            <Text fontSize="sm" color="gray.600" display={{ base: "none", sm: "block" }}>
-                              Showing {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, filteredData.length)} of {filteredData.length} users
-                            </Text>
-
+                          {/* User */}
+                          <Td>
                             <Flex align="center" gap={2}>
-                              <Button
-                                size="sm"
-                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                isDisabled={currentPage === 1}
-                                leftIcon={<FaChevronLeft />}
-                                bg="white"
-                                color={customColor}
-                                border="1px"
-                                borderColor={customColor}
-                                _hover={{ bg: customColor, color: "white" }}
-                              >
-                                <Text display={{ base: "none", sm: "block" }}>Previous</Text>
-                              </Button>
-
-                              <Flex
-                                align="center"
-                                gap={2}
-                                bg={`${customColor}10`}
-                                px={3}
-                                py={1}
-                                borderRadius="6px"
-                                minW="80px"
-                                justify="center"
-                              >
-                                <Text fontSize="sm" fontWeight="bold" color={customColor}>
-                                  {currentPage}
+                              <Avatar size="xs" name={userName} src={user.profileImage} />
+                              <Box>
+                                <Text fontSize="sm" fontWeight="medium" lineHeight="short">
+                                  {userName}
                                 </Text>
-                                <Text fontSize="sm" color="gray.500">
-                                  /
+                                <Text fontSize="xs" color="gray.600" lineHeight="shorter">
+                                  {user.email || "No email"}
                                 </Text>
-                                <Text fontSize="sm" color="gray.600" fontWeight="medium">
-                                  {totalPages}
-                                </Text>
-                              </Flex>
-
-                              <Button
-                                size="sm"
-                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                isDisabled={currentPage === totalPages}
-                                rightIcon={<FaChevronRight />}
-                                bg="white"
-                                color={customColor}
-                                border="1px"
-                                borderColor={customColor}
-                                _hover={{ bg: customColor, color: "white" }}
-                              >
-                                <Text display={{ base: "none", sm: "block" }}>Next</Text>
-                              </Button>
+                              </Box>
                             </Flex>
-                          </Flex>
-                        </Box>
-                      )}
-                    </>
-                  ) : (
-                    <Flex
-                      height="200px"
-                      justify="center"
-                      align="center"
-                      border="1px dashed"
-                      borderColor={`${customColor}30`}
-                      borderRadius="md"
-                      flex="1"
-                      bg="transparent"
+                          </Td>
+
+                          {/* Contact */}
+                          <Td fontSize="sm" color="gray.600">
+                            {user.mobileNumber || user.phone || "-"}
+                          </Td>
+
+                          {/* Bookings */}
+                          <Td fontSize="sm" fontWeight="bold">
+                            {user.bookingCount}
+                          </Td>
+
+                          {/* Technician */}
+                          <Td>
+                            <IconButton
+                              size="xs"
+                              icon={<FaEye />}
+                              aria-label="View Technician"
+                              variant="outline"
+                              colorScheme="green"
+                              onClick={() => handleViewTechnicianAllocation(user)}
+                            />
+                          </Td>
+
+                          {/* Actions */}
+                          <Td>
+                            <Flex gap={1}>
+                              <IconButton
+                                size="xs"
+                                icon={<FaWallet />}
+                                aria-label="Payments"
+                                variant="outline"
+                                colorScheme="orange"
+                                onClick={() => handleViewPaymentDetails(user)}
+                              />
+                              <IconButton
+                                size="xs"
+                                icon={<FaEye />}
+                                aria-label="Details"
+                                variant="outline"
+                                colorScheme="teal"
+                                onClick={() => handleViewDetails(user)}
+                              />
+                            </Flex>
+                          </Td>
+                        </Tr>
+                      );
+                    })}
+                  </Tbody>
+                </Table>
+              </Box>
+
+              {/* Pagination */}
+              {filteredData.length > 0 && (
+                <Box
+                  p={2}
+                  borderTop="1px solid"
+                  borderColor={`${customColor}20`}
+                >
+                  <Flex justify="flex-end" align="center" gap={2}>
+                    <Button
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                      isDisabled={currentPage === 1}
                     >
-                      <Text textAlign="center" color="gray.500" fontSize="lg">
-                        {dataLoaded
-                          ? userData.length === 0
-                            ? "No users found."
-                            : searchTerm
-                              ? "No users match your search."
-                              : "No users match the selected filter."
-                          : "Loading users..."}
-                      </Text>
-                    </Flex>
-                  )}
+                      Prev
+                    </Button>
+
+                    <Text fontSize="sm" fontWeight="bold">
+                      {currentPage} / {totalPages}
+                    </Text>
+
+                    <Button
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                      isDisabled={currentPage === totalPages}
+                    >
+                      Next
+                    </Button>
+                  </Flex>
                 </Box>
               )}
             </CardBody>

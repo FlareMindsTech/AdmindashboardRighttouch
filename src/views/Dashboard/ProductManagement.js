@@ -2754,10 +2754,7 @@ export default function ProductManagement() {
                           align="center"
                           gap={3}
                         >
-                          {/* Page Info */}
-                          <Text fontSize="sm" color="gray.600" display={{ base: "none", sm: "block" }}>
-                            Showing {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, filteredCategories.length)} of {filteredCategories.length} categories
-                          </Text>
+
 
                           {/* Pagination Controls */}
                           <Flex align="center" gap={2}>
@@ -3079,10 +3076,6 @@ export default function ProductManagement() {
                           align="center"
                           gap={3}
                         >
-                          {/* Page Info */}
-                          <Text fontSize="sm" color="gray.600" display={{ base: "none", sm: "block" }}>
-                            Showing {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, filteredProducts.length)} of {filteredProducts.length} products
-                          </Text>
 
                           {/* Pagination Controls */}
                           <Flex align="center" gap={2}>

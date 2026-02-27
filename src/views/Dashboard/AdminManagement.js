@@ -52,6 +52,9 @@ import {
   PopoverArrow,
   PopoverCloseButton,
   Portal,
+  VStack,
+  HStack,
+  Tooltip,
 } from "@chakra-ui/react";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
@@ -74,6 +77,10 @@ import {
   FaTimes,
   FaIdCard,
   FaHistory,
+  FaSearchPlus,
+  FaSearchMinus,
+  FaRedo,
+  FaUndo,
 } from "react-icons/fa";
 import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdAdminPanelSettings, MdPerson, MdBlock, MdWarning } from "react-icons/md";
@@ -223,6 +230,12 @@ function AdminManagement() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [selectedTechForHistory, setSelectedTechForHistory] = useState(null);
+
+  // Image Preview State
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState("");
+  const [rotation, setRotation] = useState(0);
+  const [zoom, setZoom] = useState(1);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -1188,6 +1201,24 @@ function AdminManagement() {
     setConfirmingModalDelete(false);
   };
 
+  const handleOpenImage = (url) => {
+    setSelectedImageUrl(url);
+    setRotation(0);
+    setZoom(1);
+    setIsImageModalOpen(true);
+  };
+
+  const handleRotateImage = () => {
+    setRotation((prev) => (prev + 90) % 360);
+  };
+
+  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.2, 3));
+  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.2, 0.5));
+  const handleResetImage = () => {
+    setRotation(0);
+    setZoom(1);
+  };
+
   const handleViewDetails = (technician) => {
     setSelectedTechnician(technician);
     setIsDetailsModalOpen(true);
@@ -1505,7 +1536,8 @@ function AdminManagement() {
     <Flex
       flexDirection="column"
       pt={{ base: "5px", md: "45px" }}
-      minH="calc(100vh - 40px)"
+      minH="100vh"
+      pb="150px"
       overflow="auto"
       css={{
         '&::-webkit-scrollbar': {
@@ -1683,7 +1715,7 @@ function AdminManagement() {
         </SimpleGrid>
 
         {/* ACTIVE FILTER TITLE */}
-        <Flex justify="space-between" align="center" mt={4}>
+        <Flex justify="space-between" align="center" mt={1}>
           <Text fontSize="md" fontWeight="bold">
             {
               {
@@ -1904,11 +1936,25 @@ function AdminManagement() {
 
                                   <Td borderColor={`${customColor}20`} px={3} py={2}>
                                     <Text fontWeight="medium" fontSize="sm" color="gray.700">
-                                      {admin.specialization ||
-                                        admin.profile?.specialization ||
-                                        admin.userId?.specialization ||
-                                        admin.userId?.profile?.specialization ||
-                                        "N/A"}
+                                      {(() => {
+                                        const spec = admin.specialization ||
+                                          admin.profile?.specialization ||
+                                          admin.userId?.specialization ||
+                                          admin.userId?.profile?.specialization ||
+                                          "N/A";
+
+                                        if (typeof spec !== 'string' || spec === "N/A") return spec;
+
+                                        const specs = spec.split(',').map(s => s.trim()).filter(s => s !== "");
+                                        if (specs.length > 1) {
+                                          return (
+                                            <Tooltip label={spec} hasArrow placement="top">
+                                              <span>{specs[0]}.......</span>
+                                            </Tooltip>
+                                          );
+                                        }
+                                        return spec;
+                                      })()}
                                     </Text>
                                   </Td>
 
@@ -2003,7 +2049,7 @@ function AdminManagement() {
                     {currentItems.length > 0 && (
                       <Box
                         flexShrink={0}
-                        p="16px"
+                        p="8px"
                         borderTop="1px solid"
                         borderColor={`${customColor}20`}
                         bg="transparent"
@@ -2013,9 +2059,7 @@ function AdminManagement() {
                           align="center"
                           gap={3}
                         >
-                          <Text fontSize="sm" color="gray.600" display={{ base: "none", sm: "block" }}>
-                            Showing {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, paginatedData.length)} of {paginatedData.length} entries
-                          </Text>
+
 
                           <Flex align="center" gap={2}>
                             <Button
@@ -2218,69 +2262,126 @@ function AdminManagement() {
 
                   return (
                     <>
-                      <Flex mb={4} justify="space-between" align="center" borderBottom="1px solid" borderColor="gray.100" pb={2}>
-                        <Text fontWeight="bold" fontSize="lg">
-                          Technician: <Text as="span" color={customColor}>{getTechnicianName(selectedTechnicianForKYC)}</Text>
-                        </Text>
+                      <Flex mb={4} justify="space-between" align="center" borderBottom="1px solid" borderColor="gray.100" pb={4}>
+                        <HStack spacing={4}>
+                          <Avatar
+                            size="md"
+                            name={getTechnicianName(selectedTechnicianForKYC)}
+                            src={getTechnicianImage(selectedTechnicianForKYC)}
+                            border="2px solid"
+                            borderColor={customColor}
+                          />
+                          <VStack align="start" spacing={0}>
+                            <Text fontWeight="bold" fontSize="lg">
+                              Technician: <Text as="span" color={customColor}>{getTechnicianName(selectedTechnicianForKYC)}</Text>
+                            </Text>
+                          </VStack>
+                        </HStack>
                       </Flex>
 
                       <SimpleGrid columns={{ base: 1, md: 3 }} spacing={5}>
                         {/* Identity Proof (Aadhaar) */}
                         <Box bg="white" p={3} borderRadius="md" boxShadow="sm" border="1px solid" borderColor="purple.100">
                           <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={2}>Aadhaar Card</Text>
-                          {kycRecord.documents?.aadhaarUrl ? (
-                            <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
-                              <img
-                                src={kycRecord.documents.aadhaarUrl}
-                                alt="Aadhaar Card"
-                                style={{ width: '100%', height: '150px', objectFit: 'cover' }}
-                                onClick={() => window.open(kycRecord.documents.aadhaarUrl, '_blank')}
-                                cursor="pointer"
-                              />
-                              <Button
-                                size="xs"
-                                width="100%"
-                                borderRadius="0"
-                                as="a"
-                                href={kycRecord.documents.aadhaarUrl}
-                                target="_blank"
-                                colorScheme="purple"
-                                variant="ghost"
+                          {(() => {
+                            const aadhaarUrls = [];
+                            const docs = kycRecord.documents || {};
+                            if (docs.aadhaarUrl) Array.isArray(docs.aadhaarUrl) ? aadhaarUrls.push(...docs.aadhaarUrl) : aadhaarUrls.push(docs.aadhaarUrl);
+                            if (docs.aadhaarBackUrl) Array.isArray(docs.aadhaarBackUrl) ? aadhaarUrls.push(...docs.aadhaarBackUrl) : aadhaarUrls.push(docs.aadhaarBackUrl);
+                            if (docs.aadhaarFrontUrl) Array.isArray(docs.aadhaarFrontUrl) ? aadhaarUrls.push(...docs.aadhaarFrontUrl) : aadhaarUrls.push(docs.aadhaarFrontUrl);
+                            if (docs.aadharUrl) Array.isArray(docs.aadharUrl) ? aadhaarUrls.push(...docs.aadharUrl) : aadhaarUrls.push(docs.aadharUrl);
+                            if (docs.aadhaar) Array.isArray(docs.aadhaar) ? aadhaarUrls.push(...docs.aadhaar) : (typeof docs.aadhaar === 'string' && aadhaarUrls.push(docs.aadhaar));
+                            if (docs.aadhar) Array.isArray(docs.aadhar) ? aadhaarUrls.push(...docs.aadhar) : (typeof docs.aadhar === 'string' && aadhaarUrls.push(docs.aadhar));
+
+                            if (aadhaarUrls.length === 0) return <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>;
+
+                            return (
+                              <Box
+                                display="flex"
+                                overflowX="auto"
+                                gap={2}
+                                pb={2}
+                                css={{
+                                  '&::-webkit-scrollbar': { height: '4px' },
+                                  '&::-webkit-scrollbar-track': { background: 'transparent' },
+                                  '&::-webkit-scrollbar-thumb': { background: '#cbd5e1', borderRadius: '4px' },
+                                }}
                               >
-                                View Full Image
-                              </Button>
-                            </Box>
-                          ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
+                                {aadhaarUrls.map((url, idx) => (
+                                  <Box key={idx} minW={aadhaarUrls.length > 1 ? "150px" : "100%"} border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
+                                    <img
+                                      src={url}
+                                      alt={`Aadhaar ${idx + 1}`}
+                                      style={{ width: '100%', height: '150px', objectFit: 'cover', cursor: 'pointer' }}
+                                      onClick={() => handleOpenImage(url)}
+                                    />
+                                    <Button
+                                      size="xs"
+                                      width="100%"
+                                      borderRadius="0"
+                                      onClick={() => handleOpenImage(url)}
+                                      colorScheme="purple"
+                                      variant="ghost"
+                                    >
+                                      View {aadhaarUrls.length > 1 ? `Image ${idx + 1}` : 'Full Image'}
+                                    </Button>
+                                  </Box>
+                                ))}
+                              </Box>
+                            );
+                          })()}
                           <Text mt={3} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Number</Text>
-                          <Text fontSize="sm" fontWeight="semibold" color="gray.700">{kycRecord.aadhaarNumber || "N/A"}</Text>
+                          <Text fontSize="sm" fontWeight="semibold" color="gray.700">{kycRecord.aadhaarNumber || kycRecord.aadharNumber || "N/A"}</Text>
                         </Box>
 
                         {/* PAN Card */}
                         <Box bg="white" p={3} borderRadius="md" boxShadow="sm" border="1px solid" borderColor="purple.100">
                           <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={2}>PAN Card</Text>
-                          {kycRecord.documents?.panUrl ? (
-                            <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
-                              <img
-                                src={kycRecord.documents.panUrl}
-                                alt="PAN Card"
-                                style={{ width: '100%', height: '150px', objectFit: 'cover' }}
-                                onClick={() => window.open(kycRecord.documents.panUrl, '_blank')}
-                                cursor="pointer"
-                              />
-                              <Button
-                                size="xs"
-                                width="100%"
-                                borderRadius="0"
-                                as="a"
-                                href={kycRecord.documents.panUrl}
-                                target="_blank"
-                                colorScheme="purple"
-                                variant="ghost"
+                          {(() => {
+                            const panUrls = [];
+                            const docs = kycRecord.documents || {};
+                            if (docs.panUrl) Array.isArray(docs.panUrl) ? panUrls.push(...docs.panUrl) : panUrls.push(docs.panUrl);
+                            if (docs.panBackUrl) Array.isArray(docs.panBackUrl) ? panUrls.push(...docs.panBackUrl) : panUrls.push(docs.panBackUrl);
+                            if (docs.panFrontUrl) Array.isArray(docs.panFrontUrl) ? panUrls.push(...docs.panFrontUrl) : panUrls.push(docs.panFrontUrl);
+                            if (docs.pan) Array.isArray(docs.pan) ? panUrls.push(...docs.pan) : (typeof docs.pan === 'string' && panUrls.push(docs.pan));
+
+                            if (panUrls.length === 0) return <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>;
+
+                            return (
+                              <Box
+                                display="flex"
+                                overflowX="auto"
+                                gap={2}
+                                pb={2}
+                                css={{
+                                  '&::-webkit-scrollbar': { height: '4px' },
+                                  '&::-webkit-scrollbar-track': { background: 'transparent' },
+                                  '&::-webkit-scrollbar-thumb': { background: '#cbd5e1', borderRadius: '4px' },
+                                }}
                               >
-                                View Full Image
-                              </Button>
-                            </Box>
-                          ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
+                                {panUrls.map((url, idx) => (
+                                  <Box key={idx} minW={panUrls.length > 1 ? "150px" : "100%"} border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
+                                    <img
+                                      src={url}
+                                      alt={`PAN ${idx + 1}`}
+                                      style={{ width: '100%', height: '150px', objectFit: 'cover', cursor: 'pointer' }}
+                                      onClick={() => handleOpenImage(url)}
+                                    />
+                                    <Button
+                                      size="xs"
+                                      width="100%"
+                                      borderRadius="0"
+                                      onClick={() => handleOpenImage(url)}
+                                      colorScheme="purple"
+                                      variant="ghost"
+                                    >
+                                      View {panUrls.length > 1 ? `Image ${idx + 1}` : 'Full Image'}
+                                    </Button>
+                                  </Box>
+                                ))}
+                              </Box>
+                            );
+                          })()}
                           <Text mt={3} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Number</Text>
                           <Text fontSize="sm" fontWeight="semibold" color="gray.700">{kycRecord.panNumber || "N/A"}</Text>
                         </Box>
@@ -2288,29 +2389,52 @@ function AdminManagement() {
                         {/* Driving License */}
                         <Box bg="white" p={3} borderRadius="md" boxShadow="sm" border="1px solid" borderColor="purple.100">
                           <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" mb={2}>Driving License</Text>
-                          {kycRecord.documents?.dlUrl ? (
-                            <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
-                              <img
-                                src={kycRecord.documents.dlUrl}
-                                alt="Driving License"
-                                style={{ width: '100%', height: '150px', objectFit: 'cover' }}
-                                onClick={() => window.open(kycRecord.documents.dlUrl, '_blank')}
-                                cursor="pointer"
-                              />
-                              <Button
-                                size="xs"
-                                width="100%"
-                                borderRadius="0"
-                                as="a"
-                                href={kycRecord.documents.dlUrl}
-                                target="_blank"
-                                colorScheme="purple"
-                                variant="ghost"
+                          {(() => {
+                            const dlUrls = [];
+                            const docs = kycRecord.documents || {};
+                            if (docs.dlUrl) Array.isArray(docs.dlUrl) ? dlUrls.push(...docs.dlUrl) : dlUrls.push(docs.dlUrl);
+                            if (docs.dlBackUrl) Array.isArray(docs.dlBackUrl) ? dlUrls.push(...docs.dlBackUrl) : dlUrls.push(docs.dlBackUrl);
+                            if (docs.dlFrontUrl) Array.isArray(docs.dlFrontUrl) ? dlUrls.push(...docs.dlFrontUrl) : dlUrls.push(docs.dlFrontUrl);
+                            if (docs.dl) Array.isArray(docs.dl) ? dlUrls.push(...docs.dl) : (typeof docs.dl === 'string' && dlUrls.push(docs.dl));
+                            if (docs.license) Array.isArray(docs.license) ? dlUrls.push(...docs.license) : (typeof docs.license === 'string' && dlUrls.push(docs.license));
+
+                            if (dlUrls.length === 0) return <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>;
+
+                            return (
+                              <Box
+                                display="flex"
+                                overflowX="auto"
+                                gap={2}
+                                pb={2}
+                                css={{
+                                  '&::-webkit-scrollbar': { height: '4px' },
+                                  '&::-webkit-scrollbar-track': { background: 'transparent' },
+                                  '&::-webkit-scrollbar-thumb': { background: '#cbd5e1', borderRadius: '4px' },
+                                }}
                               >
-                                View Full Image
-                              </Button>
-                            </Box>
-                          ) : <Flex height="150px" bg="gray.50" align="center" justify="center" border="1px dashed gray"><Text color="gray.400">Not Uploaded</Text></Flex>}
+                                {dlUrls.map((url, idx) => (
+                                  <Box key={idx} minW={dlUrls.length > 1 ? "150px" : "100%"} border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
+                                    <img
+                                      src={url}
+                                      alt={`Driving License ${idx + 1}`}
+                                      style={{ width: '100%', height: '150px', objectFit: 'cover', cursor: 'pointer' }}
+                                      onClick={() => handleOpenImage(url)}
+                                    />
+                                    <Button
+                                      size="xs"
+                                      width="100%"
+                                      borderRadius="0"
+                                      onClick={() => handleOpenImage(url)}
+                                      colorScheme="purple"
+                                      variant="ghost"
+                                    >
+                                      View {dlUrls.length > 1 ? `Image ${idx + 1}` : 'Full Image'}
+                                    </Button>
+                                  </Box>
+                                ))}
+                              </Box>
+                            );
+                          })()}
                           <Text mt={3} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Number</Text>
                           <Text fontSize="sm" fontWeight="semibold" color="gray.700">{kycRecord.drivingLicenseNumber || "N/A"}</Text>
                         </Box>
@@ -2339,10 +2463,6 @@ function AdminManagement() {
                             <Box>
                               <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">IFSC Code</Text>
                               <Text fontSize="md" fontWeight="semibold" color="gray.800" fontFamily="monospace">{kycRecord.bankDetails.ifscCode || "N/A"}</Text>
-                            </Box>
-                            <Box>
-                              <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Account Number</Text>
-                              <Text fontSize="md" fontWeight="semibold" color="teal.600">{kycRecord.bankDetails.accountNumber || "N/A"}</Text>
                             </Box>
                             <Box>
                               <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">UPI ID</Text>
@@ -2673,6 +2793,111 @@ function AdminManagement() {
             )}
 
           </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Image Preview Modal with Rotate and Zoom */}
+      <Modal isOpen={isImageModalOpen} onClose={() => setIsImageModalOpen(false)} size="full">
+        <ModalOverlay backdropFilter="blur(10px)" bg="blackAlpha.800" />
+        <ModalContent bg="transparent" shadow="none">
+          <ModalCloseButton color="white" size="lg" zIndex={2000} />
+          <ModalBody
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
+            p={0}
+            position="relative"
+          >
+            <Box
+              overflow="auto"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              w="100%"
+              h="90vh"
+              p={10}
+              css={{
+                '&::-webkit-scrollbar': { width: '8px', height: '8px' },
+                '&::-webkit-scrollbar-track': { background: 'transparent' },
+                '&::-webkit-scrollbar-thumb': { background: 'whiteAlpha.300', borderRadius: '10px' },
+                '&:hover::-webkit-scrollbar-thumb': { background: 'whiteAlpha.500' },
+              }}
+            >
+              <Box
+                transition="transform 0.3s ease"
+                transform={`rotate(${rotation}deg) scale(${zoom})`}
+                display="inline-block"
+              >
+                <img
+                  src={selectedImageUrl}
+                  alt="Full Preview"
+                  style={{
+                    maxHeight: "80vh",
+                    maxWidth: "90vw",
+                    display: "block",
+                    borderRadius: "8px",
+                    boxShadow: "0 20px 50px rgba(0,0,0,0.5)"
+                  }}
+                />
+              </Box>
+            </Box>
+
+            {/* Image Controls Overlay */}
+            <Flex
+              gap={4}
+              bg="whiteAlpha.200"
+              p={4}
+              borderRadius="full"
+              backdropFilter="blur(10px)"
+              position="absolute"
+              bottom="30px"
+              zIndex={2000}
+              border="1px solid"
+              borderColor="whiteAlpha.300"
+            >
+              <IconButton
+                icon={<FaSearchPlus />}
+                onClick={handleZoomIn}
+                aria-label="Zoom In"
+                colorScheme="whiteAlpha"
+                color="white"
+                borderRadius="full"
+                variant="ghost"
+                _hover={{ bg: "whiteAlpha.300" }}
+              />
+              <IconButton
+                icon={<FaSearchMinus />}
+                onClick={handleZoomOut}
+                aria-label="Zoom Out"
+                colorScheme="whiteAlpha"
+                color="white"
+                borderRadius="full"
+                variant="ghost"
+                _hover={{ bg: "whiteAlpha.300" }}
+              />
+              <IconButton
+                icon={<FaRedo />}
+                onClick={handleRotateImage}
+                aria-label="Rotate"
+                colorScheme="whiteAlpha"
+                color="white"
+                borderRadius="full"
+                variant="ghost"
+                _hover={{ bg: "whiteAlpha.300" }}
+              />
+              <IconButton
+                icon={<FaUndo />}
+                onClick={handleResetImage}
+                aria-label="Reset"
+                colorScheme="whiteAlpha"
+                color="white"
+                borderRadius="full"
+                variant="ghost"
+                _hover={{ bg: "whiteAlpha.300" }}
+              />
+            </Flex>
+          </ModalBody>
         </ModalContent>
       </Modal>
     </Flex >

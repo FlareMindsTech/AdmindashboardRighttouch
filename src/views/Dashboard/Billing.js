@@ -706,31 +706,31 @@ export default function CleanedBilling() {
     const status = safeGet(order, "status", "pending");
     return (
       <Tr _hover={{ bg: "gray.50", cursor: "pointer" }} borderBottom="1px solid" borderColor="gray.100">
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
           <VStack align="start" spacing={1}>
-            <Text fontWeight="semibold" color="gray.700" fontSize={isMobile ? "sm" : "md"}>{safeGet(order, "user.email", "—")}</Text>
+            <Text fontWeight="semibold" color="gray.700" fontSize={isMobile ? "xs" : "sm"}>{safeGet(order, "user.email", "—")}</Text>
             <Text fontSize={isMobile ? "xs" : "sm"} color="gray.600">{safeGet(order, "user._id", "")}</Text>
             <Text fontSize="xs" color="gray.500">{safeGet(order, "orderItems.length", 0)} items</Text>
           </VStack>
         </Td>
 
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
           <VStack align="start" spacing={1}>
-            <Text fontWeight="medium" fontSize={isMobile ? "sm" : "md"}>{safeGet(order, "address.city", "—")} ({safeGet(order, "address.pincode", "—")})</Text>
+            <Text fontWeight="medium" fontSize={isMobile ? "xs" : "sm"}>{safeGet(order, "address.city", "—")} ({safeGet(order, "address.pincode", "—")})</Text>
             <Text fontSize="xs" color="gray.500">{safeGet(order, "address.state", "—")}</Text>
             <Text fontSize="xs" color="gray.500">{safeGet(order, "address.country", "—")}</Text>
           </VStack>
         </Td>
 
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
           <VStack align="start" spacing={1}>
-            <Text fontWeight="medium" fontSize={isMobile ? "sm" : "md"}>{formatINR(safeGet(order, "total_amount", 0))}</Text>
+            <Text fontWeight="medium" fontSize={isMobile ? "xs" : "sm"}>{formatINR(safeGet(order, "total_amount", 0))}</Text>
             <Text fontSize="xs" color="gray.500">{new Date(safeGet(order, "createdAt", Date.now())).toLocaleDateString()}</Text>
           </VStack>
         </Td>
 
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}>
-          <Badge bg={getStatusColor(status).bg} color={getStatusColor(status).color} px={3} py={1} borderRadius="full" fontSize={isMobile ? "xs" : "sm"} fontWeight="bold">
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
+          <Badge bg={getStatusColor(status).bg} color={getStatusColor(status).color} px={2} py={0.5} borderRadius="full" fontSize={isMobile ? "xs" : "sm"} fontWeight="bold">
             {String(status).toUpperCase()}
           </Badge>
         </Td>
@@ -774,11 +774,11 @@ export default function CleanedBilling() {
 
     return (
       <Tr borderBottom="1px solid" borderColor="gray.100">
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}><Text fontWeight="semibold" fontSize={isMobile ? "sm" : "md"}>{safeGet(payment, "razorpayOrderId", safeGet(payment, "_id", "—"))}</Text></Td>
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}><Text color="gray.700" fontSize={isMobile ? "sm" : "md"}>{safeGet(payment, "orderId", "—")}</Text></Td>
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}><Text fontWeight="bold" color="gray.800" fontSize={isMobile ? "md" : "lg"}>{formatINR(safeGet(payment, "amount", 0))}</Text></Td>
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}><Badge variant="outline" colorScheme="blue" fontSize={isMobile ? "xs" : "sm"}>{safeGet(payment, "method", "UNKNOWN")}</Badge></Td>
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}><Badge bg={getStatusColor(status).bg} color={getStatusColor(status).color} px={3} py={1} borderRadius="full" fontSize={isMobile ? "xs" : "sm"} fontWeight="bold">{String(status).toUpperCase()}</Badge></Td>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text fontWeight="semibold" fontSize={isMobile ? "xs" : "sm"}>{safeGet(payment, "razorpayOrderId", safeGet(payment, "_id", "—"))}</Text></Td>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text color="gray.700" fontSize={isMobile ? "xs" : "sm"}>{safeGet(payment, "orderId", "—")}</Text></Td>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text fontWeight="bold" color="gray.800" fontSize={isMobile ? "sm" : "md"}>{formatINR(safeGet(payment, "amount", 0))}</Text></Td>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Badge variant="outline" colorScheme="blue" fontSize={isMobile ? "xs" : "sm"}>{safeGet(payment, "method", "UNKNOWN")}</Badge></Td>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Badge bg={getStatusColor(status).bg} color={getStatusColor(status).color} px={2} py={0.5} borderRadius="full" fontSize={isMobile ? "xs" : "sm"} fontWeight="bold">{String(status).toUpperCase()}</Badge></Td>
         <Td>
           <IconButton
             aria-label="Update Payment Status"
@@ -822,25 +822,25 @@ export default function CleanedBilling() {
 
     return (
       <Tr borderBottom="1px solid" borderColor="gray.100" _hover={{ bg: "gray.50" }}>
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
           <VStack align="start" spacing={1}>
-            <Text fontWeight="semibold" fontSize={isMobile ? "sm" : "md"}>{customerName}</Text>
+            <Text fontWeight="semibold" fontSize={isMobile ? "xs" : "sm"}>{customerName}</Text>
             <Text fontSize="xs" color="gray.500">{customerPhone}</Text>
           </VStack>
         </Td>
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}><Text fontSize={isMobile ? "sm" : "md"}>{safeGet(booking, "serviceId.serviceName", "—")}</Text></Td>
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}><Text fontWeight="bold" fontSize={isMobile ? "md" : "lg"}>{formatINR(safeGet(booking, "baseAmount", 0))}</Text></Td>
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}>
-          <Badge bg={getStatusColor(status).bg} color={getStatusColor(status).color} px={3} py={1} borderRadius="full" fontSize={isMobile ? "xs" : "sm"} fontWeight="bold">
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text fontSize={isMobile ? "xs" : "sm"}>{safeGet(booking, "serviceId.serviceName", "—")}</Text></Td>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text fontWeight="bold" fontSize={isMobile ? "sm" : "md"}>{formatINR(safeGet(booking, "baseAmount", 0))}</Text></Td>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
+          <Badge bg={getStatusColor(status).bg} color={getStatusColor(status).color} px={2} py={0.5} borderRadius="full" fontSize={isMobile ? "xs" : "sm"} fontWeight="bold">
             {String(status).toUpperCase()}
           </Badge>
         </Td>
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}>
-          <Badge variant="solid" colorScheme={payStatus === "paid" ? "green" : "orange"} fontSize={isMobile ? "xs" : "sm"}>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
+          <Badge variant="solid" colorScheme={payStatus === "paid" ? "green" : "orange"} px={2} fontSize={isMobile ? "xs" : "sm"}>
             {String(payStatus).toUpperCase()}
           </Badge>
         </Td>
-        <Td px={isMobile ? 3 : 6} py={isMobile ? 2 : 3}><Text fontSize="xs" color="gray.500">{new Date(safeGet(booking, "scheduledAt", Date.now())).toLocaleDateString()}</Text></Td>
+        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text fontSize="xs" color="gray.500">{new Date(safeGet(booking, "scheduledAt", Date.now())).toLocaleDateString()}</Text></Td>
         <Td>
           <Flex gap={2}>
             <IconButton
@@ -946,7 +946,7 @@ export default function CleanedBilling() {
   return (
     <Flex
       flexDirection="column"
-      pt={{ base: "65px", md: "85px", lg: "95px" }}
+      pt={{ base: "45px", md: "55px", lg: "65px" }}
       minH="calc(100vh - 40px)"
       overflow="auto"
       css={{
@@ -1323,7 +1323,7 @@ export default function CleanedBilling() {
         </Flex>
 
         {/* Active Filter Display */}
-        <Flex justify="space-between" align="center" mt={3} mb={2}> {/* Added mt and adjusted mb */}
+        <Flex justify="space-between" align="center" mt={3} mb={-2}> {/* Added mt and adjusted mb */}
           <Text fontSize={{ base: "md", md: "lg" }} fontWeight="semibold" color={textColor}>
             {currentView === "payments" && "All Payments"}
             {currentView === "orders" && "All Orders"}
@@ -1529,7 +1529,7 @@ export default function CleanedBilling() {
                     }}
                   >
                     {currentView === "wallets" ? (
-                      <Table variant="simple" size="md" bg="transparent">
+                      <Table variant="simple" size="sm" bg="transparent">
                         <Thead>
                           <Tr>
                             <Th color="gray.600">Technician</Th>
@@ -1553,7 +1553,7 @@ export default function CleanedBilling() {
                         </Tbody>
                       </Table>
                     ) : currentView === "revenue_breakdown" ? (
-                      <Table variant="simple" size="md" bg="transparent">
+                      <Table variant="simple" size="sm" bg="transparent">
                         <Thead>
                           <Tr>
                             <Th color="gray.600">Metric</Th>
@@ -1606,16 +1606,16 @@ export default function CleanedBilling() {
                         </Tbody>
                       </Table>
                     ) : currentView === "services" ? (
-                      <Table variant="simple" size="md" bg="transparent">
+                      <Table variant="simple" size="sm" bg="transparent">
                         <Thead>
                           <Tr>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="sm" py={3} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Customer</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="sm" py={3} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Service</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="sm" py={3} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Amount</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="sm" py={3} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Status</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="sm" py={3} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Payment Status</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="sm" py={3} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Scheduled At</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="sm" py={3} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Actions</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Customer</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Service</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Amount</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Status</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Payment Status</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Scheduled At</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Actions</Th>
                           </Tr>
                         </Thead>
                         <Tbody>
@@ -1629,87 +1629,15 @@ export default function CleanedBilling() {
                         </Tbody>
                       </Table>
                     ) : (
-                      <Table variant="simple" size="md" bg="transparent">
+                      <Table variant="simple" size="sm" bg="transparent">
                         <Thead>
                           <Tr>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={`${customColor}`}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="sm"
-                              py={3}
-                              borderBottom="2px solid"
-                              borderBottomColor={`${customColor}50`}
-                            >Payment ID</Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={`${customColor}`}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="sm"
-                              py={3}
-                              borderBottom="2px solid"
-                              borderBottomColor={`${customColor}50`}
-                            >Order ID</Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={`${customColor}`}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="sm"
-                              py={3}
-                              borderBottom="2px solid"
-                              borderBottomColor={`${customColor}50`}
-                            >Amount</Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={`${customColor}`}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="sm"
-                              py={3}
-                              borderBottom="2px solid"
-                              borderBottomColor={`${customColor}50`}
-                            >Method</Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={`${customColor}`}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="sm"
-                              py={3}
-                              borderBottom="2px solid"
-                              borderBottomColor={`${customColor}50`}
-                            >Status</Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={`${customColor}`}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="sm"
-                              py={3}
-                              borderBottom="2px solid"
-                              borderBottomColor={`${customColor}50`}
-                            >Actions</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Payment ID</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Order ID</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Amount</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Method</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Status</Th>
+                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Actions</Th>
                           </Tr>
                         </Thead>
                         <Tbody>
@@ -1740,7 +1668,7 @@ export default function CleanedBilling() {
                   {currentSlice.length > 0 && (
                     <Box
                       flexShrink={0}
-                      p="16px"
+                      p="8px"
                       borderTop="1px solid"
                       borderColor={`${customColor}20`}
                       bg="transparent"
@@ -1750,10 +1678,7 @@ export default function CleanedBilling() {
                         align="center"
                         gap={3}
                       >
-                        {/* Page Info */}
-                        <Text fontSize="sm" color="gray.600" display={{ base: "none", sm: "block" }}>
-                          Showing {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, filteredData.length)} of {filteredData.length} {currentView === 'orders' ? 'orders' : currentView === 'services' ? 'bookings' : 'payment'}
-                        </Text>
+
 
                         {/* Pagination Controls */}
                         <Flex align="center" gap={2}>

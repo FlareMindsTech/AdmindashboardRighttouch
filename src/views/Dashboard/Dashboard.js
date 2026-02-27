@@ -96,11 +96,14 @@ export default function Dashboard() {
         let categoriesData = [];
         if (categoriesRes?.result && Array.isArray(categoriesRes.result)) {
           categoriesData = categoriesRes.result;
+        } else if (categoriesRes?.data && Array.isArray(categoriesRes.data)) {
+          categoriesData = categoriesRes.data;
+        } else if (categoriesRes?.categories && Array.isArray(categoriesRes.categories)) {
+          categoriesData = categoriesRes.categories;
         } else if (Array.isArray(categoriesRes)) {
           categoriesData = categoriesRes;
-        } else {
-          // Fallback if structure is different
-          categoriesData = categoriesRes?.data || [];
+        } else if (categoriesRes?.result?.categories && Array.isArray(categoriesRes.result.categories)) {
+          categoriesData = categoriesRes.result.categories;
         }
 
         setServiceBookings(bookingsData);
@@ -140,9 +143,13 @@ export default function Dashboard() {
     const uniqueActiveCategories = new Set();
     serviceBookings.forEach(b => {
       const cat = b?.serviceId?.category || b?.category;
-      // If it's an ID, strict check. If object, get _id or name.
       if (cat) {
-        const val = typeof cat === 'object' ? (cat._id || cat.name) : cat;
+        let val;
+        if (typeof cat === 'object') {
+          val = cat.category || cat.name || cat._id;
+        } else {
+          val = cat;
+        }
         if (val) uniqueActiveCategories.add(val);
       }
     });
@@ -160,14 +167,14 @@ export default function Dashboard() {
     // optimize category map
     const catMap = {};
     categories.forEach(c => {
-      if (c._id) catMap[c._id] = c.name;
+      if (c._id) catMap[c._id] = c.category || c.name;
     });
 
     const perfMap = {};
 
     // Initialize with all categories (even 0 bookings)
     categories.forEach(c => {
-      const name = c.name || "Unknown";
+      const name = c.category || c.name || "Unknown";
       if (!perfMap[name]) {
         perfMap[name] = { name, totalBookings: 0, revenue: 0, successCount: 0 };
       }
@@ -182,7 +189,7 @@ export default function Dashboard() {
         if (typeof catRef === 'string') {
           catName = catMap[catRef] || catRef; // ID matched or raw string
         } else if (typeof catRef === 'object') {
-          catName = catRef.name || "Uncategorized";
+          catName = catRef.category || catRef.name || "Uncategorized";
         }
       }
 

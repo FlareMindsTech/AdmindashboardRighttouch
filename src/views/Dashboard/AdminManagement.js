@@ -449,13 +449,21 @@ function AdminManagement() {
             const fullName = getTechnicianName(admin);
             const specialization = admin.specialization || admin.profile?.specialization || "";
             const city = admin.city || admin.profile?.city || admin.locality || "";
+            const phoneStr = (
+              admin.phone ||
+              admin.mobileNumber ||
+              admin.profile?.phone ||
+              admin.profile?.mobileNumber ||
+              (typeof admin.userId === 'object' ? (admin.userId.phone || admin.userId.mobileNumber) : "") ||
+              ""
+            ).toString();
 
             return (
               fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
               (admin.email && admin.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
               (specialization.toLowerCase().includes(searchTerm.toLowerCase())) ||
               (city.toLowerCase().includes(searchTerm.toLowerCase())) ||
-              (admin.mobileNumber && admin.mobileNumber.toString().includes(searchTerm))
+              phoneStr.includes(searchTerm)
             );
           }
         );

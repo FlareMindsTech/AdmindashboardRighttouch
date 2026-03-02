@@ -2559,8 +2559,9 @@ export default function ProductManagement() {
                                 bg={`${customColor}`}
                                 zIndex={10}
                                 fontWeight="bold"
-                                fontSize="sm"
-                                py={3}
+                                fontSize="xs"
+                                py={1}
+                                px={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2574,8 +2575,9 @@ export default function ProductManagement() {
                                 bg={`${customColor}`}
                                 zIndex={10}
                                 fontWeight="bold"
-                                fontSize="sm"
-                                py={3}
+                                fontSize="xs"
+                                py={1}
+                                px={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2589,8 +2591,9 @@ export default function ProductManagement() {
                                 bg={`${customColor}`}
                                 zIndex={10}
                                 fontWeight="bold"
-                                fontSize="sm"
-                                py={3}
+                                fontSize="xs"
+                                py={1}
+                                px={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2604,8 +2607,9 @@ export default function ProductManagement() {
                                 bg={`${customColor}`}
                                 zIndex={10}
                                 fontWeight="bold"
-                                fontSize="sm"
-                                py={3}
+                                fontSize="xs"
+                                py={1}
+                                px={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2620,9 +2624,9 @@ export default function ProductManagement() {
                                 bg={`${customColor}`}
                                 zIndex={10}
                                 fontWeight="bold"
-                                fontSize="sm"
-                                py={3}
-                                px={14}
+                                fontSize="xs"
+                                py={1}
+                                px={4}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2641,34 +2645,34 @@ export default function ProductManagement() {
                                   _hover={{ bg: `${customColor}10` }}
                                   borderBottom="1px"
                                   borderColor={`${customColor}30`}
-                                  height="60px"
+                                  height="40px"
                                 >
-                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
+                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={1} px={2}>
                                     {indexOfFirstItem + idx + 1}
                                   </Td>
-                                  <Td borderColor={`${customColor}30`} fontWeight="medium" fontSize="sm" py={3}>
+                                  <Td borderColor={`${customColor}30`} fontWeight="medium" fontSize="sm" py={1} px={2}>
                                     {cat.category || cat.name}
                                   </Td>
-                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
+                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={1} px={2}>
                                     <Text noOfLines={1} maxW="200px">
                                       {cat.description || "-"}
                                     </Text>
                                   </Td>
-                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
+                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={1} px={2}>
                                     <Badge
                                       bg="#dffff9ff"
                                       color="#008080"
-                                      px={3}
-                                      py={1}
+                                      px={2}
+                                      py={0.5}
                                       borderRadius="full"
-                                      fontSize="sm"
+                                      fontSize="2xs"
                                       fontWeight="bold"
                                     >
                                       {cat.status || "Active"}
                                     </Badge>
                                   </Td>
 
-                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={3}>
+                                  <Td borderColor={`${customColor}30`} fontSize="sm" py={1} px={2}>
                                     <Button
                                       leftIcon={<FaPlus />}
                                       bg="white"
@@ -2744,7 +2748,7 @@ export default function ProductManagement() {
                     {filteredCategories.length > 0 && (
                       <Box
                         flexShrink={0}
-                        p="16px"
+                        p="8px"
                         borderTop="1px solid"
                         borderColor={`${customColor}30`}
                         bg="transparent"
@@ -3066,7 +3070,7 @@ export default function ProductManagement() {
                     {filteredProducts.length > 0 && (
                       <Box
                         flexShrink={0}
-                        p="16px"
+                        p="8px"
                         borderTop="1px solid"
                         borderColor={`${customColor}30`}
                         bg="transparent"
@@ -3503,6 +3507,7 @@ export default function ProductManagement() {
           </ModalFooter>
         </ModalContent>
       </Modal>
-    </Flex>
+    </Flex >
   );
 }
+

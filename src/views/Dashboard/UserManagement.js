@@ -903,7 +903,7 @@ function UserManagement() {
             {/* Body */}
             <CardBody p={0} display="flex" flexDirection="column">
               {tableLoading ? (
-                <Flex justify="center" align="center" py={10} flex="1">
+                <Flex justify="center" align="center" py={5} flex="1">
                   <Spinner size="xl" color={customColor} />
                   <Text ml={4}>Loading Users...</Text>
                 </Flex>
@@ -955,6 +955,7 @@ function UserManagement() {
                                 _hover={{ bg: `${customColor}10` }}
                                 borderBottom="1px solid"
                                 borderColor={`${customColor}20`}
+                                height="40px"
                               >
                                 {/* User */}
                                 <Td>
@@ -1041,7 +1042,7 @@ function UserManagement() {
                   {/* Pagination */}
                   {filteredData.length > 0 && (
                     <Box
-                      p={2}
+                      p={1}
                       borderTop="1px solid"
                       borderColor={`${customColor}20`}
                     >

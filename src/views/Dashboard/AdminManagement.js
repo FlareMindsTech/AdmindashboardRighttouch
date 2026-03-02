@@ -1829,7 +1829,7 @@ function AdminManagement() {
             p={0}
           >
             {tableLoading ? (
-              <Flex justify="center" align="center" py={10} flex="1">
+              <Flex justify="center" align="center" py={5} flex="1">
                 <Spinner size="xl" color={customColor} />
                 <Text ml={4}>Loading Technicians...</Text>
               </Flex>
@@ -1888,8 +1888,8 @@ function AdminManagement() {
                                   zIndex={10}
                                   fontWeight="semibold"
                                   fontSize="xs"          // ↓ smaller header text
-                                  py={2}                 // ↓ vertical padding reduced
-                                  px={3}                 // controlled horizontal padding
+                                  py={1}                 // ↓ vertical padding reduced
+                                  px={2}                 // controlled horizontal padding
                                   borderBottom="2px solid"
                                   borderBottomColor={`${customColor}50`}
                                   whiteSpace="nowrap"
@@ -1911,9 +1911,9 @@ function AdminManagement() {
                                   _hover={{ bg: `${customColor}08` }}   // reduced hover intensity
                                   borderBottom="1px"
                                   borderColor={`${customColor}20`}
-                                  height="48px"                         // ↓ from 60px
+                                  height="40px"                         // ↓ from 48px
                                 >
-                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
                                     <Flex align="center">
                                       <Avatar
                                         size="xs"                       // ↓ from sm
@@ -1934,7 +1934,7 @@ function AdminManagement() {
                                     </Flex>
                                   </Td>
 
-                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
                                     <Text fontWeight="medium" fontSize="sm" color="gray.700">
                                       {(() => {
                                         const spec = admin.specialization ||
@@ -1958,7 +1958,7 @@ function AdminManagement() {
                                     </Text>
                                   </Td>
 
-                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
                                     <Text fontWeight="medium" fontSize="sm" color="gray.700">
                                       {(() => {
                                         const exp = admin.experienceYears ??
@@ -1970,7 +1970,7 @@ function AdminManagement() {
                                     </Text>
                                   </Td>
 
-                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
                                     <Text fontWeight="medium" fontSize="sm" color="gray.700">
                                       {admin.city ||
                                         admin.profile?.city ||
@@ -1982,7 +1982,7 @@ function AdminManagement() {
                                     </Text>
                                   </Td>
 
-                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
                                     <Flex align="center">
                                       <Icon as={FaSearch} color="yellow.400" mr={1} boxSize={3} />
                                       <Text fontWeight="bold" fontSize="sm">
@@ -1994,13 +1994,13 @@ function AdminManagement() {
                                     </Flex>
                                   </Td>
 
-                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
                                     <Text fontWeight="medium" fontSize="sm">
                                       {admin.totalJobsCompleted || admin.jobStats?.completed || 0}
                                     </Text>
                                   </Td>
 
-                                  <Td borderColor={`${customColor}20`} px={3} py={2}>
+                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
                                     <Flex gap={1}>
                                       <IconButton
                                         aria-label="View Details"
@@ -2049,7 +2049,7 @@ function AdminManagement() {
                     {currentItems.length > 0 && (
                       <Box
                         flexShrink={0}
-                        p="8px"
+                        p="4px"
                         borderTop="1px solid"
                         borderColor={`${customColor}20`}
                         bg="transparent"
@@ -2087,8 +2087,8 @@ function AdminManagement() {
                               align="center"
                               gap={2}
                               bg={`${customColor}10`}
-                              px={3}
-                              py={1}
+                              px={2}
+                              py={0.5}
                               borderRadius="6px"
                               minW="80px"
                               justify="center"

@@ -1440,7 +1440,7 @@ export const getAllWallets = async () => {
     const token = getToken();
 
     const response = await fetch(
-      `${BASE_URL}/admin/wallet/withdraws`,
+      `${BASE_URL}/admin/wallet/withdrawalhistory`,
       {
         method: "GET",
         headers: {
@@ -1483,7 +1483,7 @@ export const getAllWallets = async () => {
 export const approveWithdrawal = async (withdrawId) => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/wallet/withdraw/${withdrawId}/approve`, {
+    const response = await fetch(`${BASE_URL}/admin/wallet/withdrawal/${withdrawId}/approve`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -1506,7 +1506,7 @@ export const approveWithdrawal = async (withdrawId) => {
 export const rejectWithdrawal = async (withdrawId) => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/wallet/withdraw/${withdrawId}/reject`, {
+    const response = await fetch(`${BASE_URL}/admin/wallet/withdrawal/${withdrawId}/reject`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",

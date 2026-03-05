@@ -15,39 +15,27 @@ ReactDOM.render(
       <Routes>
         {/* Auth routes */}
         <Route path="/auth/*" element={<AuthLayout />} />
-        
+
         {/*  ONLY OWNER ROUTES */}
         <Route path="/owner/*" element={<AdminLayout />} />
-        
-        
-        <Route 
-          path="/admin/*" 
-          element={
-            localStorage.getItem("user") ? 
-            <Navigate to="/owner/dashboard" replace /> : 
-            <Navigate to="/auth/signin" replace />
-          } 
+
+
+        <Route
+          path="/admin/*"
+          element={<Navigate to="/auth/signin" replace />}
         />
-  
+
         <Route path="/access-denied" element={<AccessDenied />} />
 
-        <Route 
-          path="/" 
-          element={
-            localStorage.getItem("user") ? 
-            <Navigate to="/owner/dashboard" replace /> : 
-            <Navigate to="/auth/signin" replace />
-          } 
+        <Route
+          path="/"
+          element={<Navigate to="/auth/signin" replace />}
         />
 
-        
-        <Route 
-          path="*" 
-          element={
-            localStorage.getItem("user") ? 
-            <Navigate to="/owner/dashboard" replace /> : 
-            <Navigate to="/auth/signin" replace />
-          } 
+
+        <Route
+          path="*"
+          element={<Navigate to="/auth/signin" replace />}
         />
       </Routes>
     </HashRouter>

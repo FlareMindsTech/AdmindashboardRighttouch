@@ -906,6 +906,58 @@ export const uploadServiceImages = async (serviceId, files = []) => {
     throw error;
   }
 };
+
+export const deleteServiceImage = async (serviceId, publicId) => {
+  try {
+    const token = getToken();
+
+    if (!token) {
+      throw new Error("Authentication token is missing. Please log in again.");
+    }
+
+    // Support multiple field names for public mapping
+    const payload = {
+      serviceId,
+      service_id: serviceId,
+      publicId: publicId,
+      public_id: publicId,
+      imageId: publicId,
+      id: publicId,
+      imageUrl: publicId,
+      url: publicId
+    };
+
+    console.log(`Deleting service image for service: ${serviceId}, publicId: ${publicId}`);
+
+    const response = await fetch(`${BASE_URL}/user/services/remove-image`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        "token": token,
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      let errorMessage = "Failed to remove service image";
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || errorMessage;
+      } catch (e) {
+        // Fallback
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    console.log("Service image deleted successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("Error deleting service image:", error);
+    throw error;
+  }
+};
 export const getAllServices = async () => {
   try {
     const token = getToken();

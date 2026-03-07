@@ -13,6 +13,7 @@ import {
   deleteService,
   uploadServiceImages,
   uploadCategoryImage,
+  deleteServiceImage,
 } from "../utils/axiosInstance";
 
 import {
@@ -320,11 +321,59 @@ export default function ServiceManagement() {
     }
   };
 
-  const handleRemoveServiceImage = (index) => {
-    setNewService(prev => ({
-      ...prev,
-      serviceImages: prev.serviceImages.filter((_, i) => i !== index)
-    }));
+  const handleRemoveServiceImage = async (index) => {
+    const imageToDelete = newService.serviceImages[index];
+
+    try {
+      // If it's an existing image in edit mode, delete from DB
+      if (selectedService && imageToDelete && !imageToDelete.isNew) {
+        setIsSubmitting(true);
+        // Use public_id, _id, url, or the image object itself depending on structure
+        const publicId = imageToDelete.public_id ||
+          imageToDelete._id ||
+          imageToDelete.url ||
+          (typeof imageToDelete === 'string' ? imageToDelete : null);
+
+        if (publicId) {
+          await deleteServiceImage(selectedService._id, publicId);
+
+          toast({
+            title: "Success",
+            description: "Service image successfully deleted",
+            status: "success",
+            duration: 3000,
+            isClosable: true,
+            position: "top-right",
+          });
+        }
+      } else {
+        // Just for UI removal of newly added images
+        toast({
+          title: "Removed",
+          description: "Image removed from selection",
+          status: "info",
+          duration: 2000,
+          isClosable: true,
+          position: "top-right",
+        });
+      }
+
+      setNewService(prev => ({
+        ...prev,
+        serviceImages: prev.serviceImages.filter((_, i) => i !== index)
+      }));
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete image",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+        position: "top-right",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCategoryImageUpload = async (event) => {

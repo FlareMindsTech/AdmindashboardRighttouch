@@ -1,4 +1,3 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Box,
   Button,
@@ -39,130 +38,104 @@ import {
   Grid,
   GridItem,
   VStack,
-  HStack,
-  Center,
-  Image,
 } from "@chakra-ui/react";
-
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
-
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   FaUsers,
   FaChevronLeft,
   FaChevronRight,
   FaSearch,
+  FaTrash,
   FaEye,
   FaWallet,
-  FaUserCog,
-  FaChartLine,
-  FaUserCheck,
-  FaUserClock,
-  FaArrowLeft,
-  FaTimes,
 } from "react-icons/fa";
 import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
-import { MdWarning, MdOutlinePayment } from "react-icons/md";
 import {
   getAllUsers,
   deleteUser,
   getAllServiceBooking,
   getAllCurrentTechJob,
   getAllTechnicians,
-} from "../utils/axiosInstance";
+} from "views/utils/axiosInstance";
 
-export default function UserManagement() {
+// Main User Management Component
+function UserManagement() {
+  // Chakra color mode
   const textColor = useColorModeValue("gray.700", "white");
-  const toast = useToast();
+  const iconTeal = useColorModeValue("teal.300", "teal.300");
+  const iconBoxInside = useColorModeValue("white", "white");
+  const bgButton = useColorModeValue("gray.100", "gray.100");
+  const tableHeaderBg = useColorModeValue("gray.100", "gray.700");
 
-  // Custom color theme (matching ServiceManagement)
+  // Custom color theme
   const customColor = "#008080";
   const customHoverColor = "#008080";
 
-  // State hooks
-  const [currentUser, setCurrentUser] = useState(null);
+  const toast = useToast();
+
   const [userData, setUserData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
-  const [allBookings, setAllBookings] = useState([]);
+  const [allBookingsState, setAllBookingsState] = useState([]); // Store all bookings separately
   const [technicians, setTechnicians] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(5);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [isTechModalOpen, setIsTechModalOpen] = useState(false);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(""); // Search filter state
+  const [showPassword, setShowPassword] = useState(false); // Show password state
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false); // Show confirm password state
+
+  // View state - 'list'
+  const [currentView, setCurrentView] = useState("list");
+
+  // Delete confirmation dialog state
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [selectedUserForTech, setSelectedUserForTech] = useState(null);
-  const [selectedUserForPayment, setSelectedUserForPayment] = useState(null);
   const cancelRef = useRef();
 
-  // Global scrollbar styles (matching ServiceManagement)
-  const globalScrollbarStyles = {
-    '&::-webkit-scrollbar': {
-      width: '6px',
-      height: '6px',
-    },
-    '&::-webkit-scrollbar-track': {
-      background: 'transparent',
-    },
-    '&::-webkit-scrollbar-thumb': {
-      background: 'transparent',
-      borderRadius: '3px',
-      transition: 'background 0.3s ease',
-    },
-    '&:hover::-webkit-scrollbar-thumb': {
-      background: '#cbd5e1',
-    },
-    '&:hover::-webkit-scrollbar-thumb:hover': {
-      background: '#94a3b8',
-    },
-  };
+  // User details modal state
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [selectedUserDetails, setSelectedUserDetails] = useState(null);
 
-  // Calculate user statistics
-  const calculateUserStats = useCallback(() => {
-    const totalUsers = userData.length;
-    const activeUsers = userData.filter(user => user.status?.toLowerCase() === "active").length;
-    const usersWithBookings = userData.filter(user => (user.bookingCount || 0) > 0).length;
-    
-    const totalRevenue = userData.reduce((sum, user) => {
-      const userTotal = user.bookings 
-        ? user.bookings
-            .filter(b => b.paymentStatus === 'paid' || b.paymentStatus === 'success')
-            .reduce((s, b) => s + (parseFloat(b.paidAmount) || 0), 0)
-        : 0;
-      return sum + userTotal;
-    }, 0);
+  // Technician Allocation Modal State
+  const [isTechModalOpen, setIsTechModalOpen] = useState(false);
+  const [selectedUserForTech, setSelectedUserForTech] = useState(null);
 
-    return {
-      totalUsers,
-      activeUsers,
-      usersWithBookings,
-      totalRevenue,
-    };
-  }, [userData]);
+  // User Payment Details Modal State
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedUserForPayment, setSelectedUserForPayment] = useState(null);
 
-  const stats = calculateUserStats();
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(5);
 
-  // Pagination
+  // Calculate current slice based on active view
+  const currentItems = filteredData;
+  const totalPages = Math.ceil(currentItems.length / itemsPerPage) || 1;
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const currentSlice = currentItems.slice(indexOfFirstItem, indexOfLastItem);
+  const displayItems = [...currentSlice];
 
-  // Check authentication
+  // Fetch current user from localStorage
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("user"));
     const role = storedUser?.role?.toLowerCase();
-    
-    if (!storedUser || (role !== "admin" && role !== "super admin" && role !== "owner")) {
+
+    if (
+      !storedUser ||
+      (role !== "admin" && role !== "super admin" && role !== "owner")
+    ) {
       toast({
         title: "Access Denied",
-        description: "Only admin, super admin, or owner can access this page.",
+        description: "Only admin, super admin, or owner users can access this page.",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -172,200 +145,353 @@ export default function UserManagement() {
     setCurrentUser(storedUser);
   }, [toast]);
 
-  // Fetch data
-  const fetchData = useCallback(async () => {
+  // Fetch users from backend - defined as useCallback for reuse
+  const fetchUsers = useCallback(async () => {
     if (!currentUser) return;
 
-    setIsLoading(true);
+    setLoading(true);
+    setTableLoading(true);
+    setDataLoaded(false);
     try {
       const [usersResponse, bookingsResponse, techJobsResponse, techniciansResponse] = await Promise.all([
         getAllUsers(),
         getAllServiceBooking(),
-        getAllCurrentTechJob().catch(err => []),
-        getAllTechnicians().catch(err => []),
+        getAllCurrentTechJob().catch((error) => {
+          console.error("Error fetching current tech jobs:", error);
+          return [];
+        }),
+        getAllTechnicians().catch((error) => {
+          console.error("Error fetching technicians:", error);
+          return [];
+        }),
       ]);
+      console.log("usersResponse", usersResponse);
+      console.log("bookingsResponse", bookingsResponse);
+      console.log("techJobsResponse", techJobsResponse);
+      console.log("techniciansResponse", techniciansResponse);
 
-      // Parse responses
-      const users = Array.isArray(usersResponse.result || usersResponse.data?.users || usersResponse.data || usersResponse?.users || usersResponse) 
-        ? (usersResponse.result || usersResponse.data?.users || usersResponse.data || usersResponse?.users || usersResponse) 
-        : [];
-      const bookings = Array.isArray(bookingsResponse.result || bookingsResponse.data?.bookings || bookingsResponse.data || bookingsResponse?.serviceBookings || bookingsResponse)
-        ? (bookingsResponse.result || bookingsResponse.data?.bookings || bookingsResponse.data || bookingsResponse?.serviceBookings || bookingsResponse)
-        : [];
-      const techJobs = Array.isArray(techJobsResponse.result || techJobsResponse.data || techJobsResponse)
-        ? (techJobsResponse.result || techJobsResponse.data || techJobsResponse)
-        : [];
-      const techList = Array.isArray(techniciansResponse.result || techniciansResponse.data || techniciansResponse)
-        ? (techniciansResponse.result || techniciansResponse.data || techniciansResponse)
-        : [];
+      // Handle different response formats (handle direct array or .result/.data/.users)
+      const usersRaw = usersResponse.result || usersResponse.data?.users || usersResponse.data || usersResponse?.users || usersResponse || [];
+      const allBookingsRaw = bookingsResponse.result || bookingsResponse.data?.bookings || bookingsResponse.data || bookingsResponse?.serviceBookings || bookingsResponse || [];
+      const allJobsRaw = techJobsResponse.result || techJobsResponse.data || techJobsResponse || [];
+      const allTechnicians = techniciansResponse.result || techniciansResponse.data || techniciansResponse || [];
 
-      setAllBookings(bookings);
-      setTechnicians(techList);
+      // Ensure we have arrays
+      const users = Array.isArray(usersRaw) ? usersRaw : [];
+      const allBookings = Array.isArray(allBookingsRaw) ? allBookingsRaw : [];
+      const allJobs = Array.isArray(allJobsRaw) ? allJobsRaw : [];
+      const techniciansList = Array.isArray(allTechnicians) ? allTechnicians : [];
 
-      // Sort users alphabetically
+      setTechnicians(techniciansList);
+      setAllBookingsState(allBookings); // Store raw bookings for modal filtering
+
+      // Sort users in alphabetical order by first name, then last name
       const sortedUsers = users.sort((a, b) => {
         const getName = (u) => {
-          if (u.profile?.fname || u.profile?.lname) {
+          if (u.profile && (u.profile.fname || u.profile.lname)) {
             return `${u.profile.fname || ""} ${u.profile.lname || ""}`.trim();
           }
-          if (u.profile?.firstName || u.profile?.lastName) {
+          if (u.profile && (u.profile.firstName || u.profile.lastName)) {
             return `${u.profile.firstName || ""} ${u.profile.lastName || ""}`.trim();
           }
           return (u.name || `${u.firstName || ''} ${u.lastName || ''}`).trim();
         };
-        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+
+        const nameA = getName(a).toLowerCase();
+        const nameB = getName(b).toLowerCase();
+
+        // If names are the same, sort by email/mobile as fallback
+        if (nameA === nameB) {
+          const extraA = (a.email || a.mobileNumber || '').toLowerCase();
+          const extraB = (b.email || b.mobileNumber || '').toLowerCase();
+          return extraA.localeCompare(extraB);
+        }
+
+        return nameA.localeCompare(nameB);
       });
 
-      // Enrich users with data
+      // Enrich users with booking data
       const usersWithDetails = sortedUsers.map(user => {
-        const userBookings = bookings.filter(booking => {
-          const customerId = booking.customerId?._id || booking.customerId;
-          return customerId === user._id;
+        const userId = user._id;
+        const userAuthId = user.userId;
+        const userEmail = user.email;
+
+        const userBookings = allBookings.filter(booking => {
+          const bookingUserId = booking.userId || (booking.user && booking.user._id);
+          const bookingCustomerId = booking.customerId?._id || booking.customerId;
+
+          return (
+            (bookingCustomerId === userId) ||
+            (bookingUserId === userId) ||
+            (userAuthId && bookingUserId === userAuthId) ||
+            (userEmail && booking.user?.email === userEmail)
+          );
         });
 
-        const userJob = techJobs.find(job => {
+        // Find if this user has any current tech job
+        const userJob = allJobs.find(job => {
+          // IDs from user object
+          const currentUserId = user._id;
+          const currentUserAuthId = user.userId;
+          const currentUserEmail = user.email?.toLowerCase();
+
+          // Search criteria in job
           const jobCustId = job.customer?._id || job.customer;
-          return jobCustId === user._id;
+          const jobBookingId = job.bookingId || job.booking?._id || job.jobId;
+          const jobBookingUserId = job.booking?.userId || job.booking?.user?._id || job.booking?.user;
+          const jobUserId = job.userId || job.user?._id || job.user;
+
+          // Additional fallbacks for nested service info
+          const serviceCustId = job.service?.customer?._id || job.service?.customer || job.service?.userId;
+          const serviceEmail = job.service?.customer?.email?.toLowerCase() || job.service?.user?.email?.toLowerCase();
+
+          // Check if any booking associated with this user matches the job ID
+          const matchesBooking = userBookings.some(b => b._id === jobBookingId || b.id === jobBookingId);
+
+          const isMatch = (
+            (jobCustId && (jobCustId === currentUserId || jobCustId === currentUserAuthId)) ||
+            (jobBookingUserId && (jobBookingUserId === currentUserId || jobBookingUserId === currentUserAuthId)) ||
+            (jobUserId && (jobUserId === currentUserId || jobUserId === currentUserAuthId)) ||
+            (serviceCustId && (serviceCustId === currentUserId || serviceCustId === currentUserAuthId)) ||
+            (currentUserEmail && (
+              job.customer?.email?.toLowerCase() === currentUserEmail ||
+              job.booking?.user?.email?.toLowerCase() === currentUserEmail ||
+              serviceEmail === currentUserEmail
+            )) ||
+            matchesBooking
+          );
+
+          return isMatch;
         });
 
+        // Resolve Technician Name
         let technicianName = "None";
         if (userJob) {
           const techId = typeof userJob.technician === 'object' ? userJob.technician?._id : userJob.technician;
-          const matchedTech = techList.find(t => t._id === techId || t.userId === techId);
-          technicianName = matchedTech?.name || 
+          const matchedTech = techniciansList.find(t => t._id === techId || t.userId === techId);
+
+          technicianName =
+            (userJob.technician?.name) ||
+            (userJob.technician?.firstName ? `${userJob.technician.firstName} ${userJob.technician.lastName || ''}`.trim() : null) ||
+            (matchedTech?.name) ||
             (matchedTech?.firstName ? `${matchedTech.firstName} ${matchedTech.lastName || ''}`.trim() : null) ||
             userJob.technicianName ||
-            "Allocated";
+            "Allocated"; // Fallback if assigned but name not found
         }
+
 
         return {
           ...user,
-          bookingCount: user.jobStats?.service?.total ?? 0,
+          bookingCount: user.jobStats?.service?.total ?? 0, // Use backend provided stats
           allocatedTechnician: technicianName,
           bookings: userBookings,
+          hasPayments: userBookings.some(b => b.paymentStatus === 'paid' || b.paymentStatus === 'success')
         };
       });
 
+      console.log("Total Appointments/Jobs fetched:", allJobs.length);
+      console.log("Users with technicians found:", usersWithDetails.filter(u => u.allocatedTechnician !== "None"));
+
       setUserData(usersWithDetails);
+
+      // DEBUG: Log ID samples to find why linking is failing
+      if (usersWithDetails.length > 0) {
+        console.log("Linking Debug - Sample User:", {
+          _id: usersWithDetails[0]._id,
+          userId: usersWithDetails[0].userId,
+          email: usersWithDetails[0].email
+        });
+      }
+      if (allBookings.length > 0) {
+        console.log("Linking Debug - Sample Booking:", {
+          _id: allBookings[0]._id,
+          userId: allBookings[0].userId,
+          user_id: allBookings[0].user?._id,
+          email: allBookings[0].user?.email
+        });
+      }
+      if (allJobs.length > 0) {
+        console.log("Linking Debug - Sample Job:", {
+          jobId: allJobs[0].jobId,
+          custId: allJobs[0].customer?._id || allJobs[0].customer,
+          bookingId: allJobs[0].bookingId || allJobs[0].booking?._id
+        });
+      }
+
       setFilteredData(usersWithDetails);
+      setDataLoaded(true);
     } catch (err) {
-      console.error("Fetch error:", err);
+      console.error("Error fetching users:", err);
+      const errorMessage = err.response?.data?.message || err.message || "Failed to load user list.";
+      setError(errorMessage);
+      setDataLoaded(true);
       toast({
         title: "Fetch Error",
-        description: err.message || "Failed to load user data.",
+        description: errorMessage,
         status: "error",
         duration: 3000,
         isClosable: true,
       });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
+      setTableLoading(false);
     }
   }, [currentUser, toast]);
 
+  // Initial fetch
   useEffect(() => {
     if (currentUser) {
-      fetchData();
+      fetchUsers();
     }
-  }, [currentUser, fetchData]);
+  }, [currentUser, fetchUsers]);
 
-  // Handle search
+  // Apply filters and search - UPDATED to maintain alphabetical order
+  useEffect(() => {
+    if (!dataLoaded) return;
+
+    setTableLoading(true);
+    setCurrentPage(1); // Reset to first page when filter changes
+
+    const timer = setTimeout(() => {
+      let filtered = userData;
+
+      // Apply role/status filter
+      switch (activeFilter) {
+        case "technicianAllocation":
+          filtered = userData.filter((user) => user.allocatedTechnician !== "None");
+          break;
+        case "Inactive":
+          filtered = userData.filter((user) => user.status === "Inactive");
+          break;
+        case "withBookings":
+          filtered = userData.filter((user) => (user.bookingCount || 0) > 0);
+          break;
+        default:
+          filtered = userData;
+      }
+
+      // Apply search filter
+      if (searchTerm.trim() !== "") {
+        filtered = filtered.filter((user) => {
+          const userName = (
+            (user.profile && (user.profile.fname || user.profile.lname)) ? `${user.profile.fname || ""} ${user.profile.lname || ""}` :
+              (user.profile && (user.profile.firstName || user.profile.lastName)) ? `${user.profile.firstName || ""} ${user.profile.lastName || ""}` :
+                (user.name || `${user.firstName || ""} ${user.lastName || ""}`)
+          ).toLowerCase();
+
+          return (
+            userName.includes(searchTerm.toLowerCase()) ||
+            (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (user.mobileNumber || user.phone || "").toString().toLowerCase().includes(searchTerm.toLowerCase())
+          );
+        });
+      }
+
+      // Maintain alphabetical order after filtering
+      const sortedFilteredData = filtered.sort((a, b) => {
+        const getName = (u) => {
+          if (u.profile && (u.profile.fname || u.profile.lname)) {
+            return `${u.profile.fname || ""} ${u.profile.lname || ""}`.trim();
+          }
+          if (u.profile && (u.profile.firstName || u.profile.lastName)) {
+            return `${u.profile.firstName || ""} ${u.profile.lastName || ""}`.trim();
+          }
+          return (u.name || `${u.firstName || ''} ${u.lastName || ''}`).trim();
+        };
+
+        const nameA = getName(a).toLowerCase();
+        const nameB = getName(b).toLowerCase();
+
+        if (nameA === nameB) {
+          return (a.email || '').toLowerCase().localeCompare((b.email || '').toLowerCase());
+        }
+
+        return nameA.localeCompare(nameB);
+      });
+
+      setFilteredData(sortedFilteredData);
+      setTableLoading(false);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [activeFilter, userData, dataLoaded, searchTerm]);
+
+  // Delete confirmation dialog state logic handled below
+
+
+  // Get status color with background
+  const getStatusColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case "active":
+        return { color: "white", bg: "#9d4edd" };
+      case "inactive":
+        return { color: "white", bg: "red.500" };
+      case "pending":
+        return { color: "white", bg: "yellow.500" };
+      default:
+        return { color: "white", bg: "#9d4edd" };
+    }
+  };
+
+  // Card click handlers
+  const handleCardClick = (filterType) => {
+    setActiveFilter(filterType);
+  };
+
   const handleSearchChange = (e) => {
-    const value = e.target.value;
-    setSearchTerm(value);
-    
-    const filtered = userData.filter(user => {
-      const userName = (
-        user.profile?.fname || user.profile?.firstName || user.name || 
-        `${user.firstName || ''} ${user.lastName || ''}`
-      ).toLowerCase();
-      
-      return (
-        userName.includes(value.toLowerCase()) ||
-        user.email?.toLowerCase().includes(value.toLowerCase()) ||
-        (user.mobileNumber || user.phone || "").toString().toLowerCase().includes(value.toLowerCase())
-      );
-    });
-    
-    setFilteredData(filtered);
-    setCurrentPage(1);
+    setSearchTerm(e.target.value);
   };
 
   const handleClearSearch = () => {
     setSearchTerm("");
-    setFilteredData(userData);
-    setCurrentPage(1);
   };
 
-  // Filter handlers
-  const handleFilterClick = (filterType) => {
-    let filtered = userData;
-    
-    switch (filterType) {
-      case "active":
-        filtered = userData.filter(user => user.status?.toLowerCase() === "active");
-        break;
-      case "withBookings":
-        filtered = userData.filter(user => (user.bookingCount || 0) > 0);
-        break;
-      case "withTechnician":
-        filtered = userData.filter(user => user.allocatedTechnician !== "None");
-        break;
-      default:
-        filtered = userData;
-    }
-    
-    setFilteredData(filtered);
-    setCurrentPage(1);
-  };
-
-  // Navigation handlers
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-    }
-  };
-
-  const handlePrevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
-  };
-
-  // Modal handlers
   const handleViewDetails = (user) => {
-    setSelectedUser(user);
-    setIsViewModalOpen(true);
+    setSelectedUserDetails(user);
+    setIsDetailsModalOpen(true);
   };
 
   const handleViewTechnicianAllocation = (user) => {
-    const userBookings = allBookings.filter(booking => {
+    // Determine the user ID to match against bookings
+    const userId = user._id;
+
+    // Filter bookings for this user using customerId
+    const userBookings = allBookingsState.filter(booking => {
+      // Check if customerId is populated object or string ID
       const customerId = booking.customerId?._id || booking.customerId;
-      return customerId === user._id;
+      return customerId === userId;
     });
+
     setSelectedUserForTech({ ...user, bookings: userBookings });
     setIsTechModalOpen(true);
   };
 
   const handleViewPaymentDetails = (user) => {
-    const userBookings = allBookings.filter(booking => {
+    // Determine the user ID to match against bookings
+    const userId = user._id;
+
+    // Filter bookings for this user using customerId
+    const userBookings = allBookingsState.filter(booking => {
       const customerId = booking.customerId?._id || booking.customerId;
-      return customerId === user._id;
+      return customerId === userId;
     });
-    
-    const successfulBookings = userBookings.filter(b => 
-      b.paymentStatus === 'paid' || b.paymentStatus === 'success'
+
+    // Filter successful payments
+    const successfulBookings = userBookings.filter(b =>
+      (b.paymentStatus === 'paid' || b.paymentStatus === 'success')
     );
-    
+
+    // Calculate total amount
     const totalPaidAmount = successfulBookings.reduce((sum, b) => {
       const amount = parseFloat(b.paidAmount || 0);
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0);
 
     setSelectedUserForPayment({
-      user,
+      user: user,
       totalBookings: userBookings.length,
       successfulPaymentsCount: successfulBookings.length,
-      totalPaidAmount,
+      totalPaidAmount: totalPaidAmount
     });
     setIsPaymentModalOpen(true);
   };
@@ -381,47 +507,860 @@ export default function UserManagement() {
     setDeleteLoading(true);
     try {
       await deleteUser(userToDelete._id);
-      
+
       toast({
         title: "User Deleted",
-        description: `User has been deleted successfully.`,
+        description: `User ${userToDelete.firstName} ${userToDelete.lastName} has been deleted successfully.`,
         status: "success",
         duration: 3000,
         isClosable: true,
       });
-      
-      await fetchData();
-      closeDeleteModal();
+
+      await fetchUsers();
+
     } catch (err) {
+      console.error("Error deleting user:", err);
+      const errorMessage = err.response?.data?.message || err.message || "Failed to delete user.";
       toast({
         title: "Delete Error",
-        description: err.message || "Failed to delete user.",
+        description: errorMessage,
         status: "error",
         duration: 3000,
         isClosable: true,
       });
     } finally {
       setDeleteLoading(false);
+      setIsDeleteDialogOpen(false);
+      setUserToDelete(null);
     }
   };
 
-  const closeDeleteModal = () => {
+  const handleCancelDelete = () => {
     setIsDeleteDialogOpen(false);
     setUserToDelete(null);
-    setDeleteLoading(false);
   };
 
-  const closeModal = () => {
-    setIsViewModalOpen(false);
-    setIsTechModalOpen(false);
-    setIsPaymentModalOpen(false);
-    setSelectedUser(null);
-    setSelectedUserForTech(null);
-    setSelectedUserForPayment(null);
-  };
+  if (!currentUser) {
+    return (
+      <Flex justifyContent="center" alignItems="center" height="100vh">
+        <Spinner size="xl" color={customColor} />
+      </Flex>
+    );
+  }
 
-  // Custom IconBox component (matching ServiceManagement)
-  const IconBox = ({ children, ...rest }) => (
+  // Render List View with Fixed Layout
+  return (
+    <>
+      <Flex
+        flexDirection="column"
+        pt={{ base: "45px", md: "65px", lg: "75px" }}
+        minH="calc(100vh - 40px)"
+        pb="150px"
+        overflow="auto"
+        css={{
+          '&::-webkit-scrollbar': {
+            width: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: 'transparent',
+            borderRadius: '24px',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'transparent',
+            borderRadius: '24px',
+            transition: 'background 0.3s ease',
+          },
+          '&:hover::-webkit-scrollbar-thumb': {
+            background: '#cbd5e1',
+          },
+          '&:hover::-webkit-scrollbar-thumb:hover': {
+            background: '#94a3b8',
+          },
+          // For Firefox
+          scrollbarWidth: 'thin',
+          scrollbarColor: 'transparent transparent',
+          '&:hover': {
+            scrollbarColor: '#cbd5e1 transparent',
+          },
+        }}
+      >
+        {/* Fixed Statistics Cards */}
+        <Box mb="24px">
+          {/* Horizontal Cards Container */}
+          <SimpleGrid
+            columns={{ base: 1, sm: 2, lg: 3 }}
+            spacing={{ base: 3, md: 4 }}
+            w="100%"
+          >
+            {/* Total Users Card */}
+            <Card
+              minH="75px"
+              cursor="pointer"
+              onClick={() => handleCardClick("all")}
+              border={activeFilter === "all" ? "2px solid" : "1px solid"}
+              borderColor={activeFilter === "all" ? customColor : `${customColor}30`}
+              transition="all 0.2s ease-in-out"
+              bg="white"
+              position="relative"
+              overflow="hidden"
+              w="100%"
+              _before={{
+                content: '""',
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+                opacity: 0,
+                transition: "opacity 0.2s ease-in-out",
+              }}
+              _hover={{
+                transform: "translateY(-4px)",
+                shadow: "xl",
+                _before: {
+                  opacity: 1,
+                },
+                borderColor: customColor,
+              }}
+            >
+              <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+                <Flex flexDirection="row" align="center" justify="space-between" w="100%">
+                  <Stat me="2">
+                    <StatLabel
+                      fontSize={{ base: "sm", md: "md" }}
+                      color="gray.600"
+                      fontWeight="bold"
+                      pb="0px"
+                      lineHeight="1.2"
+                    >
+                      Total Users
+                    </StatLabel>
+                    <Flex>
+                      <StatNumber fontSize={{ base: "md", md: "lg" }} color={textColor}>
+                        {userData.length}
+                      </StatNumber>
+                    </Flex>
+                  </Stat>
+                  <CustomIconBox
+                    as="box"
+                    h={{ base: "35px", md: "45px" }}
+                    w={{ base: "35px", md: "45px" }}
+                    bg={customColor}
+                    transition="all 0.2s ease-in-out"
+                  >
+                    <Icon
+                      as={FaUsers}
+                      h={{ base: "18px", md: "24px" }}
+                      w={{ base: "18px", md: "24px" }}
+                      color="white"
+                    />
+                  </CustomIconBox>
+                </Flex>
+              </CardBody>
+            </Card>
+
+            {/* Technician Allocation Card */}
+            <Card
+              minH="75px"
+              cursor="pointer"
+              onClick={() => handleCardClick("all")}
+              border={activeFilter === "all" ? "2px solid" : "1px solid"}
+              borderColor={activeFilter === "all" ? customColor : `${customColor}30`}
+              transition="all 0.2s ease-in-out"
+              bg="white"
+              position="relative"
+              overflow="hidden"
+              w="100%"
+              _before={{
+                content: '""',
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+                opacity: 0,
+                transition: "opacity 0.2s ease-in-out",
+              }}
+              _hover={{
+                transform: "translateY(-4px)",
+                shadow: "xl",
+                _before: {
+                  opacity: 1,
+                },
+                borderColor: customColor,
+              }}
+            >
+              <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+                <Flex flexDirection="row" align="center" justify="space-between" w="100%">
+                  <Stat me="2">
+                    <StatLabel
+                      fontSize={{ base: "sm", md: "md" }}
+                      color="gray.600"
+                      fontWeight="bold"
+                      pb="2px"
+                      lineHeight="1.2"
+                    >
+                      User payment details
+                    </StatLabel>
+                    <Flex>
+                      <StatNumber fontSize={{ base: "md", md: "lg" }} color={textColor}>
+                        ₹ {userData.reduce((total, user) => {
+                          const userTotal = user.bookings ? user.bookings.filter(b => b.paymentStatus === 'paid' || b.paymentStatus === 'success').reduce((sum, b) => sum + (parseFloat(b.paidAmount) || 0), 0) : 0;
+                          return total + userTotal;
+                        }, 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </StatNumber>
+                    </Flex>
+                  </Stat>
+                  <CustomIconBox
+                    as="box"
+                    h={{ base: "35px", md: "45px" }}
+                    w={{ base: "35px", md: "45px" }}
+                    bg={customColor}
+                    transition="all 0.2s ease-in-out"
+                    _groupHover={{
+                      transform: "scale(1.1)",
+                    }}
+                  >
+                    <Icon
+                      as={IoCheckmarkDoneCircleSharp}
+                      h={{ base: "18px", md: "24px" }}
+                      w={{ base: "18px", md: "24px" }}
+                      color="white"
+                    />
+                  </CustomIconBox>
+                </Flex>
+              </CardBody>
+            </Card>
+
+            {/* Users with Bookings Card */}
+            <Card
+              minH="75px"
+              cursor="pointer"
+              onClick={() => handleCardClick("withBookings")}
+              border={activeFilter === "withBookings" ? "2px solid" : "1px solid"}
+              borderColor={activeFilter === "withBookings" ? customColor : `${customColor}30`}
+              transition="all 0.2s ease-in-out"
+              bg="white"
+              position="relative"
+              overflow="hidden"
+              w="100%"
+              _before={{
+                content: '""',
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+                opacity: 0,
+                transition: "opacity 0.2s ease-in-out",
+              }}
+              _hover={{
+                transform: "translateY(-4px)",
+                shadow: "xl",
+                _before: {
+                  opacity: 1,
+                },
+                borderColor: customColor,
+              }}
+            >
+              <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+                <Flex flexDirection="row" align="center" justify="space-between" w="100%">
+                  <Stat me="2">
+                    <StatLabel
+                      fontSize={{ base: "sm", md: "md" }}
+                      color="gray.600"
+                      fontWeight="bold"
+                      pb="2px"
+                      lineHeight="1.2"
+                    >
+                      Successfull Bookings Details
+                    </StatLabel>
+                    <Flex>
+                      <StatNumber fontSize={{ base: "md", md: "lg" }} color={textColor}>
+                        {userData.filter((u) => (u.bookingCount || 0) > 0).length}
+                      </StatNumber>
+                    </Flex>
+                  </Stat>
+                  <CustomIconBox
+                    as="box"
+                    h={{ base: "35px", md: "45px" }}
+                    w={{ base: "35px", md: "45px" }}
+                    bg={customColor}
+                    transition="all 0.2s ease-in-out"
+                    _groupHover={{
+                      transform: "scale(1.1)",
+                    }}
+                  >
+                    <Icon
+                      as={IoCheckmarkDoneCircleSharp}
+                      h={{ base: "18px", md: "24px" }}
+                      w={{ base: "18px", md: "24px" }}
+                      color="white"
+                    />
+                  </CustomIconBox>
+                </Flex>
+              </CardBody>
+            </Card>
+          </SimpleGrid>
+
+          {/* Success/Error Message Display */}
+          {error && (
+            <Text
+              color="red.500"
+              mb={4}
+              p={3}
+              border="1px"
+              borderColor="red.200"
+              borderRadius="md"
+              bg="red.50"
+            >
+              {error}
+            </Text>
+          )}
+          {success && (
+            <Text
+              color="green.500"
+              mb={4}
+              p={3}
+              border="1px"
+              borderColor="green.200"
+              borderRadius="md"
+              bg="green.50"
+            >
+              {success}
+            </Text>
+          )}
+
+          {/* Active Filter Display */}
+          <Flex justify="space-between" align="center" mb={4}>
+            <Text fontSize="lg" fontWeight="bold" color={textColor}>
+              {activeFilter === "technicianAllocation" && "Technician Allocation"}
+              {activeFilter === "Inactive" && "Inactive Users"}
+              {activeFilter === "withBookings" && "Users with Bookings"}
+              {activeFilter === "all" && "All Users"}
+            </Text>
+            {activeFilter !== "all" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setActiveFilter("all")}
+                border="1px"
+                borderColor={customColor}
+                color={customColor}
+                _hover={{ bg: customColor, color: "white" }}
+              >
+                Show All
+              </Button>
+            )}
+          </Flex>
+        </Box>
+
+        {/* Table Container - Removed background box */}
+        <Box
+          mt={{ base: "0px", md: "-32px" }}
+          flex="1"
+          display="flex"
+          flexDirection="column"
+          p={2}
+          pt={0}
+        >
+          <Card
+            shadow="xl"
+            bg="white"
+            display="flex"
+            flexDirection="column"
+            border="1px solid"
+            borderColor={customColor}
+          >
+            {/* Header */}
+            <CardHeader
+              p={2}
+              pb={2}
+              flexShrink={0}
+              borderBottom="1px solid"
+              borderColor={`${customColor}20`}
+            >
+              <Flex justify="space-between" align="center" flexWrap="wrap" gap={3}>
+                <Heading size="sm" color="gray.700">
+                  👥 Users Table
+                </Heading>
+
+                <Flex align="center" maxW="350px" w="100%">
+                  <Input
+                    placeholder="Search..."
+                    size="sm"
+                    value={searchTerm}
+                    onChange={handleSearchChange}
+                  />
+                  <Icon as={FaSearch} ml={2} color="gray.400" />
+                </Flex>
+              </Flex>
+            </CardHeader>
+
+            {/* Body */}
+            <CardBody p={0} display="flex" flexDirection="column">
+              {tableLoading ? (
+                <Flex justify="center" align="center" py={5} flex="1">
+                  <Spinner size="xl" color={customColor} />
+                  <Text ml={4}>Loading Users...</Text>
+                </Flex>
+              ) : (
+                <Box display="flex" flexDirection="column">
+                  {displayItems.length > 0 ? (
+                    <Box overflow="auto">
+                      <Table
+                        size="sm"
+                        variant="simple"
+                        minW={{ base: "800px", lg: "100%" }}
+                        sx={{
+                          "th, td": {
+                            px: 2,
+                            py: 1,
+                          },
+                        }}
+                      >
+                        <Thead>
+                          <Tr>
+                            {["User", "Contact", "Bookings", "Technician", "Actions"].map(h => (
+                              <Th
+                                key={h}
+                                position="sticky"
+                                top={0}
+                                bg={customColor}
+                                color="white"
+                                fontSize="xs"
+                                fontWeight="bold"
+                                zIndex={10}
+                              >
+                                {h}
+                              </Th>
+                            ))}
+                          </Tr>
+                        </Thead>
+
+                        <Tbody>
+                          {displayItems.map((user, index) => {
+                            const userName =
+                              user?.profile?.fname ||
+                              user?.profile?.firstName ||
+                              user?.name ||
+                              "Unknown User";
+
+                            return (
+                              <Tr
+                                key={user._id || index}
+                                _hover={{ bg: `${customColor}10` }}
+                                borderBottom="1px solid"
+                                borderColor={`${customColor}20`}
+                                height="40px"
+                              >
+                                {/* User */}
+                                <Td>
+                                  <Flex align="center" gap={2}>
+                                    <Avatar size="xs" name={userName} src={user.profileImage} />
+                                    <Box>
+                                      <Text fontSize="sm" fontWeight="medium" lineHeight="short">
+                                        {userName}
+                                      </Text>
+                                      <Text fontSize="xs" color="gray.600" lineHeight="shorter">
+                                        {user.email || "No email"}
+                                      </Text>
+                                    </Box>
+                                  </Flex>
+                                </Td>
+
+                                {/* Contact */}
+                                <Td fontSize="sm" color="gray.600">
+                                  {user.mobileNumber || user.phone || "-"}
+                                </Td>
+
+                                {/* Bookings */}
+                                <Td fontSize="sm" fontWeight="bold">
+                                  {user.bookingCount}
+                                </Td>
+
+                                {/* Technician */}
+                                <Td>
+                                  <IconButton
+                                    size="xs"
+                                    icon={<FaEye />}
+                                    aria-label="View Technician"
+                                    variant="outline"
+                                    colorScheme="green"
+                                    onClick={() => handleViewTechnicianAllocation(user)}
+                                  />
+                                </Td>
+
+                                {/* Actions */}
+                                <Td>
+                                  <Flex gap={1}>
+                                    <IconButton
+                                      size="xs"
+                                      icon={<FaWallet />}
+                                      aria-label="Payments"
+                                      variant="outline"
+                                      colorScheme="orange"
+                                      onClick={() => handleViewPaymentDetails(user)}
+                                    />
+                                    <IconButton
+                                      size="xs"
+                                      icon={<FaEye />}
+                                      aria-label="Details"
+                                      variant="outline"
+                                      colorScheme="teal"
+                                      onClick={() => handleViewDetails(user)}
+                                    />
+                                  </Flex>
+                                </Td>
+                              </Tr>
+                            );
+                          })}
+                        </Tbody>
+                      </Table>
+                    </Box>
+                  ) : (
+                    <Flex
+                      height="200px"
+                      justify="center"
+                      align="center"
+                      border="1px dashed"
+                      borderColor={`${customColor}30`}
+                      borderRadius="md"
+                      m={4}
+                    >
+                      <Text textAlign="center" color="gray.500" fontSize="lg">
+                        {dataLoaded
+                          ? "No users found."
+                          : "Loading users..."}
+                      </Text>
+                    </Flex>
+                  )}
+
+                  {/* Pagination */}
+                  {filteredData.length > 0 && (
+                    <Box
+                      p={1}
+                      borderTop="1px solid"
+                      borderColor={`${customColor}20`}
+                    >
+                      <Flex justify="flex-end" align="center" gap={2}>
+                        <Button
+                          size="sm"
+                          onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                          isDisabled={currentPage === 1}
+                        >
+                          Prev
+                        </Button>
+
+                        <Text fontSize="sm" fontWeight="bold">
+                          {currentPage} / {totalPages}
+                        </Text>
+
+                        <Button
+                          size="sm"
+                          onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                          isDisabled={currentPage === totalPages}
+                        >
+                          Next
+                        </Button>
+                      </Flex>
+                    </Box>
+                  )}
+                </Box>
+              )}
+            </CardBody>
+          </Card>
+        </Box>
+      </Flex>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        isOpen={isDeleteDialogOpen}
+        leastDestructiveRef={cancelRef}
+        onClose={handleCancelDelete}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              Delete User
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              {userToDelete && (
+                <>
+                  Are you sure you want to delete <strong>{userToDelete.firstName} {userToDelete.lastName}</strong>?
+                  <Text mt={2} color="red.500" fontSize="sm">
+                    This action cannot be undone.
+                  </Text>
+                </>
+              )}
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={handleCancelDelete}>
+                Cancel
+              </Button>
+              <Button
+                colorScheme="red"
+                onClick={handleConfirmDelete}
+                ml={3}
+                isLoading={deleteLoading}
+              >
+                Delete
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+
+      {/* User Details Modal */}
+      <Modal isOpen={isDetailsModalOpen} onClose={() => setIsDetailsModalOpen(false)} size="xl">
+        <ModalOverlay backdropFilter="blur(5px)" />
+        <ModalContent borderRadius="15px" shadow="2xl">
+          <ModalHeader borderBottom="1px solid" borderColor="gray.100" py={4}>
+            <Flex align="center">
+              <Avatar
+                size="md"
+                name={selectedUserDetails ? (selectedUserDetails.profile?.firstName ? `${selectedUserDetails.profile.firstName} ${selectedUserDetails.profile.lastName || ''}` : selectedUserDetails.name || 'User Details') : 'User Details'}
+                src={selectedUserDetails?.profileImage}
+                mr={4}
+              />
+              <Box>
+                <Text fontSize="lg" fontWeight="bold">
+                  {selectedUserDetails ? (selectedUserDetails.profile?.firstName ? `${selectedUserDetails.profile.firstName} ${selectedUserDetails.profile.lastName || ''}`.trim() : selectedUserDetails.name || 'Unknown User') : 'User Details'}
+                </Text>
+                <Badge colorScheme="teal" borderRadius="full" px={2} fontSize="xs">
+                  {selectedUserDetails?.status || 'Active'}
+                </Badge>
+              </Box>
+            </Flex>
+          </ModalHeader>
+          <ModalCloseButton />
+
+          <ModalBody py={6}>
+            {selectedUserDetails && (
+              <VStack align="stretch" spacing={6}>
+                {/* Basic Information */}
+                <Box>
+                  <Heading size="xs" textTransform="uppercase" color="gray.500" mb={3} letterSpacing="wider">
+                    Contact Information
+                  </Heading>
+                  <Grid templateColumns="repeat(2, 1fr)" gap={4}>
+                    <GridItem>
+                      <Text fontSize="sm" color="gray.500">Email Address</Text>
+                      <Text fontWeight="medium">{selectedUserDetails.email || 'N/A'}</Text>
+                    </GridItem>
+                    <GridItem>
+                      <Text fontSize="sm" color="gray.500">Phone Number</Text>
+                      <Text fontWeight="medium">{selectedUserDetails.mobileNumber || selectedUserDetails.phone || 'N/A'}</Text>
+                    </GridItem>
+                  </Grid>
+                </Box>
+
+                {/* Job Stats - The part the user requested */}
+                <Box bg={`${customColor}05`} p={4} borderRadius="12px" border="1px solid" borderColor={`${customColor}10`}>
+                  <Heading size="xs" textTransform="uppercase" color={customColor} mb={4} letterSpacing="wider">
+                    Booking Statistics (jobStats)
+                  </Heading>
+                  <SimpleGrid columns={2} spacing={4}>
+                    {/* Service Stats */}
+                    <Box p={3} bg="white" borderRadius="8px" shadow="sm">
+                      <Text fontSize="sm" fontWeight="bold" color="gray.600" mb={2}>Service Bookings</Text>
+                      <Flex justify="space-between" mb={1}>
+                        <Text fontSize="xs" color="gray.500">Total</Text>
+                        <Text fontSize="xs" fontWeight="bold">{selectedUserDetails.jobStats?.service?.total || 0}</Text>
+                      </Flex>
+                      <Flex justify="space-between" mb={1}>
+                        <Text fontSize="xs" color="gray.500">Completed</Text>
+                        <Text fontSize="xs" fontWeight="bold" color="green.500">{selectedUserDetails.jobStats?.service?.completed || 0}</Text>
+                      </Flex>
+                      <Flex justify="space-between">
+                        <Text fontSize="xs" color="gray.500">Cancelled</Text>
+                        <Text fontSize="xs" fontWeight="bold" color="red.500">{selectedUserDetails.jobStats?.service?.cancelled || 0}</Text>
+                      </Flex>
+                    </Box>
+
+                    {/* Product Stats */}
+                    <Box p={3} bg="white" borderRadius="8px" shadow="sm">
+                      <Text fontSize="sm" fontWeight="bold" color="gray.600" mb={2}>Product Orders</Text>
+                      <Flex justify="space-between" mb={1}>
+                        <Text fontSize="xs" color="gray.500">Total</Text>
+                        <Text fontSize="xs" fontWeight="bold">{selectedUserDetails.jobStats?.product?.total || 0}</Text>
+                      </Flex>
+                      {/* Add more product stats if available in the future */}
+                    </Box>
+                  </SimpleGrid>
+                </Box>
+
+                {/* Account Details */}
+                <Box>
+                  <Heading size="xs" textTransform="uppercase" color="gray.500" mb={3} letterSpacing="wider">
+                    Account Details
+                  </Heading>
+                  <Grid templateColumns="repeat(2, 1fr)" gap={4}>
+                    <GridItem>
+                      <Text fontSize="sm" color="gray.500">Joined Date</Text>
+                      <Text fontWeight="medium">
+                        {selectedUserDetails.createdAt ? new Date(selectedUserDetails.createdAt).toLocaleDateString() : 'N/A'}
+                      </Text>
+                    </GridItem>
+                    <GridItem>
+                      <Text fontSize="sm" color="gray.500">Last Login</Text>
+                      <Text fontWeight="medium">
+                        {selectedUserDetails.lastLoginAt ? new Date(selectedUserDetails.lastLoginAt).toLocaleString() : 'N/A'}
+                      </Text>
+                    </GridItem>
+                  </Grid>
+                </Box>
+              </VStack>
+            )}
+          </ModalBody>
+
+
+        </ModalContent>
+      </Modal>
+
+      {/* Technician Allocation Modal */}
+      <Modal isOpen={isTechModalOpen} onClose={() => setIsTechModalOpen(false)} size="xl">
+        <ModalOverlay backdropFilter="blur(5px)" />
+        <ModalContent borderRadius="15px" shadow="2xl">
+          <ModalHeader borderBottom="1px solid" borderColor="gray.100" py={4}>
+            <Text fontSize="lg" fontWeight="bold">Technician Allocation Details</Text>
+          </ModalHeader>
+          <ModalCloseButton />
+
+          <ModalBody py={6} maxH="70vh" overflowY="auto">
+            {selectedUserForTech && selectedUserForTech.bookings && selectedUserForTech.bookings.length > 0 ? (
+              <VStack spacing={4} align="stretch">
+                {selectedUserForTech.bookings.map((booking, idx) => (
+                  <Box key={idx} p={4} borderRadius="lg" border="1px solid" borderColor="gray.200" shadow="sm" bg="gray.50">
+                    <Heading size="xs" textTransform="uppercase" color="gray.500" mb={3}>
+                      Booking #{idx + 1}
+                    </Heading>
+
+                    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                      {/* Technician Details */}
+                      <Box>
+                        <Text fontSize="xs" fontWeight="bold" color="teal.500" mb={1} textTransform="uppercase">Technician Details</Text>
+                        {booking.technicianId ? (
+                          <>
+                            <Text fontSize="sm"><strong>Name:</strong> {
+                              (() => {
+                                const tUser = booking.technicianId.userId;
+                                const name = `${tUser?.fname || tUser?.firstName || ''} ${tUser?.lname || tUser?.lastName || ''}`.trim() || tUser?.name || tUser?.email || "Unknown";
+                                if (name && (name.toLowerCase().startsWith('deleted_') || name.includes('example.invalid'))) return "Deleted Technician";
+                                return name;
+                              })()
+                            }</Text>
+                            <Text fontSize="sm"><strong>Mobile:</strong> {booking.technicianId.userId?.mobileNumber || "N/A"}</Text>
+                            <Text fontSize="sm"><strong>Status:</strong> {booking.technicianId.workStatus || "N/A"}</Text>
+                            <Text fontSize="sm"><strong>Assigned At:</strong> {booking.assignedAt ? new Date(booking.assignedAt).toLocaleString() : "N/A"}</Text>
+                          </>
+                        ) : (
+                          <Text fontSize="sm" color="red.500" fontStyle="italic">No technician has been allocated for this booking.</Text>
+                        )}
+                      </Box>
+
+                      {/* Service & Booking Details */}
+                      <Box>
+                        <Text fontSize="xs" fontWeight="bold" color="blue.500" mb={1} textTransform="uppercase">Service & Booking</Text>
+                        <Text fontSize="sm"><strong>Service:</strong> {booking.serviceId?.serviceName || "N/A"}</Text>
+                        <Text fontSize="sm"><strong>Type:</strong> {booking.serviceId?.serviceType || "N/A"}</Text>
+                        <Text fontSize="sm"><strong>Cost:</strong> ₹{booking.serviceId?.serviceCost || 0}</Text>
+                        <Text fontSize="sm" mt={1}><strong>Booking Status:</strong> <Badge colorScheme={booking.status === 'completed' ? 'green' : booking.status === 'cancelled' ? 'red' : 'yellow'}>{booking.status}</Badge></Text>
+                      </Box>
+                    </SimpleGrid>
+                  </Box>
+                ))}
+              </VStack>
+            ) : (
+              <Flex justify="center" align="center" minH="100px">
+                <Text color="gray.500">No bookings found for this user.</Text>
+              </Flex>
+            )}
+          </ModalBody>
+
+        </ModalContent>
+      </Modal>
+
+      {/* Payment Details Modal */}
+      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} size="lg">
+        <ModalOverlay backdropFilter="blur(5px)" />
+        <ModalContent borderRadius="15px" shadow="2xl">
+          <ModalHeader borderBottom="1px solid" borderColor="gray.100" py={4} bg="gray.50" borderTopRadius="15px">
+            <Flex align="center">
+              <Icon as={FaWallet} color="orange.500" mr={3} w={6} h={6} />
+              <Text fontSize="lg" fontWeight="bold">User Payment Summary</Text>
+            </Flex>
+          </ModalHeader>
+          <ModalCloseButton />
+
+          <ModalBody py={6}>
+            {selectedUserForPayment ? (
+              <VStack spacing={0} align="stretch" border="1px solid" borderColor="gray.200" borderRadius="lg" overflow="hidden">
+                <Box bg="gray.50" p={2} borderBottom="1px solid" borderColor="gray.200">
+                  <Text fontSize="xs" fontWeight="bold" textTransform="uppercase" color="gray.500" letterSpacing="wider">User Details</Text>
+                </Box>
+                <Flex p={4} borderBottom="1px solid" borderColor="gray.100" justify="space-between" align="center">
+                  <Text color="gray.600" fontSize="sm">User Name</Text>
+                  <Text fontWeight="bold">
+                    {(() => {
+                      const u = selectedUserForPayment.user;
+                      if (u.profile && (u.profile.fname || u.profile.lname)) return `${u.profile.fname || ""} ${u.profile.lname || ""}`.trim();
+                      if (u.profile && (u.profile.firstName || u.profile.lastName)) return `${u.profile.firstName || ""} ${u.profile.lastName || ""}`.trim();
+                      return (u.name || `${u.firstName || ''} ${u.lastName || ''}`).trim() || "Unknown";
+                    })()}
+                  </Text>
+                </Flex>
+                <Flex p={4} borderBottom="1px solid" borderColor="gray.100" justify="space-between" align="center">
+                  <Text color="gray.600" fontSize="sm">Mobile Number</Text>
+                  <Text fontWeight="bold">{selectedUserForPayment.user.mobileNumber || selectedUserForPayment.user.phone || "N/A"}</Text>
+                </Flex>
+
+                <Box bg="gray.50" p={2} borderBottom="1px solid" borderColor="gray.200" mt={2}>
+                  <Text fontSize="xs" fontWeight="bold" textTransform="uppercase" color="gray.500" letterSpacing="wider">Payment Stats</Text>
+                </Box>
+                <Flex p={4} borderBottom="1px solid" borderColor="gray.100" justify="space-between" align="center">
+                  <Text color="gray.600" fontSize="sm">Total Bookings</Text>
+                  <Text fontWeight="bold">{selectedUserForPayment.totalBookings}</Text>
+                </Flex>
+                <Flex p={4} borderBottom="1px solid" borderColor="gray.100" justify="space-between" align="center">
+                  <Text color="gray.600" fontSize="sm">Successful Paid</Text>
+                  <Badge colorScheme={selectedUserForPayment.successfulPaymentsCount > 0 ? "green" : "gray"}>
+                    {selectedUserForPayment.successfulPaymentsCount}
+                  </Badge>
+                </Flex>
+
+                <Box bg="teal.50" p={4}>
+                  <Flex justify="space-between" align="center">
+                    <Text color="teal.700" fontWeight="bold">Total Amount Paid</Text>
+                    <Text fontSize="xl" fontWeight="extrabold" color="teal.600">
+                      ₹ {selectedUserForPayment.totalPaidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </Text>
+                  </Flex>
+                </Box>
+
+                {selectedUserForPayment.successfulPaymentsCount === 0 && (
+                  <Box p={3} bg="red.50" borderTop="1px solid" borderColor="red.100">
+                    <Text fontSize="sm" color="red.500" textAlign="center">No successful payments found for this user.</Text>
+                  </Box>
+                )}
+              </VStack>
+            ) : null}
+          </ModalBody>
+
+        </ModalContent>
+      </Modal>
+    </>
+  );
+}
+
+// Custom IconBox component
+function CustomIconBox({ children, ...rest }) {
+  return (
     <Box
       display="flex"
       alignItems="center"
@@ -432,1058 +1371,6 @@ export default function UserManagement() {
       {children}
     </Box>
   );
-
-  // Mobile Card Component for User
-  const UserMobileCard = ({ user, idx }) => {
-    const userName = user.profile?.fname || user.profile?.firstName || user.name || 
-      `${user.firstName || ''} ${user.lastName || ''}`.trim() || "Unknown User";
-
-    return (
-      <Box
-        p={3}
-        bg="white"
-        borderWidth="1px"
-        borderColor={`${customColor}20`}
-        borderRadius="md"
-        shadow="sm"
-        mb={3}
-        transition="all 0.2s"
-        _active={{ transform: "scale(0.98)" }}
-      >
-        <Flex justify="space-between" align="center" mb={2}>
-          <HStack spacing={2}>
-            <Avatar size="xs" name={userName} src={user.profileImage} />
-            <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
-              #{indexOfFirstItem + idx + 1} {userName}
-            </Text>
-          </HStack>
-          <Badge
-            colorScheme={user.status?.toLowerCase() === "active" ? "green" : "red"}
-            borderRadius="full"
-            px={2}
-            fontSize="3xs"
-          >
-            {user.status || "Active"}
-          </Badge>
-        </Flex>
-
-        <Text fontSize="2xs" color="gray.600" noOfLines={1} mb={2}>
-          {user.email || "No email"} • {user.mobileNumber || user.phone || "No phone"}
-        </Text>
-
-        <HStack spacing={2} mb={3} wrap="wrap">
-          <Badge colorScheme="blue" variant="subtle" fontSize="3xs">
-            Bookings: {user.bookingCount}
-          </Badge>
-          <Badge 
-            colorScheme={user.allocatedTechnician !== "None" ? "green" : "gray"} 
-            fontSize="3xs"
-          >
-            Tech: {user.allocatedTechnician !== "None" ? "Yes" : "No"}
-          </Badge>
-        </HStack>
-
-        <Flex gap={2} justify="flex-end">
-          <IconButton
-            aria-label="View details"
-            icon={<FaEye />}
-            size="xs"
-            colorScheme="blue"
-            variant="ghost"
-            onClick={() => handleViewDetails(user)}
-          />
-          <IconButton
-            aria-label="View technician"
-            icon={<FaUserCog />}
-            size="xs"
-            colorScheme="green"
-            variant="ghost"
-            onClick={() => handleViewTechnicianAllocation(user)}
-          />
-          <IconButton
-            aria-label="View payments"
-            icon={<FaWallet />}
-            size="xs"
-            colorScheme="orange"
-            variant="ghost"
-            onClick={() => handleViewPaymentDetails(user)}
-          />
-        </Flex>
-      </Box>
-    );
-  };
-
-  if (!currentUser) return null;
-
-  return (
-    <Flex
-      flexDirection="column"
-      pt={{ base: "50px", md: "45px" }}
-      height={{ base: "calc(100vh - 20px)", md: "calc(100vh - 40px)" }}
-      overflow="hidden"
-      css={globalScrollbarStyles}
-    >
-      {/* Fixed Statistics Cards */}
-      <Box flexShrink={0} p={{ base: 1, md: 4 }} pb={0}>
-        <Grid
-          templateColumns={{ base: "1fr 1fr", md: "1fr 1fr 1fr 1fr" }}
-          gap={{ base: "10px", md: "15px" }}
-          mb={{ base: "15px", md: "20px" }}
-        >
-          {/* Total Users Card */}
-          <Card
-            minH={{ base: "65px", md: "75px" }}
-            cursor="pointer"
-            onClick={() => handleFilterClick("all")}
-            border="1px solid"
-            borderColor={`${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "none", md: "translateY(-2px)" },
-              shadow: { base: "none", md: "lg" },
-              _before: { opacity: 1 },
-              borderColor: customColor,
-            }}
-          >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}>
-              <Flex flexDirection="row" align="center" justify="center" w="100%">
-                <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }}
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="1px"
-                  >
-                    Total Users
-                  </StatLabel>
-                  <Flex>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                      {isLoading ? <Spinner size="xs" /> : stats.totalUsers}
-                    </StatNumber>
-                  </Flex>
-                </Stat>
-                <IconBox
-                  as="box"
-                  h={{ base: "30px", md: "35px" }}
-                  w={{ base: "30px", md: "35px" }}
-                  bg={customColor}
-                >
-                  <Icon as={FaUsers} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
-                </IconBox>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {/* Active Users Card */}
-          <Card
-            minH={{ base: "65px", md: "75px" }}
-            cursor="pointer"
-            onClick={() => handleFilterClick("active")}
-            border="1px solid"
-            borderColor={`${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "none", md: "translateY(-2px)" },
-              shadow: { base: "none", md: "lg" },
-              _before: { opacity: 1 },
-              borderColor: customColor,
-            }}
-          >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}>
-              <Flex flexDirection="row" align="center" justify="center" w="100%">
-                <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }}
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="1px"
-                  >
-                    Active Users
-                  </StatLabel>
-                  <Flex>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                      {isLoading ? <Spinner size="xs" /> : stats.activeUsers}
-                    </StatNumber>
-                  </Flex>
-                </Stat>
-                <IconBox
-                  as="box"
-                  h={{ base: "30px", md: "35px" }}
-                  w={{ base: "30px", md: "35px" }}
-                  bg="green.500"
-                >
-                  <Icon as={FaUserCheck} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
-                </IconBox>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {/* Users with Bookings Card */}
-          <Card
-            minH={{ base: "65px", md: "75px" }}
-            cursor="pointer"
-            onClick={() => handleFilterClick("withBookings")}
-            border="1px solid"
-            borderColor={`${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "none", md: "translateY(-2px)" },
-              shadow: { base: "none", md: "lg" },
-              _before: { opacity: 1 },
-              borderColor: customColor,
-            }}
-          >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}>
-              <Flex flexDirection="row" align="center" justify="center" w="100%">
-                <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }}
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="1px"
-                  >
-                    With Bookings
-                  </StatLabel>
-                  <Flex>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                      {isLoading ? <Spinner size="xs" /> : stats.usersWithBookings}
-                    </StatNumber>
-                  </Flex>
-                </Stat>
-                <IconBox
-                  as="box"
-                  h={{ base: "30px", md: "35px" }}
-                  w={{ base: "30px", md: "35px" }}
-                  bg="orange.500"
-                >
-                  <Icon as={IoCheckmarkDoneCircleSharp} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
-                </IconBox>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {/* Total Revenue Card */}
-          <Card
-            minH={{ base: "65px", md: "75px" }}
-            cursor="pointer"
-            onClick={() => handleFilterClick("withTechnician")}
-            border="1px solid"
-            borderColor={`${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "none", md: "translateY(-2px)" },
-              shadow: { base: "none", md: "lg" },
-              _before: { opacity: 1 },
-              borderColor: customColor,
-            }}
-          >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}>
-              <Flex flexDirection="row" align="center" justify="center" w="100%">
-                <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }}
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="1px"
-                  >
-                    Total Revenue
-                  </StatLabel>
-                  <Flex>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                      {isLoading ? <Spinner size="xs" /> : `₹${stats.totalRevenue.toLocaleString()}`}
-                    </StatNumber>
-                  </Flex>
-                </Stat>
-                <IconBox
-                  as="box"
-                  h={{ base: "30px", md: "35px" }}
-                  w={{ base: "30px", md: "35px" }}
-                  bg="purple.500"
-                >
-                  <Icon as={FaChartLine} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
-                </IconBox>
-              </Flex>
-            </CardBody>
-          </Card>
-        </Grid>
-      </Box>
-
-      {/* Scrollable Table Container */}
-      <Box display="flex" flexDirection="column" p={4} pt={0} flex="1" overflow="hidden">
-        <Card
-          shadow="lg"
-          bg="white"
-          display="flex"
-          flexDirection="column"
-          height="100%"
-          overflow="hidden"
-        >
-          {/* Fixed Table Header */}
-          <CardHeader
-            p="16px"
-            pb="12px"
-            bg="white"
-            flexShrink={0}
-            borderBottom="1px solid"
-            borderColor={`${customColor}20`}
-          >
-            <Flex
-              flexDirection={{ base: "column", sm: "row" }}
-              justify="space-between"
-              align={{ base: "stretch", sm: "center" }}
-              gap={3}
-            >
-              <Heading size="sm" flexShrink={0} color="gray.700">
-                👥 User Management
-              </Heading>
-
-              <Flex
-                align="center"
-                flex={{ base: "none", sm: "1" }}
-                maxW={{ base: "100%", sm: "350px" }}
-                minW={{ base: "0", sm: "200px" }}
-                w="100%"
-              >
-                <Input
-                  placeholder="Search users..."
-                  value={searchTerm}
-                  onChange={handleSearchChange}
-                  size="sm"
-                  mr={2}
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                  bg="white"
-                  fontSize="sm"
-                />
-                <Icon as={FaSearch} color="gray.400" boxSize={3} />
-                {searchTerm && (
-                  <Button
-                    size="sm"
-                    ml={2}
-                    onClick={handleClearSearch}
-                    bg="white"
-                    color={customColor}
-                    border="1px"
-                    borderColor={customColor}
-                    _hover={{ bg: customColor, color: "white" }}
-                    fontSize="xs"
-                    px={2}
-                  >
-                    Clear
-                  </Button>
-                )}
-              </Flex>
-            </Flex>
-          </CardHeader>
-
-          {/* Scrollable Table Content Area */}
-          <CardBody bg="white" display="flex" flexDirection="column" p={0} flex="1" overflow="hidden">
-            {isLoading ? (
-              <Flex justify="center" align="center" py={6} flex="1">
-                <Spinner size="lg" color={customColor} />
-                <Text ml={3} fontSize="sm">Loading users...</Text>
-              </Flex>
-            ) : (
-              <Box display="flex" flexDirection="column" flex="1" overflow="hidden">
-                {/* Desktop Table View */}
-                <Box display={{ base: "none", md: "block" }} overflow="auto" css={globalScrollbarStyles}>
-                  <Table variant="simple" size="sm" bg="transparent">
-                    <Thead>
-                      <Tr>
-                        <Th
-                          color="gray.100"
-                          borderColor={`${customColor}30`}
-                          position="sticky"
-                          top={0}
-                          bg={customColor}
-                          zIndex={10}
-                          fontWeight="bold"
-                          fontSize="xs"
-                          py={3}
-                          borderBottom="2px solid"
-                          borderBottomColor={`${customColor}50`}
-                        >
-                          #
-                        </Th>
-                        <Th
-                          color="gray.100"
-                          borderColor={`${customColor}30`}
-                          position="sticky"
-                          top={0}
-                          bg={customColor}
-                          zIndex={10}
-                          fontWeight="bold"
-                          fontSize="xs"
-                          py={3}
-                          borderBottom="2px solid"
-                          borderBottomColor={`${customColor}50`}
-                        >
-                          User
-                        </Th>
-                        <Th
-                          color="gray.100"
-                          borderColor={`${customColor}30`}
-                          position="sticky"
-                          top={0}
-                          bg={customColor}
-                          zIndex={10}
-                          fontWeight="bold"
-                          fontSize="xs"
-                          py={3}
-                          borderBottom="2px solid"
-                          borderBottomColor={`${customColor}50`}
-                        >
-                          Contact
-                        </Th>
-                        <Th
-                          color="gray.100"
-                          borderColor={`${customColor}30`}
-                          position="sticky"
-                          top={0}
-                          bg={customColor}
-                          zIndex={10}
-                          fontWeight="bold"
-                          fontSize="xs"
-                          py={3}
-                          borderBottom="2px solid"
-                          borderBottomColor={`${customColor}50`}
-                        >
-                          Status
-                        </Th>
-                        <Th
-                          color="gray.100"
-                          borderColor={`${customColor}30`}
-                          position="sticky"
-                          top={0}
-                          bg={customColor}
-                          zIndex={10}
-                          fontWeight="bold"
-                          fontSize="xs"
-                          py={3}
-                          borderBottom="2px solid"
-                          borderBottomColor={`${customColor}50`}
-                        >
-                          Bookings
-                        </Th>
-                        <Th
-                          color="gray.100"
-                          borderColor={`${customColor}30`}
-                          position="sticky"
-                          top={0}
-                          bg={customColor}
-                          zIndex={10}
-                          fontWeight="bold"
-                          fontSize="xs"
-                          py={3}
-                          borderBottom="2px solid"
-                          borderBottomColor={`${customColor}50`}
-                        >
-                          Technician
-                        </Th>
-                        <Th
-                          color="gray.100"
-                          borderColor={`${customColor}30`}
-                          position="sticky"
-                          top={0}
-                          bg={customColor}
-                          zIndex={10}
-                          fontWeight="bold"
-                          fontSize="xs"
-                          py={3}
-                          borderBottom="2px solid"
-                          borderBottomColor={`${customColor}50`}
-                        >
-                          Actions
-                        </Th>
-                      </Tr>
-                    </Thead>
-
-                    <Tbody bg="transparent">
-                      {currentItems.length > 0 ? (
-                        currentItems.map((user, idx) => {
-                          const userName = user.profile?.fname || user.profile?.firstName || user.name || 
-                            `${user.firstName || ''} ${user.lastName || ''}`.trim() || "Unknown User";
-
-                          return (
-                            <Tr
-                              key={user._id || idx}
-                              bg="transparent"
-                              _hover={{ bg: `${customColor}10` }}
-                              borderBottom="1px"
-                              borderColor={`${customColor}20`}
-                              height="50px"
-                            >
-                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
-                                {indexOfFirstItem + idx + 1}
-                              </Td>
-                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
-                                <Flex align="center" gap={2}>
-                                  <Avatar size="xs" name={userName} src={user.profileImage} />
-                                  <Box>
-                                    <Text fontWeight="medium" fontSize="xs" noOfLines={1}>
-                                      {userName}
-                                    </Text>
-                                    <Text fontSize="2xs" color="gray.500">
-                                      {user.email || "No email"}
-                                    </Text>
-                                  </Box>
-                                </Flex>
-                              </Td>
-                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
-                                {user.mobileNumber || user.phone || "-"}
-                              </Td>
-                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
-                                <Badge
-                                  colorScheme={user.status?.toLowerCase() === "active" ? "green" : "red"}
-                                  px={2}
-                                  py={0.5}
-                                  borderRadius="full"
-                                  fontSize="2xs"
-                                >
-                                  {user.status || "Active"}
-                                </Badge>
-                              </Td>
-                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
-                                <Text fontWeight="bold">{user.bookingCount}</Text>
-                              </Td>
-                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
-                                <Badge
-                                  colorScheme={user.allocatedTechnician !== "None" ? "green" : "gray"}
-                                  fontSize="2xs"
-                                  px={2}
-                                  py={0.5}
-                                >
-                                  {user.allocatedTechnician !== "None" ? "Allocated" : "None"}
-                                </Badge>
-                              </Td>
-                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
-                                <Flex gap={2}>
-                                  <IconButton
-                                    aria-label="View details"
-                                    icon={<FaEye />}
-                                    bg="white"
-                                    color="blue.500"
-                                    border="1px"
-                                    borderColor="blue.500"
-                                    _hover={{ bg: "blue.500", color: "white" }}
-                                    size="xs"
-                                    onClick={() => handleViewDetails(user)}
-                                  />
-                                  <IconButton
-                                    aria-label="View technician"
-                                    icon={<FaUserCog />}
-                                    bg="white"
-                                    color="green.500"
-                                    border="1px"
-                                    borderColor="green.500"
-                                    _hover={{ bg: "green.500", color: "white" }}
-                                    size="xs"
-                                    onClick={() => handleViewTechnicianAllocation(user)}
-                                  />
-                                  <IconButton
-                                    aria-label="View payments"
-                                    icon={<FaWallet />}
-                                    bg="white"
-                                    color="orange.500"
-                                    border="1px"
-                                    borderColor="orange.500"
-                                    _hover={{ bg: "orange.500", color: "white" }}
-                                    size="xs"
-                                    onClick={() => handleViewPaymentDetails(user)}
-                                  />
-                                </Flex>
-                              </Td>
-                            </Tr>
-                          );
-                        })
-                      ) : (
-                        <Tr>
-                          <Td colSpan={7} textAlign="center" py={6}>
-                            <Text fontSize="xs">
-                              {userData.length === 0 ? "No users found." : "No users match your search."}
-                            </Text>
-                          </Td>
-                        </Tr>
-                      )}
-                    </Tbody>
-                  </Table>
-                </Box>
-
-                {/* Mobile Card View */}
-                <Box
-                  display={{ base: "block", md: "none" }}
-                  overflow="auto"
-                  px={3}
-                  py={2}
-                  css={globalScrollbarStyles}
-                >
-                  {currentItems.length > 0 ? (
-                    currentItems.map((user, idx) => (
-                      <UserMobileCard key={user._id || idx} user={user} idx={idx} />
-                    ))
-                  ) : (
-                    <Center py={10}>
-                      <VStack spacing={2}>
-                        <Icon as={FaUsers} color="gray.300" boxSize={10} />
-                        <Text fontSize="sm" color="gray.500">No users found</Text>
-                      </VStack>
-                    </Center>
-                  )}
-                </Box>
-
-                {/* Pagination Controls */}
-                {filteredData.length > 0 && (
-                  <Box
-                    flexShrink={0}
-                    p="16px"
-                    borderTop="1px solid"
-                    borderColor={`${customColor}20`}
-                    bg="transparent"
-                  >
-                    <Flex justify="flex-end" align="center" gap={3}>
-                      <Flex align="center" gap={2}>
-                        <Button
-                          size="sm"
-                          onClick={handlePrevPage}
-                          isDisabled={currentPage === 1}
-                          leftIcon={<FaChevronLeft />}
-                          bg="white"
-                          color={customColor}
-                          border="1px"
-                          borderColor={customColor}
-                          _hover={{ bg: customColor, color: "white" }}
-                          _disabled={{
-                            opacity: 0.5,
-                            cursor: "not-allowed",
-                            bg: "gray.100",
-                            color: "gray.400",
-                            borderColor: "gray.300"
-                          }}
-                        >
-                          <Text display={{ base: "none", sm: "block" }}>Previous</Text>
-                        </Button>
-
-                        <Flex
-                          align="center"
-                          gap={2}
-                          bg={`${customColor}10`}
-                          px={3}
-                          py={1}
-                          borderRadius="6px"
-                          minW="80px"
-                          justify="center"
-                        >
-                          <Text fontSize="sm" fontWeight="bold" color={customColor}>
-                            {currentPage}
-                          </Text>
-                          <Text fontSize="sm" color="gray.500">/</Text>
-                          <Text fontSize="sm" color="gray.600" fontWeight="medium">
-                            {totalPages}
-                          </Text>
-                        </Flex>
-
-                        <Button
-                          size="sm"
-                          onClick={handleNextPage}
-                          isDisabled={currentPage === totalPages}
-                          rightIcon={<FaChevronRight />}
-                          bg="white"
-                          color={customColor}
-                          border="1px"
-                          borderColor={customColor}
-                          _hover={{ bg: customColor, color: "white" }}
-                          _disabled={{
-                            opacity: 0.5,
-                            cursor: "not-allowed",
-                            bg: "gray.100",
-                            color: "gray.400",
-                            borderColor: "gray.300"
-                          }}
-                        >
-                          <Text display={{ base: "none", sm: "block" }}>Next</Text>
-                        </Button>
-                      </Flex>
-                    </Flex>
-                  </Box>
-                )}
-              </Box>
-            )}
-          </CardBody>
-        </Card>
-      </Box>
-
-      {/* User Details Modal */}
-      <Modal isOpen={isViewModalOpen} onClose={closeModal} size="lg">
-        <ModalOverlay />
-        <ModalContent maxW="600px">
-          <ModalHeader color="gray.700">User Details</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody maxH="70vh" overflowY="auto">
-            {selectedUser && (
-              <VStack spacing={4} align="stretch">
-                {/* Profile Header */}
-                <Flex align="center" gap={4} mb={2}>
-                  <Avatar
-                    size="xl"
-                    name={selectedUser.profile?.fname || selectedUser.name}
-                    src={selectedUser.profileImage}
-                  />
-                  <Box>
-                    <Heading size="md" color="gray.700">
-                      {selectedUser.profile?.fname || selectedUser.profile?.firstName || selectedUser.name || 
-                       `${selectedUser.firstName || ''} ${selectedUser.lastName || ''}`.trim()}
-                    </Heading>
-                    <Badge colorScheme={selectedUser.status?.toLowerCase() === "active" ? "green" : "red"} mt={1}>
-                      {selectedUser.status || "Active"}
-                    </Badge>
-                  </Box>
-                </Flex>
-
-                {/* Contact Information */}
-                <Box>
-                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Contact Information</Text>
-                  <SimpleGrid columns={2} spacing={3}>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Email</Text>
-                      <Text fontSize="sm">{selectedUser.email || "N/A"}</Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Phone</Text>
-                      <Text fontSize="sm">{selectedUser.mobileNumber || selectedUser.phone || "N/A"}</Text>
-                    </Box>
-                  </SimpleGrid>
-                </Box>
-
-                {/* Booking Statistics */}
-                <Box bg={`${customColor}05`} p={4} borderRadius="md">
-                  <Text fontWeight="bold" color={customColor} fontSize="sm" mb={3}>Booking Statistics</Text>
-                  <SimpleGrid columns={2} spacing={3}>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Total Bookings</Text>
-                      <Text fontSize="lg" fontWeight="bold">{selectedUser.bookingCount}</Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Completed</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="green.500">
-                        {selectedUser.jobStats?.service?.completed || 0}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Pending</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="orange.500">
-                        {(selectedUser.bookingCount || 0) - (selectedUser.jobStats?.service?.completed || 0)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Cancelled</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="red.500">
-                        {selectedUser.jobStats?.service?.cancelled || 0}
-                      </Text>
-                    </Box>
-                  </SimpleGrid>
-                </Box>
-
-                {/* Account Details */}
-                <Box>
-                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Account Details</Text>
-                  <SimpleGrid columns={2} spacing={3}>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Joined Date</Text>
-                      <Text fontSize="sm">
-                        {selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString() : "N/A"}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Last Login</Text>
-                      <Text fontSize="sm">
-                        {selectedUser.lastLoginAt ? new Date(selectedUser.lastLoginAt).toLocaleString() : "N/A"}
-                      </Text>
-                    </Box>
-                  </SimpleGrid>
-                </Box>
-
-                {/* Technician Assignment */}
-                <Box>
-                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Technician Assignment</Text>
-                  <Badge
-                    colorScheme={selectedUser.allocatedTechnician !== "None" ? "green" : "gray"}
-                    fontSize="sm"
-                    px={3}
-                    py={1}
-                  >
-                    {selectedUser.allocatedTechnician !== "None" ? 
-                      `Assigned to: ${selectedUser.allocatedTechnician}` : 
-                      "No technician assigned"}
-                  </Badge>
-                </Box>
-              </VStack>
-            )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
-
-      {/* Technician Allocation Modal */}
-      <Modal isOpen={isTechModalOpen} onClose={closeModal} size="xl">
-        <ModalOverlay />
-        <ModalContent maxW="700px">
-          <ModalHeader color="gray.700">Technician Allocation Details</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody maxH="70vh" overflowY="auto">
-            {selectedUserForTech && (
-              <VStack spacing={4} align="stretch">
-                {selectedUserForTech.bookings && selectedUserForTech.bookings.length > 0 ? (
-                  selectedUserForTech.bookings.map((booking, idx) => (
-                    <Box
-                      key={idx}
-                      p={4}
-                      border="1px solid"
-                      borderColor="gray.200"
-                      borderRadius="md"
-                      bg="gray.50"
-                    >
-                      <Text fontWeight="bold" color={customColor} fontSize="sm" mb={3}>
-                        Booking #{idx + 1}
-                      </Text>
-
-                      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                        <Box>
-                          <Text fontSize="xs" fontWeight="bold" color="teal.500" mb={1}>
-                            Technician Details
-                          </Text>
-                          {booking.technicianId ? (
-                            <>
-                              <Text fontSize="sm">
-                                <strong>Name:</strong> {
-                                  (() => {
-                                    const tUser = booking.technicianId.userId;
-                                    const name = `${tUser?.fname || tUser?.firstName || ''} ${tUser?.lname || tUser?.lastName || ''}`.trim() || 
-                                               tUser?.name || "Unknown";
-                                    return name;
-                                  })()
-                                }
-                              </Text>
-                              <Text fontSize="sm">
-                                <strong>Mobile:</strong> {booking.technicianId.userId?.mobileNumber || "N/A"}
-                              </Text>
-                              <Text fontSize="sm">
-                                <strong>Status:</strong> {booking.technicianId.workStatus || "N/A"}
-                              </Text>
-                              <Text fontSize="sm">
-                                <strong>Assigned:</strong> {booking.assignedAt ? new Date(booking.assignedAt).toLocaleString() : "N/A"}
-                              </Text>
-                            </>
-                          ) : (
-                            <Text fontSize="sm" color="red.500" fontStyle="italic">
-                              No technician allocated
-                            </Text>
-                          )}
-                        </Box>
-
-                        <Box>
-                          <Text fontSize="xs" fontWeight="bold" color="blue.500" mb={1}>
-                            Service Details
-                          </Text>
-                          <Text fontSize="sm">
-                            <strong>Service:</strong> {booking.serviceId?.serviceName || "N/A"}
-                          </Text>
-                          <Text fontSize="sm">
-                            <strong>Type:</strong> {booking.serviceId?.serviceType || "N/A"}
-                          </Text>
-                          <Text fontSize="sm">
-                            <strong>Cost:</strong> ₹{booking.serviceId?.serviceCost || 0}
-                          </Text>
-                          <Text fontSize="sm" mt={1}>
-                            <strong>Status:</strong>{" "}
-                            <Badge
-                              colorScheme={
-                                booking.status === 'completed' ? 'green' :
-                                booking.status === 'cancelled' ? 'red' : 'yellow'
-                              }
-                            >
-                              {booking.status}
-                            </Badge>
-                          </Text>
-                        </Box>
-                      </SimpleGrid>
-                    </Box>
-                  ))
-                ) : (
-                  <Center py={6}>
-                    <Text color="gray.500">No bookings found for this user.</Text>
-                  </Center>
-                )}
-              </VStack>
-            )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
-
-      {/* Payment Details Modal */}
-      <Modal isOpen={isPaymentModalOpen} onClose={closeModal} size="lg">
-        <ModalOverlay />
-        <ModalContent maxW="500px">
-          <ModalHeader color="gray.700">
-            <Flex align="center" gap={2}>
-              <Icon as={FaWallet} color="orange.500" />
-              Payment Summary
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            {selectedUserForPayment && (
-              <VStack spacing={4} align="stretch">
-                {/* User Info */}
-                <Flex align="center" gap={3} p={3} bg="gray.50" borderRadius="md">
-                  <Avatar
-                    size="sm"
-                    name={selectedUserForPayment.user.profile?.fname || selectedUserForPayment.user.name}
-                  />
-                  <Box>
-                    <Text fontWeight="bold">
-                      {selectedUserForPayment.user.profile?.fname || 
-                       selectedUserForPayment.user.name || 
-                       `${selectedUserForPayment.user.firstName || ''} ${selectedUserForPayment.user.lastName || ''}`.trim()}
-                    </Text>
-                    <Text fontSize="xs" color="gray.500">
-                      {selectedUserForPayment.user.mobileNumber || selectedUserForPayment.user.phone || "No phone"}
-                    </Text>
-                  </Box>
-                </Flex>
-
-                {/* Payment Stats */}
-                <SimpleGrid columns={2} spacing={3}>
-                  <Box p={3} border="1px solid" borderColor="gray.200" borderRadius="md">
-                    <Text fontSize="xs" color="gray.500">Total Bookings</Text>
-                    <Text fontSize="xl" fontWeight="bold">{selectedUserForPayment.totalBookings}</Text>
-                  </Box>
-                  <Box p={3} border="1px solid" borderColor="gray.200" borderRadius="md">
-                    <Text fontSize="xs" color="gray.500">Paid Bookings</Text>
-                    <Text fontSize="xl" fontWeight="bold" color="green.500">
-                      {selectedUserForPayment.successfulPaymentsCount}
-                    </Text>
-                  </Box>
-                </SimpleGrid>
-
-                {/* Total Amount */}
-                <Box p={4} bg="teal.50" borderRadius="md">
-                  <Flex justify="space-between" align="center">
-                    <Text fontWeight="bold" color="teal.700">Total Amount Paid</Text>
-                    <Text fontSize="2xl" fontWeight="extrabold" color="teal.600">
-                      ₹{selectedUserForPayment.totalPaidAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                    </Text>
-                  </Flex>
-                </Box>
-
-                {selectedUserForPayment.successfulPaymentsCount === 0 && (
-                  <Box p={3} bg="red.50" borderRadius="md">
-                    <Text fontSize="sm" color="red.500" textAlign="center">
-                      No successful payments found for this user.
-                    </Text>
-                  </Box>
-                )}
-              </VStack>
-            )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog isOpen={isDeleteDialogOpen} leastDestructiveRef={cancelRef} onClose={closeDeleteModal}>
-        <AlertDialogOverlay>
-          <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold">
-              <Flex align="center" gap={2}>
-                <Icon as={MdWarning} color="red.500" />
-                Confirm Delete
-              </Flex>
-            </AlertDialogHeader>
-
-            <AlertDialogBody>
-              {userToDelete && (
-                <Text>
-                  Are you sure you want to delete{" "}
-                  <Text as="span" fontWeight="bold" color={customColor}>
-                    "{userToDelete.profile?.fname || userToDelete.name}"
-                  </Text>
-                  ? This action cannot be undone.
-                </Text>
-              )}
-            </AlertDialogBody>
-
-            <AlertDialogFooter>
-              <Button ref={cancelRef} onClick={closeDeleteModal} size="sm">
-                Cancel
-              </Button>
-              <Button
-                colorScheme="red"
-                onClick={handleConfirmDelete}
-                ml={3}
-                isLoading={deleteLoading}
-                size="sm"
-              >
-                Delete
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialogOverlay>
-      </AlertDialog>
-    </Flex>
-  );
 }
+
+export default UserManagement;

@@ -1,16 +1,11 @@
 // AdminManagement.js - OWNER ONLY ACCESS
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Box,
   Button,
   Flex,
-  FormControl,
-  FormLabel,
-  Grid,
   Icon,
   Input,
-  InputGroup,
-  InputRightElement,
-  Select,
   SimpleGrid,
   Stat,
   StatLabel,
@@ -24,72 +19,68 @@ import {
   useColorModeValue,
   useToast,
   Heading,
-  Badge,
   Text,
   IconButton,
   Spinner,
   Avatar,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogContent,
+  AlertDialogOverlay,
   Modal,
   ModalOverlay,
   ModalContent,
   ModalHeader,
-  ModalBody,
   ModalFooter,
+  ModalBody,
   ModalCloseButton,
-  AlertDialog,
-  AlertDialogBody,
-  AlertDialogContent,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogOverlay,
-  Textarea,
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverHeader,
-  PopoverBody,
-  PopoverFooter,
-  PopoverArrow,
-  PopoverCloseButton,
-  Portal,
+  Badge,
+  Grid,
+  GridItem,
   VStack,
   HStack,
+  Center,
+  Image,
+  FormControl,
+  FormLabel,
+  InputGroup,
+  InputRightElement,
+  Select,
+  Textarea,
   Tooltip,
 } from "@chakra-ui/react";
+
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
-import React, { useState, useEffect, useRef } from "react";
+
 import {
   FaUsers,
-  FaEdit,
-  FaArrowLeft,
   FaChevronLeft,
   FaChevronRight,
   FaSearch,
-  FaUserPlus,
   FaEye,
-  FaEyeSlash,
-  FaUserSlash,
-  FaExclamationTriangle,
   FaUserGraduate,
-  FaTrash,
-  FaTimes,
   FaIdCard,
   FaHistory,
+  FaTrash,
   FaSearchPlus,
   FaSearchMinus,
   FaRedo,
   FaUndo,
+  FaArrowLeft,
+  FaTimes,
+  FaExclamationTriangle,
 } from "react-icons/fa";
 import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
-import { MdAdminPanelSettings, MdPerson, MdBlock, MdWarning } from "react-icons/md";
+import { MdAdminPanelSettings, MdWarning } from "react-icons/md";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
 import {
   getAllTechnicians,
   updateAdmin,
   createAdmin,
-  inActiveAdmin,
   deleteTechnician,
   getTechnicianKYC,
   getAllKYCRecords,
@@ -97,7 +88,7 @@ import {
   deleteKYC,
   updateTrainingStatus,
   getTechnicianJobHistory,
-} from "views/utils/axiosInstance";
+} from "../utils/axiosInstance";
 import { useNavigate } from "react-router-dom";
 
 // Helper to resolve technician name safely
@@ -136,7 +127,7 @@ const getTechnicianName = (tech) => {
     return fullName;
   }
 
-  // Nested userId fields (for when admin is a populated technician object)
+  // Nested userId fields
   if (tech.userId) {
     if (typeof tech.userId === 'object') {
       if (tech.userId.name) {
@@ -169,112 +160,228 @@ const getTechnicianImage = (tech) => {
   return tech?.profileImage || tech?.profile?.profileImage || (typeof tech?.userId === 'object' ? tech?.userId?.profileImage : "") || "";
 };
 
-// Main Admin Management Component
-function AdminManagement() {
-  // Chakra color mode
-  const textColor = useColorModeValue("gray.700", "white");
-  const iconTeal = useColorModeValue("teal.300", "teal.300");
-  const iconBoxInside = useColorModeValue("white", "white");
-  const bgButton = useColorModeValue("gray.100", "gray.100");
-  const tableHeaderBg = useColorModeValue("gray.100", "gray.700");
+// Custom IconBox component
+const IconBox = ({ children, ...rest }) => (
+  <Box
+    display="flex"
+    alignItems="center"
+    justifyContent="center"
+    borderRadius="12px"
+    {...rest}
+  >
+    {children}
+  </Box>
+);
 
-  // Custom color theme
+// Mobile Card Component for Technician
+const TechnicianMobileCard = ({ tech, idx, indexOfFirstItem, onViewDetails, onViewKYC, onViewHistory, onDelete }) => {
+  const userName = getTechnicianName(tech);
   const customColor = "#008080";
-  const customHoverColor = "#5a189a";
-  const customBorderColor = "#F5B700"; // Golden Border
 
+  return (
+    <Box
+      p={3}
+      bg="white"
+      borderWidth="1px"
+      borderColor={`${customColor}20`}
+      borderRadius="md"
+      shadow="sm"
+      mb={3}
+      transition="all 0.2s"
+      _active={{ transform: "scale(0.98)" }}
+    >
+      <Flex justify="space-between" align="center" mb={2}>
+        <HStack spacing={2}>
+          <Avatar size="xs" name={userName} src={getTechnicianImage(tech)} />
+          <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
+            #{indexOfFirstItem + idx + 1} {userName}
+          </Text>
+          <Text fontSize="3xs" color="gray.500" ml={1}>
+            {tech.lastLoginAt ? new Date(tech.lastLoginAt).toLocaleDateString() : (tech.userId?.lastLoginAt ? new Date(tech.userId.lastLoginAt).toLocaleDateString() : "")}
+          </Text>
+        </HStack>
+        <Badge
+          colorScheme={tech.status?.toLowerCase() === "active" || tech.status?.toLowerCase() === "approved" ? "green" : "red"}
+          borderRadius="full"
+          px={2}
+          fontSize="3xs"
+        >
+          {tech.status || "Active"}
+        </Badge>
+      </Flex>
+
+      <Text fontSize="2xs" color="gray.600" noOfLines={1} mb={2}>
+        {tech.specialization || tech.profile?.specialization || "No specialization"} •
+        {tech.city || tech.profile?.city || tech.locality || "No city"}
+      </Text>
+
+      <HStack spacing={2} mb={3} wrap="wrap">
+        <Badge colorScheme="blue" variant="subtle" fontSize="3xs">
+          Jobs: {tech.totalJobsCompleted || tech.jobStats?.completed || 0}
+        </Badge>
+        <Badge
+          colorScheme={tech.trainingCompleted ? "green" : "orange"}
+          fontSize="3xs"
+        >
+          Training: {tech.trainingCompleted ? "Done" : "Pending"}
+        </Badge>
+        <Badge colorScheme="purple" fontSize="3xs">
+          Rating: {tech.rating?.avg?.toFixed(1) || "0.0"}
+        </Badge>
+      </HStack>
+
+      <Flex gap={2} justify="flex-end">
+        <IconButton
+          aria-label="View details"
+          icon={<FaEye />}
+          size="xs"
+          colorScheme="blue"
+          variant="ghost"
+          onClick={() => onViewDetails(tech)}
+        />
+        <IconButton
+          aria-label="View KYC"
+          icon={<MdAdminPanelSettings />}
+          size="xs"
+          colorScheme="green"
+          variant="ghost"
+          onClick={() => onViewKYC(tech)}
+        />
+        <IconButton
+          aria-label="View history"
+          icon={<FaHistory />}
+          size="xs"
+          colorScheme="orange"
+          variant="ghost"
+          onClick={() => onViewHistory(tech)}
+        />
+        <IconButton
+          aria-label="Delete technician"
+          icon={<FaTrash />}
+          size="xs"
+          colorScheme="red"
+          variant="ghost"
+          onClick={() => onDelete(tech)}
+        />
+      </Flex>
+    </Box>
+  );
+};
+
+export default function AdminManagement() {
+  const textColor = useColorModeValue("gray.700", "white");
   const toast = useToast();
   const navigate = useNavigate();
 
+  // Custom color theme (matching UserManagement)
+  const customColor = "#008080";
+
+  // State hooks
+  const [currentUser, setCurrentUser] = useState(null);
   const [adminData, setAdminData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [allKycRecords, setAllKycRecords] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [currentUser, setCurrentUser] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(5);
   const [activeFilter, setActiveFilter] = useState("all");
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Alert dialog for delete
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [adminToDelete, setAdminToDelete] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isDeletingKYC, setIsDeletingKYC] = useState(false);
-  const [technicianIdToDeleteKYC, setTechnicianIdToDeleteKYC] = useState(null); // For inline confirmation
-  const cancelRef = useRef();
-
-  // View state - 'list', 'add', 'edit'
-  const [currentView, setCurrentView] = useState("list");
-  const [editingAdmin, setEditingAdmin] = useState(null);
-
-  // KYC Modal State
+  // Modal states
+  const [selectedTechnician, setSelectedTechnician] = useState(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isKYCModalOpen, setIsKYCModalOpen] = useState(false);
   const [kycData, setKYCData] = useState(null);
   const [kycLoading, setKYcLoading] = useState(false);
   const [selectedTechnicianForKYC, setSelectedTechnicianForKYC] = useState(null);
-  const [rejectionInput, setRejectionInput] = useState("");
-  const [showRejectionInput, setShowRejectionInput] = useState(false);
-  const [confirmingModalDelete, setConfirmingModalDelete] = useState(false);
-
-  // Technician Details Modal State
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
-  const [selectedTechnician, setSelectedTechnician] = useState(null);
-
-  // Job History State
-  const [jobHistory, setJobHistory] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [selectedTechForHistory, setSelectedTechForHistory] = useState(null);
+  const [jobHistory, setJobHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-  // Image Preview State
+  // Image preview state
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [selectedImageUrl, setSelectedImageUrl] = useState("");
   const [rotation, setRotation] = useState(0);
   const [zoom, setZoom] = useState(1);
 
-  // Form state
-  const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    phone: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-    profileImage: "",
-    role: "admin",
-    status: "Active"
-  });
+  // KYC verification states
+  const [rejectionInput, setRejectionInput] = useState("");
+  const [showRejectionInput, setShowRejectionInput] = useState(false);
+  const [confirmingModalDelete, setConfirmingModalDelete] = useState(false);
+  const [isDeletingKYC, setIsDeletingKYC] = useState(false);
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(5);
+  // Delete dialog states
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [technicianToDelete, setTechnicianToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const cancelRef = useRef();
 
-  // Calculate pagination
+  // Global scrollbar styles (matching UserManagement)
+  const globalScrollbarStyles = {
+    '&::-webkit-scrollbar': {
+      width: '6px',
+      height: '6px',
+    },
+    '&::-webkit-scrollbar-track': {
+      background: 'transparent',
+    },
+    '&::-webkit-scrollbar-thumb': {
+      background: 'transparent',
+      borderRadius: '3px',
+      transition: 'background 0.3s ease',
+    },
+    '&:hover::-webkit-scrollbar-thumb': {
+      background: '#cbd5e1',
+    },
+    '&:hover::-webkit-scrollbar-thumb:hover': {
+      background: '#94a3b8',
+    },
+  };
+
+  // Calculate technician statistics (matching UserManagement style)
+  const calculateTechStats = useCallback(() => {
+    const totalTechnicians = adminData.length;
+    const activeTechnicians = adminData.filter(tech =>
+      tech.isActiveTechnician === true ||
+      tech.status?.toLowerCase() === "approved" ||
+      tech.status?.toLowerCase() === "active"
+    ).length;
+
+    const trainingCompleted = adminData.filter(tech => tech.trainingCompleted === true).length;
+
+    const kycVerified = adminData.filter(tech => {
+      const kycMatch = allKycRecords.find(k =>
+        (k.technicianId?._id || k.technicianId) === tech._id
+      );
+      const status = kycMatch?.status?.toLowerCase() || kycMatch?.verificationStatus?.toLowerCase();
+      return status === "approved" || status === "verified";
+    }).length;
+
+    return {
+      totalTechnicians,
+      activeTechnicians,
+      trainingCompleted,
+      kycVerified,
+    };
+  }, [adminData, allKycRecords]);
+
+  const stats = calculateTechStats();
+
+  // Pagination
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const paginatedData = activeFilter === "History" ? jobHistory : filteredData;
-  const totalPages = Math.ceil(paginatedData.length / itemsPerPage);
-
-  // Calculate current slice based on active view
   const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
 
-  const displayItems = [...currentItems];
-
-  // Toggle password visibility
-  const handleTogglePassword = () => setShowPassword(!showPassword);
-  const handleToggleConfirmPassword = () => setShowConfirmPassword(!showConfirmPassword);
-
-  // Fetch current user from localStorage and check permissions
+  // Check authentication (OWNER ONLY)
   useEffect(() => {
-    const userString = localStorage.getItem("user");
+    const storedUser = JSON.parse(localStorage.getItem("user"));
+    const role = storedUser?.role?.toLowerCase();
 
-    // Check if user exists and is owner
-    if (!userString) {
+    if (!storedUser) {
       toast({
         title: "Access Denied",
         description: "Please sign in to access this page.",
@@ -286,157 +393,123 @@ function AdminManagement() {
       return;
     }
 
-    try {
-      const userData = JSON.parse(userString);
-      const userRole = userData.role?.toLowerCase();
-
-      // 🔐 STRICT OWNER CHECK
-      if (userRole !== "owner") {
-        toast({
-          title: "Access Denied",
-          description: "Only owner accounts can access this page.",
-          status: "error",
-          duration: 3000,
-          isClosable: true,
-        });
-        navigate("/access-denied");
-        return;
-      }
-
-      setCurrentUser(userData);
-    } catch (error) {
-      console.error("Error parsing user data:", error);
+    if (role !== "owner") {
       toast({
-        title: "Session Error",
-        description: "Your session data is invalid. Please sign in again.",
+        title: "Access Denied",
+        description: "Only owner accounts can access this page.",
         status: "error",
         duration: 3000,
         isClosable: true,
       });
-      localStorage.removeItem("user");
-      navigate("/auth/signin");
+      navigate("/access-denied");
+      return;
     }
+
+    setCurrentUser(storedUser);
   }, [toast, navigate]);
 
-  // Fetch admins from backend
-  useEffect(() => {
-    const fetchAdmins = async () => {
-      if (!currentUser) return;
+  // Fetch data
+  const fetchData = useCallback(async () => {
+    if (!currentUser) return;
 
-      setLoading(true);
-      setTableLoading(true);
-      setDataLoaded(false);
-      try {
-        const [adminsResponse, kycResponse] = await Promise.all([
-          getAllTechnicians(),
-          getAllKYCRecords()
-        ]);
+    setIsLoading(true);
+    setTableLoading(true);
+    setDataLoaded(false);
 
-        // Handle different response formats for admins
-        const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
+    try {
+      const [techniciansResponse, kycResponse] = await Promise.all([
+        getAllTechnicians(),
+        getAllKYCRecords()
+      ]);
 
-        // Handle different response formats for KYC
-        const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
+      // Parse responses
+      const technicians = Array.isArray(techniciansResponse.result || techniciansResponse.data?.technicians || techniciansResponse.data || techniciansResponse?.technicians || techniciansResponse)
+        ? (techniciansResponse.result || techniciansResponse.data?.technicians || techniciansResponse.data || techniciansResponse?.technicians || techniciansResponse)
+        : [];
 
-        if (!Array.isArray(admins)) {
-          console.error("Unexpected response data format for admins:", adminsResponse);
-          setAdminData([]);
-          setFilteredData([]);
-          setDataLoaded(true);
-          return;
-        }
+      const kycRecords = Array.isArray(kycResponse.result || kycResponse.data || kycResponse)
+        ? (kycResponse.result || kycResponse.data || kycResponse)
+        : [];
 
-        if (Array.isArray(kycRecords)) {
-          setAllKycRecords(kycRecords);
-        }
+      setAllKycRecords(kycRecords);
 
-        const sortedAdmins = admins.sort(
-          (a, b) =>
-            new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
-        );
+      // Sort technicians alphabetically
+      const sortedTechnicians = technicians.sort((a, b) => {
+        return getTechnicianName(a).toLowerCase().localeCompare(getTechnicianName(b).toLowerCase());
+      });
 
-        setAdminData(sortedAdmins);
-        setFilteredData(sortedAdmins);
-        setDataLoaded(true);
-      } catch (err) {
-        console.error("Error fetching admins:", err);
-        const errorMessage = err.response?.data?.message || err.message || "Failed to load admin list.";
-        if (errorMessage.includes("token not found") || errorMessage.includes("Session expired") || errorMessage.includes("401")) {
-          toast({
-            title: "Session Expired",
-            description: "Please log in again.",
-            status: "error",
-            duration: 3000,
-            isClosable: true,
-          });
-          localStorage.removeItem("user");
-          localStorage.removeItem("token");
-          localStorage.removeItem("adminToken");
-          sessionStorage.removeItem("token");
-          sessionStorage.removeItem("adminToken");
-          setTimeout(() => {
-            navigate("/auth/signin");
-          }, 1000);
-          return;
-        }
+      setAdminData(sortedTechnicians);
+      setFilteredData(sortedTechnicians);
+      setDataLoaded(true);
+    } catch (err) {
+      console.error("Fetch error:", err);
 
-        setError(errorMessage);
-        setDataLoaded(true);
+      const errorMessage = err.response?.data?.message || err.message || "Failed to load technician data.";
+
+      if (errorMessage.includes("token not found") || errorMessage.includes("Session expired") || errorMessage.includes("401")) {
         toast({
-          title: "Fetch Error",
-          description: errorMessage,
+          title: "Session Expired",
+          description: "Please log in again.",
           status: "error",
           duration: 3000,
           isClosable: true,
         });
-      } finally {
-        setLoading(false);
-        setTableLoading(false);
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        navigate("/auth/signin");
+        return;
       }
-    };
 
-    if (currentUser) {
-      fetchAdmins();
+      toast({
+        title: "Fetch Error",
+        description: errorMessage,
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      setDataLoaded(true);
+    } finally {
+      setIsLoading(false);
+      setTableLoading(false);
     }
-  }, [currentUser, toast]);
+  }, [currentUser, toast, navigate]);
 
-  // Apply filters and search
+  useEffect(() => {
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser, fetchData]);
+
+  // Apply filters
   useEffect(() => {
     if (!dataLoaded) return;
 
     setTableLoading(true);
-    setCurrentPage(1); // Reset to first page when filter changes
+    setCurrentPage(1);
 
     const timer = setTimeout(() => {
       let filtered = adminData;
 
-      // Apply role/status filter
+      // Apply filter
       switch (activeFilter) {
-        case "Active":
-          filtered = adminData.filter((admin) =>
-            admin.isActiveTechnician === true ||
-            admin.status?.toLowerCase() === "approved" ||
-            admin.status?.toLowerCase() === "active"
+        case "active":
+          filtered = adminData.filter(tech =>
+            tech.isActiveTechnician === true ||
+            tech.status?.toLowerCase() === "approved" ||
+            tech.status?.toLowerCase() === "active"
           );
           break;
-        case "Inactive":
-          filtered = adminData.filter((admin) => admin.status === "Inactive");
+        case "trainingCompleted":
+          filtered = adminData.filter(tech => tech.trainingCompleted === true);
           break;
-        case "TrainingCompleted":
-          filtered = adminData.filter((admin) => admin.trainingCompleted === true);
-          break;
-        case "KYCVerified":
-          filtered = adminData.filter((admin) => {
+        case "kycVerified":
+          filtered = adminData.filter(tech => {
             const kycMatch = allKycRecords.find(k =>
-              (k.technicianId?._id || k.technicianId) === admin._id
+              (k.technicianId?._id || k.technicianId) === tech._id
             );
             const status = kycMatch?.status?.toLowerCase() || kycMatch?.verificationStatus?.toLowerCase();
             return status === "approved" || status === "verified";
           });
-          break;
-        // Removed BankVerified case as per user request
-        case "Deleted":
-          filtered = adminData.filter((admin) => admin.status === "Deleted");
           break;
         default:
           filtered = adminData;
@@ -444,29 +517,28 @@ function AdminManagement() {
 
       // Apply search filter
       if (searchTerm.trim() !== "") {
-        filtered = filtered.filter(
-          (admin) => {
-            const fullName = getTechnicianName(admin);
-            const specialization = admin.specialization || admin.profile?.specialization || "";
-            const city = admin.city || admin.profile?.city || admin.locality || "";
-            const phoneStr = (
-              admin.phone ||
-              admin.mobileNumber ||
-              admin.profile?.phone ||
-              admin.profile?.mobileNumber ||
-              (typeof admin.userId === 'object' ? (admin.userId.phone || admin.userId.mobileNumber) : "") ||
-              ""
-            ).toString();
+        filtered = filtered.filter(tech => {
+          const fullName = getTechnicianName(tech);
+          const specialization = tech.specialization || tech.profile?.specialization || "";
+          const city = tech.city || tech.profile?.city || tech.locality || "";
+          const phoneStr = (
+            tech.phone ||
+            tech.mobileNumber ||
+            tech.profile?.phone ||
+            tech.profile?.mobileNumber ||
+            tech.userId?.phone ||
+            tech.userId?.mobileNumber ||
+            ""
+          ).toString();
 
-            return (
-              fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              (admin.email && admin.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-              (specialization.toLowerCase().includes(searchTerm.toLowerCase())) ||
-              (city.toLowerCase().includes(searchTerm.toLowerCase())) ||
-              phoneStr.includes(searchTerm)
-            );
-          }
-        );
+          return (
+            fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (tech.email && tech.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            specialization.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            city.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            phoneStr.includes(searchTerm)
+          );
+        });
       }
 
       setFilteredData(filtered);
@@ -474,27 +546,29 @@ function AdminManagement() {
     }, 500);
 
     return () => clearTimeout(timer);
-    return () => clearTimeout(timer);
-  }, [activeFilter, adminData, dataLoaded, searchTerm]);
+  }, [activeFilter, adminData, dataLoaded, searchTerm, allKycRecords]);
 
   // Fetch Job History when History Modal is opened
   useEffect(() => {
     const fetchHistory = async () => {
-      if (isHistoryModalOpen) {
+      if (isHistoryModalOpen && selectedTechForHistory) {
         setHistoryLoading(true);
         try {
           const result = await getTechnicianJobHistory();
-          const historyData = Array.isArray(result) ? result : (result.data || []);
+          const historyData = Array.isArray(result) ? result : (result.result || result.data || []);
 
-          if (selectedTechForHistory) {
-            const filtered = historyData.filter(job =>
-              (job.technicianId?._id || job.technicianId) === selectedTechForHistory._id
-            );
-            filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-            setJobHistory(filtered);
-          } else {
-            setJobHistory(historyData);
-          }
+          const filtered = historyData.filter(job => {
+            const tId = job.technicianId?._id || job.technicianId || job.technician?._id || job.technician;
+            if (!tId) return false;
+
+            const techIdStr = String(selectedTechForHistory._id);
+            const userIdStr = selectedTechForHistory.userId ? String(selectedTechForHistory.userId._id || selectedTechForHistory.userId) : null;
+            const tIdStr = String(tId);
+
+            return tIdStr === techIdStr || (userIdStr && tIdStr === userIdStr);
+          });
+          filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          setJobHistory(filtered);
         } catch (err) {
           console.error("Error fetching job history:", err);
           toast({
@@ -513,429 +587,23 @@ function AdminManagement() {
     fetchHistory();
   }, [isHistoryModalOpen, selectedTechForHistory, toast]);
 
-  // Handle delete admin - show confirmation dialog
-  const handleDeleteAdmin = async (admin) => {
-    // Prevent deleting owner accounts
-    if (admin.role?.toLowerCase() === "owner") {
-      toast({
-        title: "Permission Denied",
-        description: "You cannot delete owner accounts.",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    setAdminToDelete(admin);
-    setIsDeleteDialogOpen(true);
-  };
-
-  // Confirm delete handler
-  const handleConfirmDelete = async () => {
-    if (!adminToDelete) return;
-
-    setIsDeleting(true);
-    try {
-      const response = await deleteTechnician(adminToDelete._id);
-
-      toast({
-        title: "Admin Deleted",
-        description: `${adminToDelete.name} has been deleted successfully.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-
-      // Refresh admin list
-      const fetchAdmins = async () => {
-        try {
-          const [adminsResponse, kycResponse] = await Promise.all([
-            getAllTechnicians(),
-            getAllKYCRecords()
-          ]);
-
-          const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
-          const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
-
-          if (Array.isArray(kycRecords)) {
-            setAllKycRecords(kycRecords);
-          }
-
-          if (!Array.isArray(admins)) {
-            console.error("Unexpected response data format during refresh:", adminsResponse);
-            return;
-          }
-
-          const sortedAdmins = admins.sort(
-            (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
-          );
-          setAdminData(sortedAdmins);
-          setFilteredData(sortedAdmins);
-        } catch (err) {
-          console.error("Error refreshing admins:", err);
-        }
-      };
-
-      await fetchAdmins();
-      closeDeleteDialog();
-
-    } catch (err) {
-      console.error("Error deleting admin:", err);
-      const errorMessage = err.response?.data?.message || err.message || "Failed to delete Technician.";
-      toast({
-        title: "Delete Error",
-        description: errorMessage,
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-    setIsDeleting(false);
-  };
-
-  // Close delete dialog
-  const closeDeleteDialog = () => {
-    setIsDeleteDialogOpen(false);
-    setAdminToDelete(null);
-    setIsDeleting(false);
-  };
-
-  const handleAddAdmin = () => {
-    setFormData({
-      firstName: "",
-      lastName: "",
-      phone: "",
-      email: "",
-      password: "",
-      confirmPassword: "",
-      profileImage: "",
-      role: "admin",
-      status: "Active"
-    });
-    setEditingAdmin(null);
-    setCurrentView("add");
-    setError("");
-    setSuccess("");
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-  };
-
-  // Handle input change for form
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  // Handle search input change
+  // Handle search
   const handleSearchChange = (e) => {
     setSearchTerm(e.target.value);
   };
 
-  // Clear search
   const handleClearSearch = () => {
     setSearchTerm("");
+    setCurrentPage(1);
   };
 
-  // Handle edit admin - show edit form
-  const handleEditAdmin = (admin) => {
-    // Prevent editing owner accounts
-    if (admin.role?.toLowerCase() === "owner") {
-      toast({
-        title: "Permission Denied",
-        description: "You cannot edit owner accounts.",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    // Extract first and last name from available fields
-    // Extract first and last name using robust helper
-    const fullName = getTechnicianName(admin);
-    let firstName = admin.firstName || admin.profile?.firstName || admin.fname || (admin.userId?.firstName) || "";
-    let lastName = admin.lastName || admin.profile?.lastName || admin.lname || (admin.userId?.lastName) || "";
-
-    if (!firstName && fullName !== "Unknown") {
-      const parts = fullName.split(' ');
-      firstName = parts[0];
-      lastName = parts.length > 1 ? parts.slice(1).join(' ') : "";
-    }
-
-    setFormData({
-      firstName: firstName,
-      lastName: lastName,
-      phone: admin.phone || admin.mobileNumber || "",
-      email: admin.email || "",
-      password: "", // Don't pre-fill password for security
-      confirmPassword: "",
-      profileImage: admin.profileImage || admin.profile?.profileImage || "",
-      role: admin.role || "admin",
-      status: admin.status || "Active"
-    });
-    setEditingAdmin(admin);
-    setCurrentView("edit");
-    setError("");
-    setSuccess("");
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-  };
-
-  // Handle back to list
-  const handleBackToList = () => {
-    setCurrentView("list");
-    setEditingAdmin(null);
-    setError("");
-    setSuccess("");
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-  };
-
-  // Handle form submit for both add and edit
-  const handleSubmit = async () => {
-    // Frontend validation
-    if (!formData.firstName || !formData.lastName || !formData.email) {
-      return toast({
-        title: "Validation Error",
-        description: "First name, last name, and email are required",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      return toast({
-        title: "Validation Error",
-        description: "Invalid email format",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-
-    // For add admin, password is required
-    if (currentView === "add" && !formData.password) {
-      return toast({
-        title: "Validation Error",
-        description: "Password is required for new admins",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-
-    // Validate password strength if provided
-    if (formData.password) {
-      const passwordRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$/;
-      if (!passwordRegex.test(formData.password)) {
-        return toast({
-          title: "Validation Error",
-          description:
-            "Password must be at least 8 characters, include uppercase, lowercase, and a number",
-          status: "error",
-          duration: 3000,
-          isClosable: true,
-        });
-      }
-    }
-
-    // Check password confirmation for add admin
-    if (currentView === "add" && formData.password !== formData.confirmPassword) {
-      return toast({
-        title: "Validation Error",
-        description: "Passwords do not match",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-
-    // Prevent creating owner accounts
-    if (formData.role?.toLowerCase() === "owner") {
-      return toast({
-        title: "Permission Denied",
-        description: "Owner accounts cannot be created through the admin interface",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-
-    setLoading(true);
-    setError("");
-    setSuccess("");
-
-    try {
-      // Prepare data for API
-      let adminDataToSend = {
-        name: `${formData.firstName} ${formData.lastName}`.trim(),
-        email: formData.email,
-        role: formData.role,
-        status: formData.status,
-        phone: formData.phone || "",
-        profileImage: formData.profileImage || "",
-        ...(formData.password && { password: formData.password })
-      };
-
-      let response;
-      let successMessage;
-
-      if (currentView === "edit" && editingAdmin) {
-        // Update existing admin
-        response = await updateAdmin(editingAdmin._id, adminDataToSend);
-        successMessage = `Admin ${formData.firstName} updated successfully`;
-      } else {
-        // Create new admin
-        response = await createAdmin(adminDataToSend);
-        successMessage = `Admin ${formData.firstName} created successfully`;
-      }
-
-      toast({
-        title: currentView === "edit" ? "Admin Updated" : "Admin Created",
-        description: successMessage,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-
-      // Refresh admin list
-      const fetchAdmins = async () => {
-        try {
-          const [adminsResponse, kycResponse] = await Promise.all([
-            getAllTechnicians(),
-            getAllKYCRecords()
-          ]);
-
-          const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
-          const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
-
-          if (Array.isArray(kycRecords)) {
-            setAllKycRecords(kycRecords);
-          }
-
-          // Filter out owner accounts
-          const nonOwnerAdmins = Array.isArray(admins) ? admins.filter(admin =>
-            admin.role?.toLowerCase() !== "owner"
-          ) : [];
-
-          const sortedAdmins = nonOwnerAdmins.sort(
-            (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
-          );
-          setAdminData(sortedAdmins);
-          setFilteredData(sortedAdmins);
-        } catch (err) {
-          console.error("Error refreshing admins:", err);
-        }
-      };
-
-      await fetchAdmins();
-
-      setSuccess(successMessage);
-
-      // Reset form and go back to list
-      setFormData({
-        firstName: "",
-        lastName: "",
-        phone: "",
-        email: "",
-        password: "",
-        confirmPassword: "",
-        profileImage: "",
-        role: "admin",
-        status: "Active"
-      });
-      setEditingAdmin(null);
-      setCurrentView("list");
-
-    } catch (err) {
-      console.error("API Error details:", err);
-
-      let errorMessage = "API error. Try again.";
-
-      if (err.response?.data) {
-        const errorData = err.response.data;
-        errorMessage = errorData.message || errorData.error || JSON.stringify(errorData);
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-
-      setError(errorMessage);
-      toast({
-        title: "Error",
-        description: errorMessage,
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-      });
-    }
-    setLoading(false);
-  };
-
-  // Auto-hide success/error messages after 3 seconds
-  useEffect(() => {
-    if (success || error) {
-      const timer = setTimeout(() => {
-        setSuccess("");
-        setError("");
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [success, error]);
-
-  // Get status color with background and icon
-  const getStatusConfig = (status) => {
-    switch (status?.toLowerCase()) {
-      case "approved":
-        return {
-          color: "white",
-          bg: "green.500",
-          icon: IoCheckmarkDoneCircleSharp
-        };
-      case "active":
-        return {
-          color: "white",
-          bg: "#9d4edd",
-          icon: IoCheckmarkDoneCircleSharp
-        };
-      case "inactive":
-        return {
-          color: "white",
-          bg: "red.500",
-          icon: FaUserSlash
-        };
-      case "pending":
-        return {
-          color: "white",
-          bg: "yellow.500",
-          icon: MdPerson
-        };
-      default:
-        return {
-          color: "white",
-          bg: "gray.500",
-          icon: MdPerson
-        };
-    }
-  };
-
-  // Get role badge color
-  const getRoleBadgeColor = (role) => {
-    const roleLower = role?.toLowerCase();
-    if (roleLower === "owner") return "purple";
-    if (roleLower === "super admin") return "blue";
-    if (roleLower === "admin") return "green";
-    return "gray";
-  };
-
-  // Card click handlers
-  const handleCardClick = (filterType) => {
+  // Filter handlers (matching UserManagement style)
+  const handleFilterClick = (filterType) => {
     setActiveFilter(filterType);
+    setCurrentPage(1);
   };
 
-  // Pagination handlers
+  // Navigation handlers
   const handleNextPage = () => {
     if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1);
@@ -948,16 +616,24 @@ function AdminManagement() {
     }
   };
 
-  // KYC Handlers
+  // Modal handlers
+  const handleViewDetails = (technician) => {
+    setSelectedTechnician(technician);
+    setIsDetailsModalOpen(true);
+  };
+
   const handleViewKYC = async (technician) => {
     setSelectedTechnicianForKYC(technician);
     setIsKYCModalOpen(true);
     setKYCData(null);
     setKYcLoading(true);
+    setShowRejectionInput(false);
+    setRejectionInput("");
+    setConfirmingModalDelete(false);
+
     try {
       const idToFetch = technician._id;
       const response = await getTechnicianKYC(idToFetch);
-      // Determine response structure
       setKYCData(response.data || response.result || response);
     } catch (error) {
       console.error("Failed to fetch KYC:", error);
@@ -974,12 +650,71 @@ function AdminManagement() {
     }
   };
 
-  // Removed Bank Modal handlers as per user request
+  const handleViewHistory = (technician) => {
+    setSelectedTechForHistory(technician);
+    setIsHistoryModalOpen(true);
+  };
 
+  const handleDeleteClick = (technician) => {
+    setTechnicianToDelete(technician);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!technicianToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteTechnician(technicianToDelete._id);
+
+      toast({
+        title: "Technician Deleted",
+        description: `Technician has been deleted successfully.`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+
+      await fetchData();
+      closeDeleteModal();
+    } catch (err) {
+      toast({
+        title: "Delete Error",
+        description: err.message || "Failed to delete technician.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const closeDeleteModal = () => {
+    setIsDeleteDialogOpen(false);
+    setTechnicianToDelete(null);
+    setIsDeleting(false);
+  };
+
+  const closeModal = () => {
+    setIsDetailsModalOpen(false);
+    setIsKYCModalOpen(false);
+    setIsHistoryModalOpen(false);
+    setIsImageModalOpen(false);
+    setSelectedTechnician(null);
+    setSelectedTechnicianForKYC(null);
+    setSelectedTechForHistory(null);
+    setKYCData(null);
+    setShowRejectionInput(false);
+    setRejectionInput("");
+    setConfirmingModalDelete(false);
+  };
+
+  // KYC verification handlers
   const handleVerifyKYCAction = async (status) => {
     if (!selectedTechnicianForKYC) return;
 
-    // specific check for rejection
+    // Specific check for rejection
     if (status === "rejected") {
       if (!rejectionInput || rejectionInput.trim() === "") {
         toast({
@@ -1013,40 +748,13 @@ function AdminManagement() {
         isClosable: true,
       });
 
-      closeKYCModal();
+      closeModal();
 
-      // Refresh list
-      const refresh = async () => {
-        try {
-          const [adminsResponse, kycResponse] = await Promise.all([
-            getAllTechnicians(),
-            getAllKYCRecords()
-          ]);
-
-          const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
-          const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
-
-          if (Array.isArray(kycRecords)) {
-            setAllKycRecords(kycRecords);
-          }
-
-          if (Array.isArray(admins)) {
-            const sortedAdmins = admins.sort(
-              (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
-            );
-            setAdminData(sortedAdmins);
-            setFilteredData(sortedAdmins);
-          }
-        } catch (e) {
-          console.error("Error refreshing list:", e);
-        }
-      };
-      refresh();
-
+      // Refresh data
+      fetchData();
     } catch (error) {
       console.error("KYC Verification Error:", error);
       let errorMsg = "Failed to update KYC status.";
-      // Try to extract message from response if available
       if (error.response && error.response.data && error.response.data.message) {
         errorMsg = error.response.data.message;
       } else if (error.message) {
@@ -1078,34 +786,8 @@ function AdminManagement() {
         isClosable: true,
       });
 
-      // If modal is open, close it
-      if (isKYCModalOpen) {
-        closeKYCModal();
-      }
-
-      // Reset deletion ID
-      setTechnicianIdToDeleteKYC(null);
-
-      // Refresh list
-      const [adminsResponse, kycResponse] = await Promise.all([
-        getAllTechnicians(),
-        getAllKYCRecords()
-      ]);
-
-      const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
-      const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
-
-      if (Array.isArray(kycRecords)) {
-        setAllKycRecords(kycRecords);
-      }
-
-      if (Array.isArray(admins)) {
-        const sortedAdmins = admins.sort(
-          (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
-        );
-        setAdminData(sortedAdmins);
-        setFilteredData(sortedAdmins);
-      }
+      closeModal();
+      fetchData();
     } catch (error) {
       console.error("Delete KYC Error:", error);
       toast({
@@ -1135,15 +817,13 @@ function AdminManagement() {
           status: "warning",
           duration: 5000,
           isClosable: true,
-          position: "top"
         });
         return;
       }
     }
 
     try {
-      setLoading(true);
-
+      setIsLoading(true);
       await updateTrainingStatus(technician._id, status);
 
       toast({
@@ -1159,26 +839,8 @@ function AdminManagement() {
         setSelectedTechnician(prev => ({ ...prev, trainingCompleted: status }));
       }
 
-      // Refresh list
-      const [adminsResponse, kycResponse] = await Promise.all([
-        getAllTechnicians(),
-        getAllKYCRecords()
-      ]);
-
-      const admins = adminsResponse.result || adminsResponse.data?.admins || adminsResponse.data || adminsResponse?.admins || adminsResponse || [];
-      const kycRecords = kycResponse.result || kycResponse.data || kycResponse || [];
-
-      if (Array.isArray(kycRecords)) {
-        setAllKycRecords(kycRecords);
-      }
-
-      if (Array.isArray(admins)) {
-        const sortedAdmins = admins.sort(
-          (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
-        );
-        setAdminData(sortedAdmins);
-        setFilteredData(sortedAdmins);
-      }
+      // Refresh data
+      fetchData();
     } catch (error) {
       console.error("Training Update Error:", error);
       let errorMsg = "Failed to update training status.";
@@ -1196,19 +858,11 @@ function AdminManagement() {
         isClosable: true,
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const closeKYCModal = () => {
-    setIsKYCModalOpen(false);
-    setKYCData(null);
-    setSelectedTechnicianForKYC(null);
-    setRejectionInput("");
-    setShowRejectionInput(false);
-    setConfirmingModalDelete(false);
-  };
-
+  // Image preview handlers
   const handleOpenImage = (url) => {
     setSelectedImageUrl(url);
     setRotation(0);
@@ -1227,28 +881,6 @@ function AdminManagement() {
     setZoom(1);
   };
 
-  const handleViewDetails = (technician) => {
-    setSelectedTechnician(technician);
-    setIsDetailsModalOpen(true);
-  };
-
-  const closeDetailsModal = () => {
-    setIsDetailsModalOpen(false);
-    setSelectedTechnician(null);
-  };
-
-  const handleViewTechnicianHistory = (technician) => {
-    setSelectedTechForHistory(technician);
-    setIsHistoryModalOpen(true);
-  };
-
-  const closeHistoryModal = () => {
-    setIsHistoryModalOpen(false);
-    setSelectedTechForHistory(null);
-    setJobHistory([]);
-  };
-
-  // If currentUser is null (still checking or not owner), show loading
   if (!currentUser) {
     return (
       <Flex justify="center" align="center" h="100vh">
@@ -1258,536 +890,296 @@ function AdminManagement() {
     );
   }
 
-  // Render Form View (Add/Edit)
-  if (currentView === "add" || currentView === "edit") {
-    return (
-      <Flex
-        flexDirection="column"
-        pt={{ base: "120px", md: "75px" }}
-        minH="calc(100vh - 40px)"
-        overflow="auto"
-        css={{
-          '&::-webkit-scrollbar': {
-            width: '8px',
-          },
-          '&::-webkit-scrollbar-track': {
-            background: 'transparent',
-            borderRadius: '24px',
-          },
-          '&::-webkit-scrollbar-thumb': {
-            background: 'transparent',
-            borderRadius: '24px',
-            transition: 'background 0.3s ease',
-          },
-          '&:hover::-webkit-scrollbar-thumb': {
-            background: '#cbd5e1',
-          },
-          '&:hover::-webkit-scrollbar-thumb:hover': {
-            background: '#94a3b8',
-          },
-        }}
-      >
-        <Card bg="white" shadow="xl" height="100%" display="flex" flexDirection="column">
-          <CardHeader bg="white" flexShrink={0}>
-            <Flex align="center" mb={4}>
-              <Button
-                variant="ghost"
-                leftIcon={<FaArrowLeft />}
-                onClick={handleBackToList}
-                mr={4}
-                color={customColor}
-                _hover={{ bg: `${customColor}10` }}
-              >
-                {/* Back arrow only */}
-              </Button>
-              <Heading size="md" color="gray.700">
-                {currentView === "add" ? "Add New Admin" : "Edit Admin"}
-              </Heading>
-            </Flex>
-          </CardHeader>
-          <CardBody bg="white" flex="1" overflow="auto">
-            {/* Success/Error Message Display */}
-            {error && (
-              <Text
-                color="red.500"
-                mb={4}
-                p={3}
-                border="1px"
-                borderColor="red.200"
-                borderRadius="md"
-                bg="red.50"
-              >
-                {error}
-              </Text>
-            )}
-            {success && (
-              <Text
-                color="green.500"
-                mb={4}
-                p={3}
-                border="1px"
-                borderColor="green.200"
-                borderRadius="md"
-                bg="green.50"
-              >
-                {success}
-              </Text>
-            )}
-
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
-              <FormControl isRequired>
-                <FormLabel htmlFor="firstName" color="gray.700">First Name</FormLabel>
-                <Input
-                  id="firstName"
-                  name="firstName"
-                  placeholder="First Name"
-                  onChange={handleInputChange}
-                  value={formData.firstName}
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                  bg="white"
-                />
-              </FormControl>
-
-              <FormControl isRequired>
-                <FormLabel htmlFor="lastName" color="gray.700">Last Name</FormLabel>
-                <Input
-                  id="lastName"
-                  name="lastName"
-                  placeholder="Last Name"
-                  onChange={handleInputChange}
-                  value={formData.lastName}
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                  bg="white"
-                />
-              </FormControl>
-            </SimpleGrid>
-
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
-              <FormControl isRequired>
-                <FormLabel htmlFor="email" color="gray.700">Email</FormLabel>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="Email Address"
-                  onChange={handleInputChange}
-                  value={formData.email}
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                  bg="white"
-                />
-              </FormControl>
-
-              <FormControl>
-                <FormLabel htmlFor="phone" color="gray.700">Phone</FormLabel>
-                <Input
-                  id="phone"
-                  name="phone"
-                  placeholder="Phone Number"
-                  onChange={handleInputChange}
-                  value={formData.phone}
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                  bg="white"
-                />
-              </FormControl>
-            </SimpleGrid>
-
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
-              <FormControl>
-                <FormLabel htmlFor="role" color="gray.700">Role</FormLabel>
-                <Select
-                  id="role"
-                  name="role"
-                  onChange={handleInputChange}
-                  value={formData.role}
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                  bg="white"
-                >
-                  <option value="admin">Admin</option>
-                  <option value="super admin">Super Admin</option>
-                  {/* Owner role is not selectable */}
-                </Select>
-              </FormControl>
-
-              <FormControl>
-                <FormLabel htmlFor="status" color="gray.700">Status</FormLabel>
-                <Select
-                  id="status"
-                  name="status"
-                  onChange={handleInputChange}
-                  value={formData.status}
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                  bg="white"
-                >
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </Select>
-              </FormControl>
-            </SimpleGrid>
-
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mb={4}>
-              <FormControl isRequired={currentView === "add"}>
-                <FormLabel htmlFor="password" color="gray.700">
-                  {currentView === "add" ? "Password *" : "New Password (optional)"}
-                </FormLabel>
-                <InputGroup>
-                  <Input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder={currentView === "add" ? "Password" : "New Password"}
-                    onChange={handleInputChange}
-                    value={formData.password}
-                    borderColor={`${customColor}50`}
-                    _hover={{ borderColor: customColor }}
-                    _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                    bg="white"
-                  />
-                  <InputRightElement>
-                    <IconButton
-                      variant="ghost"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                      icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
-                      onClick={() => setShowPassword(!showPassword)}
-                      color="gray.500"
-                      _hover={{ color: customColor, bg: "transparent" }}
-                      size="sm"
-                    />
-                  </InputRightElement>
-                </InputGroup>
-              </FormControl>
-
-              {currentView === "add" && (
-                <FormControl isRequired>
-                  <FormLabel htmlFor="confirmPassword" color="gray.700">
-                    Confirm Password *
-                  </FormLabel>
-                  <InputGroup>
-                    <Input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type={showConfirmPassword ? "text" : "password"}
-                      placeholder="Confirm Password"
-                      onChange={handleInputChange}
-                      value={formData.confirmPassword}
-                      borderColor={`${customColor}50`}
-                      _hover={{ borderColor: customColor }}
-                      _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                      bg="white"
-                    />
-                    <InputRightElement>
-                      <IconButton
-                        variant="ghost"
-                        aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
-                        icon={showConfirmPassword ? <ViewOffIcon /> : <ViewIcon />}
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        color="gray.500"
-                        _hover={{ color: customColor, bg: "transparent" }}
-                        size="sm"
-                      />
-                    </InputRightElement>
-                  </InputGroup>
-                </FormControl>
-              )}
-            </SimpleGrid>
-
-            <Flex justify="flex-end" mt={10} gap={4}>
-              <Button
-                variant="outline"
-                onClick={handleBackToList}
-                borderColor="gray.300"
-                color="gray.600"
-                size="md"
-                px={8}
-                borderRadius="lg"
-                _hover={{ bg: "gray.50", borderColor: "gray.400" }}
-              >
-                Cancel
-              </Button>
-              <Button
-                bg={customColor}
-                _hover={{ bg: "#006666", transform: "translateY(-1px)", boxShadow: "lg" }}
-                _active={{ bg: "#004d4d", transform: "translateY(0)" }}
-                color="white"
-                onClick={handleSubmit}
-                isLoading={loading}
-                size="md"
-                px={10}
-                borderRadius="lg"
-                leftIcon={currentView === "add" ? <FaUserPlus /> : <FaEdit />}
-                transition="all 0.2s"
-              >
-                {currentView === "add" ? "Create Admin" : "Update Admin"}
-              </Button>
-            </Flex>
-          </CardBody>
-        </Card>
-      </Flex>
-    );
-  }
-
-
-
-  // Render List View
   return (
     <Flex
       flexDirection="column"
-      pt={{ base: "5px", md: "45px" }}
-      minH="100vh"
-      pb="150px"
-      overflow="auto"
-      css={{
-        '&::-webkit-scrollbar': {
-          width: '8px',
-        },
-        '&::-webkit-scrollbar-track': {
-          background: 'transparent',
-          borderRadius: '24px',
-        },
-        '&::-webkit-scrollbar-thumb': {
-          background: 'transparent',
-          borderRadius: '24px',
-          transition: 'background 0.3s ease',
-        },
-        '&:hover::-webkit-scrollbar-thumb': {
-          background: '#cbd5e1',
-        },
-        '&:hover::-webkit-scrollbar-thumb:hover': {
-          background: '#94a3b8',
-        },
-      }}
+      pt={{ base: "50px", md: "45px" }}
+      height={{ base: "calc(100vh - 20px)", md: "calc(100vh - 40px)" }}
+      overflow="hidden"
+      css={globalScrollbarStyles}
     >
-      {/* Fixed Statistics Cards */}
-      {/* Fixed Statistics Cards */}
-      <Box mb="16px">
-        <SimpleGrid
-          columns={{ base: 1, sm: 2, lg: 4 }}
-          spacing={{ base: 2, md: 3 }}
-          px={{ base: 2, md: 4 }}
-          py={3}
+      {/* Fixed Statistics Cards - Preserved exactly as in UserManagement but with tech stats */}
+      <Box flexShrink={0} p={{ base: 1, md: 4 }} pb={0}>
+        <Grid
+          templateColumns={{ base: "1fr 1fr", md: "1fr 1fr 1fr 1fr" }}
+          gap={{ base: "8px", md: "10px" }}
+          mb={{ base: "8px", md: "12px" }}
         >
-
-          {/* TOTAL TECHNICIANS */}
+          {/* Total Technicians Card */}
           <Card
-            minH="48px"
+            minH={{ base: "55px", md: "60px" }}
             cursor="pointer"
-            onClick={() => handleCardClick("all")}
+            onClick={() => handleFilterClick("all")}
             border={activeFilter === "all" ? "2px solid" : "1px solid"}
-            borderColor={customBorderColor}
+            borderColor={activeFilter === "all" ? customColor : `${customColor}30`}
+            transition="all 0.2s ease-in-out"
             bg="white"
-            w="100%"
-            minW="120px"
-            flex="1"
-            transition="all 0.15s ease"
-            _hover={{ transform: "translateY(-2px)", shadow: "md" }}
+            position="relative"
+            overflow="hidden"
+            _before={{
+              content: '""',
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+              opacity: 0,
+              transition: "opacity 0.2s ease-in-out",
+            }}
+            _hover={{
+              transform: { base: "none", md: "translateY(-2px)" },
+              shadow: { base: "none", md: "lg" },
+              _before: { opacity: 1 },
+              borderColor: customColor,
+            }}
           >
-            <CardBody p={2}>
-              <Flex align="center" justify="space-between">
-                <Stat>
-                  <StatLabel fontSize="xs" fontWeight="semibold" color="gray.600">
-                    Total Technician
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+              <Flex flexDirection="row" align="center" justify="center" w="100%">
+                <Stat me="auto">
+                  <StatLabel
+                    fontSize={{ base: "2xs", md: "xs" }}
+                    color="gray.600"
+                    fontWeight="bold"
+                    pb="1px"
+                  >
+                    Total Technicians
                   </StatLabel>
-                  <StatNumber fontSize="md">{adminData.length}</StatNumber>
+                  <Flex>
+                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
+                      {isLoading ? <Spinner size="xs" /> : stats.totalTechnicians}
+                    </StatNumber>
+                  </Flex>
                 </Stat>
-                <IconBox h="28px" w="28px" bg={customColor}>
-                  <Icon as={FaUsers} h="14px" w="14px" color="white" />
+                <IconBox
+                  as="box"
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
+                  bg={customColor}
+                >
+                  <Icon as={FaUsers} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
                 </IconBox>
               </Flex>
             </CardBody>
           </Card>
 
-          {/* ACTIVE TECHNICIANS */}
+          {/* Active Technicians Card */}
           <Card
-            minH="48px"
+            minH={{ base: "55px", md: "60px" }}
             cursor="pointer"
-            onClick={() => handleCardClick("Active")}
-            border={activeFilter === "Active" ? "2px solid" : "1px solid"}
-            borderColor={customBorderColor}
+            onClick={() => handleFilterClick("active")}
+            border={activeFilter === "active" ? "2px solid" : "1px solid"}
+            borderColor={activeFilter === "active" ? customColor : `${customColor}30`}
+            transition="all 0.2s ease-in-out"
             bg="white"
-            w="100%"
-            minW="120px"
-            flex="1"
-            transition="all 0.15s ease"
-            _hover={{ transform: "translateY(-2px)", shadow: "md" }}
+            position="relative"
+            overflow="hidden"
+            _before={{
+              content: '""',
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+              opacity: 0,
+              transition: "opacity 0.2s ease-in-out",
+            }}
+            _hover={{
+              transform: { base: "none", md: "translateY(-2px)" },
+              shadow: { base: "none", md: "lg" },
+              _before: { opacity: 1 },
+              borderColor: customColor,
+            }}
           >
-            <CardBody p={2}>
-              <Flex align="center" justify="space-between">
-                <Stat>
-                  <StatLabel fontSize="xs" fontWeight="semibold" color="gray.600">
-                    Active Technician
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+              <Flex flexDirection="row" align="center" justify="center" w="100%">
+                <Stat me="auto">
+                  <StatLabel
+                    fontSize={{ base: "2xs", md: "xs" }}
+                    color="gray.600"
+                    fontWeight="bold"
+                    pb="1px"
+                  >
+                    Active Technicians
                   </StatLabel>
-                  <StatNumber fontSize="md">
-                    {
-                      adminData.filter(
-                        a =>
-                          a.isActiveTechnician === true ||
-                          ["approved", "active"].includes(a.status?.toLowerCase())
-                      ).length
-                    }
-                  </StatNumber>
+                  <Flex>
+                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
+                      {isLoading ? <Spinner size="xs" /> : stats.activeTechnicians}
+                    </StatNumber>
+                  </Flex>
                 </Stat>
-                <IconBox h="28px" w="28px" bg={customColor}>
-                  <Icon
-                    as={IoCheckmarkDoneCircleSharp}
-                    h="14px"
-                    w="14px"
-                    color="white"
-                  />
+                <IconBox
+                  as="box"
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
+                  bg="green.500"
+                >
+                  <Icon as={IoCheckmarkDoneCircleSharp} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
                 </IconBox>
               </Flex>
             </CardBody>
           </Card>
 
-          {/* TRAINING COMPLETED */}
+          {/* Training Completed Card */}
           <Card
-            minH="48px"
+            minH={{ base: "55px", md: "60px" }}
             cursor="pointer"
-            onClick={() => handleCardClick("TrainingCompleted")}
-            border={activeFilter === "TrainingCompleted" ? "2px solid" : "1px solid"}
-            borderColor={customBorderColor}
+            onClick={() => handleFilterClick("trainingCompleted")}
+            border={activeFilter === "trainingCompleted" ? "2px solid" : "1px solid"}
+            borderColor={activeFilter === "trainingCompleted" ? customColor : `${customColor}30`}
+            transition="all 0.2s ease-in-out"
             bg="white"
-            w="100%"
-            minW="120px"
-            flex="1"
-            transition="all 0.15s ease"
-            _hover={{ transform: "translateY(-2px)", shadow: "md" }}
+            position="relative"
+            overflow="hidden"
+            _before={{
+              content: '""',
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+              opacity: 0,
+              transition: "opacity 0.2s ease-in-out",
+            }}
+            _hover={{
+              transform: { base: "none", md: "translateY(-2px)" },
+              shadow: { base: "none", md: "lg" },
+              _before: { opacity: 1 },
+              borderColor: customColor,
+            }}
           >
-            <CardBody p={2}>
-              <Flex align="center" justify="space-between">
-                <Stat>
-                  <StatLabel fontSize="xs" fontWeight="semibold" color="gray.600">
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+              <Flex flexDirection="row" align="center" justify="center" w="100%">
+                <Stat me="auto">
+                  <StatLabel
+                    fontSize={{ base: "2xs", md: "xs" }}
+                    color="gray.600"
+                    fontWeight="bold"
+                    pb="1px"
+                  >
                     Training Completed
                   </StatLabel>
-                  <StatNumber fontSize="md">
-                    {adminData.filter(a => a.trainingCompleted === true).length}
-                  </StatNumber>
+                  <Flex>
+                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
+                      {isLoading ? <Spinner size="xs" /> : stats.trainingCompleted}
+                    </StatNumber>
+                  </Flex>
                 </Stat>
-                <IconBox h="28px" w="28px" bg={customColor}>
-                  <Icon as={FaUserGraduate} h="14px" w="14px" color="white" />
+                <IconBox
+                  as="box"
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
+                  bg="orange.500"
+                >
+                  <Icon as={FaUserGraduate} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
                 </IconBox>
               </Flex>
             </CardBody>
           </Card>
 
-          {/* KYC VERIFIED */}
+          {/* KYC Verified Card */}
           <Card
-            minH="48px"
+            minH={{ base: "55px", md: "60px" }}
             cursor="pointer"
-            onClick={() => handleCardClick("KYCVerified")}
-            border={activeFilter === "KYCVerified" ? "2px solid" : "1px solid"}
-            borderColor={customBorderColor}
+            onClick={() => handleFilterClick("kycVerified")}
+            border={activeFilter === "kycVerified" ? "2px solid" : "1px solid"}
+            borderColor={activeFilter === "kycVerified" ? customColor : `${customColor}30`}
+            transition="all 0.2s ease-in-out"
             bg="white"
-            w="100%"
-            minW="120px"
-            flex="1"
-            transition="all 0.15s ease"
-            _hover={{ transform: "translateY(-2px)", shadow: "md" }}
+            position="relative"
+            overflow="hidden"
+            _before={{
+              content: '""',
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+              opacity: 0,
+              transition: "opacity 0.2s ease-in-out",
+            }}
+            _hover={{
+              transform: { base: "none", md: "translateY(-2px)" },
+              shadow: { base: "none", md: "lg" },
+              _before: { opacity: 1 },
+              borderColor: customColor,
+            }}
           >
-            <CardBody p={2}>
-              <Flex align="center" justify="space-between">
-                <Stat>
-                  <StatLabel fontSize="xs" fontWeight="semibold" color="gray.600">
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+              <Flex flexDirection="row" align="center" justify="center" w="100%">
+                <Stat me="auto">
+                  <StatLabel
+                    fontSize={{ base: "2xs", md: "xs" }}
+                    color="gray.600"
+                    fontWeight="bold"
+                    pb="1px"
+                  >
                     KYC Verified
                   </StatLabel>
-                  <StatNumber fontSize="md">
-                    {
-                      adminData.filter(a => {
-                        const kyc = allKycRecords.find(
-                          k => (k.technicianId?._id || k.technicianId) === a._id
-                        );
-                        return ["approved", "verified"].includes(
-                          kyc?.status?.toLowerCase() ||
-                          kyc?.verificationStatus?.toLowerCase()
-                        );
-                      }).length
-                    }
-                  </StatNumber>
+                  <Flex>
+                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
+                      {isLoading ? <Spinner size="xs" /> : stats.kycVerified}
+                    </StatNumber>
+                  </Flex>
                 </Stat>
-                <IconBox h="28px" w="28px" bg={customColor}>
-                  <Icon as={FaIdCard} h="14px" w="14px" color="white" />
+                <IconBox
+                  as="box"
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
+                  bg="purple.500"
+                >
+                  <Icon as={FaIdCard} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
                 </IconBox>
               </Flex>
             </CardBody>
           </Card>
-        </SimpleGrid>
-
-        {/* ACTIVE FILTER TITLE */}
-        <Flex justify="space-between" align="center" mt={1}>
-          <Text fontSize="md" fontWeight="bold">
-            {
-              {
-                Active: "Active Technician",
-                TrainingCompleted: "Training Completed",
-                KYCVerified: "KYC Verified",
-                all: "All Technician",
-              }[activeFilter]
-            }
-          </Text>
-
-          {activeFilter !== "all" && (
-            <Button
-              size="xs"
-              variant="outline"
-              borderColor={customColor}
-              color={customColor}
-              _hover={{ bg: customColor, color: "white" }}
-              onClick={() => {
-                setActiveFilter("all");
-                setSelectedTechForHistory(null);
-              }}
-            >
-              Show All
-            </Button>
-          )}
-        </Flex>
+        </Grid>
       </Box>
 
-
-      {/* Table Container */}
-      <Box
-        display="flex"
-        flexDirection="column"
-        p={2}
-        pt={0}
-      >
+      {/* Scrollable Table Container */}
+      <Box display="flex" flexDirection="column" p={4} pt={0} flex="1" overflow="hidden">
         <Card
-          shadow="sm"
+          shadow="lg"
           bg="white"
           display="flex"
           flexDirection="column"
-          border="1px solid"
-          borderColor={customBorderColor}
+          maxH="100%"
+          overflow="hidden"
         >
-          {/* Table Header */}
+          {/* Fixed Table Header */}
           <CardHeader
-            p="2px"
-            pb="2px"
-            bg="transparent"
+            p="10px 16px"
+            pb="8px"
+            bg="white"
             flexShrink={0}
             borderBottom="1px solid"
             borderColor={`${customColor}20`}
           >
-            <Flex justify="space-between" align="center" flexWrap="wrap" gap={4}>
-              {/* Title */}
-              <Heading size="md" flexShrink={0} color="gray.700">
-                👤 Technician Table
+            <Flex
+              flexDirection={{ base: "column", sm: "row" }}
+              justify="space-between"
+              align={{ base: "stretch", sm: "center" }}
+              gap={3}
+            >
+              <Heading size="sm" flexShrink={0} color="gray.700">
+                {activeFilter === "all" && "👤 Technician Management"}
+                {activeFilter === "active" && "✅ Active Technicians"}
+                {activeFilter === "trainingCompleted" && "🎓 Training Completed"}
+                {activeFilter === "kycVerified" && "🪪 KYC Verified"}
               </Heading>
 
-              {/* Search Bar */}
-              <Flex align="center" flex="1" maxW={{ base: "100%", md: "400px" }} mt={{ base: 2, md: 0 }}>
+              <Flex
+                align="center"
+                flex={{ base: "none", sm: "1" }}
+                maxW={{ base: "100%", sm: "350px" }}
+                minW={{ base: "0", sm: "200px" }}
+                w="100%"
+              >
                 <Input
-                  placeholder="Search..."
+                  placeholder="Search technicians..."
                   value={searchTerm}
                   onChange={handleSearchChange}
                   size="sm"
@@ -1796,8 +1188,9 @@ function AdminManagement() {
                   _hover={{ borderColor: customColor }}
                   _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
                   bg="white"
+                  fontSize="sm"
                 />
-                <Icon as={FaSearch} color="gray.400" />
+                <Icon as={FaSearch} color="gray.400" boxSize={3} />
                 {searchTerm && (
                   <Button
                     size="sm"
@@ -1808,450 +1201,538 @@ function AdminManagement() {
                     border="1px"
                     borderColor={customColor}
                     _hover={{ bg: customColor, color: "white" }}
+                    fontSize="xs"
+                    px={2}
                   >
                     Clear
                   </Button>
                 )}
               </Flex>
-
-              {/* Add Admin Button */}
-              {/* <Button
-                bg={customColor}
-                _hover={{ bg: customHoverColor }}
-                color="white"
-                onClick={handleAddAdmin}
-                fontSize="sm"
-                borderRadius="8px"
-                flexShrink={0}
-              >
-                + Add Admin
-              </Button> */}
             </Flex>
           </CardHeader>
 
-          {/* Table Content Area */}
-          <CardBody
-            bg="transparent"
-            display="flex"
-            flexDirection="column"
-            p={0}
-          >
-            {tableLoading ? (
-              <Flex justify="center" align="center" py={5} flex="1">
-                <Spinner size="xl" color={customColor} />
-                <Text ml={4}>Loading Technicians...</Text>
+          {/* Scrollable Table Content Area */}
+          <CardBody bg="white" display="flex" flexDirection="column" p={0} overflow="hidden">
+            {isLoading ? (
+              <Flex justify="center" align="center" py={6} flex="1">
+                <Spinner size="lg" color={customColor} />
+                <Text ml={3} fontSize="sm">Loading technicians...</Text>
               </Flex>
             ) : (
-              <Box display="flex" flexDirection="column">
-                {currentItems.length > 0 ? (
-                  <>
-                    {/* Standard Technician Table (Existing Code) */}
-                    <Box
-                      display="flex"
-                      flexDirection="column"
-                    >
-                      <Box
-                        overflowY="auto"
-                        overflowX="auto"
-                        css={{
-                          '&::-webkit-scrollbar': {
-                            width: '8px',
-                            height: '8px',
-                          },
-                          '&::-webkit-scrollbar-track': {
-                            background: 'transparent',
-                          },
-                          '&::-webkit-scrollbar-thumb': {
-                            background: 'transparent',
-                            borderRadius: '4px',
-                            transition: 'background 0.3s ease',
-                          },
-                          '&:hover::-webkit-scrollbar-thumb': {
-                            background: '#cbd5e1',
-                          },
-                          '&:hover::-webkit-scrollbar-thumb:hover': {
-                            background: '#94a3b8',
-                          },
-                        }}
-                      >
-                        <Table variant="simple" size="md" bg="transparent">
-                          <Thead>
-                            <Tr>
-                              {[
-                                "Technician Name",
-                                "Specialization",
-                                "Experience",
-                                "City",
-                                "Rating",
-                                "Total Jobs",
-                                "Actions",
-                              ].map((label) => (
-                                <Th
-                                  key={label}
-                                  color="gray.100"
-                                  borderColor={`${customColor}30`}
-                                  position="sticky"
-                                  top={0}
-                                  bg={customColor}
-                                  zIndex={10}
-                                  fontWeight="semibold"
-                                  fontSize="xs"          // ↓ smaller header text
-                                  py={1}                 // ↓ vertical padding reduced
-                                  px={2}                 // controlled horizontal padding
-                                  borderBottom="2px solid"
-                                  borderBottomColor={`${customColor}50`}
-                                  whiteSpace="nowrap"
-                                >
-                                  {label}
-                                </Th>
-                              ))}
-                            </Tr>
-
-                          </Thead>
-
-                          <Tbody bg="transparent">
-                            {displayItems.map((admin, index) => {
-
-                              return (
-                                <Tr
-                                  key={admin._id || index}
-                                  bg="transparent"
-                                  _hover={{ bg: `${customColor}08` }}   // reduced hover intensity
-                                  borderBottom="1px"
-                                  borderColor={`${customColor}20`}
-                                  height="40px"                         // ↓ from 48px
-                                >
-                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
-                                    <Flex align="center">
-                                      <Avatar
-                                        size="xs"                       // ↓ from sm
-                                        name={getTechnicianName(admin)}
-                                        src={getTechnicianImage(admin)}
-                                        mr={2}                          // ↓ margin
-                                      />
-                                      <Box>
-                                        <Text fontWeight="medium" fontSize="sm" color="gray.700">
-                                          {getTechnicianName(admin)}
-                                        </Text>
-                                        {admin.availability?.isOnline && (
-                                          <Badge colorScheme="green" fontSize="10px" mt={0.5}>
-                                            Online
-                                          </Badge>
-                                        )}
-                                      </Box>
-                                    </Flex>
-                                  </Td>
-
-                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
-                                    <Text fontWeight="medium" fontSize="sm" color="gray.700">
-                                      {(() => {
-                                        const spec = admin.specialization ||
-                                          admin.profile?.specialization ||
-                                          admin.userId?.specialization ||
-                                          admin.userId?.profile?.specialization ||
-                                          "N/A";
-
-                                        if (typeof spec !== 'string' || spec === "N/A") return spec;
-
-                                        const specs = spec.split(',').map(s => s.trim()).filter(s => s !== "");
-                                        if (specs.length > 1) {
-                                          return (
-                                            <Tooltip label={spec} hasArrow placement="top">
-                                              <span>{specs[0]}.......</span>
-                                            </Tooltip>
-                                          );
-                                        }
-                                        return spec;
-                                      })()}
-                                    </Text>
-                                  </Td>
-
-                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
-                                    <Text fontWeight="medium" fontSize="sm" color="gray.700">
-                                      {(() => {
-                                        const exp = admin.experienceYears ??
-                                          admin.profile?.experienceYears ??
-                                          admin.userId?.experienceYears ??
-                                          admin.userId?.profile?.experienceYears;
-                                        return (exp !== undefined && exp !== null) ? `${exp} Years` : "N/A";
-                                      })()}
-                                    </Text>
-                                  </Td>
-
-                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
-                                    <Text fontWeight="medium" fontSize="sm" color="gray.700">
-                                      {admin.city ||
-                                        admin.profile?.city ||
-                                        admin.locality ||
-                                        admin.userId?.city ||
-                                        admin.userId?.profile?.city ||
-                                        admin.addressSnapshot?.city ||
-                                        "N/A"}
-                                    </Text>
-                                  </Td>
-
-                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
-                                    <Flex align="center">
-                                      <Icon as={FaSearch} color="yellow.400" mr={1} boxSize={3} />
-                                      <Text fontWeight="bold" fontSize="sm">
-                                        {admin.rating?.avg?.toFixed(1) || "0.0"}
-                                      </Text>
-                                      <Text fontSize="xs" color="gray.500" ml={1}>
-                                        ({admin.rating?.count || 0})
-                                      </Text>
-                                    </Flex>
-                                  </Td>
-
-                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
-                                    <Text fontWeight="medium" fontSize="sm">
-                                      {admin.totalJobsCompleted || admin.jobStats?.completed || 0}
-                                    </Text>
-                                  </Td>
-
-                                  <Td borderColor={`${customColor}20`} px={2} py={1}>
-                                    <Flex gap={1}>
-                                      <IconButton
-                                        aria-label="View Details"
-                                        icon={<FaEye />}
-                                        size="xs"                       // ↓ smaller buttons
-                                        variant="outline"
-                                        colorScheme="purple"
-                                        onClick={() => handleViewDetails(admin)}
-                                      />
-                                      <IconButton
-                                        aria-label="View KYC"
-                                        icon={<MdAdminPanelSettings />}
-                                        size="xs"
-                                        variant="outline"
-                                        colorScheme="blue"
-                                        onClick={() => handleViewKYC(admin)}
-                                      />
-                                      <IconButton
-                                        aria-label="View History"
-                                        icon={<FaHistory />}
-                                        size="xs"
-                                        variant="outline"
-                                        colorScheme="orange"
-                                        onClick={() => handleViewTechnicianHistory(admin)}
-                                      />
-                                      <IconButton
-                                        aria-label="Delete technician"
-                                        icon={<FaTrash />}
-                                        size="xs"
-                                        variant="outline"
-                                        colorScheme="red"
-                                        onClick={() => handleDeleteAdmin(admin)}
-                                      />
-                                    </Flex>
-                                  </Td>
-                                </Tr>
-
-                              );
-                            })}
-                          </Tbody>
-                        </Table>
-                      </Box>
-                    </Box>
-
-                    {/* Pagination Bar */}
-                    {currentItems.length > 0 && (
-                      <Box
-                        flexShrink={0}
-                        p="4px"
-                        borderTop="1px solid"
-                        borderColor={`${customColor}20`}
-                        bg="transparent"
-                      >
-                        <Flex
-                          justify="flex-end"
-                          align="center"
-                          gap={3}
+              <Box display="flex" flexDirection="column" overflow="hidden">
+                {/* Desktop Table View */}
+                <Box display={{ base: "none", md: "block" }} overflow="auto" css={globalScrollbarStyles}>
+                  <Table variant="simple" size="sm" bg="transparent">
+                    <Thead>
+                      <Tr>
+                        <Th
+                          color="gray.100"
+                          borderColor={`${customColor}30`}
+                          position="sticky"
+                          top={0}
+                          bg={customColor}
+                          zIndex={10}
+                          fontWeight="bold"
+                          fontSize="xs"
+                          py={2}
+                          borderBottom="2px solid"
+                          borderBottomColor={`${customColor}50`}
                         >
+                          #
+                        </Th>
+                        <Th
+                          color="gray.100"
+                          borderColor={`${customColor}30`}
+                          position="sticky"
+                          top={0}
+                          bg={customColor}
+                          zIndex={10}
+                          fontWeight="bold"
+                          fontSize="xs"
+                          py={2}
+                          borderBottom="2px solid"
+                          borderBottomColor={`${customColor}50`}
+                        >
+                          Technician
+                        </Th>
+                        <Th
+                          color="gray.100"
+                          borderColor={`${customColor}30`}
+                          position="sticky"
+                          top={0}
+                          bg={customColor}
+                          zIndex={10}
+                          fontWeight="bold"
+                          fontSize="xs"
+                          py={2}
+                          borderBottom="2px solid"
+                          borderBottomColor={`${customColor}50`}
+                        >
+                          Specialization
+                        </Th>
+                        <Th
+                          color="gray.100"
+                          borderColor={`${customColor}30`}
+                          position="sticky"
+                          top={0}
+                          bg={customColor}
+                          zIndex={10}
+                          fontWeight="bold"
+                          fontSize="xs"
+                          py={2}
+                          borderBottom="2px solid"
+                          borderBottomColor={`${customColor}50`}
+                        >
+                          City
+                        </Th>
+                        <Th
+                          color="gray.100"
+                          borderColor={`${customColor}30`}
+                          position="sticky"
+                          top={0}
+                          bg={customColor}
+                          zIndex={10}
+                          fontWeight="bold"
+                          fontSize="xs"
+                          py={2}
+                          borderBottom="2px solid"
+                          borderBottomColor={`${customColor}50`}
+                        >
+                          Rating
+                        </Th>
+                        <Th
+                          color="gray.100"
+                          borderColor={`${customColor}30`}
+                          position="sticky"
+                          top={0}
+                          bg={customColor}
+                          zIndex={10}
+                          fontWeight="bold"
+                          fontSize="xs"
+                          py={2}
+                          borderBottom="2px solid"
+                          borderBottomColor={`${customColor}50`}
+                        >
+                          Jobs
+                        </Th>
+                        <Th
+                          color="gray.100"
+                          borderColor={`${customColor}30`}
+                          position="sticky"
+                          top={0}
+                          bg={customColor}
+                          zIndex={10}
+                          fontWeight="bold"
+                          fontSize="xs"
+                          py={2}
+                          borderBottom="2px solid"
+                          borderBottomColor={`${customColor}50`}
+                        >
+                          Actions
+                        </Th>
+                      </Tr>
+                    </Thead>
 
+                    <Tbody bg="transparent">
+                      {currentItems.length > 0 ? (
+                        currentItems.map((tech, idx) => {
+                          const userName = getTechnicianName(tech);
 
-                          <Flex align="center" gap={2}>
-                            <Button
-                              size="sm"
-                              onClick={handlePrevPage}
-                              isDisabled={currentPage === 1}
-                              leftIcon={<FaChevronLeft />}
-                              bg="white"
-                              color={customColor}
-                              border="1px"
-                              borderColor={customColor}
-                              _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{
-                                opacity: 0.5,
-                                cursor: "not-allowed",
-                                bg: "gray.100",
-                                color: "gray.400",
-                                borderColor: "gray.300"
-                              }}
+                          return (
+                            <Tr
+                              key={tech._id || idx}
+                              bg="transparent"
+                              _hover={{ bg: `${customColor}10` }}
+                              borderBottom="1px"
+                              borderColor={`${customColor}20`}
+                              height="40px"
                             >
-                              <Text display={{ base: "none", sm: "block" }}>Previous</Text>
-                            </Button>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+                                {indexOfFirstItem + idx + 1}
+                              </Td>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+                                <Flex align="center" gap={2}>
+                                  <Avatar size="xs" name={userName} src={getTechnicianImage(tech)} />
+                                  <Box>
+                                    <Text fontWeight="medium" fontSize="xs" noOfLines={1}>
+                                      {userName}
+                                    </Text>
+                                  </Box>
+                                </Flex>
+                              </Td>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+                                <Tooltip label={tech.specialization} hasArrow placement="top">
+                                  <Text noOfLines={1} maxW="150px">
+                                    {tech.specialization || tech.profile?.specialization || "N/A"}
+                                  </Text>
+                                </Tooltip>
+                              </Td>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+                                {tech.city || tech.profile?.city || tech.locality || "N/A"}
+                              </Td>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+                                <Flex align="center">
+                                  <Icon as={FaSearch} color="yellow.400" mr={1} boxSize={3} />
+                                  <Text fontWeight="bold" fontSize="xs">
+                                    {tech.rating?.avg?.toFixed(1) || "0.0"}
+                                  </Text>
+                                  <Text fontSize="2xs" color="gray.500" ml={1}>
+                                    ({tech.rating?.count || 0})
+                                  </Text>
+                                </Flex>
+                              </Td>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+                                <Text fontWeight="bold">{tech.totalJobsCompleted || tech.jobStats?.completed || 0}</Text>
+                              </Td>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+                                <Flex gap={2}>
+                                  <IconButton
+                                    aria-label="View details"
+                                    icon={<FaEye />}
+                                    bg="white"
+                                    color="blue.500"
+                                    border="1px"
+                                    borderColor="blue.500"
+                                    _hover={{ bg: "blue.500", color: "white" }}
+                                    size="xs"
+                                    onClick={() => handleViewDetails(tech)}
+                                  />
+                                  <IconButton
+                                    aria-label="View KYC"
+                                    icon={<MdAdminPanelSettings />}
+                                    bg="white"
+                                    color="green.500"
+                                    border="1px"
+                                    borderColor="green.500"
+                                    _hover={{ bg: "green.500", color: "white" }}
+                                    size="xs"
+                                    onClick={() => handleViewKYC(tech)}
+                                  />
+                                  <IconButton
+                                    aria-label="View history"
+                                    icon={<FaHistory />}
+                                    bg="white"
+                                    color="orange.500"
+                                    border="1px"
+                                    borderColor="orange.500"
+                                    _hover={{ bg: "orange.500", color: "white" }}
+                                    size="xs"
+                                    onClick={() => handleViewHistory(tech)}
+                                  />
+                                  <IconButton
+                                    aria-label="Delete technician"
+                                    icon={<FaTrash />}
+                                    bg="white"
+                                    color="red.500"
+                                    border="1px"
+                                    borderColor="red.500"
+                                    _hover={{ bg: "red.500", color: "white" }}
+                                    size="xs"
+                                    onClick={() => handleDeleteClick(tech)}
+                                  />
+                                </Flex>
+                              </Td>
+                            </Tr>
+                          );
+                        })
+                      ) : (
+                        <Tr>
+                          <Td colSpan={7} textAlign="center" py={6}>
+                            <Text fontSize="xs">
+                              {adminData.length === 0 ? "No technicians found." : "No technicians match your search."}
+                            </Text>
+                          </Td>
+                        </Tr>
+                      )}
+                    </Tbody>
+                  </Table>
+                </Box>
 
-                            <Flex
-                              align="center"
-                              gap={2}
-                              bg={`${customColor}10`}
-                              px={2}
-                              py={0.5}
-                              borderRadius="6px"
-                              minW="80px"
-                              justify="center"
-                            >
-                              <Text fontSize="sm" fontWeight="bold" color={customColor}>
-                                {currentPage}
-                              </Text>
-                              <Text fontSize="sm" color="gray.500">
-                                /
-                              </Text>
-                              <Text fontSize="sm" color="gray.600" fontWeight="medium">
-                                {totalPages}
-                              </Text>
-                            </Flex>
+                {/* Mobile Card View */}
+                <Box
+                  display={{ base: "block", md: "none" }}
+                  overflow="auto"
+                  px={3}
+                  py={2}
+                  css={globalScrollbarStyles}
+                >
+                  {currentItems.length > 0 ? (
+                    currentItems.map((tech, idx) => (
+                      <TechnicianMobileCard
+                        key={tech._id || idx}
+                        tech={tech}
+                        idx={idx}
+                        indexOfFirstItem={indexOfFirstItem}
+                        onViewDetails={handleViewDetails}
+                        onViewKYC={handleViewKYC}
+                        onViewHistory={handleViewHistory}
+                        onDelete={handleDeleteClick}
+                      />
+                    ))
+                  ) : (
+                    <Center py={10}>
+                      <VStack spacing={2}>
+                        <Icon as={FaUsers} color="gray.300" boxSize={10} />
+                        <Text fontSize="sm" color="gray.500">No technicians found</Text>
+                      </VStack>
+                    </Center>
+                  )}
+                </Box>
 
-                            <Button
-                              size="sm"
-                              onClick={handleNextPage}
-                              isDisabled={currentPage === totalPages}
-                              rightIcon={<FaChevronRight />}
-                              bg="white"
-                              color={customColor}
-                              border="1px"
-                              borderColor={customColor}
-                              _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{
-                                opacity: 0.5,
-                                cursor: "not-allowed",
-                                bg: "gray.100",
-                                color: "gray.400",
-                                borderColor: "gray.300"
-                              }}
-                            >
-                              <Text display={{ base: "none", sm: "block" }}>Next</Text>
-                            </Button>
-                          </Flex>
-                        </Flex>
-                      </Box>
-                    )}
-                  </>
-                ) : (
-                  <Flex
-                    height="200px"
-                    justify="center"
-                    align="center"
-                    border="1px dashed"
-                    borderColor={`${customColor}30`}
-                    borderRadius="md"
-                    flex="1"
+                {/* Pagination Controls */}
+                {filteredData.length > 0 && (
+                  <Box
+                    flexShrink={0}
+                    p="16px"
+                    borderTop="1px solid"
+                    borderColor={`${customColor}20`}
                     bg="transparent"
                   >
-                    <Text textAlign="center" color="gray.500" fontSize="lg">
-                      {dataLoaded
-                        ? activeFilter === "Active"
-                          ? "No Active Technicians Found"
-                          : adminData.length === 0
-                            ? "No Technicians found."
-                            : searchTerm
-                              ? "No Technicians match your search."
-                              : "No Technicians match the selected filter."
-                        : "Loading Technicians..."}
-                    </Text>
-                  </Flex>
+                    <Flex justify="flex-end" align="center" gap={3}>
+                      <Flex align="center" gap={2}>
+                        <Button
+                          size="sm"
+                          onClick={handlePrevPage}
+                          isDisabled={currentPage === 1}
+                          leftIcon={<FaChevronLeft />}
+                          bg="white"
+                          color={customColor}
+                          border="1px"
+                          borderColor={customColor}
+                          _hover={{ bg: customColor, color: "white" }}
+                          _disabled={{
+                            opacity: 0.5,
+                            cursor: "not-allowed",
+                            bg: "gray.100",
+                            color: "gray.400",
+                            borderColor: "gray.300"
+                          }}
+                        >
+                          <Text display={{ base: "none", sm: "block" }}>Previous</Text>
+                        </Button>
+
+                        <Flex
+                          align="center"
+                          gap={2}
+                          bg={`${customColor}10`}
+                          px={3}
+                          py={1}
+                          borderRadius="6px"
+                          minW="80px"
+                          justify="center"
+                        >
+                          <Text fontSize="sm" fontWeight="bold" color={customColor}>
+                            {currentPage}
+                          </Text>
+                          <Text fontSize="sm" color="gray.500">/</Text>
+                          <Text fontSize="sm" color="gray.600" fontWeight="medium">
+                            {totalPages}
+                          </Text>
+                        </Flex>
+
+                        <Button
+                          size="sm"
+                          onClick={handleNextPage}
+                          isDisabled={currentPage === totalPages}
+                          rightIcon={<FaChevronRight />}
+                          bg="white"
+                          color={customColor}
+                          border="1px"
+                          borderColor={customColor}
+                          _hover={{ bg: customColor, color: "white" }}
+                          _disabled={{
+                            opacity: 0.5,
+                            cursor: "not-allowed",
+                            bg: "gray.100",
+                            color: "gray.400",
+                            borderColor: "gray.300"
+                          }}
+                        >
+                          <Text display={{ base: "none", sm: "block" }}>Next</Text>
+                        </Button>
+                      </Flex>
+                    </Flex>
+                  </Box>
                 )}
               </Box>
             )}
           </CardBody>
-        </Card >
-      </Box >
+        </Card>
+      </Box>
 
-      {/* Job History Modal */}
-      <Modal isOpen={isHistoryModalOpen} onClose={closeHistoryModal} size="4xl" scrollBehavior="inside">
+      {/* Technician Details Modal */}
+      <Modal isOpen={isDetailsModalOpen} onClose={closeModal} size="lg">
         <ModalOverlay />
-        <ModalContent maxWidth="50vw">
-          <ModalHeader color="gray.700" borderBottom="1px solid" borderColor="gray.100">
-            Job History: {selectedTechForHistory ? getTechnicianName(selectedTechForHistory) : "Technician"}
-          </ModalHeader>
+        <ModalContent maxW="600px">
+          <ModalHeader color="gray.700">Technician Details</ModalHeader>
           <ModalCloseButton />
-          <ModalBody p={0}>
-            {historyLoading ? (
-              <Flex justify="center" align="center" py={20}>
-                <Spinner size="xl" color={customColor} />
-                <Text ml={4}>Fetching job history...</Text>
-              </Flex>
-            ) : jobHistory.length > 0 ? (
-              <Box overflowX="auto">
-                <Table variant="simple" size="sm">
-                  <Thead bg="gray.50">
-                    <Tr>
-                      {["Job ID", "Customer", "Cust Mobile", "Service", "Type", "Amount", "City", "Status", "Payment", "Scheduled", "Created"].map((header) => (
-                        <Th key={header} py={4} fontSize="xs" color="gray.600">{header}</Th>
-                      ))}
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {jobHistory.map((job) => {
-                      const custName = job.customerId ? `${job.customerId.fname || ""} ${job.customerId.lname || ""}`.trim() : "N/A";
-                      const custMobile = job.customerId?.mobileNumber || "N/A";
-                      const serviceName = job.serviceId?.serviceName || "N/A";
-                      const serviceType = job.serviceId?.serviceType || "N/A";
-                      const city = job.addressSnapshot?.city || "N/A";
+          <ModalBody maxH="70vh" overflowY="auto">
+            {selectedTechnician && (
+              <VStack spacing={4} align="stretch">
+                {/* Profile Header */}
+                <Flex align="center" gap={4} mb={2}>
+                  <Avatar
+                    size="xl"
+                    name={getTechnicianName(selectedTechnician)}
+                    src={getTechnicianImage(selectedTechnician)}
+                  />
+                  <Box>
+                    <Heading size="md" color="gray.700">
+                      {getTechnicianName(selectedTechnician)}
+                    </Heading>
+                    <Text fontSize="2xs" color="gray.500" fontWeight="medium" mt={0.5}>
+                      Last Login: {selectedTechnician.lastLoginAt ? new Date(selectedTechnician.lastLoginAt).toLocaleString() : (selectedTechnician.userId?.lastLoginAt ? new Date(selectedTechnician.userId.lastLoginAt).toLocaleString() : "N/A")}
+                    </Text>
+                    <Badge
+                      colorScheme={selectedTechnician.status?.toLowerCase() === "active" || selectedTechnician.status?.toLowerCase() === "approved" ? "green" : "red"}
+                      mt={1}
+                    >
+                      {selectedTechnician.status || "Active"}
+                    </Badge>
+                  </Box>
+                </Flex>
 
-                      const getStatusBadge = (status) => {
-                        let color = "gray";
-                        if (status === "completed") color = "green";
-                        else if (status === "pending") color = "orange";
-                        else if (status === "cancelled") color = "red";
-                        else if (status === "ongoing") color = "blue";
-                        return <Badge colorScheme={color} fontSize="2xs" variant="subtle">{status}</Badge>;
-                      };
+                {/* Contact Information */}
+                <Box>
+                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Contact Information</Text>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Phone</Text>
+                      <Text fontSize="sm">{selectedTechnician.mobileNumber || selectedTechnician.phone || selectedTechnician.profile?.mobileNumber || selectedTechnician.profile?.phone || selectedTechnician.userId?.mobileNumber || selectedTechnician.userId?.phone || "N/A"}</Text>
+                    </Box>
+                  </SimpleGrid>
+                </Box>
 
-                      return (
-                        <Tr key={job._id || Math.random()} _hover={{ bg: "gray.50" }}>
-                          <Td fontSize="xs" fontWeight="bold">{job._id?.substring(job._id.length - 6)}</Td>
-                          <Td fontSize="xs">{custName}</Td>
-                          <Td fontSize="xs">{custMobile}</Td>
-                          <Td fontSize="xs" maxW="200px" isTruncated title={serviceName}>{serviceName}</Td>
-                          <Td fontSize="xs">{serviceType}</Td>
-                          <Td fontSize="xs" fontWeight="semibold">₹{job.baseAmount || 0}</Td>
-                          <Td fontSize="xs">{city}</Td>
-                          <Td>{getStatusBadge(job.status)}</Td>
-                          <Td>
-                            <Badge colorScheme={job.paymentStatus === "paid" ? "green" : "red"} fontSize="2xs" variant="outline">
-                              {job.paymentStatus || "Pending"}
-                            </Badge>
-                          </Td>
-                          <Td fontSize="xs">{new Date(job.scheduledAt).toLocaleDateString()}</Td>
-                          <Td fontSize="xs">{new Date(job.createdAt).toLocaleDateString()}</Td>
-                        </Tr>
-                      );
-                    })}
-                  </Tbody>
-                </Table>
-              </Box>
-            ) : (
-              <Flex justify="center" align="center" py={20} flexDirection="column">
-                <Icon as={FaHistory} w={10} h={10} color="gray.300" mb={4} />
-                <Text color="gray.500" fontSize="lg">No job history found for this technician.</Text>
-              </Flex>
+                {/* Professional Information */}
+                <Box>
+                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Professional Information</Text>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Specialization</Text>
+                      <Text fontSize="sm">{selectedTechnician.specialization || selectedTechnician.profile?.specialization || "N/A"}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Experience</Text>
+                      <Text fontSize="sm">
+                        {(() => {
+                          const exp = selectedTechnician.experienceYears ?? selectedTechnician.profile?.experienceYears;
+                          return (exp !== undefined && exp !== null) ? `${exp} Years` : "0 Years";
+                        })()}
+                      </Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Total Jobs</Text>
+                      <Text fontSize="sm" fontWeight="bold">{selectedTechnician.totalJobsCompleted || selectedTechnician.jobStats?.completed || 0}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Rating</Text>
+                      <Text fontSize="sm">
+                        {selectedTechnician.rating?.avg?.toFixed(1) || "0.0"} ({selectedTechnician.rating?.count || 0} reviews)
+                      </Text>
+                    </Box>
+                  </SimpleGrid>
+                </Box>
+
+                {/* Address */}
+                <Box>
+                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Address</Text>
+                  <Text fontSize="sm">
+                    {selectedTechnician.address || "N/A"}, {selectedTechnician.locality || "N/A"}, {selectedTechnician.city || selectedTechnician.profile?.city || "N/A"} - {selectedTechnician.pincode || "N/A"}
+                  </Text>
+                </Box>
+
+                {/* Status */}
+                <Box>
+                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Status</Text>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Training</Text>
+                      <Badge colorScheme={selectedTechnician.trainingCompleted ? "green" : "orange"}>
+                        {selectedTechnician.trainingCompleted ? "Completed" : "Pending"}
+                      </Badge>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Work Status</Text>
+                      <Text fontSize="sm">{selectedTechnician.workStatus || "N/A"}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Wallet Balance</Text>
+                      <Text fontSize="sm">₹{selectedTechnician.walletBalance || 0}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Online</Text>
+                      <Badge colorScheme={selectedTechnician.availability?.isOnline ? "green" : "gray"}>
+                        {selectedTechnician.availability?.isOnline ? "Yes" : "No"}
+                      </Badge>
+                    </Box>
+                  </SimpleGrid>
+                </Box>
+
+                {/* Bank Details */}
+                <Box>
+                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Bank Details</Text>
+                  {(() => {
+                    const kycMatch = allKycRecords.find(k =>
+                      (k.technicianId?._id || k.technicianId) === selectedTechnician._id
+                    );
+                    if (!kycMatch || !kycMatch.bankDetails) return <Text fontSize="sm" color="gray.500">No bank details provided</Text>;
+
+                    return (
+                      <SimpleGrid columns={2} spacing={3}>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500">Bank Name</Text>
+                          <Text fontSize="sm">{kycMatch.bankDetails.bankName || "N/A"}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500">Account Holder</Text>
+                          <Text fontSize="sm">{kycMatch.bankDetails.accountHolderName || "N/A"}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500">Account Number</Text>
+                          <Text fontSize="sm">{kycMatch.bankDetails.accountNumber || "N/A"}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500">IFSC Code</Text>
+                          <Text fontSize="sm">{kycMatch.bankDetails.ifscCode || "N/A"}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500">UPI ID</Text>
+                          <Text fontSize="sm">{kycMatch.bankDetails.upiId || "N/A"}</Text>
+                        </Box>
+                      </SimpleGrid>
+                    );
+                  })()}
+                </Box>
+
+                {/* Training Action Button */}
+                <Flex justify="flex-end" mt={2}>
+                  <Button
+                    size="sm"
+                    bg={selectedTechnician.trainingCompleted ? "red.500" : customColor}
+                    color="white"
+                    _hover={{ bg: selectedTechnician.trainingCompleted ? "red.600" : "#006666" }}
+                    onClick={() => handleTrainingCompletion(selectedTechnician, !selectedTechnician.trainingCompleted)}
+                    isLoading={isLoading}
+                    leftIcon={<FaUserGraduate />}
+                  >
+                    {selectedTechnician.trainingCompleted ? "Mark Training Incomplete" : "Mark Training Completed"}
+                  </Button>
+                </Flex>
+              </VStack>
             )}
           </ModalBody>
-          <ModalFooter borderTop="1px solid" borderColor="gray.100">
-
-          </ModalFooter>
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={isKYCModalOpen} onClose={closeKYCModal} size="xl" scrollBehavior="inside">
+      {/* KYC Modal - Preserved with original design */}
+      <Modal isOpen={isKYCModalOpen} onClose={closeModal} size="xl" scrollBehavior="inside">
         <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>KYC Verification</ModalHeader>
+        <ModalContent maxW="800px">
+          <ModalHeader color="gray.700">KYC Verification</ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody maxH="70vh" overflowY="auto">
             {kycLoading ? (
-              <Flex justify="center" align="center" h="200px">
+              <Flex justify="center" align="center" py={10}>
                 <Spinner size="xl" color={customColor} />
               </Flex>
             ) : kycData ? (
@@ -2266,7 +1747,7 @@ function AdminManagement() {
                     });
                   }
 
-                  if (!kycRecord) return <Text textAlign="center">No matching KYC Data found for this technician.</Text>;
+                  if (!kycRecord) return <Text textAlign="center" py={10}>No matching KYC Data found for this technician.</Text>;
 
                   return (
                     <>
@@ -2493,7 +1974,6 @@ function AdminManagement() {
                             {kycRecord.verificationStatus || "Pending"}
                           </Badge>
                         </Text>
-                        {/* Additional metadata if available */}
                         {kycRecord.verifiedAt && <Text fontSize="sm" mt={1} color="gray.600">Verified At: {new Date(kycRecord.verifiedAt).toLocaleDateString()}</Text>}
                         {kycRecord.rejectionReason && <Text fontSize="sm" mt={1} color="red.500"><strong>Rejection Reason:</strong> {kycRecord.rejectionReason}</Text>}
                       </Box>
@@ -2519,27 +1999,25 @@ function AdminManagement() {
           </ModalBody>
 
           <ModalFooter>
-
-            {kycData && (
-              <Button
-                colorScheme="orange"
-                variant="ghost"
-                mr="auto"
-                leftIcon={<FaExclamationTriangle />}
-                onClick={() => {
-                  if (confirmingModalDelete) {
-                    handleDeleteKYC(selectedTechnicianForKYC);
-                  } else {
-                    setConfirmingModalDelete(true);
-                  }
-                }}
-                isLoading={isDeletingKYC}
-              >
-                {confirmingModalDelete ? "Confirm Delete?" : "Delete Record"}
-              </Button>
-            )}
             {kycData && (
               <>
+                <Button
+                  colorScheme="orange"
+                  variant="ghost"
+                  mr="auto"
+                  leftIcon={<FaExclamationTriangle />}
+                  onClick={() => {
+                    if (confirmingModalDelete) {
+                      handleDeleteKYC(selectedTechnicianForKYC);
+                    } else {
+                      setConfirmingModalDelete(true);
+                    }
+                  }}
+                  isLoading={isDeletingKYC}
+                >
+                  {confirmingModalDelete ? "Confirm Delete?" : "Delete Record"}
+                </Button>
+
                 {!showRejectionInput ? (
                   <>
                     <Button
@@ -2547,7 +2025,6 @@ function AdminManagement() {
                       mr={3}
                       onClick={() => setShowRejectionInput(true)}
                       isDisabled={(() => {
-                        // Only disable if no record matches
                         let kycRecord = kycData;
                         if (Array.isArray(kycData)) {
                           kycRecord = kycData.find(doc => (doc.technicianId?._id || doc.technicianId) === selectedTechnicianForKYC?._id);
@@ -2570,7 +2047,6 @@ function AdminManagement() {
                     >
                       Approve (Verify)
                     </Button>
-
                   </>
                 ) : (
                   <>
@@ -2598,211 +2074,169 @@ function AdminManagement() {
         </ModalContent>
       </Modal>
 
-      {/* Delete Alert Dialog */}
-      <AlertDialog
-        isOpen={isDeleteDialogOpen}
-        leastDestructiveRef={cancelRef}
-        onClose={closeDeleteDialog}
-      >
+      {/* Job History Modal */}
+      <Modal isOpen={isHistoryModalOpen} onClose={closeModal} size="xl">
+        <ModalOverlay />
+        <ModalContent maxW="700px">
+          <ModalHeader color="gray.700">
+            Job History: {selectedTechForHistory ? getTechnicianName(selectedTechForHistory) : "Technician"}
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody maxH="70vh" overflowY="auto">
+            {historyLoading ? (
+              <Flex justify="center" align="center" py={10}>
+                <Spinner size="xl" color={customColor} />
+                <Text ml={4}>Fetching job history...</Text>
+              </Flex>
+            ) : jobHistory.length > 0 ? (
+              <VStack spacing={3} align="stretch">
+                {jobHistory.map((job, idx) => {
+                  const custName = job.customerId ? `${job.customerId.fname || ""} ${job.customerId.lname || ""}`.trim() : "N/A";
+                  const custMobile = job.customerId?.mobileNumber || "N/A";
+                  const serviceName = job.serviceId?.serviceName || "N/A";
+                  const serviceType = job.serviceId?.serviceType || "N/A";
+                  const city = job.addressSnapshot?.city || "N/A";
+
+                  return (
+                    <Box
+                      key={job._id || idx}
+                      p={4}
+                      border="1px solid"
+                      borderColor="gray.200"
+                      borderRadius="md"
+                      bg="gray.50"
+                    >
+                      <Text fontWeight="bold" color={customColor} fontSize="sm" mb={3}>
+                        Job #{idx + 1} - {new Date(job.createdAt).toLocaleDateString()}
+                      </Text>
+
+                      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                        <Box>
+                          <Text fontSize="xs" fontWeight="bold" color="blue.500" mb={1}>
+                            Service Details
+                          </Text>
+                          <Text fontSize="sm"><strong>Service:</strong> {serviceName}</Text>
+                          <Text fontSize="sm"><strong>Type:</strong> {serviceType}</Text>
+                          <Text fontSize="sm"><strong>Amount:</strong> ₹{job.baseAmount || 0}</Text>
+                          <Text fontSize="sm"><strong>City:</strong> {city}</Text>
+                        </Box>
+
+                        <Box>
+                          <Text fontSize="xs" fontWeight="bold" color="green.500" mb={1}>
+                            Customer Details
+                          </Text>
+                          <Text fontSize="sm"><strong>Name:</strong> {custName}</Text>
+                          <Text fontSize="sm"><strong>Mobile:</strong> {custMobile}</Text>
+                          <Text fontSize="sm" mt={1}>
+                            <strong>Status:</strong>{" "}
+                            <Badge
+                              colorScheme={
+                                job.status === 'completed' ? 'green' :
+                                  job.status === 'cancelled' ? 'red' : 'yellow'
+                              }
+                            >
+                              {job.status}
+                            </Badge>
+                          </Text>
+                          <Text fontSize="sm">
+                            <strong>Payment:</strong>{" "}
+                            <Badge colorScheme={job.paymentStatus === "paid" ? "green" : "red"}>
+                              {job.paymentStatus || "Pending"}
+                            </Badge>
+                          </Text>
+                        </Box>
+                      </SimpleGrid>
+
+                      {/* Work Images */}
+                      {(job.workImages?.beforeImage || job.workImages?.afterImage) && (
+                        <Box mt={4} borderTop="1px dashed" borderColor="gray.300" pt={3}>
+                          <Text fontSize="xs" fontWeight="bold" color="purple.500" mb={3}>
+                            Work Images
+                          </Text>
+                          <Flex gap={4} overflowX="auto" pb={2} css={{
+                            '&::-webkit-scrollbar': { height: '4px' },
+                            '&::-webkit-scrollbar-track': { background: 'transparent' },
+                            '&::-webkit-scrollbar-thumb': { background: '#cbd5e1', borderRadius: '4px' },
+                          }}>
+                            {job.workImages.beforeImage && (
+                              <Box minW="120px" borderRadius="md" overflow="hidden" border="1px solid" borderColor="gray.200" boxShadow="sm">
+                                <Text fontSize="xs" textAlign="center" bg="gray.100" py={1} fontWeight="bold" color="gray.600">Before</Text>
+                                <img
+                                  src={job.workImages.beforeImage}
+                                  alt="Before work"
+                                  style={{ width: "120px", height: "100px", objectFit: "cover", cursor: "pointer" }}
+                                  onClick={() => handleOpenImage(job.workImages.beforeImage)}
+                                />
+                              </Box>
+                            )}
+                            {job.workImages.afterImage && (
+                              <Box minW="120px" borderRadius="md" overflow="hidden" border="1px solid" borderColor="gray.200" boxShadow="sm">
+                                <Text fontSize="xs" textAlign="center" bg="gray.100" py={1} fontWeight="bold" color="gray.600">After</Text>
+                                <img
+                                  src={job.workImages.afterImage}
+                                  alt="After work"
+                                  style={{ width: "120px", height: "100px", objectFit: "cover", cursor: "pointer" }}
+                                  onClick={() => handleOpenImage(job.workImages.afterImage)}
+                                />
+                              </Box>
+                            )}
+                          </Flex>
+                        </Box>
+                      )}
+                    </Box>
+                  );
+                })}
+              </VStack>
+            ) : (
+              <Flex justify="center" align="center" py={10} flexDirection="column">
+                <Icon as={FaHistory} w={10} h={10} color="gray.300" mb={4} />
+                <Text color="gray.500">No job history found for this technician.</Text>
+              </Flex>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog isOpen={isDeleteDialogOpen} leastDestructiveRef={cancelRef} onClose={closeDeleteModal}>
         <AlertDialogOverlay>
           <AlertDialogContent>
             <AlertDialogHeader fontSize="lg" fontWeight="bold">
-              Delete Technician
+              <Flex align="center" gap={2}>
+                <Icon as={MdWarning} color="red.500" />
+                Confirm Delete
+              </Flex>
             </AlertDialogHeader>
 
             <AlertDialogBody>
-              Are you sure? You can't undo this action afterwards.
+              {technicianToDelete && (
+                <Text>
+                  Are you sure you want to delete{" "}
+                  <Text as="span" fontWeight="bold" color={customColor}>
+                    "{getTechnicianName(technicianToDelete)}"
+                  </Text>
+                  ? This action cannot be undone.
+                </Text>
+              )}
             </AlertDialogBody>
 
             <AlertDialogFooter>
-              <Button
-                ref={cancelRef}
-                onClick={closeDeleteDialog}
-                isDisabled={isDeleting}
-                size="sm"
-              >
+              <Button ref={cancelRef} onClick={closeDeleteModal} size="sm">
                 Cancel
               </Button>
               <Button
-                bg="red.500"
-                _hover={{ bg: "red.600" }}
-                color="white"
+                colorScheme="red"
                 onClick={handleConfirmDelete}
-                isLoading={isDeleting}
-                loadingText="Deleting..."
                 ml={3}
+                isLoading={isDeleting}
                 size="sm"
               >
-                Delete Technician
+                Delete
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialogOverlay>
       </AlertDialog>
-      {/* Bank Verification Modal Removed */}
-
-      {/* Details Preview Modal */}
-      <Modal isOpen={isDetailsModalOpen} onClose={closeDetailsModal} size="xl" scrollBehavior="inside">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Technician Details</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            {selectedTechnician && (
-              <Box>
-                <Flex align="center" mb={6}>
-                  <Avatar
-                    size="xl"
-                    name={getTechnicianName(selectedTechnician)}
-                    src={getTechnicianImage(selectedTechnician)}
-                    mr={4}
-                    border="2px solid"
-                    borderColor={customColor}
-                  />
-                  <Box>
-                    <Heading size="md">
-                      {getTechnicianName(selectedTechnician)}
-                    </Heading>
-                    <Badge colorScheme={selectedTechnician.status === "Active" || selectedTechnician.status === "approved" ? "green" : "red"} mt={1}>
-                      {selectedTechnician.status}
-                    </Badge>
-                  </Box>
-                </Flex>
-
-                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                  <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
-                    <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Contact Info</Text>
-                    <Text mb={2}>
-                      <strong>Mobile:</strong>{" "}
-                      {selectedTechnician.mobileNumber ||
-                        selectedTechnician.phone ||
-                        selectedTechnician.userId?.mobileNumber ||
-                        selectedTechnician.userId?.phone ||
-                        selectedTechnician.profile?.mobileNumber ||
-                        "N/A"}
-                    </Text>
-                    <Text mb={2}>
-                      <strong>Gender:</strong>{" "}
-                      {selectedTechnician.gender ||
-                        selectedTechnician.userId?.gender ||
-                        selectedTechnician.profile?.gender ||
-                        "N/A"}
-                    </Text>
-                    <Text>
-                      <strong>Last Login:</strong>{" "}
-                      {(() => {
-                        const dateVal = selectedTechnician.lastLoginAt ||
-                          selectedTechnician.lastLogin ||
-                          selectedTechnician.userId?.lastLoginAt ||
-                          selectedTechnician.userId?.lastLogin;
-                        return dateVal ? new Date(dateVal).toLocaleString() : "N/A";
-                      })()}
-                    </Text>
-                  </Box>
-
-                  <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
-                    <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Professional Info</Text>
-                    <Text mb={2}><strong>Experience:</strong> {(() => {
-                      const exp = selectedTechnician.experienceYears ?? selectedTechnician.profile?.experienceYears;
-                      return (exp !== undefined && exp !== null) ? `${exp} Years` : "0 Years";
-                    })()}</Text>
-                    <Text mb={2}><strong>Specialization:</strong> {selectedTechnician.specialization || selectedTechnician.profile?.specialization || "N/A"}</Text>
-                    <Text mb={2}><strong>Total Jobs:</strong> {selectedTechnician.totalJobsCompleted || selectedTechnician.jobStats?.completed || 0}</Text>
-                    <Text mb={2}>
-                      <strong>Training:</strong>{" "}
-                      <Badge colorScheme={selectedTechnician.trainingCompleted ? "green" : "orange"}>
-                        {selectedTechnician.trainingCompleted ? "Completed" : "Pending"}
-                      </Badge>
-                    </Text>
-                    <Text>
-                      <strong>KYC Status:</strong>{" "}
-                      {(() => {
-                        const kycMatch = allKycRecords.find(k =>
-                          (k.technicianId?._id || k.technicianId) === selectedTechnician._id
-                        );
-                        const status = kycMatch?.status?.toLowerCase() || kycMatch?.verificationStatus?.toLowerCase();
-
-                        let badgeColor = "gray";
-                        let statusText = "Not Uploaded";
-
-                        if (status === "approved" || status === "verified") {
-                          badgeColor = "green";
-                          statusText = "Verified";
-                        } else if (status === "rejected") {
-                          badgeColor = "red";
-                          statusText = "Rejected";
-                        } else if (status === "pending") {
-                          badgeColor = "orange";
-                          statusText = "Pending";
-                        }
-
-                        return (
-                          <Badge colorScheme={badgeColor} borderRadius="full" px={2}>
-                            {statusText}
-                          </Badge>
-                        );
-                      })()}
-                    </Text>
-                  </Box>
-
-                  <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
-                    <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Address</Text>
-                    <Text mb={1}>{selectedTechnician.address || "N/A"}</Text>
-                    <Text mb={1}>
-                      {selectedTechnician.locality || "N/A"}, {selectedTechnician.city || selectedTechnician.profile?.city || "N/A"}
-                    </Text>
-                    <Text>{selectedTechnician.state || "N/A"} - {selectedTechnician.pincode || "N/A"}</Text>
-                  </Box>
-
-                  <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
-                    <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">StatUs</Text>
-                    <Text mb={2}><strong>Rating:</strong> {selectedTechnician.rating?.avg} ({selectedTechnician.rating?.count} reviews)</Text>
-                    <Text mb={2}><strong>Wallet Balance:</strong> ₹{selectedTechnician.walletBalance}</Text>
-                    <Text><strong>Work Status:</strong> {selectedTechnician.workStatus}</Text>
-                  </Box>
-
-                  <Box p={4} border="1px solid" borderColor="gray.200" borderRadius="md">
-                    <Text fontWeight="bold" color="gray.500" mb={1} fontSize="xs" textTransform="uppercase">Bank Details</Text>
-                    {(() => {
-                      const kycMatch = allKycRecords.find(k =>
-                        (k.technicianId?._id || k.technicianId) === selectedTechnician._id
-                      );
-                      if (!kycMatch || !kycMatch.bankDetails) return <Text color="gray.400">No bank details provided</Text>;
-
-                      return (
-                        <Box>
-                          <Text mb={1} fontSize="sm"><strong>Bank:</strong> {kycMatch.bankDetails.bankName || "N/A"}</Text>
-                          <Text mb={1} fontSize="sm"><strong>A/C Holder:</strong> {kycMatch.bankDetails.accountHolderName || "N/A"}</Text>
-                          <Text mb={1} fontSize="sm"><strong>IFSC:</strong> {kycMatch.bankDetails.ifscCode || "N/A"}</Text>
-                          <Text mb={1} fontSize="sm"><strong>Account Number:</strong> {kycMatch.bankDetails.accountNumber || "N/A"}</Text>
-                          <Text fontSize="sm"><strong>UPI:</strong> {kycMatch.bankDetails.upiId || "N/A"}</Text>
-                        </Box>
-                      );
-                    })()}
-                  </Box>
-                </SimpleGrid>
-
-              </Box>
-            )}
-          </ModalBody>
-          <ModalFooter>
-            {selectedTechnician && (
-              <Button
-                bg={selectedTechnician.trainingCompleted ? "red.500" : "teal.500"}
-                _hover={{ bg: selectedTechnician.trainingCompleted ? "red.600" : "teal.600" }}
-                color="white"
-                mr={3}
-                onClick={() => handleTrainingCompletion(selectedTechnician, !selectedTechnician.trainingCompleted)}
-                isLoading={loading}
-                leftIcon={<FaUserGraduate />}
-              >
-                {selectedTechnician.trainingCompleted ? "Mark Training as Incomplete" : "Approve Training"}
-              </Button>
-            )}
-
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
 
       {/* Image Preview Modal with Rotate and Zoom */}
       <Modal isOpen={isImageModalOpen} onClose={() => setIsImageModalOpen(false)} size="full">
@@ -2908,23 +2342,6 @@ function AdminManagement() {
           </ModalBody>
         </ModalContent>
       </Modal>
-    </Flex >
+    </Flex>
   );
 }
-
-// Custom IconBox component
-function IconBox({ children, ...rest }) {
-  return (
-    <Box
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      borderRadius="12px"
-      {...rest}
-    >
-      {children}
-    </Box>
-  );
-}
-
-export default AdminManagement;

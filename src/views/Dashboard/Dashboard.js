@@ -85,26 +85,12 @@ export default function Dashboard() {
         ]);
 
         // Process Bookings
-        let bookingsData = [];
-        if (bookingsRes?.result && Array.isArray(bookingsRes.result)) {
-          bookingsData = bookingsRes.result;
-        } else if (Array.isArray(bookingsRes)) {
-          bookingsData = bookingsRes;
-        }
+        const bookingsRaw = bookingsRes?.result || bookingsRes?.data || bookingsRes?.bookings || bookingsRes?.serviceBookings || bookingsRes || [];
+        const bookingsData = Array.isArray(bookingsRaw) ? bookingsRaw : (bookingsRaw.result || bookingsRaw.data || []);
 
         // Process Categories
-        let categoriesData = [];
-        if (categoriesRes?.result && Array.isArray(categoriesRes.result)) {
-          categoriesData = categoriesRes.result;
-        } else if (categoriesRes?.data && Array.isArray(categoriesRes.data)) {
-          categoriesData = categoriesRes.data;
-        } else if (categoriesRes?.categories && Array.isArray(categoriesRes.categories)) {
-          categoriesData = categoriesRes.categories;
-        } else if (Array.isArray(categoriesRes)) {
-          categoriesData = categoriesRes;
-        } else if (categoriesRes?.result?.categories && Array.isArray(categoriesRes.result.categories)) {
-          categoriesData = categoriesRes.result.categories;
-        }
+        const categoriesRaw = categoriesRes?.result || categoriesRes?.data || categoriesRes?.categories || categoriesRes || [];
+        const categoriesData = Array.isArray(categoriesRaw) ? categoriesRaw : (categoriesRaw.categories || categoriesRaw.result || categoriesRaw.data || []);
 
         setServiceBookings(bookingsData);
         setCategories(categoriesData);
@@ -141,16 +127,22 @@ export default function Dashboard() {
     // Assuming booking.serviceId.category is the link or we match by service name?
     // Let's collect unique category IDs/Names from bookings
     const uniqueActiveCategories = new Set();
+    const catMap = {};
+    categories.forEach(c => {
+      const name = c.category || c.name;
+      if (c._id && name) catMap[c._id] = name;
+    });
+
     serviceBookings.forEach(b => {
-      const cat = b?.serviceId?.category || b?.category;
-      if (cat) {
-        let val;
-        if (typeof cat === 'object') {
-          val = cat.category || cat.name || cat._id;
+      const catRef = b?.categoryId || b?.category || b?.serviceId?.categoryId || b?.serviceId?.category || b?.serviceCategory;
+      if (catRef) {
+        let name;
+        if (typeof catRef === 'object' && catRef !== null) {
+          name = catRef.category || catRef.name || catRef.title;
         } else {
-          val = cat;
+          name = catMap[catRef] || catRef;
         }
-        if (val) uniqueActiveCategories.add(val);
+        if (name && name !== "Uncategorized") uniqueActiveCategories.add(name);
       }
     });
 
@@ -158,16 +150,17 @@ export default function Dashboard() {
       totalBookings,
       successPaymentsCount,
       totalRevenue,
-      activeCategoriesCount: uniqueActiveCategories.size
+      activeCategoriesCount: uniqueActiveCategories.size || categories.length
     };
-  }, [serviceBookings]);
+  }, [serviceBookings, categories]);
 
   // --- Category Performance Data ---
   const categoryPerformance = useMemo(() => {
     // optimize category map
     const catMap = {};
     categories.forEach(c => {
-      if (c._id) catMap[c._id] = c.category || c.name;
+      const name = c.category || c.name;
+      if (c._id && name) catMap[c._id] = name;
     });
 
     const perfMap = {};
@@ -183,14 +176,32 @@ export default function Dashboard() {
     // Aggregate data
     serviceBookings.forEach(b => {
       let catName = "Uncategorized";
-      const catRef = b?.serviceId?.category || b?.category;
+      const catRef = b?.categoryId || b?.category || b?.serviceId?.categoryId || b?.serviceId?.category || b?.serviceCategory;
 
       if (catRef) {
         if (typeof catRef === 'string') {
-          catName = catMap[catRef] || catRef; // ID matched or raw string
-        } else if (typeof catRef === 'object') {
-          catName = catRef.category || catRef.name || "Uncategorized";
+          catName = catMap[catRef] || catRef;
+        } else if (typeof catRef === 'object' && catRef !== null) {
+          catName = catRef.category || catRef.name || catRef.title || "Uncategorized";
         }
+      }
+
+      // If still uncategorized, try matching keyword from service name if available
+      if (catName === "Uncategorized" || (typeof catName === 'string' && catName.length > 20)) {
+        const sName = (b?.serviceId?.serviceName || b?.serviceName || "").toLowerCase();
+        if (sName) {
+          for (const [id, name] of Object.entries(catMap)) {
+            if (sName.includes(name.toLowerCase())) {
+              catName = name;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Final fallback: if catName is an ID that wasn't transformed, mark as Uncategorized for cleaner chart
+      if (typeof catName === 'string' && catName.length > 20) {
+        catName = "Uncategorized";
       }
 
       if (!perfMap[catName]) {
@@ -204,7 +215,7 @@ export default function Dashboard() {
       const status = b?.paymentStatus?.toLowerCase();
       if (status === 'success' || status === 'paid') {
         perfMap[catName].successCount += 1;
-        perfMap[catName].revenue += (Number(b?.baseAmount) || 0);
+        perfMap[catName].revenue += (Number(b?.baseAmount) || Number(b?.amount) || 0);
       }
     });
 

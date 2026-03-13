@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   Box,
@@ -45,19 +44,251 @@ import {
   InputRightElement,
   VisuallyHidden,
   useBreakpointValue,
+  Avatar,
+  SimpleGrid,
 } from "@chakra-ui/react";
 
-import { FaSearch, FaChevronLeft, FaChevronRight, FaArrowLeft, FaTimes, FaEye, FaCheckCircle } from "react-icons/fa";
-import { FiMoreVertical, FiEye, FiDownload, FiUser, FiCalendar, FiTruck } from "react-icons/fi";
+import Card from "components/Card/Card.js";
+import CardBody from "components/Card/CardBody.js";
+import CardHeader from "components/Card/CardHeader.js";
+
+import {
+  FaSearch,
+  FaChevronLeft,
+  FaChevronRight,
+  FaArrowLeft,
+  FaTimes,
+  FaEye,
+  FaCheckCircle,
+  FaWallet,
+  FaChartLine,
+  FaCalendarAlt,
+  FaRupeeSign,
+  FaCreditCard,
+  FaMoneyBillWave,
+} from "react-icons/fa";
 import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
-import { MdCategory } from "react-icons/md";
+import { MdCategory, MdPayment, MdOutlinePayment } from "react-icons/md";
+import { FiCalendar, FiUser, FiTruck } from "react-icons/fi";
 
 import { UpdatePaymentStatus, getAllServiceBooking, updateOrders, getAllUsers, getAllWallets, approveWithdrawal, rejectWithdrawal, getTotalWalletsDetails, getTechnicianById } from "../utils/axiosInstance";
 
-// Lightweight presentational Card components so this file is self-contained.
-const Card = ({ children, ...props }) => <Box borderRadius="12px" p={0} {...props}>{children}</Box>;
-const CardHeader = ({ children, ...props }) => <Box px="16px" py="12px" borderBottomWidth="1px" {...props}>{children}</Box>;
-const CardBody = ({ children, ...props }) => <Box p="16px" {...props}>{children}</Box>;
+// Custom IconBox component
+const IconBox = ({ children, ...rest }) => (
+  <Box
+    display="flex"
+    alignItems="center"
+    justifyContent="center"
+    borderRadius="12px"
+    {...rest}
+  >
+    {children}
+  </Box>
+);
+
+// Mobile Card Component for Service Bookings
+const ServiceMobileCard = ({ booking, idx, indexOfFirstItem, onViewDetails, users }) => {
+  const customColor = "#008080";
+
+  // Helper to find user if customerProfileId is a string
+  const foundUser = (typeof booking.customerProfileId === 'string')
+    ? users.find(u => u._id === booking.customerProfileId || u.userId === booking.customerProfileId)
+    : null;
+
+  const customerName = (
+    (booking.customerId?.fname || booking.customerId?.lname) ? `${booking.customerId.fname || ""} ${booking.customerId.lname || ""}` :
+      (booking.addressSnapshot?.name) ? booking.addressSnapshot.name :
+        (typeof booking.customerProfileId === 'object' && (booking.customerProfileId?.firstName || booking.customerProfileId?.lastName)) ? `${booking.customerProfileId.firstName || ""} ${booking.customerProfileId.lastName || ""}` :
+          (foundUser) ? (`${foundUser.firstName || ""} ${foundUser.lastName || ""}`.trim() || foundUser.name) :
+            "—"
+  ).trim() || "—";
+
+  return (
+    <Box
+      p={3}
+      bg="white"
+      borderWidth="1px"
+      borderColor={`${customColor}20`}
+      borderRadius="md"
+      shadow="sm"
+      mb={3}
+      transition="all 0.2s"
+      _active={{ transform: "scale(0.98)" }}
+    >
+      <Flex justify="space-between" align="center" mb={2}>
+        <HStack spacing={2}>
+          <Avatar size="xs" name={customerName} />
+          <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
+            #{indexOfFirstItem + idx + 1}
+          </Text>
+        </HStack>
+        <Badge
+          colorScheme={booking.paymentStatus === "paid" ? "green" : "orange"}
+          borderRadius="full"
+          px={2}
+          fontSize="3xs"
+        >
+          {booking.paymentStatus || "Pending"}
+        </Badge>
+      </Flex>
+
+      <SimpleGrid columns={2} spacing={1} mb={2}>
+        <Text fontSize="2xs" color="gray.600" noOfLines={1}>
+          <Text as="span" fontWeight="bold">Customer:</Text> {customerName}
+        </Text>
+        <Text fontSize="2xs" color="gray.600" noOfLines={1}>
+          <Text as="span" fontWeight="bold">Service:</Text> {booking.serviceId?.serviceName || "N/A"}
+        </Text>
+        <Text fontSize="2xs" color="gray.600">
+          <Text as="span" fontWeight="bold">Amount:</Text> ₹{booking.baseAmount || 0}
+        </Text>
+        <Text fontSize="2xs" color="gray.600">
+          <Text as="span" fontWeight="bold">Status:</Text>{" "}
+          <Badge colorScheme={booking.status === "completed" ? "green" : booking.status === "cancelled" ? "red" : "yellow"} fontSize="3xs">
+            {booking.status}
+          </Badge>
+        </Text>
+      </SimpleGrid>
+
+      <Flex gap={2} justify="flex-end">
+        <IconButton
+          aria-label="View details"
+          icon={<FaEye />}
+          size="xs"
+          colorScheme="blue"
+          variant="ghost"
+          onClick={() => onViewDetails(booking)}
+        />
+      </Flex>
+    </Box>
+  );
+};
+
+// Mobile Card Component for Payments
+const PaymentMobileCard = ({ payment, idx, indexOfFirstItem, onUpdatePayment }) => {
+  const customColor = "#008080";
+
+  return (
+    <Box
+      p={3}
+      bg="white"
+      borderWidth="1px"
+      borderColor={`${customColor}20`}
+      borderRadius="md"
+      shadow="sm"
+      mb={3}
+      transition="all 0.2s"
+      _active={{ transform: "scale(0.98)" }}
+    >
+      <Flex justify="space-between" align="center" mb={2}>
+        <HStack spacing={2}>
+          <IconBox h="20px" w="20px" bg={customColor}>
+            <Icon as={FaMoneyBillWave} h="10px" w="10px" color="white" />
+          </IconBox>
+          <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
+            #{indexOfFirstItem + idx + 1}
+          </Text>
+        </HStack>
+        <Badge
+          colorScheme={payment.status === "success" || payment.status === "paid" ? "green" : "red"}
+          borderRadius="full"
+          px={2}
+          fontSize="3xs"
+        >
+          {payment.status || "Pending"}
+        </Badge>
+      </Flex>
+
+      <SimpleGrid columns={2} spacing={1} mb={2}>
+        <Text fontSize="2xs" color="gray.600" noOfLines={1}>
+          <Text as="span" fontWeight="bold">Payment ID:</Text> {payment._id?.substring(0, 8)}...
+        </Text>
+        <Text fontSize="2xs" color="gray.600" noOfLines={1}>
+          <Text as="span" fontWeight="bold">Method:</Text> {payment.method || "N/A"}
+        </Text>
+        <Text fontSize="2xs" color="gray.600">
+          <Text as="span" fontWeight="bold">Amount:</Text> ₹{payment.amount || 0}
+        </Text>
+        <Text fontSize="2xs" color="gray.600">
+          <Text as="span" fontWeight="bold">Date:</Text> {new Date(payment.createdAt).toLocaleDateString()}
+        </Text>
+      </SimpleGrid>
+
+      <Flex gap={2} justify="flex-end">
+        <IconButton
+          aria-label="Update payment"
+          icon={<FaCheckCircle />}
+          size="xs"
+          colorScheme="green"
+          variant="ghost"
+          onClick={() => onUpdatePayment(payment._id)}
+        />
+      </Flex>
+    </Box>
+  );
+};
+
+// Mobile Card Component for Wallets
+const WalletMobileCard = ({ wallet, idx, indexOfFirstItem, technicianMap }) => {
+  const customColor = "#008080";
+
+  const techId = wallet.technicianId?._id || wallet.technicianProfileId || wallet.providerId?._id || (typeof wallet.providerId === 'string' ? wallet.providerId : null);
+  const techData = technicianMap && techId ? technicianMap[techId] : null;
+
+  let displayName = "Unknown";
+  if (techData) {
+    if (techData.userId && (techData.userId.fname || techData.userId.lname)) {
+      displayName = `${techData.userId.fname || ""} ${techData.userId.lname || ""}`.trim();
+    } else if (techData.userId && (techData.userId.firstName || techData.userId.lastName)) {
+      displayName = `${techData.userId.firstName || ""} ${techData.userId.lastName || ""}`.trim();
+    } else if (techData.name) {
+      displayName = techData.name;
+    }
+  }
+
+  return (
+    <Box
+      p={3}
+      bg="white"
+      borderWidth="1px"
+      borderColor={`${customColor}20`}
+      borderRadius="md"
+      shadow="sm"
+      mb={3}
+      transition="all 0.2s"
+      _active={{ transform: "scale(0.98)" }}
+    >
+      <Flex justify="space-between" align="center" mb={2}>
+        <HStack spacing={2}>
+          <Avatar size="xs" name={displayName} />
+          <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
+            #{indexOfFirstItem + idx + 1} {displayName}
+          </Text>
+        </HStack>
+        <Badge
+          colorScheme={wallet.status === "approved" ? "green" : wallet.status === "rejected" ? "red" : "yellow"}
+          borderRadius="full"
+          px={2}
+          fontSize="3xs"
+        >
+          {wallet.status}
+        </Badge>
+      </Flex>
+
+      <SimpleGrid columns={2} spacing={1} mb={2}>
+        <Text fontSize="2xs" color="gray.600">
+          <Text as="span" fontWeight="bold">Amount:</Text> ₹{wallet.amount || 0}
+        </Text>
+        <Text fontSize="2xs" color="gray.600">
+          <Text as="span" fontWeight="bold">Balance:</Text> ₹{wallet.technicianId?.walletBalance || 0}
+        </Text>
+        <Text fontSize="2xs" color="gray.600">
+          <Text as="span" fontWeight="bold">Date:</Text> {new Date(wallet.createdAt).toLocaleDateString()}
+        </Text>
+      </SimpleGrid>
+    </Box>
+  );
+};
 
 /** Helper & Utilities **/
 const safeGet = (obj, path, fallback = undefined) => {
@@ -147,7 +378,6 @@ const exportToCSV = (filename, rows) => {
 
 /** Constants **/
 const DEFAULT_CUSTOM_COLOR = "#008080";
-const DEFAULT_CUSTOM_HOVER = "#5a189a";
 
 const STATUS_COLORS = {
   delivered: { bg: "#10B981", color: "white" },
@@ -157,12 +387,12 @@ const STATUS_COLORS = {
   broadcasted: { bg: "#8B5CF6", color: "white" },
   requested: { bg: "#3B82F6", color: "white" },
   cancelled: { bg: "#EF4444", color: "white" },
+  paid: { bg: "#10B981", color: "white" },
+  success: { bg: "#10B981", color: "white" },
+  failed: { bg: "#EF4444", color: "white" },
+  refunded: { bg: "#F59E0B", color: "white" },
   default: { bg: "#6366F1", color: "white" },
 };
-
-const ORDER_STATUS_OPTIONS = ["all", "pending", "confirmed", "delivered", "completed", "failed", "refunded"];
-const PAYMENT_METHOD_OPTIONS = ["all", "card", "upi", "netbanking", "cod", "wallet", "bank_transfer"];
-const PAYMENT_STATUS_OPTIONS = ["all", "success", "failed", "refunded", "pending"];
 
 /** Main component **/
 export default function CleanedBilling() {
@@ -171,7 +401,7 @@ export default function CleanedBilling() {
   const toast = useToast();
 
   const customColor = DEFAULT_CUSTOM_COLOR;
-  const customHoverColor = DEFAULT_CUSTOM_HOVER;
+  const customHoverColor = "#008080";
 
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -188,7 +418,7 @@ export default function CleanedBilling() {
     totalCommission: 0,
     availableBalance: 0
   });
-  const [technicianMap, setTechnicianMap] = useState({}); // Cache for technician details
+  const [technicianMap, setTechnicianMap] = useState({});
   const [serviceBookings, setServiceBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState(null);
@@ -196,15 +426,14 @@ export default function CleanedBilling() {
   const payments = useMemo(() => {
     const list = [];
 
-    // Include Paid Service Bookings in Payments Table
     (serviceBookings || []).forEach((s) => {
       const status = (safeGet(s, "paymentStatus", "") || "").toString().toLowerCase();
       if (status === "paid" || status === "success") {
         const pObj = safeGet(s, "payment", {}) || {};
         list.push({
           _id: safeGet(s, "paymentId") || safeGet(s, "payment._id") || safeGet(s, "razorpayPaymentId") || `SB-${safeGet(s, "_id")}`,
-          razorpayOrderId: safeGet(s, "razorpayOrderId") || safeGet(pObj, "razorpayOrderId") || "N/A",
-          orderId: safeGet(s, "_id", "UNKNOWN"), // Use Booking ID
+          razorpayOrderId: safeGet(s, "razorpayOrderId") || safeGet(pObj, "razorpayOrderId") || "",
+          orderId: safeGet(s, "_id", "UNKNOWN"),
           amount: safeGet(s, "baseAmount", 0),
           method: safeGet(s, "paymentMethod", safeGet(pObj, "method", "Online")),
           status: status,
@@ -218,7 +447,7 @@ export default function CleanedBilling() {
     return list;
   }, [serviceBookings]);
 
-  const [users, setUsers] = useState([]); // Add users state
+  const [users, setUsers] = useState([]);
 
   const [currentView, setCurrentView] = useState("services");
   const [filteredData, setFilteredData] = useState([]);
@@ -226,16 +455,8 @@ export default function CleanedBilling() {
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebouncedValue(searchQuery, 220);
 
-  const [orderStatusFilter, setOrderStatusFilter] = useState("all");
-  const [orderDatePreset, setOrderDatePreset] = useState("all");
-
-  const [paymentMethodFilter, setPaymentMethodFilter] = useState("all");
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState("all");
-  const [paymentDatePreset, setPaymentDatePreset] = useState("all");
-  const [state, setState] = useState("")
-
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [itemsPerPage] = useState(5);
 
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -251,6 +472,28 @@ export default function CleanedBilling() {
   // Responsive detection
   const isMobile = useBreakpointValue({ base: true, md: false });
 
+  // Global scrollbar styles
+  const globalScrollbarStyles = {
+    '&::-webkit-scrollbar': {
+      width: '6px',
+      height: '6px',
+    },
+    '&::-webkit-scrollbar-track': {
+      background: 'transparent',
+    },
+    '&::-webkit-scrollbar-thumb': {
+      background: 'transparent',
+      borderRadius: '3px',
+      transition: 'background 0.3s ease',
+    },
+    '&:hover::-webkit-scrollbar-thumb': {
+      background: '#cbd5e1',
+    },
+    '&:hover::-webkit-scrollbar-thumb:hover': {
+      background: '#94a3b8',
+    },
+  };
+
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "/") {
@@ -258,17 +501,12 @@ export default function CleanedBilling() {
         if (searchRef?.current) searchRef.current.focus();
       }
       if (e.key === "Escape") {
-        // Clear search on Esc for quick mobile UX
         setSearchQuery("");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  // Fetching orders
-  // Fetching orders removed
-
 
   const fetchServiceBookings = useCallback(async () => {
     setIsLoading(true);
@@ -292,14 +530,12 @@ export default function CleanedBilling() {
   const fetchUsers = useCallback(async () => {
     try {
       const res = await getAllUsers();
-      // Handle different response formats similar to UserManagement.js
       const usersRaw = res.result || res.data?.users || res.data || res?.users || res || [];
       setUsers(Array.isArray(usersRaw) ? usersRaw : []);
     } catch (err) {
       console.error("Error fetching users:", err);
     }
   }, []);
-
 
   const fetchWallets = useCallback(async () => {
     try {
@@ -313,7 +549,6 @@ export default function CleanedBilling() {
     }
   }, [toast]);
 
-  // Fetch technician details for wallets
   useEffect(() => {
     const fetchTechnicianDetails = async () => {
       if (!wallets || wallets.length === 0) return;
@@ -324,15 +559,11 @@ export default function CleanedBilling() {
 
       if (newIdsToFetch.length === 0) return;
 
-      // Update map with loading placeholders (optional, or just fetch directly)
-      // setTechnicianMap(prev => { ...prev, ...Object.fromEntries(newIdsToFetch.map(id => [id, { loading: true }])) });
-
       try {
         const results = await Promise.allSettled(
           newIdsToFetch.map(async (id) => {
             try {
               const data = await getTechnicianById(id);
-              // Handle different response structures: result, data, or direct object
               const tech = data.result || data.data || data;
               return { id, tech };
             } catch (e) {
@@ -358,7 +589,7 @@ export default function CleanedBilling() {
     };
 
     fetchTechnicianDetails();
-  }, [wallets]); // Depend on wallets list updates
+  }, [wallets]);
 
   const fetchWalletDetails = useCallback(async () => {
     try {
@@ -377,7 +608,6 @@ export default function CleanedBilling() {
     fetchWallets();
     fetchWalletDetails();
   }, [fetchServiceBookings, fetchUsers, fetchWallets, fetchWalletDetails]);
-
 
   const handleApproveWithdrawal = async (withdrawId) => {
     if (!withdrawId) return;
@@ -407,57 +637,41 @@ export default function CleanedBilling() {
     }
   };
 
-
-
-  // Filtering logic
-  // Fixed: Removed filteredOrders since orders are removed.
-
-
   const filteredWallets = useMemo(() => {
     return (wallets || []).filter((w) => {
-      // Basic filtering - extend as needed
       return true;
     });
   }, [wallets]);
 
   const filteredPayments = useMemo(() => {
     const q = (debouncedSearch || "").trim().toLowerCase();
-    const [payStart, payEnd] = getDateRangePreset(paymentDatePreset);
 
     return (payments || []).filter((p) => {
-      const method = (safeGet(p, "method", "") || "").toString().toLowerCase();
-      if (paymentMethodFilter !== "all" && method !== paymentMethodFilter) return false;
-
-      const status = (safeGet(p, "status", "") || "").toString().toLowerCase();
-      if (paymentStatusFilter !== "all" && status !== paymentStatusFilter) return false;
-
-      let createdAt = null;
-      if (safeGet(p, "createdAt", null)) createdAt = new Date(safeGet(p, "createdAt")).getTime();
-      else if (safeGet(p, "orderRef.createdAt", null)) createdAt = new Date(safeGet(p, "orderRef.createdAt")).getTime();
-
-      if (payStart != null) {
-        if (createdAt == null) return false;
-        if (!(createdAt >= payStart && createdAt <= payEnd)) return false;
-      }
-
       if (!q) return true;
       const pid = (safeGet(p, "_id", "") || "").toString().toLowerCase();
       const razor = (safeGet(p, "razorpayOrderId", "") || "").toString().toLowerCase();
       const orderId = (safeGet(p, "orderId", "") || "").toString().toLowerCase();
+      const method = (safeGet(p, "method", "") || "").toString().toLowerCase();
+      const status = (safeGet(p, "status", "") || "").toString().toLowerCase();
       return pid.includes(q) || razor.includes(q) || orderId.includes(q) || method.includes(q) || status.includes(q);
     });
-  }, [payments, debouncedSearch, paymentMethodFilter, paymentStatusFilter, paymentDatePreset]);
+  }, [payments, debouncedSearch]);
 
   const filteredServices = useMemo(() => {
     const q = (debouncedSearch || "").trim().toLowerCase();
     return (serviceBookings || []).filter((s) => {
       const id = (safeGet(s, "_id", "") || "").toString().toLowerCase();
 
+      const foundUser = (typeof s.customerProfileId === 'string')
+        ? users.find(u => u._id === s.customerProfileId || u.userId === s.customerProfileId)
+        : null;
+
       const customerName = (
         (s.customerId?.fname || s.customerId?.lname) ? `${s.customerId.fname || ""} ${s.customerId.lname || ""}` :
           (s.addressSnapshot?.name) ? s.addressSnapshot.name :
-            (s.customerProfileId?.firstName || s.customerProfileId?.lastName) ? `${s.customerProfileId.firstName || ""} ${s.customerProfileId.lastName || ""}` :
-              "—"
+            (typeof s.customerProfileId === 'object' && (s.customerProfileId?.firstName || s.customerProfileId?.lastName)) ? `${s.customerProfileId.firstName || ""} ${s.customerProfileId.lastName || ""}` :
+              (foundUser) ? (`${foundUser.firstName || ""} ${foundUser.lastName || ""}`.trim() || foundUser.name) :
+                ""
       ).toLowerCase();
 
       const serviceName = (safeGet(s, "serviceId.serviceName", "") || "").toLowerCase();
@@ -474,9 +688,7 @@ export default function CleanedBilling() {
         paymentStatus.includes(q)
       );
     });
-  }, [serviceBookings, debouncedSearch]);
-
-  // Pagination
+  }, [serviceBookings, debouncedSearch, users]);
 
   const totalPages = useMemo(() => {
     let len = 0;
@@ -488,7 +700,7 @@ export default function CleanedBilling() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [currentView, debouncedSearch, orderStatusFilter, paymentMethodFilter, paymentStatusFilter, orderDatePreset, paymentDatePreset, itemsPerPage]);
+  }, [currentView, debouncedSearch, itemsPerPage]);
 
   const currentSlice = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
@@ -498,27 +710,27 @@ export default function CleanedBilling() {
     return filteredPayments.slice(start, end);
   }, [currentPage, itemsPerPage, currentView, filteredPayments, filteredServices, filteredWallets]);
 
-  // UI helpers
+  useEffect(() => {
+    if (currentView === "services") {
+      setFilteredData(filteredServices);
+    } else if (currentView === "wallets") {
+      setFilteredData(filteredWallets);
+    } else {
+      setFilteredData(filteredPayments);
+    }
+  }, [currentView, filteredPayments, filteredServices, filteredWallets]);
+
   const getStatusColor = (status) => {
     if (!status) return STATUS_COLORS.default;
     const n = status.toString().toLowerCase();
     return STATUS_COLORS[n] || STATUS_COLORS.default;
   };
 
-  const openModalForOrder = (order) => {
-    setSelectedOrder(order);
-    setIsModalOpen(true);
-  };
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setSelectedOrder(null);
-  };
-
-
   const openModalForBooking = (booking) => {
     setSelectedBooking(booking);
     setIsBookingModalOpen(true);
   };
+
   const closeBookingModal = () => {
     setIsBookingModalOpen(false);
     setSelectedBooking(null);
@@ -536,14 +748,15 @@ export default function CleanedBilling() {
     }
   };
 
-  const prepareOrdersExportRows = () => {
-    return (filteredOrders || []).map((o) => ({
-      orderId: safeGet(o, "_id", ""),
-      email: safeGet(o, "user.email", ""),
-      items: (safeGet(o, "orderItems", []) || []).map((it) => `${safeGet(it, "name", "")} x${safeGet(it, "qty", 1)}`).join("; "),
-      amount: safeGet(o, "total_amount", 0),
-      status: safeGet(o, "status", ""),
-      createdAt: safeGet(o, "createdAt", ""),
+  const prepareServicesExportRows = () => {
+    return (filteredServices || []).map((s) => ({
+      bookingId: safeGet(s, "_id", ""),
+      customer: `${safeGet(s, "customerId.fname", "")} ${safeGet(s, "customerId.lname", "")}`,
+      service: safeGet(s, "serviceId.serviceName", ""),
+      amount: safeGet(s, "baseAmount", 0),
+      status: safeGet(s, "status", ""),
+      paymentStatus: safeGet(s, "paymentStatus", ""),
+      scheduledAt: safeGet(s, "scheduledAt", ""),
     }));
   };
 
@@ -557,101 +770,6 @@ export default function CleanedBilling() {
       status: safeGet(p, "status", ""),
       createdAt: safeGet(p, "createdAt", safeGet(p, "orderRef.createdAt", "")),
     }));
-  };
-
-  const prepareServicesExportRows = () => {
-    return (filteredServices || []).map((s) => ({
-      bookingId: safeGet(s, "_id", ""),
-      customer: `${safeGet(s, "customerProfileId.firstName", "")} ${safeGet(s, "customerProfileId.lastName", "")}`,
-      service: safeGet(s, "serviceId.serviceName", ""),
-      amount: safeGet(s, "baseAmount", 0),
-      status: safeGet(s, "status", ""),
-      paymentStatus: safeGet(s, "paymentStatus", ""),
-      scheduledAt: safeGet(s, "scheduledAt", ""),
-    }));
-  };
-
-  // Fixed Confirm_Order (calls fetchOrders)
-  const Confirm_Order = async () => {
-    try {
-      const orderId = safeGet(selectedOrder, "_id");
-      await updateOrders(orderId, { status: "confirmed" });
-
-      toast({
-        title: "Order Confirmed",
-        description: `Order ${orderId} marked as confirmed.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-
-      await fetchOrders();
-      closeModal();
-    } catch (error) {
-      console.error("Error confirming order:", error);
-      toast({
-        title: "Error",
-        description: "Failed to confirm the order. Please try again.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  };
-
-  const ShipingDate = async () => {
-    console.log(state)
-    try {
-      const orderId = safeGet(selectedOrder, "_id");
-      await updateOrders(orderId, { ShipingDate: state });
-
-      toast({
-        title: "Shipment Date",
-        description: `Shipment Date :${state}.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-
-      await fetchOrders();
-      closeModal();
-    } catch (error) {
-      console.error("Error marking order as delivered:", error);
-      toast({
-        title: "Error",
-        description: "Failed to mark the order as delivered. Please try again.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  };
-
-  const markAsDelivered = async () => {
-    try {
-      const orderId = safeGet(selectedOrder, "_id");
-      await updateOrders(orderId, { status: "delivered" });
-
-      toast({
-        title: "Order Delivered",
-        description: `Order ${orderId} marked as delivered.`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
-
-      await fetchOrders();
-      closeModal();
-    } catch (error) {
-      console.error("Error marking order as delivered:", error);
-      toast({
-        title: "Error",
-        description: "Failed to mark the order as delivered. Please try again.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-    }
   };
 
   const handleUpdatePaymentStatus = async (paymentId) => {
@@ -676,7 +794,7 @@ export default function CleanedBilling() {
         duration: 3000,
         isClosable: true,
       });
-      await fetchServiceBookings(); // replaced fetchOrders
+      await fetchServiceBookings();
     } catch (error) {
       console.error("Error updating payment status:", error);
       toast({
@@ -691,115 +809,11 @@ export default function CleanedBilling() {
     }
   };
 
-  useEffect(() => {
-    if (currentView === "services") {
-      setFilteredData(filteredServices);
-    } else if (currentView === "wallets") {
-      setFilteredData(filteredWallets);
-    } else {
-      setFilteredData(filteredPayments);
-    }
-  }, [currentView, filteredPayments, filteredServices, filteredWallets]);
-
-  // Row components
-  const OrderRow = ({ order }) => {
-    const status = safeGet(order, "status", "pending");
-    return (
-      <Tr _hover={{ bg: "gray.50", cursor: "pointer" }} borderBottom="1px solid" borderColor="gray.100">
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
-          <VStack align="start" spacing={1}>
-            <Text fontWeight="semibold" color="gray.700" fontSize={isMobile ? "xs" : "sm"}>{safeGet(order, "user.email", "—")}</Text>
-            <Text fontSize={isMobile ? "xs" : "sm"} color="gray.600">{safeGet(order, "user._id", "")}</Text>
-            <Text fontSize="xs" color="gray.500">{safeGet(order, "orderItems.length", 0)} items</Text>
-          </VStack>
-        </Td>
-
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
-          <VStack align="start" spacing={1}>
-            <Text fontWeight="medium" fontSize={isMobile ? "xs" : "sm"}>{safeGet(order, "address.city", "—")} ({safeGet(order, "address.pincode", "—")})</Text>
-            <Text fontSize="xs" color="gray.500">{safeGet(order, "address.state", "—")}</Text>
-            <Text fontSize="xs" color="gray.500">{safeGet(order, "address.country", "—")}</Text>
-          </VStack>
-        </Td>
-
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
-          <VStack align="start" spacing={1}>
-            <Text fontWeight="medium" fontSize={isMobile ? "xs" : "sm"}>{formatINR(safeGet(order, "total_amount", 0))}</Text>
-            <Text fontSize="xs" color="gray.500">{new Date(safeGet(order, "createdAt", Date.now())).toLocaleDateString()}</Text>
-          </VStack>
-        </Td>
-
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
-          <Badge bg={getStatusColor(status).bg} color={getStatusColor(status).color} px={2} py={0.5} borderRadius="full" fontSize={isMobile ? "xs" : "sm"} fontWeight="bold">
-            {String(status).toUpperCase()}
-          </Badge>
-        </Td>
-
-        <Td borderColor={`${customColor}20`}>
-          <Flex gap={2}>
-            <IconButton
-              aria-label="View bill"
-              icon={<FaEye />}
-              bg="white"
-              color="green.500"
-              border="1px"
-              borderColor="green.500"
-              _hover={{ bg: "green.500", color: "white" }}
-              size="sm"
-              onClick={() => openModalForOrder(order)}
-            />
-            {/* {order.status !== "paid" && (
-                                        <IconButton
-                                          aria-label="Mark as paid"
-                                          icon={<FaCheckCircle />}
-                                          bg="white"
-                                          color={customColor}
-                                          border="1px"
-                                          borderColor={customColor}
-                                          _hover={{ bg: customColor, color: "white" }}
-                                          size="sm"
-                                          onClick={() => {Confirm_Order(selectedOrder)}}
-                                        />
-                                      )} */}
-          </Flex>
-        </Td>
-
-      </Tr>
-    );
-  };
-
-  const PaymentRow = ({ payment }) => {
-    const status = safeGet(payment, "status", "pending");
-    const paymentId = safeGet(payment, "_id", null);
-
-    return (
-      <Tr borderBottom="1px solid" borderColor="gray.100">
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text fontWeight="semibold" fontSize={isMobile ? "xs" : "sm"}>{safeGet(payment, "razorpayOrderId", safeGet(payment, "_id", "—"))}</Text></Td>
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text color="gray.700" fontSize={isMobile ? "xs" : "sm"}>{safeGet(payment, "orderId", "—")}</Text></Td>
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text fontWeight="bold" color="gray.800" fontSize={isMobile ? "sm" : "md"}>{formatINR(safeGet(payment, "amount", 0))}</Text></Td>
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Badge variant="outline" colorScheme="blue" fontSize={isMobile ? "xs" : "sm"}>{safeGet(payment, "method", "UNKNOWN")}</Badge></Td>
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Badge bg={getStatusColor(status).bg} color={getStatusColor(status).color} px={2} py={0.5} borderRadius="full" fontSize={isMobile ? "xs" : "sm"} fontWeight="bold">{String(status).toUpperCase()}</Badge></Td>
-        <Td>
-          <IconButton
-            aria-label="Update Payment Status"
-            icon={<FaCheckCircle />}
-            size="sm"
-            colorScheme="blue"
-            variant="ghost"
-            onClick={() => handleUpdatePaymentStatus(paymentId)}
-            tooltip="Refresh Payment Status"
-            isDisabled={!paymentId || (typeof paymentId === 'string' && paymentId.startsWith('SB-'))}
-          />
-        </Td>
-      </Tr>
-    );
-  };
-
+  // Service Booking Row Component
   const ServiceBookingRow = ({ booking }) => {
     const status = safeGet(booking, "status", "requested");
     const payStatus = safeGet(booking, "paymentStatus", "pending");
 
-    // Helper to find user if customerProfileId is a string
     const foundUser = (typeof booking.customerProfileId === 'string')
       ? users.find(u => u._id === booking.customerProfileId || u.userId === booking.customerProfileId)
       : null;
@@ -821,72 +835,74 @@ export default function CleanedBilling() {
     );
 
     return (
-      <Tr borderBottom="1px solid" borderColor="gray.100" _hover={{ bg: "gray.50" }}>
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
-          <VStack align="start" spacing={1}>
-            <Text fontWeight="semibold" fontSize={isMobile ? "xs" : "sm"}>{customerName}</Text>
-            <Text fontSize="xs" color="gray.500">{customerPhone}</Text>
+      <>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+          <VStack align="start" spacing={0}>
+            <Text fontWeight="medium" fontSize="xs">{customerName}</Text>
+            <Text fontSize="2xs" color="gray.500">{customerPhone}</Text>
           </VStack>
         </Td>
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text fontSize={isMobile ? "xs" : "sm"}>{safeGet(booking, "serviceId.serviceName", "—")}</Text></Td>
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text fontWeight="bold" fontSize={isMobile ? "sm" : "md"}>{formatINR(safeGet(booking, "baseAmount", 0))}</Text></Td>
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
-          <Badge bg={getStatusColor(status).bg} color={getStatusColor(status).color} px={2} py={0.5} borderRadius="full" fontSize={isMobile ? "xs" : "sm"} fontWeight="bold">
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>{safeGet(booking, "serviceId.serviceName", "—")}</Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5} fontWeight="bold">₹{safeGet(booking, "baseAmount", 0)}</Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+          <Badge bg={getStatusColor(status).bg} color={getStatusColor(status).color} px={2} py={0.5} borderRadius="full" fontSize="2xs" fontWeight="bold">
             {String(status).toUpperCase()}
           </Badge>
         </Td>
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}>
-          <Badge variant="solid" colorScheme={payStatus === "paid" ? "green" : "orange"} px={2} fontSize={isMobile ? "xs" : "sm"}>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+          <Badge variant="solid" colorScheme={payStatus === "paid" ? "green" : "orange"} px={2} fontSize="2xs">
             {String(payStatus).toUpperCase()}
           </Badge>
         </Td>
-        <Td px={isMobile ? 2 : 4} py={isMobile ? 1 : 2}><Text fontSize="xs" color="gray.500">{new Date(safeGet(booking, "scheduledAt", Date.now())).toLocaleDateString()}</Text></Td>
-        <Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>{new Date(safeGet(booking, "scheduledAt", Date.now())).toLocaleDateString()}</Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
           <Flex gap={2}>
             <IconButton
               aria-label="View booking details"
               icon={<FaEye />}
-              size="sm"
-              colorScheme="teal"
-              variant="outline"
+              bg="white"
+              color="blue.500"
+              border="1px"
+              borderColor="blue.500"
+              _hover={{ bg: "blue.500", color: "white" }}
+              size="xs"
               onClick={() => openModalForBooking(booking)}
             />
-            {(() => {
-              const payId = safeGet(booking, "paymentId") || safeGet(booking, "payment._id");
-              // Only show button if we have a valid Mongo ID
-              if (payId && /^[0-9a-fA-F]{24}$/.test(payId)) {
-                return (
-                  <IconButton
-                    aria-label="Update Payment Status"
-                    icon={<FaCheckCircle />}
-                    size="sm"
-                    colorScheme="blue"
-                    variant="ghost"
-                    onClick={() => handleUpdatePaymentStatus(payId)}
-                    tooltip="Refresh Payment Status"
-                  />
-                );
-              }
-              return null;
-            })()}
           </Flex>
         </Td>
-      </Tr>
+      </>
     );
   };
 
-  const WalletRow = ({ wallet, technicianMap }) => {
-    // Determine technician name safely
-    const techId = wallet.technicianId?._id || wallet.technicianProfileId || wallet.providerId?._id || (typeof wallet.providerId === 'string' ? wallet.providerId : null);
+  // Payment Row Component
+  const PaymentRow = ({ payment }) => {
+    const status = safeGet(payment, "status", "pending");
+    const paymentId = safeGet(payment, "_id", null);
 
-    // Check map first, then existing object structure
+    return (
+      <>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5} fontWeight="medium">{safeGet(payment, "_id", safeGet(payment, "razorpayOrderId", "—")).substring(0, 12)}...</Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>{safeGet(payment, "orderId", "—").substring(0, 8)}...</Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5} fontWeight="bold">₹{safeGet(payment, "amount", 0)}</Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+          <Badge variant="outline" colorScheme="blue" fontSize="2xs">{safeGet(payment, "method", "UNKNOWN")}</Badge>
+        </Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+          <Badge bg={getStatusColor(status).bg} color={getStatusColor(status).color} px={2} py={0.5} borderRadius="full" fontSize="2xs" fontWeight="bold">
+            {String(status).toUpperCase()}
+          </Badge>
+        </Td>
+      </>
+    );
+  };
+
+  // Wallet Row Component
+  const WalletRow = ({ wallet }) => {
+    const techId = wallet.technicianId?._id || wallet.technicianProfileId || wallet.providerId?._id || (typeof wallet.providerId === 'string' ? wallet.providerId : null);
     const techData = technicianMap && techId ? technicianMap[techId] : null;
 
     let displayName = "Unknown";
-
     if (techData) {
-      // Data from API fetch
-      // API returns userId object inside technician response
       if (techData.userId && (techData.userId.fname || techData.userId.lname)) {
         displayName = `${techData.userId.fname || ""} ${techData.userId.lname || ""}`.trim();
       } else if (techData.userId && (techData.userId.firstName || techData.userId.lastName)) {
@@ -896,370 +912,76 @@ export default function CleanedBilling() {
       } else if (techData.firstName) {
         displayName = `${techData.firstName} ${techData.lastName || ""}`.trim();
       }
-    } else {
-      // Fallback to embedded data if fetch failed or not yet loaded
-      displayName =
-        wallet.providerId?.name ||
-        wallet.providerId?.firstName ||
-        (wallet.providerId?.firstName && wallet.providerId?.lastName ? `${wallet.providerId.firstName} ${wallet.providerId.lastName}` : null) ||
-        "Unknown";
     }
 
     return (
-      <Tr borderBottom="1px solid" borderColor="gray.100">
-        <Td><Text fontSize="sm">{displayName}</Text></Td>
-        <Td><Text fontWeight="bold" color="green.600">{formatINR(wallet.technicianId?.walletBalance)}</Text></Td>
-        <Td><Text fontWeight="bold">{formatINR(wallet.amount)}</Text></Td>
-        <Td>
-          <Badge colorScheme={wallet.status === "approved" ? "green" : wallet.status === "rejected" ? "red" : "yellow"}>
+      <>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+          <Flex align="center" gap={2}>
+            <Avatar size="xs" name={displayName} />
+            <Text fontSize="xs">{displayName}</Text>
+          </Flex>
+        </Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5} fontWeight="bold" color="green.600">₹{wallet.technicianId?.walletBalance || 0}</Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5} fontWeight="bold">₹{wallet.amount || 0}</Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+          <Badge
+            bg={wallet.status === "approved" ? "#10B981" : wallet.status === "rejected" ? "#EF4444" : "#F59E0B"}
+            color="white"
+            px={2}
+            py={0.5}
+            borderRadius="full"
+            fontSize="2xs"
+          >
             {wallet.status}
           </Badge>
         </Td>
-        <Td><Text fontSize="xs">{new Date(wallet.createdAt).toLocaleDateString()}</Text></Td>
-        <Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>{new Date(wallet.createdAt).toLocaleDateString()}</Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
           {wallet.status === "pending" && (
             <HStack spacing={2}>
-              <Button size="xs" colorScheme="green" onClick={() => handleApproveWithdrawal(wallet._id)}>Approve</Button>
-              <Button size="xs" colorScheme="red" onClick={() => handleRejectWithdrawal(wallet._id)}>Reject</Button>
+              <Button size="xs" bg="green.500" color="white" _hover={{ bg: "green.600" }} onClick={() => handleApproveWithdrawal(wallet._id)}>Approve</Button>
+              <Button size="xs" bg="red.500" color="white" _hover={{ bg: "red.600" }} onClick={() => handleRejectWithdrawal(wallet._id)}>Reject</Button>
             </HStack>
           )}
         </Td>
-      </Tr>
+      </>
     );
   };
 
   if (!currentUser) {
     return (
       <Center minH="300px">
-        <Spinner />
+        <Spinner size="xl" color={customColor} />
         <Text ml={3}>Checking user...</Text>
       </Center>
     );
   }
 
-  const searchPlaceholder = currentView === "orders"
-    ? "Search orders by ID, email, product, city, pincode..."
-    : currentView === "services"
-      ? "Search services by ID, customer, service name, status..."
-      : "Search payments by payment ID, method, or order ID...";
+  const searchPlaceholder = currentView === "services"
+    ? "Search by customer, service, status..."
+    : currentView === "wallets"
+      ? "Search payments by payment ID, method, or order..."
+      : "Search by payment ID, method, status...";
 
   return (
     <Flex
       flexDirection="column"
-      pt={{ base: "45px", md: "55px", lg: "65px" }}
-      minH="calc(100vh - 40px)"
-      overflow="auto"
-      css={{
-        '&::-webkit-scrollbar': {
-          width: '8px',
-        },
-        '&::-webkit-scrollbar-track': {
-          background: 'transparent',
-          borderRadius: '24px',
-        },
-        '&::-webkit-scrollbar-thumb': {
-          background: 'transparent',
-          borderRadius: '24px',
-          transition: 'background 0.3s ease',
-        },
-        '&:hover::-webkit-scrollbar-thumb': {
-          background: '#cbd5e1',
-        },
-        '&:hover::-webkit-scrollbar-thumb:hover': {
-          background: '#94a3b8',
-        },
-        scrollbarWidth: 'thin',
-        scrollbarColor: 'transparent transparent',
-        '&:hover': {
-          scrollbarColor: '#cbd5e1 transparent',
-        },
-      }}
+      pt={{ base: "50px", md: "45px" }}
+      height={{ base: "calc(100vh - 20px)", md: "calc(100vh - 40px)" }}
+      overflow="hidden"
+      css={globalScrollbarStyles}
     >
-
-      <Box mb="16px"> {/* Reduced from 24px */}
-
-        <Flex
-          direction="row"
-          wrap="wrap"
-          justify="center"
-          gap={{ base: 2, md: 3 }}
-          overflowX="auto"
-          py={1}
-          css={{
-            '&::-webkit-scrollbar': {
-              height: '4px', // Smaller scrollbar
-            },
-            '&::-webkit-scrollbar-track': {
-              background: 'transparent',
-            },
-            '&::-webkit-scrollbar-thumb': {
-              background: 'transparent',
-              borderRadius: '2px',
-              transition: 'background 0.3s ease',
-            },
-            '&:hover::-webkit-scrollbar-thumb': {
-              background: '#cbd5e1',
-            },
-            '&:hover::-webkit-scrollbar-thumb:hover': {
-              background: '#94a3b8',
-            },
-          }}
+      {/* Fixed Statistics Cards */}
+      <Box flexShrink={0} p={{ base: 1, md: 4 }} pb={0}>
+        <Grid
+          templateColumns={{ base: "1fr 1fr", md: "1fr 1fr 1fr 1fr" }}
+          gap={{ base: "8px", md: "10px" }}
+          mb={{ base: "8px", md: "12px" }}
         >
-          {/* Technician Available Balance Card */}
-          <Card
-            minH={{ base: "70px", md: "75px" }} // Reduced height
-            cursor="pointer"
-            onClick={() => setCurrentView("wallets")}
-            border={currentView === "wallets" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "wallets" ? customColor : `${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            w={{ base: "48%", sm: "32%", md: "30%", lg: "18%" }} // Adjusted widths
-            minW={{ base: "140px", sm: "120px", md: "150px" }} // Smaller min width
-            flex={{ base: "0 0 auto", md: "1" }} // Better mobile behavior
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "translateY(-2px)", md: "translateY(-4px)" }, // Smaller hover on mobile
-              shadow: "lg",
-              _before: { opacity: 1 },
-              borderColor: customColor,
-            }}
-          >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}> {/* Reduced padding */}
-              <Flex flexDirection="row" align="center" justify="space-between" w="100%">
-                <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "xs", md: "sm" }} // Smaller font
-                    color="gray.600"
-                    fontWeight="semibold" // Reduced from bold
-                    pb="0px"
-                    lineHeight="1.2" // Tighter line height
-                  >
-                    Tech Balance
-                  </StatLabel>
-                  <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}> {/* Smaller number */}
-                    {isLoading ? <Spinner size="xs" /> : formatINR((walletDetails.availableBalance || 0) - (walletDetails.totalCommission || 0))}
-                  </StatNumber>
-                </Stat>
-                <Box
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  borderRadius="8px" // Smaller radius
-                  h={{ base: "28px", md: "32px" }} // Smaller icon container
-                  w={{ base: "28px", md: "32px" }}
-                  bg={customColor}
-                >
-                  <Icon as={MdCategory} h={{ base: "14px", md: "16px" }} w={{ base: "14px", md: "16px" }} color="white" />
-                </Box>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {/* Total Collected Card */}
-          <Card
-            minH={{ base: "70px", md: "75px" }}
-            cursor="pointer"
-            onClick={() => setCurrentView("revenue_breakdown")}
-            border={currentView === "revenue_breakdown" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "revenue_breakdown" ? customColor : `${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            w={{ base: "48%", sm: "32%", md: "30%", lg: "18%" }}
-            minW={{ base: "140px", sm: "120px", md: "150px" }}
-            flex={{ base: "0 0 auto", md: "1" }}
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "translateY(-2px)", md: "translateY(-4px)" },
-              shadow: "lg",
-              _before: { opacity: 1 },
-              borderColor: customColor,
-            }}
-          >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
-              <Flex flexDirection="row" align="center" justify="space-between" w="100%">
-                <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "xs", md: "sm" }}
-                    color="gray.600"
-                    fontWeight="semibold"
-                    pb="0px"
-                    lineHeight="1.2"
-                  >
-                    Total Collected
-                  </StatLabel>
-                  <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                    {isLoading ? <Spinner size="xs" /> : formatINR(walletDetails.totalCollected)}
-                  </StatNumber>
-                </Stat>
-                <Box
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  borderRadius="8px"
-                  h={{ base: "28px", md: "32px" }}
-                  w={{ base: "28px", md: "32px" }}
-                  bg={customColor}
-                >
-                  <Icon as={MdCategory} h={{ base: "14px", md: "16px" }} w={{ base: "14px", md: "16px" }} color="white" />
-                </Box>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {/* Total Commission Card */}
-          <Card
-            minH={{ base: "70px", md: "75px" }}
-            cursor="pointer"
-            onClick={() => setCurrentView("wallets")}
-            border={currentView === "wallets" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "wallets" ? customColor : `${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            w={{ base: "48%", sm: "32%", md: "30%", lg: "18%" }}
-            minW={{ base: "140px", sm: "120px", md: "150px" }}
-            flex={{ base: "0 0 auto", md: "1" }}
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "translateY(-2px)", md: "translateY(-4px)" },
-              shadow: "lg",
-              _before: { opacity: 1 },
-              borderColor: customColor,
-            }}
-          >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
-              <Flex flexDirection="row" align="center" justify="space-between" w="100%">
-                <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "xs", md: "sm" }}
-                    color="gray.600"
-                    fontWeight="semibold"
-                    pb="0px"
-                    lineHeight="1.2"
-                  >
-                    Total Commission
-                  </StatLabel>
-                  <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                    {isLoading ? <Spinner size="xs" /> : formatINR(walletDetails.totalCommission)}
-                  </StatNumber>
-                </Stat>
-                <Box
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  borderRadius="8px"
-                  h={{ base: "28px", md: "32px" }}
-                  w={{ base: "28px", md: "32px" }}
-                  bg={customColor}
-                >
-                  <Icon as={MdCategory} h={{ base: "14px", md: "16px" }} w={{ base: "14px", md: "16px" }} color="white" />
-                </Box>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {/* All Payments Card */}
-          <Card
-            minH={{ base: "70px", md: "75px" }}
-            cursor="pointer"
-            onClick={() => setCurrentView("payments")}
-            border={currentView === "payments" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "payments" ? customColor : `${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            w={{ base: "48%", sm: "32%", md: "30%", lg: "18%" }}
-            minW={{ base: "140px", sm: "120px", md: "150px" }}
-            flex={{ base: "0 0 auto", md: "1" }}
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "translateY(-2px)", md: "translateY(-4px)" },
-              shadow: "lg",
-              _before: { opacity: 1 },
-              borderColor: customColor,
-            }}
-          >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
-              <Flex flexDirection="row" align="center" justify="space-between" w="100%">
-                <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "xs", md: "sm" }}
-                    color="gray.600"
-                    fontWeight="semibold"
-                    pb="0px"
-                    lineHeight="1.2"
-                  >
-                    All Payments
-                  </StatLabel>
-                  <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                    {isLoading ? <Spinner size="xs" /> : payments.length}
-                  </StatNumber>
-                </Stat>
-                <Box
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  borderRadius="8px"
-                  h={{ base: "28px", md: "32px" }}
-                  w={{ base: "28px", md: "32px" }}
-                  bg={customColor}
-                >
-                  <Icon as={IoCheckmarkDoneCircleSharp} h={{ base: "14px", md: "16px" }} w={{ base: "14px", md: "16px" }} color="white" />
-                </Box>
-              </Flex>
-            </CardBody>
-          </Card>
-
           {/* Service Bookings Card */}
           <Card
-            minH={{ base: "70px", md: "75px" }}
+            minH={{ base: "55px", md: "60px" }}
             cursor="pointer"
             onClick={() => setCurrentView("services")}
             border={currentView === "services" ? "2px solid" : "1px solid"}
@@ -1268,9 +990,6 @@ export default function CleanedBilling() {
             bg="white"
             position="relative"
             overflow="hidden"
-            w={{ base: "48%", sm: "32%", md: "30%", lg: "18%" }}
-            minW={{ base: "140px", sm: "120px", md: "150px" }}
-            flex={{ base: "0 0 auto", md: "1" }}
             _before={{
               content: '""',
               position: "absolute",
@@ -1283,713 +1002,1112 @@ export default function CleanedBilling() {
               transition: "opacity 0.2s ease-in-out",
             }}
             _hover={{
-              transform: { base: "translateY(-2px)", md: "translateY(-4px)" },
-              shadow: "lg",
+              transform: { base: "none", md: "translateY(-2px)" },
+              shadow: { base: "none", md: "lg" },
               _before: { opacity: 1 },
               borderColor: customColor,
             }}
           >
             <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
-              <Flex flexDirection="row" align="center" justify="space-between" w="100%">
+              <Flex flexDirection="row" align="center" justify="center" w="100%">
                 <Stat me="auto">
                   <StatLabel
-                    fontSize={{ base: "xs", md: "sm" }}
+                    fontSize={{ base: "2xs", md: "xs" }}
                     color="gray.600"
-                    fontWeight="semibold"
-                    pb="0px"
-                    lineHeight="1.2"
+                    fontWeight="bold"
+                    pb="1px"
                   >
                     Service Bookings
                   </StatLabel>
-                  <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                    {isLoading ? <Spinner size="xs" /> : serviceBookings.length}
-                  </StatNumber>
+                  <Flex>
+                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
+                      {isLoading ? <Spinner size="xs" /> : serviceBookings.length}
+                    </StatNumber>
+                  </Flex>
                 </Stat>
-                <Box
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  borderRadius="8px"
+                <IconBox
+                  as="box"
                   h={{ base: "28px", md: "32px" }}
                   w={{ base: "28px", md: "32px" }}
                   bg={customColor}
                 >
-                  <Icon as={FiCalendar} h={{ base: "14px", md: "16px" }} w={{ base: "14px", md: "16px" }} color="white" />
-                </Box>
+                  <Icon as={FiCalendar} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
+                </IconBox>
               </Flex>
             </CardBody>
           </Card>
 
-        </Flex>
+          {/* All Payments Card */}
+          <Card
+            minH={{ base: "55px", md: "60px" }}
+            cursor="pointer"
+            onClick={() => setCurrentView("payments")}
+            border={currentView === "payments" ? "2px solid" : "1px solid"}
+            borderColor={currentView === "payments" ? customColor : `${customColor}30`}
+            transition="all 0.2s ease-in-out"
+            bg="white"
+            position="relative"
+            overflow="hidden"
+            _before={{
+              content: '""',
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+              opacity: 0,
+              transition: "opacity 0.2s ease-in-out",
+            }}
+            _hover={{
+              transform: { base: "none", md: "translateY(-2px)" },
+              shadow: { base: "none", md: "lg" },
+              _before: { opacity: 1 },
+              borderColor: customColor,
+            }}
+          >
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+              <Flex flexDirection="row" align="center" justify="center" w="100%">
+                <Stat me="auto">
+                  <StatLabel
+                    fontSize={{ base: "2xs", md: "xs" }}
+                    color="gray.600"
+                    fontWeight="bold"
+                    pb="1px"
+                  >
+                    All Payments
+                  </StatLabel>
+                  <Flex>
+                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
+                      {isLoading ? <Spinner size="xs" /> : payments.length}
+                    </StatNumber>
+                  </Flex>
+                </Stat>
+                <IconBox
+                  as="box"
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
+                  bg={customColor}
+                >
+                  <Icon as={MdPayment} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
+                </IconBox>
+              </Flex>
+            </CardBody>
+          </Card>
 
-        {/* Active Filter Display */}
-        <Flex justify="space-between" align="center" mt={3} mb={-2}> {/* Added mt and adjusted mb */}
-          <Text fontSize={{ base: "md", md: "lg" }} fontWeight="semibold" color={textColor}>
-            {currentView === "payments" && "All Payments"}
-            {currentView === "orders" && "All Orders"}
-            {currentView === "services" && "Service Bookings"}
-            {currentView === "wallets" && "Wallet Details"}
-            {currentView === "revenue_breakdown" && "Revenue Breakdown"}
-          </Text>
-        </Flex>
+          {/* Total Collected Card */}
+          <Card
+            minH={{ base: "55px", md: "60px" }}
+            cursor="pointer"
+            onClick={() => setCurrentView("revenue")}
+            border={currentView === "revenue" ? "2px solid" : "1px solid"}
+            borderColor={currentView === "revenue" ? customColor : `${customColor}30`}
+            transition="all 0.2s ease-in-out"
+            bg="white"
+            position="relative"
+            overflow="hidden"
+            _before={{
+              content: '""',
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+              opacity: 0,
+              transition: "opacity 0.2s ease-in-out",
+            }}
+            _hover={{
+              transform: { base: "none", md: "translateY(-2px)" },
+              shadow: { base: "none", md: "lg" },
+              _before: { opacity: 1 },
+              borderColor: customColor,
+            }}
+          >
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+              <Flex flexDirection="row" align="center" justify="center" w="100%">
+                <Stat me="auto">
+                  <StatLabel
+                    fontSize={{ base: "2xs", md: "xs" }}
+                    color="gray.600"
+                    fontWeight="bold"
+                    pb="1px"
+                  >
+                    Total Collected
+                  </StatLabel>
+                  <Flex>
+                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
+                      {isLoading ? <Spinner size="xs" /> : formatINR(walletDetails.totalCollected)}
+                    </StatNumber>
+                  </Flex>
+                </Stat>
+                <IconBox
+                  as="box"
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
+                  bg="green.500"
+                >
+                  <Icon as={FaRupeeSign} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
+                </IconBox>
+              </Flex>
+            </CardBody>
+          </Card>
 
+          {/* Total Commission Card */}
+          <Card
+            minH={{ base: "55px", md: "60px" }}
+            cursor="pointer"
+            onClick={() => setCurrentView("wallets")}
+            border={currentView === "wallets" ? "2px solid" : "1px solid"}
+            borderColor={currentView === "wallets" ? customColor : `${customColor}30`}
+            transition="all 0.2s ease-in-out"
+            bg="white"
+            position="relative"
+            overflow="hidden"
+            _before={{
+              content: '""',
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
+              opacity: 0,
+              transition: "opacity 0.2s ease-in-out",
+            }}
+            _hover={{
+              transform: { base: "none", md: "translateY(-2px)" },
+              shadow: { base: "none", md: "lg" },
+              _before: { opacity: 1 },
+              borderColor: customColor,
+            }}
+          >
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
+              <Flex flexDirection="row" align="center" justify="center" w="100%">
+                <Stat me="auto">
+                  <StatLabel
+                    fontSize={{ base: "2xs", md: "xs" }}
+                    color="gray.600"
+                    fontWeight="bold"
+                    pb="1px"
+                  >
+                    Total Commission
+                  </StatLabel>
+                  <Flex>
+                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
+                      {isLoading ? <Spinner size="xs" /> : formatINR(walletDetails.totalCommission)}
+                    </StatNumber>
+                  </Flex>
+                </Stat>
+                <IconBox
+                  as="box"
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
+                  bg="purple.500"
+                >
+                  <Icon as={FaChartLine} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
+                </IconBox>
+              </Flex>
+            </CardBody>
+          </Card>
+        </Grid>
       </Box>
 
-      {/* Table Container */}
-      <Box
-        mt={4}
-        display="flex"
-        flexDirection="column"
-        p={2}
-        pt={0}
-      >
+      {/* Scrollable Table Container */}
+      <Box display="flex" flexDirection="column" p={4} pt={0} flex="1" overflow="hidden">
         <Card
-          shadow="xl"
-          bg="transparent"
+          shadow="lg"
+          bg="white"
           display="flex"
           flexDirection="column"
-          border="none"
+          maxH="100%"
+          overflow="hidden"
         >
+          {/* Fixed Table Header */}
           <CardHeader
-            p="5px"
-            pb="5px"
-            padding='5'
-            bg="transparent"
+            p="10px 16px"
+            pb="8px"
+            bg="white"
             flexShrink={0}
             borderBottom="1px solid"
             borderColor={`${customColor}20`}
           >
-
             <Flex
+              flexDirection={{ base: "column", sm: "row" }}
               justify="space-between"
-              align="center"
-              flexWrap="wrap"
-              gap={4}
+              align={{ base: "stretch", sm: "center" }}
+              gap={3}
             >
-
-              <Heading size="md" flexShrink={0} color="gray.700">
-                {currentView === "revenue_breakdown" ? "💰 Revenue Breakdown" : currentView === "orders" ? "🛒 Orders" : currentView === "services" ? "🛠️ Service Bookings" : "💳 Payments"}
+              <Heading size="sm" flexShrink={0} color="gray.700">
+                {currentView === "services" && "🛠️ Service Bookings"}
+                {currentView === "payments" && "💳 Payments"}
+                {currentView === "wallets" && "💳 Payments"}
+                {currentView === "revenue" && "💰 Revenue Report"}
               </Heading>
-
-              <Flex align="center" flex="1" maxW="400px">
-
-                <InputGroup width="100%">
-                  <VisuallyHidden as="label" htmlFor="global-search">Search</VisuallyHidden>
+              <Flex
+                align="center"
+                flex={{ base: "none", sm: "1" }}
+                maxW={{ base: "100%", sm: "400px" }}
+                minW={{ base: "0", sm: "200px" }}
+                w="100%"
+                mx={{ sm: 4 }}
+              >
+                <InputGroup size="sm">
                   <Input
-                    id="global-search"
-                    ref={searchRef}
                     placeholder={searchPlaceholder}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    size="sm"
-                    borderColor={`${customColor}50`}
+                    borderColor="gray.300"
                     _hover={{ borderColor: customColor }}
                     _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
                     bg="white"
-                    fontSize={isMobile ? "sm" : "md"}
-                    transition="box-shadow 0.15s ease, border-color 0.15s ease"
+                    fontSize="sm"
+                    borderRadius="md"
                   />
-                  <InputRightElement width="3rem">
-                    {searchQuery ? (
-                      <Tooltip label="Clear search (Esc also clears)">
-                        <Button size="xs" onClick={() => setSearchQuery("")} variant="ghost">
-                          <Icon as={FaTimes} />
-                        </Button>
-                      </Tooltip>
-                    ) : (
-                      <Tooltip label="Search (Ctrl + / to focus)">
-                        <Box as="span" color="gray.400" pl={1}><Icon as={FaSearch} /></Box>
-                      </Tooltip>
-                    )}
+                  <InputRightElement color="gray.400">
+                    <FaSearch size="12px" />
                   </InputRightElement>
                 </InputGroup>
               </Flex>
 
-              <HStack spacing={2} align="center">
-                <Button leftIcon={<FaArrowLeft />} size="sm" variant="ghost" onClick={() => {
-                  setSearchQuery("");
-                  setOrderStatusFilter("all");
-                  setPaymentMethodFilter("all");
-                  setPaymentStatusFilter("all");
-                  setOrderDatePreset("all");
-                  setPaymentDatePreset("all");
-                  setCurrentView("services");
-                }}>Reset</Button>
-
-                <Button variant="outline" size="sm" borderColor="gray.200" bg={cardBg} onClick={() => {
-                  if (currentView === "orders") {
-                    const rows = prepareOrdersExportRows();
-                    exportToCSV(`orders_export_${new Date().toISOString().slice(0, 10)}.csv`, rows);
-                  } else if (currentView === "services") {
-                    const rows = prepareServicesExportRows();
-                    exportToCSV(`services_export_${new Date().toISOString().slice(0, 10)}.csv`, rows);
-                  } else {
-                    const rows = preparePaymentsExportRows();
-                    exportToCSV(`payments_export_${new Date().toISOString().slice(0, 10)}.csv`, rows);
-                  }
-                }}>Export</Button>
-
+              <HStack spacing={4}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  leftIcon={<FaArrowLeft />}
+                  onClick={() => {
+                    setSearchQuery("");
+                    setCurrentPage(1);
+                  }}
+                  color="gray.600"
+                  fontWeight="bold"
+                  fontSize="sm"
+                  _hover={{ bg: "transparent", color: customColor }}
+                >
+                  Reset
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  fontWeight="bold"
+                  borderWidth="1px"
+                  borderColor="gray.200"
+                  borderRadius="lg"
+                  px={6}
+                  bg="white"
+                  onClick={() => {
+                    if (currentView === "services") {
+                      const rows = prepareServicesExportRows();
+                      exportToCSV(`services_export_${new Date().toISOString().slice(0, 10)}.csv`, rows);
+                    } else if (currentView === "payments") {
+                      const rows = preparePaymentsExportRows();
+                      exportToCSV(`payments_export_${new Date().toISOString().slice(0, 10)}.csv`, rows);
+                    }
+                  }}
+                >
+                  Export
+                </Button>
               </HStack>
             </Flex>
-
-            {/* <Flex mt={3} gap={3} flexWrap="wrap" direction={{ base: "column", md: "row" }}>
-              {currentView === "orders" ? (
-                <HStack spacing={3} width="100%" flexWrap="wrap">
-                  <Box width={{ base: "100%", sm: "48%", md: "auto" }}>
-                    <Text fontSize="xs" color="gray.600" mb={1}>Status</Text>
-                    <Select size="sm" value={orderStatusFilter} onChange={(e) => setOrderStatusFilter(e.target.value)} width="100%" bg="white">
-                      {ORDER_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-                    </Select>
-                  </Box>
-
-                  <Box width={{ base: "100%", sm: "48%", md: "auto" }}>
-                    <Text fontSize="xs" color="gray.600" mb={1}>Date</Text>
-                    <Select size="sm" value={orderDatePreset} onChange={(e) => setOrderDatePreset(e.target.value)} width="100%" bg="white">
-                      <option value="all">All Time</option>
-                      <option value="today">Today</option>
-                      <option value="this_week">This Week</option>
-                      <option value="this_month">This Month</option>
-                      <option value="this_year">This Year</option>
-                    </Select>
-                  </Box>
-                </HStack>
-              ) : (
-                <HStack spacing={3} width="100%" flexWrap="wrap">
-                  <Box width={{ base: "100%", sm: "48%", md: "auto" }}>
-                    <Text fontSize="xs" color="gray.600" mb={1}>Method</Text>
-                    <Select size="sm" value={paymentMethodFilter} onChange={(e) => setPaymentMethodFilter(e.target.value)} width="100%" bg="white">
-                      {PAYMENT_METHOD_OPTIONS.map((m) => <option key={m} value={m}>{m === "all" ? "All" : m.toUpperCase()}</option>)}
-                    </Select>
-                  </Box>
-
-                  <Box width={{ base: "100%", sm: "48%", md: "auto" }}>
-                    <Text fontSize="xs" color="gray.600" mb={1}>Status</Text>
-                    <Select size="sm" value={paymentStatusFilter} onChange={(e) => setPaymentStatusFilter(e.target.value)} width="100%" bg="white">
-                      {PAYMENT_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-                    </Select>
-                  </Box>
-
-                  <Box width={{ base: "100%", sm: "48%", md: "auto" }}>
-                    <Text fontSize="xs" color="gray.600" mb={1}>Date</Text>
-                    <Select size="sm" value={paymentDatePreset} onChange={(e) => setPaymentDatePreset(e.target.value)} width="100%" bg="white">
-                      <option value="all">All Time</option>
-                      <option value="today">Today</option>
-                      <option value="this_week">This Week</option>
-                      <option value="this_month">This Month</option>
-                      <option value="this_year">This Year</option>
-                    </Select>
-                  </Box>
-                </HStack>
-              )}
-            </Flex> */}
-
           </CardHeader>
 
-          <CardBody
-            bg="transparent"
-            display="flex"
-            flexDirection="column"
-            p={0}
-          >
+          {/* Scrollable Table Content Area */}
+          <CardBody bg="white" display="flex" flexDirection="column" p={0} overflow="hidden">
             {isLoading ? (
-              <Flex justify="center" align="center" py={10} flex="1">
-                <Spinner size="xl" color={customColor} />
+              <Flex justify="center" align="center" py={6} flex="1">
+                <Spinner size="lg" color={customColor} />
                 <Text ml={3} fontSize="sm">Loading data...</Text>
               </Flex>
             ) : (
-              <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
-
-
-                <Box
-                  display="flex"
-                  flexDirection="column"
-                >
-                  {/* Responsive Table Wrapper */}
-                  <Box
-                    overflowX="auto"
-                    css={{
-                      '&::-webkit-scrollbar': {
-                        width: '8px',
-                        height: '8px',
-                      },
-                      '&::-webkit-scrollbar-track': {
-                        background: 'transparent',
-                      },
-                      '&::-webkit-scrollbar-thumb': {
-                        background: 'transparent',
-                        borderRadius: '4px',
-                        transition: 'background 0.3s ease',
-                      },
-                      '&:hover::-webkit-scrollbar-thumb': {
-                        background: '#cbd5e1',
-                      },
-                      '&:hover::-webkit-scrollbar-thumb:hover': {
-                        background: '#94a3b8',
-                      },
-                    }}
-                  >
-                    {currentView === "wallets" ? (
-                      <Table variant="simple" size="sm" bg="transparent">
-                        <Thead>
-                          <Tr>
-                            <Th color="gray.600">Technician</Th>
-                            <Th color="gray.600">Wallet Balance</Th>
-                            <Th color="gray.600">Amount</Th>
-                            <Th color="gray.600">Status</Th>
-                            <Th color="gray.600">Date</Th>
-                            <Th color="gray.600">Actions</Th>
-                          </Tr>
-                        </Thead>
-                        <Tbody>
-                          {currentSlice.length > 0 ? (
-                            currentSlice.map((w) => (
-                              <WalletRow key={w._id} wallet={w} technicianMap={technicianMap} />
-                            ))
-                          ) : (
-                            <Tr>
-                              <Td colSpan={6} textAlign="center" py={4}>No wallet records found</Td>
+              <Box display="flex" flexDirection="column" overflow="hidden">
+                {/* Desktop Table View */}
+                <Box display={{ base: "none", md: "block" }} overflow="auto" css={globalScrollbarStyles}>
+                  {currentView === "services" && (
+                    <Table variant="simple" size="sm" bg="transparent">
+                      <Thead>
+                        <Tr>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            #
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Customer
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Service
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Amount
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Status
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Payment
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Date
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Actions
+                          </Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {currentSlice.length > 0 ? (
+                          currentSlice.map((booking, idx) => (
+                            <Tr key={booking._id || idx} borderBottom="1px" borderColor={`${customColor}20`} _hover={{ bg: `${customColor}10` }}>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>{indexOfFirstItem + idx + 1}</Td>
+                              <ServiceBookingRow booking={booking} />
                             </Tr>
-                          )}
-                        </Tbody>
-                      </Table>
-                    ) : currentView === "revenue_breakdown" ? (
-                      <Table variant="simple" size="sm" bg="transparent">
-                        <Thead>
+                          ))
+                        ) : (
                           <Tr>
-                            <Th color="gray.600">Metric</Th>
-                            <Th color="gray.600" isNumeric>Amount (₹)</Th>
+                            <Td colSpan={8} textAlign="center" py={6}>
+                              <Text fontSize="xs">No bookings found.</Text>
+                            </Td>
                           </Tr>
-                        </Thead>
-                        <Tbody>
-                          {(() => {
-                            // Calculate total withdrawals (excluding rejected ones)
-                            const totalWithdrawals = wallets.reduce((sum, w) => {
-                              return w.status !== 'rejected' ? sum + (Number(w.amount) || 0) : sum;
-                            }, 0);
+                        )}
+                      </Tbody>
+                    </Table>
+                  )}
 
-                            const totalCollected = walletDetails.totalCollected || 0;
-                            const totalCommission = walletDetails.totalCommission || 0;
-
-                            // Technician Balance = Collected - Commission
-                            const technicianBalance = totalCollected - totalCommission;
-
-                            // Final Available = Technician Balance - Withdrawals
-                            const availableBalance = technicianBalance - totalWithdrawals;
-
-                            return (
-                              <>
-                                <Tr _hover={{ bg: "gray.50" }}>
-                                  <Td fontWeight="medium">Total Collected</Td>
-                                  <Td isNumeric fontWeight="bold">{formatINR(totalCollected)}</Td>
-                                </Tr>
-                                <Tr _hover={{ bg: "gray.50" }}>
-                                  <Td fontWeight="medium">Total Commission</Td>
-                                  <Td isNumeric color="red.500">- {formatINR(totalCommission)}</Td>
-                                </Tr>
-                                <Tr bg="gray.100" _hover={{ bg: "gray.200" }}>
-                                  <Td fontWeight="bold" color="gray.700">Technician Balance (Collected - Commission)</Td>
-                                  <Td isNumeric fontWeight="bold" color="gray.800">
-                                    {formatINR(technicianBalance)}
-                                  </Td>
-                                </Tr>
-                                <Tr _hover={{ bg: "gray.50" }}>
-                                  <Td fontWeight="medium">Technician Withdraw Request Amount</Td>
-                                  <Td isNumeric color="red.500">- {formatINR(totalWithdrawals)}</Td>
-                                </Tr>
-                                <Tr bg="green.50" _hover={{ bg: "green.100" }}>
-                                  <Td fontWeight="bold" color="green.800">Available Balance</Td>
-                                  <Td isNumeric fontWeight="bold" color="blue.600">{formatINR(availableBalance)}</Td>
-                                </Tr>
-                              </>
-                            );
-                          })()}
-                        </Tbody>
-                      </Table>
-                    ) : currentView === "services" ? (
-                      <Table variant="simple" size="sm" bg="transparent">
-                        <Thead>
+                  {currentView === "payments" && (
+                    <Table variant="simple" size="sm" bg="transparent">
+                      <Thead>
+                        <Tr>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            #
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Payment ID
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Order ID
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Amount
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Method
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Status
+                          </Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {currentSlice.length > 0 ? (
+                          currentSlice.map((payment, idx) => (
+                            <Tr key={payment._id || idx} borderBottom="1px" borderColor={`${customColor}20`} _hover={{ bg: `${customColor}10` }}>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>{indexOfFirstItem + idx + 1}</Td>
+                              <PaymentRow payment={payment} />
+                            </Tr>
+                          ))
+                        ) : (
                           <Tr>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Customer</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Service</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Amount</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Status</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Payment Status</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Scheduled At</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Actions</Th>
+                            <Td colSpan={6} textAlign="center" py={6}>
+                              <Text fontSize="xs">No payments found.</Text>
+                            </Td>
                           </Tr>
-                        </Thead>
-                        <Tbody>
-                          {currentSlice.length === 0 ? (
-                            <Tr><Td colSpan={7}><Center py={6}><Text color="gray.500">No bookings found.</Text></Center></Td></Tr>
-                          ) : (
-                            currentSlice.map((booking) => (
-                              <ServiceBookingRow key={booking._id} booking={booking} />
-                            ))
-                          )}
-                        </Tbody>
-                      </Table>
-                    ) : (
-                      <Table variant="simple" size="sm" bg="transparent">
-                        <Thead>
+                        )}
+                      </Tbody>
+                    </Table>
+                  )}
+
+                  {currentView === "wallets" && (
+                    <Table variant="simple" size="sm" bg="transparent">
+                      <Thead>
+                        <Tr>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            #
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Technician
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Balance
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Amount
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Status
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Date
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={2}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Actions
+                          </Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {currentSlice.length > 0 ? (
+                          currentSlice.map((wallet, idx) => (
+                            <Tr key={wallet._id || idx} borderBottom="1px" borderColor={`${customColor}20`} _hover={{ bg: `${customColor}10` }}>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>{indexOfFirstItem + idx + 1}</Td>
+                              <WalletRow wallet={wallet} />
+                            </Tr>
+                          ))
+                        ) : (
                           <Tr>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Payment ID</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Order ID</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Amount</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Method</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Status</Th>
-                            <Th color="gray.100" borderColor={`${customColor}30`} position="sticky" top={0} bg={`${customColor}`} zIndex={10} fontWeight="bold" fontSize="xs" py={2} borderBottom="2px solid" borderBottomColor={`${customColor}50`}>Actions</Th>
+                            <Td colSpan={7} textAlign="center" py={6}>
+                              <Text fontSize="xs">No wallet records found.</Text>
+                            </Td>
                           </Tr>
-                        </Thead>
-                        <Tbody>
-                          {currentSlice.length === 0 ? (
-                            <Tr>
-                              <Td colSpan={5}>
-                                <Center py={6}>
-                                  <Text color="gray.500" fontSize={{ base: "xs", md: "sm" }}>
-                                    No payments found.
-                                  </Text>
-                                </Center>
+                        )}
+                      </Tbody>
+                    </Table>
+                  )}
+
+                  {currentView === "revenue" && (
+                    <Table variant="simple" size="sm" bg="transparent">
+                      <Thead>
+                        <Tr>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={3}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            #
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={3}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Metric
+                          </Th>
+                          <Th
+                            color="gray.100"
+                            borderColor={`${customColor}30`}
+                            position="sticky"
+                            top={0}
+                            bg={customColor}
+                            zIndex={10}
+                            fontWeight="bold"
+                            fontSize="xs"
+                            py={3}
+                            borderBottom="2px solid"
+                            borderBottomColor={`${customColor}50`}
+                          >
+                            Amount
+                          </Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {(() => {
+                          const totalWithdrawals = wallets.reduce((sum, w) => {
+                            return w.status !== 'rejected' ? sum + (Number(w.amount) || 0) : sum;
+                          }, 0);
+
+                          const totalCollected = walletDetails.totalCollected || 0;
+                          const totalCommission = walletDetails.totalCommission || 0;
+                          const technicianBalance = totalCollected - totalCommission;
+                          const availableBalance = technicianBalance - totalWithdrawals;
+
+                          const metrics = [
+                            { name: "Total Collected", amount: totalCollected, color: "green.600" },
+                            { name: "Total Commission", amount: -totalCommission, color: "red.500" },
+                            { name: "Technician Balance", amount: technicianBalance, color: "blue.600" },
+                            { name: "Withdrawals", amount: -totalWithdrawals, color: "red.500" },
+                            { name: "Available Balance", amount: availableBalance, color: "purple.600" },
+                          ];
+
+                          return metrics.map((metric, idx) => (
+                            <Tr key={idx} borderBottom="1px" borderColor={`${customColor}20`} _hover={{ bg: `${customColor}10` }}>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>{idx + 1}</Td>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2} fontWeight="medium">{metric.name}</Td>
+                              <Td borderColor={`${customColor}20`} fontSize="xs" py={2} fontWeight="bold" color={metric.color}>
+                                {metric.amount >= 0 ? formatINR(metric.amount) : `- ${formatINR(Math.abs(metric.amount))}`}
                               </Td>
                             </Tr>
-                          ) : (
-                            currentSlice.map((pay) => (
-                              <PaymentRow
-                                key={safeGet(pay, "_id", safeGet(pay, "orderId", Math.random().toString()))}
-                                payment={pay}
-                              />
-                            ))
-                          )}
-                        </Tbody>
-                      </Table>
-                    )}
-                  </Box>
+                          ));
+                        })()}
+                      </Tbody>
+                    </Table>
+                  )}
+                </Box>
 
-                  {/* Pagination controls */}
-                  {currentSlice.length > 0 && (
-                    <Box
-                      flexShrink={0}
-                      p="8px"
-                      borderTop="1px solid"
-                      borderColor={`${customColor}20`}
-                      bg="transparent"
-                    >
-                      <Flex
-                        justify="flex-end"
-                        align="center"
-                        gap={3}
-                      >
+                {/* Mobile Card View */}
+                <Box
+                  display={{ base: "block", md: "none" }}
+                  overflow="auto"
+                  px={3}
+                  py={2}
+                  css={globalScrollbarStyles}
+                >
+                  {currentView === "services" && (
+                    currentSlice.length > 0 ? (
+                      currentSlice.map((booking, idx) => (
+                        <ServiceMobileCard
+                          key={booking._id || idx}
+                          booking={booking}
+                          idx={idx}
+                          indexOfFirstItem={indexOfFirstItem}
+                          onViewDetails={openModalForBooking}
+                          users={users}
+                        />
+                      ))
+                    ) : (
+                      <Center py={10}>
+                        <VStack spacing={2}>
+                          <Icon as={FiCalendar} color="gray.300" boxSize={10} />
+                          <Text fontSize="sm" color="gray.500">No bookings found</Text>
+                        </VStack>
+                      </Center>
+                    )
+                  )}
 
+                  {currentView === "payments" && (
+                    currentSlice.length > 0 ? (
+                      currentSlice.map((payment, idx) => (
+                        <PaymentMobileCard
+                          key={payment._id || idx}
+                          payment={payment}
+                          idx={idx}
+                          indexOfFirstItem={indexOfFirstItem}
+                          onUpdatePayment={handleUpdatePaymentStatus}
+                        />
+                      ))
+                    ) : (
+                      <Center py={10}>
+                        <VStack spacing={2}>
+                          <Icon as={MdPayment} color="gray.300" boxSize={10} />
+                          <Text fontSize="sm" color="gray.500">No payments found</Text>
+                        </VStack>
+                      </Center>
+                    )
+                  )}
 
-                        {/* Pagination Controls */}
-                        <Flex align="center" gap={2}>
-                          <Button
-                            size="sm"
-                            onClick={handlePrevPage}
-                            isDisabled={currentPage === 1}
-                            leftIcon={<FaChevronLeft />}
-                            bg="white"
-                            color={customColor}
-                            border="1px"
-                            borderColor={customColor}
-                            _hover={{ bg: customColor, color: "white" }}
-                            _disabled={{
-                              opacity: 0.5,
-                              cursor: "not-allowed",
-                              bg: "gray.100",
-                              color: "gray.400",
-                              borderColor: "gray.300"
-                            }}
-                          >
-                            <Text display={{ base: "none", sm: "block" }}>Previous</Text>
-                          </Button>
+                  {currentView === "wallets" && (
+                    currentSlice.length > 0 ? (
+                      currentSlice.map((wallet, idx) => (
+                        <WalletMobileCard
+                          key={wallet._id || idx}
+                          wallet={wallet}
+                          idx={idx}
+                          indexOfFirstItem={indexOfFirstItem}
+                          technicianMap={technicianMap}
+                        />
+                      ))
+                    ) : (
+                      <Center py={10}>
+                        <VStack spacing={2}>
+                          <Icon as={FaWallet} color="gray.300" boxSize={10} />
+                          <Text fontSize="sm" color="gray.500">No wallet records found</Text>
+                        </VStack>
+                      </Center>
+                    )
+                  )}
 
-                          {/* Page Number Display */}
-                          <Flex
-                            align="center"
-                            gap={2}
-                            bg={`${customColor}10`}
-                            px={3}
-                            py={1}
-                            borderRadius="6px"
-                            minW="80px"
-                            justify="center"
-                          >
-                            <Text fontSize="sm" fontWeight="bold" color={customColor}>
-                              {currentPage}
-                            </Text>
-                            <Text fontSize="sm" color="gray.500">
-                              /
-                            </Text>
-                            <Text fontSize="sm" color="gray.600" fontWeight="medium">
-                              {totalPages}
-                            </Text>
-                          </Flex>
-
-                          <Button
-                            size="sm"
-                            onClick={handleNextPage}
-                            isDisabled={currentPage === totalPages}
-                            rightIcon={<FaChevronRight />}
-                            bg="white"
-                            color={customColor}
-                            border="1px"
-                            borderColor={customColor}
-                            _hover={{ bg: customColor, color: "white" }}
-                            _disabled={{
-                              opacity: 0.5,
-                              cursor: "not-allowed",
-                              bg: "gray.100",
-                              color: "gray.400",
-                              borderColor: "gray.300"
-                            }}
-                          >
-                            <Text display={{ base: "none", sm: "block" }}>Next</Text>
-                          </Button>
-                        </Flex>
-                      </Flex>
+                  {currentView === "revenue" && (
+                    <Box p={4}>
+                      <VStack spacing={3}>
+                        <Box p={3} bg="white" borderWidth="1px" borderColor={`${customColor}20`} borderRadius="md" shadow="sm" w="100%">
+                          <Text fontSize="xs" color="gray.500">Total Collected</Text>
+                          <Text fontSize="lg" fontWeight="bold" color="green.600">{formatINR(walletDetails.totalCollected)}</Text>
+                        </Box>
+                        <Box p={3} bg="white" borderWidth="1px" borderColor={`${customColor}20`} borderRadius="md" shadow="sm" w="100%">
+                          <Text fontSize="xs" color="gray.500">Total Commission</Text>
+                          <Text fontSize="lg" fontWeight="bold" color="red.500">{formatINR(walletDetails.totalCommission)}</Text>
+                        </Box>
+                        <Box p={3} bg="white" borderWidth="1px" borderColor={`${customColor}20`} borderRadius="md" shadow="sm" w="100%">
+                          <Text fontSize="xs" color="gray.500">Available Balance</Text>
+                          <Text fontSize="lg" fontWeight="bold" color="purple.600">
+                            {formatINR((walletDetails.totalCollected || 0) - (walletDetails.totalCommission || 0))}
+                          </Text>
+                        </Box>
+                      </VStack>
                     </Box>
                   )}
                 </Box>
 
+                {/* Pagination Controls */}
+                {filteredData.length > 0 && currentView !== "revenue" && (
+                  <Box
+                    flexShrink={0}
+                    p="16px"
+                    borderTop="1px solid"
+                    borderColor={`${customColor}20`}
+                    bg="transparent"
+                  >
+                    <Flex justify="flex-end" align="center" gap={3}>
+                      <Flex align="center" gap={2}>
+                        <Button
+                          size="sm"
+                          onClick={handlePrevPage}
+                          isDisabled={currentPage === 1}
+                          leftIcon={<FaChevronLeft />}
+                          bg="white"
+                          color={customColor}
+                          border="1px"
+                          borderColor={customColor}
+                          _hover={{ bg: customColor, color: "white" }}
+                          _disabled={{
+                            opacity: 0.5,
+                            cursor: "not-allowed",
+                            bg: "gray.100",
+                            color: "gray.400",
+                            borderColor: "gray.300"
+                          }}
+                        >
+                          <Text display={{ base: "none", sm: "block" }}>Previous</Text>
+                        </Button>
 
+                        <Flex
+                          align="center"
+                          gap={2}
+                          bg={`${customColor}10`}
+                          px={3}
+                          py={1}
+                          borderRadius="6px"
+                          minW="80px"
+                          justify="center"
+                        >
+                          <Text fontSize="sm" fontWeight="bold" color={customColor}>
+                            {currentPage}
+                          </Text>
+                          <Text fontSize="sm" color="gray.500">/</Text>
+                          <Text fontSize="sm" color="gray.600" fontWeight="medium">
+                            {totalPages}
+                          </Text>
+                        </Flex>
 
-
+                        <Button
+                          size="sm"
+                          onClick={handleNextPage}
+                          isDisabled={currentPage === totalPages}
+                          rightIcon={<FaChevronRight />}
+                          bg="white"
+                          color={customColor}
+                          border="1px"
+                          borderColor={customColor}
+                          _hover={{ bg: customColor, color: "white" }}
+                          _disabled={{
+                            opacity: 0.5,
+                            cursor: "not-allowed",
+                            bg: "gray.100",
+                            color: "gray.400",
+                            borderColor: "gray.300"
+                          }}
+                        >
+                          <Text display={{ base: "none", sm: "block" }}>Next</Text>
+                        </Button>
+                      </Flex>
+                    </Flex>
+                  </Box>
+                )}
               </Box>
             )}
           </CardBody>
         </Card>
-      </Box >
-
-      {/* Order Details Modal */}
-      < Modal isOpen={isModalOpen} onClose={closeModal} size="4xl" isCentered >
-        <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(4px)" />
-        <ModalContent bg={cardBg} borderRadius="2xl" overflow="hidden">
-          <ModalHeader bg={`${customColor}`} borderBottom="1px solid" borderColor="gray.200">
-            <VStack align="start" spacing={2}>
-              <Heading size="md" color={"white"}>Order Details</Heading>
-              <Text color="gray.200" fontSize="sm">Manage order status and delivery information</Text>
-            </VStack>
-          </ModalHeader>
-          <ModalCloseButton color={"white"} />
-          <ModalBody py={6}>
-            {selectedOrder ? (
-              <VStack spacing={6} align="stretch">
-                <HStack justify="space-between" align="start">
-                  <VStack align="start" spacing={1}>
-                    <Text fontSize="2xl" fontWeight="bold" color="gray.800">{safeGet(selectedOrder, "_id", "—")}</Text>
-                    <HStack spacing={4}>
-                      <HStack><Icon as={FiUser} color="gray.500" /><Text color="gray.600">{safeGet(selectedOrder, "user.email", "—")}</Text></HStack>
-                      <HStack><Icon as={FiCalendar} color="gray.500" /><Text color="gray.600">{new Date(safeGet(selectedOrder, "createdAt", Date.now())).toLocaleString()}</Text></HStack>
-                    </HStack>
-                  </VStack>
-
-                  <Badge bg={getStatusColor(safeGet(selectedOrder, "status", "")).bg} color={getStatusColor(safeGet(selectedOrder, "status", "")).color} px={4} py={2} borderRadius="full" fontSize="md" fontWeight="bold">
-                    {String(safeGet(selectedOrder, "status", "UNKNOWN")).toUpperCase()}
-                  </Badge>
-                </HStack>
-
-                <Divider />
-
-                <Box>
-                  <Text fontSize="lg" fontWeight="semibold" mb={4}>Order Items</Text>
-                  <VStack spacing={3} align="stretch">
-                    {(safeGet(selectedOrder, "orderItems", []) || []).map((item, index) => (
-                      <HStack key={index} justify="space-between" p={3} bg="gray.50" borderRadius="lg">
-                        <HStack spacing={3}>
-                          {item?.image ? (
-                            <Image alt={safeGet(item, "name", "")} src={item.image} boxSize="50px" objectFit="cover" borderRadius="8px" />
-                          ) : (
-                            <Box boxSize="50px" display="flex" alignItems="center" justifyContent="center" bg="gray.100" borderRadius="8px"><Text fontSize="xs">No Image</Text></Box>
-                          )}
-                          <VStack align="start" spacing={0}>
-                            <Text fontWeight="medium">{safeGet(item, "name", "Unnamed")}</Text>
-                            <Text fontSize="sm" color="gray.600">₹{safeGet(item, "price", 0)} × {safeGet(item, "qty", 1)}</Text>
-                          </VStack>
-                        </HStack>
-                        <Text fontWeight="bold" fontSize="lg">₹{(safeGet(item, "price", 0) * safeGet(item, "qty", 1)).toLocaleString()}</Text>
-                      </HStack>
-                    ))}
-                  </VStack>
-                </Box>
-
-                <Box bg={`${customColor}05`} p={4} borderRadius="lg">
-                  <HStack justify="space-between">
-                    <Text fontSize="xl" fontWeight="bold">Total Amount</Text>
-                    <Text fontSize="2xl" fontWeight="bold" color={customColor}>{formatINR(safeGet(selectedOrder, "total_amount", 0))}</Text>
-                  </HStack>
-                </Box>
-
-                <HStack spacing={3} justify="flex-end" flexWrap="wrap">
-
-                  <Button leftIcon={<IoCheckmarkDoneCircleSharp />} bg="#3B82F6" _hover={{ bg: "#2563EB" }} color="white" onClick={() => {
-                    Confirm_Order();
-                  }}>Confirm Order</Button>
-
-
-
-
-
-
-                  <Button leftIcon={<FiTruck />} bg="#10B981" _hover={{ bg: "#059669" }} color="white" onClick={ShipingDate} >Shiping Date :
-                    <Input width={150} height={5} border={"none"} type="date" onChange={(e) => setState(e.target.value)} />
-                  </Button>
-
-                  <Button leftIcon={<FaCheckCircle />} bg="purple.500" _hover={{ bg: "purple.600" }} color="white" onClick={() => {
-                    const payId = safeGet(selectedOrder, "payment._id") || safeGet(selectedOrder, "payment_response._id") || safeGet(selectedOrder, "paymentResponse._id");
-                    handleUpdatePaymentStatus(payId);
-                  }}>Update Payment</Button>
-
-                  <Button leftIcon={<FiTruck />} bg="#10B981" _hover={{ bg: "#059669" }} color="white" onClick={markAsDelivered}>Mark Delivered</Button>
-
-                </HStack>
-              </VStack>
-            ) : (
-              <Center py={6}><Text color="gray.500">No order selected.</Text></Center>
-            )}
-          </ModalBody>
-
-
-        </ModalContent>
-      </Modal >
+      </Box>
 
       {/* Service Booking Details Modal */}
-      < Modal isOpen={isBookingModalOpen} onClose={closeBookingModal} size="4xl" isCentered >
-        <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(4px)" />
-        <ModalContent bg={cardBg} borderRadius="2xl" overflow="hidden">
-          <ModalHeader bg={`${customColor}`} borderBottom="1px solid" borderColor="gray.200">
-            <VStack align="start" spacing={2}>
-              <Heading size="md" color={"white"}>Service Booking Details</Heading>
-              <Text color="gray.200" fontSize="sm">Full details for the selected service booking</Text>
-            </VStack>
-          </ModalHeader>
-          <ModalCloseButton color={"white"} />
-          <ModalBody py={6}>
-            {selectedBooking ? (
-              <VStack spacing={6} align="stretch">
-                <HStack justify="space-between" align="start">
-                  <VStack align="start" spacing={1}>
-                    <Text fontSize="2xl" fontWeight="bold" color="gray.800">{safeGet(selectedBooking, "_id", "—")}</Text>
-                    <HStack spacing={4}>
-                      <HStack>
-                        <Icon as={FiUser} color="gray.500" />
-                        <Text color="gray.600">
-                          {(() => {
-                            const foundUser = (typeof selectedBooking.customerProfileId === 'string')
-                              ? users.find(u => u._id === selectedBooking.customerProfileId || u.userId === selectedBooking.customerProfileId)
-                              : null;
+      <Modal isOpen={isBookingModalOpen} onClose={closeBookingModal} size="xl">
+        <ModalOverlay />
+        <ModalContent maxW="600px">
+          <ModalHeader color="gray.700">Service Booking Details</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody maxH="70vh" overflowY="auto">
+            {selectedBooking && (
+              <VStack spacing={4} align="stretch">
+                {/* Header */}
+                <Flex align="center" gap={4} mb={2}>
+                  <Avatar
+                    size="lg"
+                    name={(() => {
+                      const foundUser = (typeof selectedBooking.customerProfileId === 'string')
+                        ? users.find(u => u._id === selectedBooking.customerProfileId || u.userId === selectedBooking.customerProfileId)
+                        : null;
 
-                            let name = "—";
-                            if (selectedBooking.customerId?.fname || selectedBooking.customerId?.lname) {
-                              name = `${selectedBooking.customerId.fname || ""} ${selectedBooking.customerId.lname || ""}`;
-                            } else if (selectedBooking.addressSnapshot?.name) {
-                              name = selectedBooking.addressSnapshot.name;
-                            } else if (typeof selectedBooking.customerProfileId === 'object' && (selectedBooking.customerProfileId?.firstName || selectedBooking.customerProfileId?.lastName)) {
-                              name = `${selectedBooking.customerProfileId.firstName || ""} ${selectedBooking.customerProfileId.lastName || ""}`;
-                            } else if (foundUser) {
-                              name = (`${foundUser.firstName || ""} ${foundUser.lastName || ""}`.trim() || foundUser.name);
-                            }
-                            return name.trim() || "—";
-                          })()}
-                        </Text>
-                      </HStack>
-                      <HStack><Icon as={FiCalendar} color="gray.500" /><Text color="gray.600">{new Date(safeGet(selectedBooking, "createdAt", Date.now())).toLocaleString()}</Text></HStack>
-                    </HStack>
-                  </VStack>
-
-                  <Badge bg={getStatusColor(safeGet(selectedBooking, "status", "")).bg} color={getStatusColor(safeGet(selectedBooking, "status", "")).color} px={4} py={2} borderRadius="full" fontSize="md" fontWeight="bold">
-                    {String(safeGet(selectedBooking, "status", "UNKNOWN")).toUpperCase()}
-                  </Badge>
-                </HStack>
-                <Divider />
-
-                <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={6}>
+                      return (
+                        (selectedBooking.customerId?.fname || selectedBooking.customerId?.lname) ? `${selectedBooking.customerId.fname || ""} ${selectedBooking.customerId.lname || ""}` :
+                          (selectedBooking.addressSnapshot?.name) ? selectedBooking.addressSnapshot.name :
+                            (typeof selectedBooking.customerProfileId === 'object' && (selectedBooking.customerProfileId?.firstName || selectedBooking.customerProfileId?.lastName)) ? `${selectedBooking.customerProfileId.firstName || ""} ${selectedBooking.customerProfileId.lastName || ""}` :
+                              (foundUser) ? (`${foundUser.firstName || ""} ${foundUser.lastName || ""}`.trim() || foundUser.name) :
+                                "Customer"
+                      );
+                    })()}
+                  />
                   <Box>
-                    <Text fontSize="lg" fontWeight="semibold" mb={3}>Service Information</Text>
-                    <VStack align="start" p={4} bg="gray.50" borderRadius="lg" spacing={2} width="100%">
-                      <HStack justify="space-between" width="100%">
-                        <Text color="gray.600">Service Name:</Text>
-                        <Text fontWeight="medium">{safeGet(selectedBooking, "serviceId.serviceName", "—")}</Text>
-                      </HStack>
-                      <HStack justify="space-between" width="100%">
-                        <Text color="gray.600">Service Type:</Text>
-                        <Text fontWeight="medium">{safeGet(selectedBooking, "serviceId.serviceType", "—")}</Text>
-                      </HStack>
-                      <HStack justify="space-between" width="100%">
-                        <Text color="gray.600">Service Cost:</Text>
-                        <Text fontWeight="medium">{formatINR(safeGet(selectedBooking, "serviceId.serviceCost", 0))}</Text>
-                      </HStack>
-                      <HStack justify="space-between" width="100%">
-                        <Text color="gray.600">Scheduled For:</Text>
-                        <Text fontWeight="medium" color="blue.600">{new Date(safeGet(selectedBooking, "scheduledAt", Date.now())).toLocaleString()}</Text>
-                      </HStack>
-                    </VStack>
+                    <Heading size="md" color="gray.700">
+                      Booking #{selectedBooking._id?.substring(selectedBooking._id.length - 6)}
+                    </Heading>
+                    <Badge
+                      bg={getStatusColor(selectedBooking.status).bg}
+                      color="white"
+                      mt={1}
+                      px={2}
+                      py={0.5}
+                      borderRadius="full"
+                    >
+                      {selectedBooking.status}
+                    </Badge>
                   </Box>
+                </Flex>
 
-                  <Box>
-                    <Text fontSize="lg" fontWeight="semibold" mb={3}>Address & Contact</Text>
-                    <VStack align="start" p={4} bg="gray.50" borderRadius="lg" spacing={2} width="100%">
-                      <HStack align="start" width="100%">
-                        <Icon as={FiTruck} mt={1} color="gray.500" />
-                        <VStack align="start" spacing={0}>
-                          <Text color="gray.600" fontSize="xs">Service Address:</Text>
-                          <Text fontWeight="medium">{safeGet(selectedBooking, "address", "—")}</Text>
-                          {selectedBooking.addressSnapshot && (
-                            <Text fontSize="xs" color="gray.500">
-                              {selectedBooking.addressSnapshot.city}, {selectedBooking.addressSnapshot.state} - {selectedBooking.addressSnapshot.pincode}
-                            </Text>
-                          )}
-                        </VStack>
-                      </HStack>
-                      <HStack align="start" width="100%">
-                        <Icon as={FiUser} mt={1} color="gray.500" />
-                        <VStack align="start" spacing={0}>
-                          <Text color="gray.600" fontSize="xs">Contact Number:</Text>
-                          <Text fontWeight="medium">
-                            {(() => {
-                              const foundUser = (typeof selectedBooking.customerProfileId === 'string')
-                                ? users.find(u => u._id === selectedBooking.customerProfileId || u.userId === selectedBooking.customerProfileId)
-                                : null;
-
-                              return selectedBooking.customerId?.mobileNumber ||
-                                selectedBooking.addressSnapshot?.phone ||
-                                (typeof selectedBooking.customerProfileId === 'object' ? selectedBooking.customerProfileId?.mobileNumber : null) ||
-                                (foundUser?.mobileNumber || foundUser?.phone) ||
-                                "—";
-                            })()}
-                          </Text>
-                        </VStack>
-                      </HStack>
-                    </VStack>
-                  </Box>
-                </Grid>
-
-                <Box bg={`${customColor}05`} p={4} borderRadius="lg">
-                  <HStack justify="space-between">
-                    <VStack align="start" spacing={0}>
-                      <Text fontSize="lg" fontWeight="bold">Total Base Amount</Text>
-                      <Text fontSize="xs" color="gray.500">Payment Status: {safeGet(selectedBooking, "paymentStatus", "pending").toUpperCase()}</Text>
-                    </VStack>
-                    <Text fontSize="2xl" fontWeight="bold" color={customColor}>{formatINR(safeGet(selectedBooking, "baseAmount", 0))}</Text>
-                  </HStack>
+                {/* Service Details */}
+                <Box>
+                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Service Information</Text>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Service Name</Text>
+                      <Text fontSize="sm" fontWeight="medium">{selectedBooking.serviceId?.serviceName || "N/A"}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Service Type</Text>
+                      <Text fontSize="sm">{selectedBooking.serviceId?.serviceType || "N/A"}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Base Amount</Text>
+                      <Text fontSize="sm" fontWeight="bold" color="green.600">₹{selectedBooking.baseAmount || 0}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Scheduled At</Text>
+                      <Text fontSize="sm">{new Date(selectedBooking.scheduledAt).toLocaleString()}</Text>
+                    </Box>
+                  </SimpleGrid>
                 </Box>
 
-                {/* <HStack spacing={3} justify="flex-end">
-                  <Button leftIcon={<FaCheckCircle />} bg="purple.500" _hover={{ bg: "purple.600" }} color="white" onClick={() => {
-                    const payId = safeGet(selectedBooking, "paymentId") || safeGet(selectedBooking, "payment._id") || safeGet(selectedBooking, "razorpayPaymentId") || safeGet(selectedBooking, "paymentProviderPaymentId");
-                    handleUpdatePaymentStatus(payId);
-                  }}>Update Payment</Button>
-                  <Button variant="ghost" onClick={closeBookingModal}>Close</Button>
-                </HStack> */}
+                {/* Customer Details */}
+                <Box>
+                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Customer Details</Text>
+                  <SimpleGrid columns={2} spacing={3}>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Name</Text>
+                      <Text fontSize="sm">
+                        {(() => {
+                          const foundUser = (typeof selectedBooking.customerProfileId === 'string')
+                            ? users.find(u => u._id === selectedBooking.customerProfileId || u.userId === selectedBooking.customerProfileId)
+                            : null;
+
+                          return (
+                            (selectedBooking.customerId?.fname || selectedBooking.customerId?.lname) ? `${selectedBooking.customerId.fname || ""} ${selectedBooking.customerId.lname || ""}` :
+                              (selectedBooking.addressSnapshot?.name) ? selectedBooking.addressSnapshot.name :
+                                (typeof selectedBooking.customerProfileId === 'object' && (selectedBooking.customerProfileId?.firstName || selectedBooking.customerProfileId?.lastName)) ? `${selectedBooking.customerProfileId.firstName || ""} ${selectedBooking.customerProfileId.lastName || ""}` :
+                                  (foundUser) ? (`${foundUser.firstName || ""} ${foundUser.lastName || ""}`.trim() || foundUser.name) :
+                                    "—"
+                          );
+                        })()}
+                      </Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Phone</Text>
+                      <Text fontSize="sm">
+                        {selectedBooking.customerId?.mobileNumber ||
+                          selectedBooking.addressSnapshot?.phone ||
+                          (typeof selectedBooking.customerProfileId === 'object' ? selectedBooking.customerProfileId?.mobileNumber : null) ||
+                          "—"}
+                      </Text>
+                    </Box>
+                  </SimpleGrid>
+                </Box>
+
+                {/* Address */}
+                <Box>
+                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Service Address</Text>
+                  <Text fontSize="sm">
+                    {selectedBooking.addressSnapshot?.address || selectedBooking.address || "—"}
+                    {selectedBooking.addressSnapshot?.city && `, ${selectedBooking.addressSnapshot.city}`}
+                    {selectedBooking.addressSnapshot?.state && `, ${selectedBooking.addressSnapshot.state}`}
+                    {selectedBooking.addressSnapshot?.pincode && ` - ${selectedBooking.addressSnapshot.pincode}`}
+                  </Text>
+                </Box>
+
+                {/* Payment Status */}
+                <Box bg={`${customColor}05`} p={4} borderRadius="md">
+                  <Flex justify="space-between" align="center">
+                    <Box>
+                      <Text fontWeight="bold" color="gray.600" fontSize="sm">Payment Status</Text>
+                      <Text fontSize="xs" color="gray.500">Payment ID: {selectedBooking.paymentId || "N/A"}</Text>
+                    </Box>
+                    <Badge
+                      colorScheme={selectedBooking.paymentStatus === "paid" ? "green" : "orange"}
+                      px={3}
+                      py={1}
+                      borderRadius="full"
+                    >
+                      {selectedBooking.paymentStatus || "Pending"}
+                    </Badge>
+                  </Flex>
+                </Box>
               </VStack>
-            ) : (
-              <Center py={6}><Text color="gray.500">No booking selected.</Text></Center>
             )}
           </ModalBody>
-
+          <ModalFooter>
+          </ModalFooter>
         </ModalContent>
-      </Modal >
-    </Flex >
+      </Modal>
+    </Flex>
   );
 }
-
-/* End of CleanedBilling.js */

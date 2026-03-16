@@ -1490,7 +1490,6 @@ export default function ServiceManagement() {
                           bg="white"
                           size="sm"
                         >
-                          <option value="">Select type</option>
                           {serviceTypeOptions.map(type => (
                             <option key={type} value={type}>{type}</option>
                           ))}

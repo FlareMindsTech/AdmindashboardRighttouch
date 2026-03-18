@@ -152,7 +152,7 @@ export default function ServiceManagement() {
     serviceCost: 0,
     minimumVisitCharge: 0,
     serviceDiscountPercentage: 0,
-    commissionPercentage: 0,
+    commissionPercentage: 12,
     technicianAmount: 0,
     whatIncluded: [],
     whatNotIncluded: [],
@@ -1563,6 +1563,7 @@ export default function ServiceManagement() {
                           _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
                           bg="white"
                           size="sm"
+                          isDisabled
                         />
                       </FormControl>
 

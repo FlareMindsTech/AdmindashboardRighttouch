@@ -210,7 +210,7 @@ const PaymentMobileCard = ({ payment, idx, indexOfFirstItem, onUpdatePayment }) 
           <Text as="span" fontWeight="bold">Amount:</Text> ₹{payment.amount || 0}
         </Text>
         <Text fontSize="2xs" color="gray.600">
-          <Text as="span" fontWeight="bold">Date:</Text> {new Date(payment.createdAt).toLocaleDateString()}
+          <Text as="span" fontWeight="bold">Date:</Text> {formatDate(payment.createdAt)}
         </Text>
       </SimpleGrid>
 
@@ -283,7 +283,7 @@ const WalletMobileCard = ({ wallet, idx, indexOfFirstItem, technicianMap }) => {
           <Text as="span" fontWeight="bold">Balance:</Text> ₹{wallet.technicianId?.walletBalance || 0}
         </Text>
         <Text fontSize="2xs" color="gray.600">
-          <Text as="span" fontWeight="bold">Date:</Text> {new Date(wallet.createdAt).toLocaleDateString()}
+          <Text as="span" fontWeight="bold">Date:</Text> {formatDate(wallet.createdAt)}
         </Text>
       </SimpleGrid>
     </Box>
@@ -308,6 +308,18 @@ const formatINR = (value) => {
   } catch {
     return `₹${num}`;
   }
+};
+
+const formatDate = (dateValue) => {
+  if (!dateValue || dateValue === 0) return "N/A";
+  const d = new Date(dateValue);
+  return isNaN(d.getTime()) ? "N/A" : d.toLocaleDateString();
+};
+
+const formatDateTime = (dateValue) => {
+  if (!dateValue || dateValue === 0) return "N/A";
+  const d = new Date(dateValue);
+  return isNaN(d.getTime()) ? "N/A" : d.toLocaleString();
 };
 
 function useDebouncedValue(value, delay = 300) {
@@ -756,7 +768,7 @@ export default function CleanedBilling() {
       amount: safeGet(s, "baseAmount", 0),
       status: safeGet(s, "status", ""),
       paymentStatus: safeGet(s, "paymentStatus", ""),
-      scheduledAt: safeGet(s, "scheduledAt", ""),
+      scheduledAt: safeGet(s, "scheduledAt", safeGet(s, "createdAt", "")),
     }));
   };
 
@@ -854,7 +866,7 @@ export default function CleanedBilling() {
             {String(payStatus).toUpperCase()}
           </Badge>
         </Td>
-        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>{new Date(safeGet(booking, "scheduledAt", Date.now())).toLocaleDateString()}</Td>
+        <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>{formatDate(safeGet(booking, "scheduledAt") || safeGet(booking, "createdAt"))}</Td>
         <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
           <Flex gap={2}>
             <IconButton
@@ -2034,7 +2046,7 @@ export default function CleanedBilling() {
                     </Box>
                     <Box>
                       <Text fontSize="xs" color="gray.500">Scheduled At</Text>
-                      <Text fontSize="sm">{new Date(selectedBooking.scheduledAt).toLocaleString()}</Text>
+                      <Text fontSize="sm">{formatDateTime(selectedBooking.scheduledAt || selectedBooking.createdAt)}</Text>
                     </Box>
                   </SimpleGrid>
                 </Box>

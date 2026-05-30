@@ -200,6 +200,43 @@ export const updateTrainingStatus = async (technicianId, status) => {
   }
 };
 
+export const getTechnicianJobHistory = async () => {
+  try {
+    const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
+    const userToken = localStorage.getItem("token") || sessionStorage.getItem("token");
+    const token = adminToken || userToken;
+
+    if (!token) {
+      throw new Error("Authentication token not found. Please log in.");
+    }
+
+    const response = await fetch(`${BASE_URL}/technician/admin/jobs/history`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `Error: ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorJson.error || errorMessage;
+      } catch (e) {
+        // Could not parse error
+      }
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error fetching technician job history:", error);
+    throw error;
+  }
+};
+
 export const deleteTechnician = async (technicianId) => {
   try {
     const adminToken = localStorage.getItem("adminToken") || sessionStorage.getItem("adminToken");
@@ -869,6 +906,58 @@ export const uploadServiceImages = async (serviceId, files = []) => {
     throw error;
   }
 };
+
+export const deleteServiceImage = async (serviceId, publicId) => {
+  try {
+    const token = getToken();
+
+    if (!token) {
+      throw new Error("Authentication token is missing. Please log in again.");
+    }
+
+    // Support multiple field names for public mapping
+    const payload = {
+      serviceId,
+      service_id: serviceId,
+      publicId: publicId,
+      public_id: publicId,
+      imageId: publicId,
+      id: publicId,
+      imageUrl: publicId,
+      url: publicId
+    };
+
+    console.log(`Deleting service image for service: ${serviceId}, publicId: ${publicId}`);
+
+    const response = await fetch(`${BASE_URL}/user/services/remove-image`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        "token": token,
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      let errorMessage = "Failed to remove service image";
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || errorMessage;
+      } catch (e) {
+        // Fallback
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    console.log("Service image deleted successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("Error deleting service image:", error);
+    throw error;
+  }
+};
 export const getAllServices = async () => {
   try {
     const token = getToken();
@@ -1403,7 +1492,7 @@ export const getAllWallets = async () => {
     const token = getToken();
 
     const response = await fetch(
-      `${BASE_URL}/admin/wallet/withdraws`,
+      `${BASE_URL}/admin/wallet/withdrawalhistory`,
       {
         method: "GET",
         headers: {
@@ -1446,7 +1535,7 @@ export const getAllWallets = async () => {
 export const approveWithdrawal = async (withdrawId) => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/wallet/withdraw/${withdrawId}/approve`, {
+    const response = await fetch(`${BASE_URL}/admin/wallet/withdrawal/${withdrawId}/approve`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -1469,7 +1558,7 @@ export const approveWithdrawal = async (withdrawId) => {
 export const rejectWithdrawal = async (withdrawId) => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/wallet/withdraw/${withdrawId}/reject`, {
+    const response = await fetch(`${BASE_URL}/admin/wallet/withdrawal/${withdrawId}/reject`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",

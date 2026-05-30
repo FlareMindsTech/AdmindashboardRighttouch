@@ -23,7 +23,7 @@ export default function AdminNavbar(props) {
 
   // Colors
   let mainText = useColorModeValue("gray.700", "gray.200");
-  let navbarBg = "#008080"; 
+  let navbarBg = "#008080";
   let navbarShadow = "none";
   let navbarBorder = "transparent";
 

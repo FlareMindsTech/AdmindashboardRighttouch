@@ -85,23 +85,12 @@ export default function Dashboard() {
         ]);
 
         // Process Bookings
-        let bookingsData = [];
-        if (bookingsRes?.result && Array.isArray(bookingsRes.result)) {
-          bookingsData = bookingsRes.result;
-        } else if (Array.isArray(bookingsRes)) {
-          bookingsData = bookingsRes;
-        }
+        const bookingsRaw = bookingsRes?.result || bookingsRes?.data || bookingsRes?.bookings || bookingsRes?.serviceBookings || bookingsRes || [];
+        const bookingsData = Array.isArray(bookingsRaw) ? bookingsRaw : (bookingsRaw.result || bookingsRaw.data || []);
 
         // Process Categories
-        let categoriesData = [];
-        if (categoriesRes?.result && Array.isArray(categoriesRes.result)) {
-          categoriesData = categoriesRes.result;
-        } else if (Array.isArray(categoriesRes)) {
-          categoriesData = categoriesRes;
-        } else {
-          // Fallback if structure is different
-          categoriesData = categoriesRes?.data || [];
-        }
+        const categoriesRaw = categoriesRes?.result || categoriesRes?.data || categoriesRes?.categories || categoriesRes || [];
+        const categoriesData = Array.isArray(categoriesRaw) ? categoriesRaw : (categoriesRaw.categories || categoriesRaw.result || categoriesRaw.data || []);
 
         setServiceBookings(bookingsData);
         setCategories(categoriesData);
@@ -138,12 +127,22 @@ export default function Dashboard() {
     // Assuming booking.serviceId.category is the link or we match by service name?
     // Let's collect unique category IDs/Names from bookings
     const uniqueActiveCategories = new Set();
+    const catMap = {};
+    categories.forEach(c => {
+      const name = c.category || c.name;
+      if (c._id && name) catMap[c._id] = name;
+    });
+
     serviceBookings.forEach(b => {
-      const cat = b?.serviceId?.category || b?.category;
-      // If it's an ID, strict check. If object, get _id or name.
-      if (cat) {
-        const val = typeof cat === 'object' ? (cat._id || cat.name) : cat;
-        if (val) uniqueActiveCategories.add(val);
+      const catRef = b?.categoryId || b?.category || b?.serviceId?.categoryId || b?.serviceId?.category || b?.serviceCategory;
+      if (catRef) {
+        let name;
+        if (typeof catRef === 'object' && catRef !== null) {
+          name = catRef.category || catRef.name || catRef.title;
+        } else {
+          name = catMap[catRef] || catRef;
+        }
+        if (name && name !== "Uncategorized") uniqueActiveCategories.add(name);
       }
     });
 
@@ -151,23 +150,24 @@ export default function Dashboard() {
       totalBookings,
       successPaymentsCount,
       totalRevenue,
-      activeCategoriesCount: uniqueActiveCategories.size
+      activeCategoriesCount: uniqueActiveCategories.size || categories.length
     };
-  }, [serviceBookings]);
+  }, [serviceBookings, categories]);
 
   // --- Category Performance Data ---
   const categoryPerformance = useMemo(() => {
     // optimize category map
     const catMap = {};
     categories.forEach(c => {
-      if (c._id) catMap[c._id] = c.name;
+      const name = c.category || c.name;
+      if (c._id && name) catMap[c._id] = name;
     });
 
     const perfMap = {};
 
     // Initialize with all categories (even 0 bookings)
     categories.forEach(c => {
-      const name = c.name || "Unknown";
+      const name = c.category || c.name || "Unknown";
       if (!perfMap[name]) {
         perfMap[name] = { name, totalBookings: 0, revenue: 0, successCount: 0 };
       }
@@ -176,14 +176,32 @@ export default function Dashboard() {
     // Aggregate data
     serviceBookings.forEach(b => {
       let catName = "Uncategorized";
-      const catRef = b?.serviceId?.category || b?.category;
+      const catRef = b?.categoryId || b?.category || b?.serviceId?.categoryId || b?.serviceId?.category || b?.serviceCategory;
 
       if (catRef) {
         if (typeof catRef === 'string') {
-          catName = catMap[catRef] || catRef; // ID matched or raw string
-        } else if (typeof catRef === 'object') {
-          catName = catRef.name || "Uncategorized";
+          catName = catMap[catRef] || catRef;
+        } else if (typeof catRef === 'object' && catRef !== null) {
+          catName = catRef.category || catRef.name || catRef.title || "Uncategorized";
         }
+      }
+
+      // If still uncategorized, try matching keyword from service name if available
+      if (catName === "Uncategorized" || (typeof catName === 'string' && catName.length > 20)) {
+        const sName = (b?.serviceId?.serviceName || b?.serviceName || "").toLowerCase();
+        if (sName) {
+          for (const [id, name] of Object.entries(catMap)) {
+            if (sName.includes(name.toLowerCase())) {
+              catName = name;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Final fallback: if catName is an ID that wasn't transformed, mark as Uncategorized for cleaner chart
+      if (typeof catName === 'string' && catName.length > 20) {
+        catName = "Uncategorized";
       }
 
       if (!perfMap[catName]) {
@@ -197,7 +215,7 @@ export default function Dashboard() {
       const status = b?.paymentStatus?.toLowerCase();
       if (status === 'success' || status === 'paid') {
         perfMap[catName].successCount += 1;
-        perfMap[catName].revenue += (Number(b?.baseAmount) || 0);
+        perfMap[catName].revenue += (Number(b?.baseAmount) || Number(b?.amount) || 0);
       }
     });
 
@@ -272,11 +290,20 @@ export default function Dashboard() {
 
   // --- UI Components ---
   const KPICard = ({ title, value, icon, color, subValue }) => (
-    <Box bg={cardBg} borderRadius="xl" shadow="sm" border="1px solid" borderColor={borderColor}>
-      <Box p={5}>
-        <Flex align="center" justify="space-between" mb={2}>
+    <Box
+      bg={cardBg}
+      borderRadius="xl"
+      shadow="sm"
+      border="1px solid"
+      borderColor={borderColor}
+      h="140px"
+      display="flex"
+      flexDirection="column"
+    >
+      <Box p={5} flex="1" display="flex" flexDirection="column" justifyContent="space-between">
+        <Flex align="center" justify="space-between">
           <Box>
-            <Text fontSize="sm" fontWeight="medium" color={subTextColor} textTransform="uppercase" letterSpacing="wide">
+            <Text fontSize="xs" fontWeight="bold" color={subTextColor} textTransform="uppercase" letterSpacing="wider">
               {title}
             </Text>
             <Heading size="lg" mt={1} color={textColor}>
@@ -287,12 +314,20 @@ export default function Dashboard() {
             w={12} h={12}
             align="center" justify="center"
             bg={`${color}.50`} color={`${color}.500`}
-            borderRadius="lg"
+            borderRadius="xl"
           >
-            <Icon as={icon} boxSize={6} />
+            <Icon as={icon} boxSize={5} />
           </Flex>
         </Flex>
-        {subValue && <Text fontSize="xs" color={subTextColor}>{subValue}</Text>}
+        <Box mt={2} minH="20px">
+          {subValue ? (
+            <Text fontSize="xs" color={subTextColor} fontWeight="medium">
+              {subValue}
+            </Text>
+          ) : (
+            <Box h="1px" />
+          )}
+        </Box>
       </Box>
     </Box>
   );
@@ -309,39 +344,15 @@ export default function Dashboard() {
   return (
     <Box
       h="100vh"
-      overflowY="auto"
-      pt={{ base: "120px", md: "80px" }}
-      pb={{ base: 8, md: 12 }}
+      display="flex"
+      flexDirection="column"
+      pt={{ base: "100px", md: "60px" }}
+      pb={{ base: 4, md: 8 }}
       px={{ base: 4, md: 8 }}
-      css={{
-        '&::-webkit-scrollbar': {
-          width: '4px',
-        },
-        '&::-webkit-scrollbar-track': {
-          width: '6px',
-        },
-        '&::-webkit-scrollbar-thumb': {
-          background: 'transparent',
-          borderRadius: '24px',
-        },
-        '&:hover::-webkit-scrollbar-thumb': {
-          background: 'var(--chakra-colors-gray-400)',
-        },
-      }}
+      overflow="hidden"
     >
-      <Stack spacing={8}>
-
-        {/* Header */}
-        <Flex
-          justify="space-between"
-          align={{ base: "start", md: "center" }}
-          direction={{ base: "column", md: "row" }}
-          gap={4}
-        >
-        </Flex>
-
-        {/* 1. TOP KPI CARDS */}
-        {/* 1. TOP KPI CARDS */}
+      {/* 1. TOP KPI CARDS - Fixed Header */}
+      <Box mb={6}>
         <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={6}>
           <KPICard
             title="Total Bookings"
@@ -369,145 +380,167 @@ export default function Dashboard() {
             color="orange"
           />
         </SimpleGrid>
+      </Box>
 
-        {/* 2. ANALYTICS SECTION */}
-        <SimpleGrid columns={{ base: 1, xl: 3 }} spacing={8}>
+      {/* 2. SCROLLABLE CONTENT AREA */}
+      <Box
+        flex="1"
+        overflowY="auto"
+        css={{
+          '&::-webkit-scrollbar': {
+            width: '4px',
+          },
+          '&::-webkit-scrollbar-track': {
+            width: '6px',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'transparent',
+            borderRadius: '24px',
+          },
+          '&:hover::-webkit-scrollbar-thumb': {
+            background: 'var(--chakra-colors-gray-400)',
+          },
+        }}
+      >
+        <Stack spacing={8} pb={6} pr={2}>
+          {/* 2. ANALYTICS SECTION */}
+          <SimpleGrid columns={{ base: 1, xl: 3 }} spacing={8}>
 
-          {/* 2a. Chart */}
-          <Box gridColumn={{ xl: "span 2" }} bg={cardBg} borderRadius="xl" shadow="sm" border="1px solid" borderColor={borderColor}>
-            <Box p={5}>
-              <Flex align="center" justify="space-between" mb={6}>
-                <HStack>
-                  <Icon as={FaChartBar} color="blue.500" />
-                  <Heading size="md" color={textColor}>Service Category Performance</Heading>
-                </HStack>
-              </Flex>
-
-              {categoryPerformance.length > 0 ? (
-                <Box h="350px">
-                  <ReactApexChart
-                    options={chartData.options}
-                    series={chartData.series}
-                    type="bar"
-                    height="100%"
-                  />
-                </Box>
-              ) : (
-                <Flex h="300px" justify="center" align="center" direction="column" color="gray.400">
-                  <Icon as={FaExclamationCircle} boxSize={8} mb={2} />
-                  <Text>No Analytics Data Available</Text>
+            {/* 2a. Chart */}
+            <Box gridColumn={{ xl: "span 2" }} bg={cardBg} borderRadius="xl" shadow="sm" border="1px solid" borderColor={borderColor}>
+              <Box p={5}>
+                <Flex align="center" justify="space-between" mb={6}>
+                  <HStack>
+                    <Icon as={FaChartBar} color="blue.500" />
+                    <Heading size="md" color={textColor}>Service Category Performance</Heading>
+                  </HStack>
                 </Flex>
-              )}
-            </Box>
-          </Box>
 
-          {/* 2b. Recent Bookings List (Right Panel) */}
-          <Box bg={cardBg} borderRadius="xl" shadow="sm" border="1px solid" borderColor={borderColor}>
-            <Box p={5}>
-              <HStack mb={4}>
-                <Icon as={FaHistory} color="gray.500" />
-                <Heading size="md" color={textColor}>Recent Bookings</Heading>
-              </HStack>
-
-              <VStack spacing={4} align="stretch" divider={<Divider />}>
-                {recentBookings.length > 0 ? (
-                  recentBookings.map((booking, idx) => {
-                    const serviceName = booking?.serviceId?.serviceName || "Unknown Service";
-                    const customerName = booking?.customerId?.fname
-                      ? `${booking.customerId.fname} ${booking.customerId.lname || ''}`
-                      : (booking?.addressSnapshot?.name || "Unknown Customer");
-                    const amount = booking?.baseAmount || 0;
-                    const status = booking?.paymentStatus || 'Pending';
-
-                    return (
-                      <Flex key={idx} justify="space-between" align="center">
-                        <Box>
-                          <Text fontWeight="bold" fontSize="sm" color={textColor} noOfLines={1}>
-                            {serviceName}
-                          </Text>
-                          <Text fontSize="xs" color={subTextColor}>
-                            {customerName}
-                          </Text>
-                          <Text fontSize="xs" color="gray.400" mt="1px">
-                            {formatDate(booking.createdAt || booking.scheduledAt)}
-                          </Text>
-                        </Box>
-                        <VStack align="end" spacing={0}>
-                          <Text fontWeight="bold" fontSize="sm" color={textColor}>
-                            {formatCurrency(amount)}
-                          </Text>
-                          <Badge
-                            size="sm"
-                            mt={1}
-                            colorScheme={getStatusColor(status)}
-                            fontSize="10px"
-                          >
-                            {status}
-                          </Badge>
-                        </VStack>
-                      </Flex>
-                    );
-                  })
-                ) : (
-                  <Text color="gray.400" textAlign="center" py={4}>No recent bookings</Text>
-                )}
-              </VStack>
-            </Box>
-          </Box>
-        </SimpleGrid>
-
-        {/* 3. Detailed Category Table (Optional but good for data depth) */}
-        <Box bg={cardBg} borderRadius="xl" shadow="sm" border="1px solid" borderColor={borderColor}>
-          <Box p={5} overflowX="auto">
-            <Heading size="md" mb={4} color={textColor}>Category Breakdown</Heading>
-            <Table variant="simple" size="sm">
-              <Thead>
-                <Tr>
-                  <Th>Category Name</Th>
-                  <Th isNumeric>Total Bookings</Th>
-                  <Th isNumeric>Success. Payments</Th>
-                  <Th isNumeric>Revenue</Th>
-                  <Th width="200px">Performance</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
                 {categoryPerformance.length > 0 ? (
-                  categoryPerformance.map((cat, idx) => {
-                    const maxRev = categoryPerformance[0]?.revenue || 1;
-                    const percent = (cat.revenue / maxRev) * 100;
-
-                    return (
-                      <Tr key={idx} _hover={{ bg: "gray.50" }}>
-                        <Td fontWeight="medium">{cat.name}</Td>
-                        <Td isNumeric>{cat.totalBookings}</Td>
-                        <Td isNumeric>{cat.successCount}</Td>
-                        <Td isNumeric fontWeight="bold" color="gray.700">
-                          {formatCurrency(cat.revenue)}
-                        </Td>
-                        <Td>
-                          <Progress
-                            value={percent}
-                            size="xs"
-                            colorScheme="blue"
-                            borderRadius="full"
-                          />
-                        </Td>
-                      </Tr>
-                    );
-                  })
+                  <Box h="350px">
+                    <ReactApexChart
+                      options={chartData.options}
+                      series={chartData.series}
+                      type="bar"
+                      height="100%"
+                    />
+                  </Box>
                 ) : (
-                  <Tr>
-                    <Td colSpan={5} textAlign="center" py={6} color="gray.500">
-                      No stats available
-                    </Td>
-                  </Tr>
+                  <Flex h="300px" justify="center" align="center" direction="column" color="gray.400">
+                    <Icon as={FaExclamationCircle} boxSize={8} mb={2} />
+                    <Text>No Analytics Data Available</Text>
+                  </Flex>
                 )}
-              </Tbody>
-            </Table>
-          </Box>
-        </Box>
+              </Box>
+            </Box>
 
-      </Stack>
+            {/* 2b. Recent Bookings List (Right Panel) */}
+            <Box bg={cardBg} borderRadius="xl" shadow="sm" border="1px solid" borderColor={borderColor}>
+              <Box p={5}>
+                <HStack mb={4}>
+                  <Icon as={FaHistory} color="gray.500" />
+                  <Heading size="md" color={textColor}>Recent Bookings</Heading>
+                </HStack>
+
+                <VStack spacing={4} align="stretch" divider={<Divider />}>
+                  {recentBookings.length > 0 ? (
+                    recentBookings.map((booking, idx) => {
+                      const serviceName = booking?.serviceId?.serviceName || "Unknown Service";
+                      const customerName = booking?.customerId?.fname
+                        ? `${booking.customerId.fname} ${booking.customerId.lname || ''}`
+                        : (booking?.addressSnapshot?.name || "Unknown Customer");
+                      const amount = booking?.baseAmount || 0;
+                      const status = booking?.paymentStatus || 'Pending';
+
+                      return (
+                        <Flex key={idx} justify="space-between" align="center">
+                          <Box>
+                            <Text fontWeight="bold" fontSize="sm" color={textColor} noOfLines={1}>
+                              {serviceName}
+                            </Text>
+                            <Text fontSize="xs" color={subTextColor}>
+                              {customerName}
+                            </Text>
+                            <Text fontSize="xs" color="gray.400" mt="1px">
+                              {formatDate(booking.createdAt || booking.scheduledAt)}
+                            </Text>
+                          </Box>
+                          <VStack align="end" spacing={0}>
+                            <Text fontWeight="bold" fontSize="sm" color={textColor}>
+                              {formatCurrency(amount)}
+                            </Text>
+                            <Badge
+                              size="sm"
+                              mt={1}
+                              colorScheme={getStatusColor(status)}
+                              fontSize="10px"
+                            >
+                              {status}
+                            </Badge>
+                          </VStack>
+                        </Flex>
+                      );
+                    })
+                  ) : (
+                    <Text color="gray.400" textAlign="center" py={4}>No recent bookings</Text>
+                  )}
+                </VStack>
+              </Box>
+            </Box>
+          </SimpleGrid>
+
+          {/* 3. Detailed Category Table */}
+          <Box bg={cardBg} borderRadius="xl" shadow="sm" border="1px solid" borderColor={borderColor}>
+            <Box p={5} overflowX="auto">
+              <Heading size="md" mb={4} color={textColor}>Category Breakdown</Heading>
+              <Table variant="simple" size="sm">
+                <Thead>
+                  <Tr>
+                    <Th>Category Name</Th>
+                    <Th isNumeric>Total Bookings</Th>
+                    <Th isNumeric>Success. Payments</Th>
+                    <Th isNumeric>Revenue</Th>
+                    <Th width="200px">Performance</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {categoryPerformance.length > 0 ? (
+                    categoryPerformance.map((cat, idx) => {
+                      const maxRev = categoryPerformance[0]?.revenue || 1;
+                      const percent = (cat.revenue / maxRev) * 100;
+
+                      return (
+                        <Tr key={idx} _hover={{ bg: "gray.50" }}>
+                          <Td fontWeight="medium">{cat.name}</Td>
+                          <Td isNumeric>{cat.totalBookings}</Td>
+                          <Td isNumeric>{cat.successCount}</Td>
+                          <Td isNumeric fontWeight="bold" color="gray.700">
+                            {formatCurrency(cat.revenue)}
+                          </Td>
+                          <Td>
+                            <Progress
+                              value={percent}
+                              size="xs"
+                              colorScheme="blue"
+                              borderRadius="full"
+                            />
+                          </Td>
+                        </Tr>
+                      );
+                    })
+                  ) : (
+                    <Tr>
+                      <Td colSpan={5} textAlign="center" py={6} color="gray.500">
+                        No stats available
+                      </Td>
+                    </Tr>
+                  )}
+                </Tbody>
+              </Table>
+            </Box>
+          </Box>
+        </Stack>
+      </Box>
     </Box>
   );
 }

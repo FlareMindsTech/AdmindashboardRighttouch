@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import ReactApexChart from "react-apexcharts";
 import {
   getAllCategories,
   getAllServices,
@@ -12,6 +13,7 @@ import {
   deleteService,
   uploadServiceImages,
   uploadCategoryImage,
+  deleteServiceImage,
 } from "../utils/axiosInstance";
 
 import {
@@ -150,7 +152,7 @@ export default function ServiceManagement() {
     serviceCost: 0,
     minimumVisitCharge: 0,
     serviceDiscountPercentage: 0,
-    commissionPercentage: 0,
+    commissionPercentage: 12,
     technicianAmount: 0,
     whatIncluded: [],
     whatNotIncluded: [],
@@ -217,6 +219,27 @@ export default function ServiceManagement() {
       totalRevenue
     };
   }, [services]);
+
+  const stats = calculateServiceStatistics();
+
+  const getRevenueByTypeData = useCallback(() => {
+    const revenueMap = services.reduce((acc, b) => {
+      const type = b.serviceType || "Misc";
+      acc[type] = (acc[type] || 0) + (b.serviceCost || 0);
+      return acc;
+    }, {});
+
+    return {
+      labels: Object.keys(revenueMap),
+      series: [{
+        name: 'Total Revenue',
+        data: Object.values(revenueMap)
+      }]
+    };
+  }, [services]);
+
+  const chartData = getRevenueByTypeData();
+
 
 
 
@@ -298,11 +321,59 @@ export default function ServiceManagement() {
     }
   };
 
-  const handleRemoveServiceImage = (index) => {
-    setNewService(prev => ({
-      ...prev,
-      serviceImages: prev.serviceImages.filter((_, i) => i !== index)
-    }));
+  const handleRemoveServiceImage = async (index) => {
+    const imageToDelete = newService.serviceImages[index];
+
+    try {
+      // If it's an existing image in edit mode, delete from DB
+      if (selectedService && imageToDelete && !imageToDelete.isNew) {
+        setIsSubmitting(true);
+        // Use public_id, _id, url, or the image object itself depending on structure
+        const publicId = imageToDelete.public_id ||
+          imageToDelete._id ||
+          imageToDelete.url ||
+          (typeof imageToDelete === 'string' ? imageToDelete : null);
+
+        if (publicId) {
+          await deleteServiceImage(selectedService._id, publicId);
+
+          toast({
+            title: "Success",
+            description: "Service image successfully deleted",
+            status: "success",
+            duration: 3000,
+            isClosable: true,
+            position: "top-right",
+          });
+        }
+      } else {
+        // Just for UI removal of newly added images
+        toast({
+          title: "Removed",
+          description: "Image removed from selection",
+          status: "info",
+          duration: 2000,
+          isClosable: true,
+          position: "top-right",
+        });
+      }
+
+      setNewService(prev => ({
+        ...prev,
+        serviceImages: prev.serviceImages.filter((_, i) => i !== index)
+      }));
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete image",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+        position: "top-right",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCategoryImageUpload = async (event) => {
@@ -1014,8 +1085,7 @@ export default function ServiceManagement() {
     },
   };
 
-  // Calculate statistics
-  const stats = calculateServiceStatistics();
+  // Calculate statistics already handled at top
 
   // Mobile Card Component for Category
   const CategoryMobileCard = ({ cat, idx }) => (
@@ -1150,16 +1220,16 @@ export default function ServiceManagement() {
       <Flex
         flexDirection="column"
         pt={{ base: "120px", md: "75px" }}
-        height="100vh"
+        height={{ base: "calc(100vh - 20px)", md: "calc(100vh - 40px)" }}
         overflow="hidden"
         css={globalScrollbarStyles}
       >
         <Card
           bg="white"
           shadow="xl"
-          height="100%"
           display="flex"
           flexDirection="column"
+          height="100%"
           overflow="hidden"
         >
           <CardHeader bg="white" flexShrink={0}>
@@ -1185,146 +1255,170 @@ export default function ServiceManagement() {
           <CardBody
             bg="white"
             flex="1"
-            overflow="auto"
-            css={globalScrollbarStyles}
+            display="flex"
+            flexDirection="column"
+            overflow="hidden"
+            p={0}
           >
             {/* Category Form */}
             {(currentView === "addCategory" || currentView === "editCategory") && (
-              <Box p={4}>
-                <FormControl mb="20px">
-                  <FormLabel htmlFor="category" color="gray.700" fontSize="sm">Category Name</FormLabel>
-                  <Input
-                    id="category"
-                    placeholder="Enter category name"
-                    onChange={(e) => setNewCategory({ ...newCategory, category: e.target.value })}
-                    value={newCategory.category}
-                    borderColor={`${customColor}50`}
-                    _hover={{ borderColor: customColor }}
-                    _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                    bg="white"
-                    size="sm"
-                  />
-                </FormControl>
-                <FormControl mb="20px">
-                  <FormLabel htmlFor="description" color="gray.700" fontSize="sm">Description</FormLabel>
-                  <Textarea
-                    id="description"
-                    placeholder="Enter category description"
-                    onChange={(e) => setNewCategory({ ...newCategory, description: e.target.value })}
-                    value={newCategory.description}
-                    borderColor={`${customColor}50`}
-                    _hover={{ borderColor: customColor }}
-                    _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                    bg="white"
-                    rows={3}
-                    size="sm"
-                  />
-                </FormControl>
+              <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
+                <Box
+                  flex="1"
+                  overflowY="auto"
+                  p={4}
+                  css={globalScrollbarStyles}
+                >
+                  <FormControl mb="20px">
+                    <FormLabel htmlFor="category" color="gray.700" fontSize="sm">Category Name *</FormLabel>
+                    <Input
+                      id="category"
+                      placeholder="Enter category name"
+                      onChange={(e) => setNewCategory({ ...newCategory, category: e.target.value })}
+                      value={newCategory.category}
+                      borderColor={`${customColor}50`}
+                      _hover={{ borderColor: customColor }}
+                      _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                      bg="white"
+                      size="sm"
+                    />
+                  </FormControl>
+                  <FormControl mb="20px">
+                    <FormLabel htmlFor="description" color="gray.700" fontSize="sm">Description</FormLabel>
+                    <Textarea
+                      id="description"
+                      placeholder="Enter category description"
+                      onChange={(e) => setNewCategory({ ...newCategory, description: e.target.value })}
+                      value={newCategory.description}
+                      borderColor={`${customColor}50`}
+                      _hover={{ borderColor: customColor }}
+                      _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
+                      bg="white"
+                      rows={3}
+                      size="sm"
+                    />
+                  </FormControl>
 
-                <FormControl mb="20px">
-                  <FormLabel color="gray.700" fontSize="sm">Category Image</FormLabel>
-                  <Flex direction="column" gap={3}>
-                    {newCategory.image && (
+                  <FormControl mb="20px">
+                    <FormLabel color="gray.700" fontSize="sm">Category Image</FormLabel>
+                    <Flex direction="column" gap={3}>
+                      {newCategory.image && (
+                        <Box
+                          border="1px solid"
+                          borderColor="gray.200"
+                          borderRadius="md"
+                          p={2}
+                          width="fit-content"
+                          position="relative"
+                        >
+                          <Image
+                            src={newCategory.image}
+                            alt="Category Preview"
+                            boxSize="100px"
+                            objectFit="cover"
+                            borderRadius="md"
+                          />
+                          <IconButton
+                            icon={<FaTrash />}
+                            size="xs"
+                            colorScheme="red"
+                            position="absolute"
+                            top={-2}
+                            right={-2}
+                            borderRadius="full"
+                            onClick={() => setNewCategory(prev => ({ ...prev, image: "" }))}
+                            aria-label="Remove image"
+                          />
+                        </Box>
+                      )}
                       <Box
-                        border="1px solid"
-                        borderColor="gray.200"
+                        border="1px dashed"
+                        borderColor={customColor}
                         borderRadius="md"
-                        p={2}
-                        width="fit-content"
+                        p={4}
+                        textAlign="center"
+                        cursor="pointer"
+                        _hover={{ bg: `${customColor}05` }}
                         position="relative"
                       >
-                        <Image
-                          src={newCategory.image}
-                          alt="Category Preview"
-                          boxSize="100px"
-                          objectFit="cover"
-                          borderRadius="md"
-                        />
-                        <IconButton
-                          icon={<FaTrash />}
-                          size="xs"
-                          colorScheme="red"
-                          position="absolute"
-                          top={-2}
-                          right={-2}
-                          borderRadius="full"
-                          onClick={() => setNewCategory(prev => ({ ...prev, image: "" }))}
-                          aria-label="Remove image"
-                        />
+                        {isSubmitting ? (
+                          <Spinner size="sm" color={customColor} />
+                        ) : (
+                          <>
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              height="100%"
+                              width="100%"
+                              position="absolute"
+                              top="0"
+                              left="0"
+                              opacity="0"
+                              cursor="pointer"
+                              onChange={handleCategoryImageUpload}
+                              disabled={isSubmitting}
+                            />
+                            <Flex direction="column" align="center" justify="center" gap={2}>
+                              <Icon as={FaPlusCircle} w={6} h={6} color={customColor} />
+                              <Text fontSize="sm" color="gray.500">
+                                Click to upload category image
+                              </Text>
+                            </Flex>
+                          </>
+                        )}
                       </Box>
-                    )}
-                    <Box
-                      border="1px dashed"
-                      borderColor={customColor}
-                      borderRadius="md"
-                      p={4}
-                      textAlign="center"
-                      cursor="pointer"
-                      _hover={{ bg: `${customColor}05` }}
-                      position="relative"
+                    </Flex>
+                  </FormControl>
+
+                  <FormControl mb="20px">
+                    <Checkbox
+                      isChecked={newCategory.isActive}
+                      onChange={(e) => setNewCategory({ ...newCategory, isActive: e.target.checked })}
+                      colorScheme="green"
+                      size="sm"
                     >
-                      {isSubmitting ? (
-                        <Spinner size="sm" color={customColor} />
-                      ) : (
-                        <>
-                          <Input
-                            type="file"
-                            accept="image/*"
-                            height="100%"
-                            width="100%"
-                            position="absolute"
-                            top="0"
-                            left="0"
-                            opacity="0"
-                            cursor="pointer"
-                            onChange={handleCategoryImageUpload}
-                            disabled={isSubmitting}
-                          />
-                          <Flex direction="column" align="center" justify="center" gap={2}>
-                            <Icon as={FaPlusCircle} w={6} h={6} color={customColor} />
-                            <Text fontSize="sm" color="gray.500">
-                              Click to upload category image
-                            </Text>
-                          </Flex>
-                        </>
-                      )}
-                    </Box>
+                      Active Category
+                    </Checkbox>
+                  </FormControl>
+                </Box>
+
+                <Box
+                  p={4}
+                  borderTop="1px solid"
+                  borderColor="gray.100"
+                  bg="white"
+                  flexShrink={0}
+                >
+                  <Flex justify="flex-end" gap={4}>
+                    <Button
+                      variant="outline"
+                      onClick={handleResetCategory}
+                      borderColor="gray.300"
+                      color="gray.600"
+                      size="md"
+                      px={8}
+                      borderRadius="lg"
+                      _hover={{ bg: "gray.50", borderColor: "gray.400" }}
+                    >
+                      Reset
+                    </Button>
+                    <Button
+                      bg={customColor}
+                      _hover={{ bg: "#006666", transform: "translateY(-1px)", boxShadow: "lg" }}
+                      _active={{ bg: "#004d4d", transform: "translateY(0)" }}
+                      color="white"
+                      onClick={currentView === "addCategory" ? handleSubmitCategory : handleUpdateCategory}
+                      isLoading={isSubmitting}
+                      size="md"
+                      px={10}
+                      borderRadius="lg"
+                      leftIcon={<FaPlusCircle />}
+                      transition="all 0.2s"
+                    >
+                      {currentView === "addCategory" ? "Create Category" : "Update Category"}
+                    </Button>
                   </Flex>
-                </FormControl>
-
-                <FormControl mb="20px">
-                  <Checkbox
-                    isChecked={newCategory.isActive}
-                    onChange={(e) => setNewCategory({ ...newCategory, isActive: e.target.checked })}
-                    colorScheme="green"
-                    size="sm"
-                  >
-                    Active Category
-                  </Checkbox>
-                </FormControl>
-
-                <Flex justify="flex-end" mt={4} flexShrink={0}>
-                  <Button
-                    variant="outline"
-                    mr={3}
-                    onClick={handleResetCategory}
-                    border="1px"
-                    borderColor="gray.300"
-                    size="sm"
-                  >
-                    Reset
-                  </Button>
-                  <Button
-                    bg={customColor}
-                    _hover={{ bg: customHoverColor }}
-                    color="white"
-                    onClick={currentView === "addCategory" ? handleSubmitCategory : handleUpdateCategory}
-                    isLoading={isSubmitting}
-                    size="sm"
-                  >
-                    {currentView === "addCategory" ? "Create Category" : "Update Category"}
-                  </Button>
-                </Flex>
+                </Box>
               </Box>
             )}
 
@@ -1396,7 +1490,6 @@ export default function ServiceManagement() {
                           bg="white"
                           size="sm"
                         >
-                          <option value="">Select type</option>
                           {serviceTypeOptions.map(type => (
                             <option key={type} value={type}>{type}</option>
                           ))}
@@ -1470,6 +1563,7 @@ export default function ServiceManagement() {
                           _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
                           bg="white"
                           size="sm"
+                          isDisabled
                         />
                       </FormControl>
 
@@ -2066,30 +2160,38 @@ export default function ServiceManagement() {
 
                 {/* Fixed Footer with Buttons */}
                 <Box
-                  flexShrink={0}
-                  p={4}
+                  p={6}
                   borderTop="1px solid"
                   borderColor={`${customColor}20`}
-                  bg="transparent"
+                  bg="white"
+                  boxShadow="0 -4px 6px -1px rgba(0, 0, 0, 0.05)"
+                  flexShrink={0}
                 >
-                  <Flex justify="flex-end">
+                  <Flex justify="flex-end" gap={4}>
                     <Button
                       variant="outline"
-                      mr={3}
                       onClick={handleResetService}
-                      border="1px"
                       borderColor="gray.300"
-                      size="sm"
+                      color="gray.600"
+                      size="md"
+                      px={8}
+                      borderRadius="lg"
+                      _hover={{ bg: "gray.50", borderColor: "gray.400" }}
                     >
                       Reset
                     </Button>
+
                     <Button
                       bg={customColor}
-                      _hover={{ bg: customHoverColor }}
+                      _hover={{ bg: "#006666" }}
+                      _active={{ bg: "#004d4d" }}
                       color="white"
                       onClick={handleSubmitService}
                       isLoading={isSubmitting}
-                      size="sm"
+                      size="md"
+                      px={10}
+                      borderRadius="lg"
+                      leftIcon={selectedService ? <FaEdit /> : <FaPlusCircle />}
                     >
                       {selectedService ? "Update Service" : "Create Service"}
                     </Button>
@@ -2099,7 +2201,7 @@ export default function ServiceManagement() {
             )}
           </CardBody>
         </Card>
-      </Flex>
+      </Flex >
     );
   }
 
@@ -2108,7 +2210,7 @@ export default function ServiceManagement() {
     <Flex
       flexDirection="column"
       pt={{ base: "120px", md: "45px" }}
-      height="100vh"
+      height={{ base: "calc(100vh - 20px)", md: "calc(100vh - 40px)" }}
       overflow="hidden"
       css={globalScrollbarStyles}
     >
@@ -2121,12 +2223,12 @@ export default function ServiceManagement() {
       >
         <Grid
           templateColumns={{ base: "1fr 1fr", md: "1fr 1fr 1fr 1fr" }}
-          gap={{ base: "10px", md: "15px" }}
-          mb={{ base: "15px", md: "20px" }}
+          gap={{ base: "8px", md: "10px" }}
+          mb={{ base: "8px", md: "12px" }}
         >
           {/* All Categories Card */}
           <Card
-            minH={{ base: "65px", md: "75px" }}
+            minH={{ base: "55px", md: "60px" }}
             cursor="pointer"
             onClick={() => setCurrentView("categories")}
             border={currentView === "categories" ? "2px solid" : "1px solid"}
@@ -2155,7 +2257,7 @@ export default function ServiceManagement() {
               borderColor: customColor,
             }}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}>
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
               <Flex flexDirection="row" align="center" justify="center" w="100%">
                 <Stat me="auto">
                   <StatLabel
@@ -2174,8 +2276,8 @@ export default function ServiceManagement() {
                 </Stat>
                 <IconBox
                   as="box"
-                  h={{ base: "30px", md: "35px" }}
-                  w={{ base: "30px", md: "35px" }}
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
                   bg={customColor}
                   transition="all 0.2s ease-in-out"
                 >
@@ -2192,7 +2294,7 @@ export default function ServiceManagement() {
 
           {/* All Services Card */}
           <Card
-            minH={{ base: "65px", md: "75px" }}
+            minH={{ base: "55px", md: "60px" }}
             cursor="pointer"
             onClick={() => setCurrentView("services")}
             border={currentView === "services" ? "2px solid" : "1px solid"}
@@ -2221,7 +2323,7 @@ export default function ServiceManagement() {
               borderColor: customColor,
             }}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}>
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
               <Flex flexDirection="row" align="center" justify="center" w="100%">
                 <Stat me="auto">
                   <StatLabel
@@ -2240,8 +2342,8 @@ export default function ServiceManagement() {
                 </Stat>
                 <IconBox
                   as="box"
-                  h={{ base: "30px", md: "35px" }}
-                  w={{ base: "30px", md: "35px" }}
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
                   bg={customColor}
                   transition="all 0.2s ease-in-out"
                 >
@@ -2258,11 +2360,11 @@ export default function ServiceManagement() {
 
           {/* Active Services Card */}
           <Card
-            minH={{ base: "65px", md: "75px" }}
+            minH={{ base: "55px", md: "60px" }}
             cursor="pointer"
             onClick={() => setCurrentView("serviceAnalysis")}
-            border={currentView === "serviceAnalysis" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "serviceAnalysis" ? customColor : `${customColor}30`}
+            border={currentView === "serviceAnalysis" || currentView === "revenueAnalysis" ? "2px solid" : "1px solid"}
+            borderColor={currentView === "serviceAnalysis" || currentView === "revenueAnalysis" ? customColor : `${customColor}30`}
             transition="all 0.2s ease-in-out"
             bg="white"
             position="relative"
@@ -2287,7 +2389,7 @@ export default function ServiceManagement() {
               borderColor: customColor,
             }}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}>
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
               <Flex flexDirection="row" align="center" justify="center" w="100%">
                 <Stat me="auto">
                   <StatLabel
@@ -2309,8 +2411,8 @@ export default function ServiceManagement() {
                 </Stat>
                 <IconBox
                   as="box"
-                  h={{ base: "30px", md: "35px" }}
-                  w={{ base: "30px", md: "35px" }}
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
                   bg={customColor}
                   transition="all 0.2s ease-in-out"
                 >
@@ -2327,11 +2429,11 @@ export default function ServiceManagement() {
 
           {/* Total Revenue Card */}
           <Card
-            minH={{ base: "65px", md: "75px" }}
+            minH={{ base: "55px", md: "60px" }}
             cursor="pointer"
-            onClick={() => setCurrentView("serviceAnalysis")}
-            border={currentView === "serviceAnalysis" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "serviceAnalysis" ? customColor : `${customColor}30`}
+            onClick={() => setCurrentView("revenueAnalysis")}
+            border={currentView === "revenueAnalysis" ? "2px solid" : "1px solid"}
+            borderColor={currentView === "revenueAnalysis" ? customColor : `${customColor}30`}
             transition="all 0.2s ease-in-out"
             bg="white"
             position="relative"
@@ -2356,7 +2458,7 @@ export default function ServiceManagement() {
               borderColor: customColor,
             }}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 4 }}>
+            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
               <Flex flexDirection="row" align="center" justify="center" w="100%">
                 <Stat me="auto">
                   <StatLabel
@@ -2380,8 +2482,8 @@ export default function ServiceManagement() {
                 </Stat>
                 <IconBox
                   as="box"
-                  h={{ base: "30px", md: "35px" }}
-                  w={{ base: "30px", md: "35px" }}
+                  h={{ base: "28px", md: "32px" }}
+                  w={{ base: "28px", md: "32px" }}
                   bg="green.500"
                   transition="all 0.2s ease-in-out"
                 >
@@ -2400,11 +2502,11 @@ export default function ServiceManagement() {
 
       {/* Scrollable Table Container */}
       <Box
-        flex="1"
         display="flex"
         flexDirection="column"
         p={4}
         pt={0}
+        flex="1"
         overflow="hidden"
       >
         <Card
@@ -2412,14 +2514,13 @@ export default function ServiceManagement() {
           bg="white"
           display="flex"
           flexDirection="column"
-          height="100%"
-          minH="0"
+          maxH="100%"
           overflow="hidden"
         >
           {/* Fixed Table Header */}
           <CardHeader
-            p="16px"
-            pb="12px"
+            p="10px 16px"
+            pb="8px"
             bg="white"
             flexShrink={0}
             borderBottom="1px solid"
@@ -2436,6 +2537,7 @@ export default function ServiceManagement() {
                 {currentView === "categories" && "🏷️ Categories"}
                 {currentView === "services" && "🛠️ Services"}
                 {currentView === "serviceAnalysis" && "📊 Service Analysis"}
+                {currentView === "revenueAnalysis" && "📈 Revenue Analysis"}
               </Heading>
 
               {/* Search Bar - Only show for categories and services */}
@@ -2517,7 +2619,6 @@ export default function ServiceManagement() {
           {/* Scrollable Table Content Area */}
           <CardBody
             bg="white"
-            flex="1"
             display="flex"
             flexDirection="column"
             p={0}
@@ -2529,13 +2630,12 @@ export default function ServiceManagement() {
                 <Text ml={3} fontSize="sm">Loading data...</Text>
               </Flex>
             ) : (
-              <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
+              <Box display="flex" flexDirection="column" overflow="hidden">
                 {/* Categories Table */}
                 {currentView === "categories" && (
                   <>
                     {/* Table Container */}
                     <Box
-                      flex="1"
                       display="flex"
                       flexDirection="column"
                       overflow="hidden"
@@ -2543,7 +2643,6 @@ export default function ServiceManagement() {
                       {/* Desktop Table View */}
                       <Box
                         display={{ base: "none", md: "block" }}
-                        flex="1"
                         overflow="auto"
                         css={globalScrollbarStyles}
                       >
@@ -2560,7 +2659,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2575,7 +2674,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2590,7 +2689,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2605,7 +2704,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2620,7 +2719,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2639,20 +2738,20 @@ export default function ServiceManagement() {
                                   _hover={{ bg: `${customColor}10` }}
                                   borderBottom="1px"
                                   borderColor={`${customColor}20`}
-                                  height="50px"
+                                  height="40px"
                                 >
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
                                     {indexOfFirstItem + idx + 1}
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontWeight="medium" fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontWeight="medium" fontSize="xs" py={1.5}>
                                     {cat.category || cat.name}
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
                                     <Text noOfLines={1} maxW="200px">
                                       {cat.description || "-"}
                                     </Text>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
                                     <Badge
                                       colorScheme={cat.isActive ? "green" : "red"}
                                       px={2}
@@ -2664,7 +2763,7 @@ export default function ServiceManagement() {
                                       {cat.isActive ? "Active" : "Inactive"}
                                     </Badge>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
                                     <Flex gap={2}>
                                       <IconButton
                                         aria-label="View category"
@@ -2721,10 +2820,9 @@ export default function ServiceManagement() {
                       {/* Mobile Card View */}
                       <Box
                         display={{ base: "block", md: "none" }}
-                        flex="1"
                         overflow="auto"
                         px={3}
-                        py={2}
+                        py={1.5}
                         css={globalScrollbarStyles}
                       >
                         {currentCategories.length > 0 ? (
@@ -2756,10 +2854,7 @@ export default function ServiceManagement() {
                           align="center"
                           gap={3}
                         >
-                          {/* Page Info */}
-                          <Text fontSize="sm" color="gray.600" display={{ base: "none", sm: "block" }}>
-                            Showing {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, filteredCategories.length)} of {filteredCategories.length} categories
-                          </Text>
+
 
                           {/* Pagination Controls */}
                           <Flex align="center" gap={2}>
@@ -2838,7 +2933,6 @@ export default function ServiceManagement() {
                   <>
                     {/* Table Container */}
                     <Box
-                      flex="1"
                       display="flex"
                       flexDirection="column"
                       overflow="hidden"
@@ -2846,7 +2940,6 @@ export default function ServiceManagement() {
                       {/* Desktop Table View */}
                       <Box
                         display={{ base: "none", md: "block" }}
-                        flex="1"
                         overflow="auto"
                         css={globalScrollbarStyles}
                       >
@@ -2863,7 +2956,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2878,7 +2971,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2893,7 +2986,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2908,7 +3001,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2923,7 +3016,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2938,7 +3031,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2953,7 +3046,7 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={3}
+                                py={2}
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2972,24 +3065,24 @@ export default function ServiceManagement() {
                                   _hover={{ bg: `${customColor}10` }}
                                   borderBottom="1px"
                                   borderColor={`${customColor}20`}
-                                  height="50px"
+                                  height="40px"
                                 >
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
                                     {indexOfFirstItem + idx + 1}
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontWeight="medium" fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontWeight="medium" fontSize="xs" py={1.5}>
                                     <Text noOfLines={1} maxW="150px">
                                       {service.serviceName}
                                     </Text>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
                                     <Text noOfLines={1} maxW="120px">
                                       {service.categoryId?.category ||
                                         categories.find(c => c._id === service.categoryId)?.category ||
                                         "N/A"}
                                     </Text>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
                                     <Badge
                                       colorScheme={
                                         service.serviceType === "Installation" ? "blue" :
@@ -3004,7 +3097,7 @@ export default function ServiceManagement() {
                                       {service.serviceType}
                                     </Badge>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
                                     <Flex direction="column" gap={0.5}>
                                       <Badge
                                         colorScheme={service.pricingType === "fixed" ? "green" : "blue"}
@@ -3020,7 +3113,7 @@ export default function ServiceManagement() {
                                       </Text>
                                     </Flex>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
                                     <Flex direction="column" gap={0.5}>
                                       <Badge
                                         colorScheme={service.isActive ? "green" : "red"}
@@ -3040,7 +3133,7 @@ export default function ServiceManagement() {
                                       </HStack>
                                     </Flex>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
                                     <Flex gap={2}>
                                       <IconButton
                                         aria-label="View service"
@@ -3097,10 +3190,9 @@ export default function ServiceManagement() {
                       {/* Mobile Card View */}
                       <Box
                         display={{ base: "block", md: "none" }}
-                        flex="1"
                         overflow="auto"
                         px={3}
-                        py={2}
+                        py={1.5}
                         css={globalScrollbarStyles}
                       >
                         {currentServices.length > 0 ? (
@@ -3132,10 +3224,7 @@ export default function ServiceManagement() {
                           align="center"
                           gap={3}
                         >
-                          {/* Page Info */}
-                          <Text fontSize="sm" color="gray.600" display={{ base: "none", sm: "block" }}>
-                            Showing {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, filteredServices.length)} of {filteredServices.length} services
-                          </Text>
+
 
                           {/* Pagination Controls */}
                           <Flex align="center" gap={2}>
@@ -3209,111 +3298,166 @@ export default function ServiceManagement() {
                   </>
                 )}
 
-                {/* Service Analysis View - Simplified without charts */}
-                {currentView === "serviceAnalysis" && (
+                {/* Service Analysis View */}
+                {(currentView === "serviceAnalysis" || currentView === "revenueAnalysis") && (
                   <Box
                     flex="1"
                     display="flex"
                     flexDirection="column"
-                    overflow="auto"
+                    overflowY="auto"
                     css={globalScrollbarStyles}
                     p={4}
                   >
-                    {/* Service Statistics */}
-                    <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={6}>
-                      <Card bg="white" shadow="sm" p={4}>
-                        <Text fontWeight="bold" color="gray.700" mb={4}>
-                          Service Statistics
-                        </Text>
-                        <SimpleGrid columns={2} spacing={4}>
-                          <Box textAlign="center">
-                            <Text fontSize="sm" color="gray.500">Total Services</Text>
-                            <Text fontSize="2xl" fontWeight="bold">{services.length}</Text>
-                          </Box>
-                          <Box textAlign="center">
-                            <Text fontSize="sm" color="gray.500">Active</Text>
-                            <Text fontSize="2xl" fontWeight="bold" color="green.500">{stats.activeServices}</Text>
-                          </Box>
-                          <Box textAlign="center">
-                            <Text fontSize="sm" color="gray.500">Popular</Text>
-                            <Text fontSize="2xl" fontWeight="bold" color="orange.500">{stats.popularServices}</Text>
-                          </Box>
-                          <Box textAlign="center">
-                            <Text fontSize="sm" color="gray.500">Recommended</Text>
-                            <Text fontSize="2xl" fontWeight="bold" color="teal.500">{stats.recommendedServices}</Text>
-                          </Box>
-                        </SimpleGrid>
-                      </Card>
+                    {currentView === "serviceAnalysis" && (
+                      <>
+                        {/* Service Statistics */}
+                        <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={6}>
+                          <Card bg="white" shadow="sm" p={4}>
+                            <Text fontWeight="bold" color="gray.700" mb={4}>
+                              Service Statistics
+                            </Text>
+                            <SimpleGrid columns={2} spacing={4}>
+                              <Box textAlign="center">
+                                <Text fontSize="sm" color="gray.500">Total Services</Text>
+                                <Text fontSize="2xl" fontWeight="bold">{services.length}</Text>
+                              </Box>
+                              <Box textAlign="center">
+                                <Text fontSize="sm" color="gray.500">Active</Text>
+                                <Text fontSize="2xl" fontWeight="bold" color="green.500">{stats.activeServices}</Text>
+                              </Box>
+                              <Box textAlign="center">
+                                <Text fontSize="sm" color="gray.500">Popular</Text>
+                                <Text fontSize="2xl" fontWeight="bold" color="orange.500">{stats.popularServices}</Text>
+                              </Box>
+                              <Box textAlign="center">
+                                <Text fontSize="sm" color="gray.500">Recommended</Text>
+                                <Text fontSize="2xl" fontWeight="bold" color="teal.500">{stats.recommendedServices}</Text>
+                              </Box>
+                            </SimpleGrid>
+                          </Card>
 
-                      <Card bg="white" shadow="sm" p={4}>
-                        <Text fontWeight="bold" color="gray.700" mb={4}>
-                          Revenue Overview
-                        </Text>
-                        <Box textAlign="center">
-                          <Text fontSize="sm" color="gray.500">Total Service Value</Text>
-                          <Text fontSize="3xl" fontWeight="bold" color="green.500">
-                            ₹{stats.totalRevenue.toLocaleString()}
-                          </Text>
-                          <Text fontSize="sm" color="gray.500" mt={2}>
-                            Average per service: ₹{(stats.totalRevenue / (services.length || 1)).toFixed(0)}
-                          </Text>
+                          <Card bg="white" shadow="sm" p={4}>
+                            <Text fontWeight="bold" color="gray.700" mb={4}>
+                              Revenue Overview
+                            </Text>
+                            <Box textAlign="center">
+                              <Text fontSize="sm" color="gray.500">Total Service Value</Text>
+                              <Text fontSize="3xl" fontWeight="bold" color="green.500">
+                                ₹{stats.totalRevenue.toLocaleString()}
+                              </Text>
+                              <Text fontSize="sm" color="gray.500" mt={2}>
+                                Average per service: ₹{(stats.totalRevenue / (services.length || 1)).toFixed(0)}
+                              </Text>
+                            </Box>
+                          </Card>
+                        </Grid>
+                      </>
+                    )}
+
+                    {/* Revenue Line Chart - only visible for revenue analysis */}
+                    {currentView === "revenueAnalysis" && (
+                      <Card bg="white" shadow="sm" p={5} mt={0}>
+                        <Box height="300px">
+                          <ReactApexChart
+                            options={{
+                              chart: {
+                                type: 'line',
+                                toolbar: { show: false },
+                                zoom: { enabled: false }
+                              },
+                              stroke: {
+                                curve: 'smooth',
+                                width: 3,
+                                colors: [customColor]
+                              },
+                              markers: {
+                                size: 5,
+                                colors: [customColor],
+                                strokeColors: '#fff',
+                                strokeWidth: 2,
+                              },
+                              xaxis: {
+                                categories: chartData.labels,
+                                labels: { rotate: -45, style: { colors: 'gray', fontSize: '12px' } }
+                              },
+                              yaxis: {
+                                labels: {
+                                  formatter: (val) => `₹${val.toLocaleString()}`,
+                                  style: { colors: 'gray', fontSize: '12px' }
+                                }
+                              },
+                              tooltip: {
+                                theme: 'light',
+                                y: { formatter: (val) => `₹${val.toLocaleString()}` }
+                              },
+                              grid: {
+                                borderColor: '#f1f1f1',
+                              },
+                              colors: [customColor]
+                            }}
+                            series={chartData.series}
+                            type="line"
+                            height="100%"
+                          />
                         </Box>
                       </Card>
-                    </Grid>
+                    )}
 
                     {/* Top Services List */}
-                    <Card bg="white" shadow="sm" p={4} mt={6}>
-                      <Text fontWeight="bold" color="gray.700" mb={4}>
-                        Top 10 Services by Cost
-                      </Text>
-                      {services.length > 0 ? (
-                        <Box overflowX="auto">
-                          <Table variant="simple" size="sm">
-                            <Thead>
-                              <Tr>
-                                <Th>Service Name</Th>
-                                <Th>Category</Th>
-                                <Th>Type</Th>
-                                <Th isNumeric>Cost</Th>
-                                <Th>Status</Th>
-                              </Tr>
-                            </Thead>
-                            <Tbody>
-                              {[...services]
-                                .sort((a, b) => (b.serviceCost || 0) - (a.serviceCost || 0))
-                                .slice(0, 10)
-                                .map((service, index) => (
-                                  <Tr key={service._id}>
-                                    <Td>{service.serviceName}</Td>
-                                    <Td>{service.categoryId?.category || "N/A"}</Td>
-                                    <Td>
-                                      <Badge colorScheme={
-                                        service.serviceType === "Installation" ? "blue" :
-                                          service.serviceType === "Maintenance" ? "green" :
-                                            service.serviceType === "Repair" ? "orange" : "purple"
-                                      }>
-                                        {service.serviceType}
-                                      </Badge>
-                                    </Td>
-                                    <Td isNumeric fontWeight="bold">₹{service.serviceCost}</Td>
-                                    <Td>
-                                      <Badge colorScheme={service.isActive ? "green" : "red"}>
-                                        {service.isActive ? "Active" : "Inactive"}
-                                      </Badge>
-                                    </Td>
-                                  </Tr>
-                                ))}
-                            </Tbody>
-                          </Table>
-                        </Box>
-                      ) : (
-                        <Center py={10}>
-                          <Text fontSize="md" color="gray.500">
-                            No services available
-                          </Text>
-                        </Center>
-                      )}
-                    </Card>
+                    {currentView === "serviceAnalysis" && (
+                      <Card bg="white" shadow="sm" p={4} mt={6}>
+                        <Text fontWeight="bold" color="gray.700" mb={4}>
+                          Top 10 Services by Cost
+                        </Text>
+                        {services.length > 0 ? (
+                          <Box overflowX="auto">
+                            <Table variant="simple" size="sm">
+                              <Thead>
+                                <Tr>
+                                  <Th>Service Name</Th>
+                                  <Th>Category</Th>
+                                  <Th>Type</Th>
+                                  <Th isNumeric>Cost</Th>
+                                  <Th>Status</Th>
+                                </Tr>
+                              </Thead>
+                              <Tbody>
+                                {[...services]
+                                  .sort((a, b) => (b.serviceCost || 0) - (a.serviceCost || 0))
+                                  .slice(0, 10)
+                                  .map((service, index) => (
+                                    <Tr key={service._id}>
+                                      <Td>{service.serviceName}</Td>
+                                      <Td>{service.categoryId?.category || "N/A"}</Td>
+                                      <Td>
+                                        <Badge colorScheme={
+                                          service.serviceType === "Installation" ? "blue" :
+                                            service.serviceType === "Maintenance" ? "green" :
+                                              service.serviceType === "Repair" ? "orange" : "purple"
+                                        }>
+                                          {service.serviceType}
+                                        </Badge>
+                                      </Td>
+                                      <Td isNumeric fontWeight="bold">₹{service.serviceCost}</Td>
+                                      <Td>
+                                        <Badge colorScheme={service.isActive ? "green" : "red"}>
+                                          {service.isActive ? "Active" : "Inactive"}
+                                        </Badge>
+                                      </Td>
+                                    </Tr>
+                                  ))}
+                              </Tbody>
+                            </Table>
+                          </Box>
+                        ) : (
+                          <Center py={10}>
+                            <Text fontSize="md" color="gray.500">
+                              No services available
+                            </Text>
+                          </Center>
+                        )}
+                      </Card>
+                    )}
                   </Box>
                 )}
               </Box>

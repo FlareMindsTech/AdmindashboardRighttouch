@@ -400,9 +400,21 @@ function Sidebar(props) {
               lg: "40px",   // 1025px - 1280px
               xl: "40px"    // 1281px +
             }} flex="1" overflow="hidden">
-              <Box overflow="hidden" flex="1">
-                {links}
-              </Box>
+              <Scrollbars
+                autoHide
+                renderTrackVertical={renderTrack}
+                renderThumbVertical={useColorModeValue(renderThumbLight, renderThumbDark)}
+                renderView={
+                  document.documentElement.dir === "rtl"
+                    ? renderViewRTL
+                    : renderView
+                }
+                style={{ width: "100%", height: "100%" }}
+              >
+                <Box pe="10px" pb="30px">
+                  {links}
+                </Box>
+              </Scrollbars>
             </Stack>
           </Box>
           <Box

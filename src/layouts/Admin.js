@@ -24,7 +24,7 @@ export default function Dashboard(props) {
   const [userRole, setUserRole] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const location = useLocation();
-  
+
   const { isOpen: isSidebarOpen, onOpen: onSidebarOpen, onClose: onSidebarClose } = useDisclosure();
   const { isOpen: isPluginOpen, onOpen: onPluginOpen, onClose: onPluginClose } = useDisclosure();
 
@@ -57,25 +57,25 @@ export default function Dashboard(props) {
       return routesArray
         .filter((route) => {
           if (route.collapse) return true;
-          
+
           // Skip auth routes
           if (route.layout === "/auth") return false;
-          
+
           // 🔐 ONLY allow /owner layout for owners
           if (route.layout === "/owner") {
             return userRole === "owner";
           }
-          
+
           // 🔴 REJECT /admin layout completely
           if (route.layout === "/admin") {
             return false;
           }
-          
+
           // Check role restrictions if specified
           if (route.roles && Array.isArray(route.roles)) {
             return route.roles.includes(userRole);
           }
-          
+
           return false; // Default to not showing
         })
         .map((route) => {
@@ -98,7 +98,7 @@ export default function Dashboard(props) {
 
     const extractRoutes = (routesArray) => {
       const result = [];
-      
+
       routesArray.forEach(route => {
         if (route.collapse && route.views) {
           result.push(...extractRoutes(route.views));
@@ -114,10 +114,10 @@ export default function Dashboard(props) {
           // 🔴 EXCLUDE /admin layout routes completely
         }
       });
-      
+
       return result;
     };
-    
+
     return extractRoutes(routes);
   }, [userRole]);
 
@@ -148,25 +148,25 @@ export default function Dashboard(props) {
             element={route.element}
           />
         ))}
-        
+
         {/* Redirect from /owner to /owner/dashboard */}
         <Route
           path="/owner"
           element={<Navigate to="/owner/dashboard" replace />}
         />
-        
+
         {/* 🔴 BLOCK /admin access completely - redirect to owner dashboard */}
         <Route
           path="/admin"
           element={<Navigate to="/owner/dashboard" replace />}
         />
-        
+
         {/* 🔴 BLOCK /admin/* access completely */}
         <Route
           path="/admin/*"
           element={<Navigate to="/owner/dashboard" replace />}
         />
-        
+
         {/* Catch-all for unmatched routes under /owner */}
         <Route
           path="/owner/*"
@@ -179,7 +179,7 @@ export default function Dashboard(props) {
   // Get active route for navbar
   const getActiveRoute = () => {
     const currentPath = location.pathname;
-    
+
     const findRoute = (routesArray) => {
       for (const route of routesArray) {
         if (route.collapse && route.views) {
@@ -197,7 +197,7 @@ export default function Dashboard(props) {
       }
       return "Dashboard";
     };
-    
+
     return findRoute(routes);
   };
 
@@ -238,16 +238,16 @@ export default function Dashboard(props) {
         bgSize="cover"
         top="0"
       />
-      
+
       {/* Mobile Sidebar - ONLY OWNER ROUTES */}
       <SidebarResponsive
         logo={
           <Stack direction="row" spacing="12px" align="center" justify="center">
-            <Image 
-              src={FlareLogo} 
-              alt="Flare Logo" 
-              w={{ base: "80px", sm: "90px", md: "100px" }} 
-              h="auto" 
+            <Image
+              src={FlareLogo}
+              alt="Flare Logo"
+              w={{ base: "80px", sm: "90px", md: "100px" }}
+              h="auto"
             />
             <Box w="1px" h="20px" />
           </Stack>
@@ -258,24 +258,24 @@ export default function Dashboard(props) {
         onOpen={onSidebarOpen}
         onClose={onSidebarClose}
       />
-      
+
       {/* Desktop Sidebar - ONLY OWNER ROUTES */}
       <Sidebar
         routes={filteredRoutes.filter(r => r.layout !== "/auth")}
         logo={
           <Stack direction="row" spacing="12px" align="center" justify="center">
-            <Image 
-              src={FlareLogo} 
-              alt="Flare Logo" 
-              w={{ base: "120px", sm: "90px", md: "100px", lg: "100px", xl: "100px" }} 
-              h="8vh" 
+            <Image
+              src={FlareLogo}
+              alt="Flare Logo"
+              w={{ base: "120px", sm: "90px", md: "100px", lg: "100px", xl: "100px" }}
+              h="8vh"
             />
             <Box w="1px" h="20px" />
           </Stack>
         }
         {...rest}
       />
-      
+
       <MainPanel
         maxH={{ base: "auto", sm: "auto", md: "98vh", lg: "98vh", xl: "98vh", "2xl": "98vh" }}
         overflow={{ sm: "auto", md: "hidden" }}
@@ -291,7 +291,7 @@ export default function Dashboard(props) {
             {...rest}
           />
         </Portal>
-        
+
         <PanelContent>
           <PanelContainer
             px={{ base: "15px", sm: "20px", md: "25px", lg: "30px", xl: "35px" }}
@@ -304,7 +304,7 @@ export default function Dashboard(props) {
             </Routes>
           </PanelContainer>
         </PanelContent>
-        
+
         <Portal>
           <FixedPlugin
             secondary={false}

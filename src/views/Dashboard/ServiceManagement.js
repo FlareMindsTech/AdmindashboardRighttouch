@@ -1192,7 +1192,7 @@ export default function ServiceManagement() {
             {(currentView === "addCategory" || currentView === "editCategory") && (
               <Box p={4}>
                 <FormControl mb="20px">
-                  <FormLabel htmlFor="category" color="gray.700" fontSize="sm">Category Name *</FormLabel>
+                  <FormLabel htmlFor="category" color="gray.700" fontSize="sm">Category Name</FormLabel>
                   <Input
                     id="category"
                     placeholder="Enter category name"
@@ -1349,7 +1349,7 @@ export default function ServiceManagement() {
                     <Grid templateColumns={["1fr", "1fr 1fr"]} gap={4} mb={4}>
                       {/* Service Name */}
                       <FormControl isRequired>
-                        <FormLabel color="gray.700" fontSize="sm">Service Name *</FormLabel>
+                        <FormLabel color="gray.700" fontSize="sm">Service Name</FormLabel>
                         <Input
                           value={newService.serviceName}
                           onChange={(e) => setNewService({ ...newService, serviceName: e.target.value })}
@@ -1364,7 +1364,7 @@ export default function ServiceManagement() {
 
                       {/* Category Selection */}
                       <FormControl isRequired>
-                        <FormLabel color="gray.700" fontSize="sm">Category *</FormLabel>
+                        <FormLabel color="gray.700" fontSize="sm">Category</FormLabel>
                         <Select
                           value={newService.categoryId}
                           onChange={(e) => setNewService({ ...newService, categoryId: e.target.value })}
@@ -1385,7 +1385,7 @@ export default function ServiceManagement() {
                     {/* Service Type and Pricing Type */}
                     <Grid templateColumns={["1fr", "1fr 1fr"]} gap={4} mb={4}>
                       <FormControl isRequired>
-                        <FormLabel color="gray.700" fontSize="sm">Service Type *</FormLabel>
+                        <FormLabel color="gray.700" fontSize="sm">Service Type</FormLabel>
                         <Select
                           value={newService.serviceType}
                           onChange={(e) => setNewService({ ...newService, serviceType: e.target.value })}
@@ -1404,7 +1404,7 @@ export default function ServiceManagement() {
                       </FormControl>
 
                       <FormControl isRequired>
-                        <FormLabel color="gray.700" fontSize="sm">Pricing Type *</FormLabel>
+                        <FormLabel color="gray.700" fontSize="sm">Pricing Type</FormLabel>
                         <Select
                           value={newService.pricingType}
                           onChange={(e) => setNewService({ ...newService, pricingType: e.target.value })}
@@ -1424,7 +1424,7 @@ export default function ServiceManagement() {
                     {/* Pricing Details */}
                     <Grid templateColumns={["1fr", "1fr 1fr", "repeat(3, 1fr)"]} gap={4} mb={4}>
                       <FormControl isRequired>
-                        <FormLabel color="gray.700" fontSize="sm">Service Cost (₹) *</FormLabel>
+                        <FormLabel color="gray.700" fontSize="sm">Service Cost (₹)</FormLabel>
                         <Input
                           type="number"
                           value={newService.serviceCost}

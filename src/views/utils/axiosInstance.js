@@ -3,7 +3,7 @@ import axios from "axios";
 
 // --- Configuration ---
 const API_BASE_URL = "https://righttouch-backend-fn9z.onrender.com";
-const BASE_URL = "https://fullrighttouch.onrender.com/api";
+const BASE_URL = "https://righttouchservernew-727889857503.asia-south1.run.app/api";
 const TIMEOUT_MS = 10000;
 // https://righttouch-backend-fn9z.onrender.com"
 // =========================================================

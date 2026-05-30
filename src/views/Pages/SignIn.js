@@ -102,7 +102,7 @@ function AdminLogin() {
         description:
           "Password must be at least 8 characters, include uppercase, lowercase, and a number",
         status: "warning",
-        duration: 4000,
+        duration: 3000,
         isClosable: true,
       });
       return;
@@ -112,7 +112,7 @@ function AdminLogin() {
 
     try {
       const res = await axios.post(
-        "https://fullrighttouch.onrender.com/api/user/login/owner",
+        "https://righttouchservernew-727889857503.asia-south1.run.app/api/user/login/owner",
         {
           identifier: identifier,
           password: password,

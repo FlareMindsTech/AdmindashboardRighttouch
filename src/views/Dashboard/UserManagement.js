@@ -1190,7 +1190,7 @@ function UserManagement() {
                                           size="sm"
                                           onClick={() => handleViewDetails(user)}
                                         />
-                                        <IconButton
+                                        {/* <IconButton
                                           aria-label="Delete user"
                                           icon={<FaTrash />}
                                           bg="white"
@@ -1200,7 +1200,7 @@ function UserManagement() {
                                           _hover={{ bg: "red.500", color: "white" }}
                                           size="sm"
                                           onClick={() => handleDeleteClick(user)}
-                                        />
+                                        /> */}
                                       </Flex>
                                     </Td>
                                   </Tr>

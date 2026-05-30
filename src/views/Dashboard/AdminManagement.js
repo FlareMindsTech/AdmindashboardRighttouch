@@ -2282,11 +2282,11 @@ function AdminManagement() {
                     <Text textAlign="center" color="gray.500" fontSize="lg">
                       {dataLoaded
                         ? adminData.length === 0
-                          ? "No admins found."
+                          ? "No Data found."
                           : searchTerm
                             ? "No admins match your search."
                             : "No admins match the selected filter."
-                        : "Loading admins..."}
+                        : "Loading Datas..."}
                     </Text>
                   </Flex>
                 )}

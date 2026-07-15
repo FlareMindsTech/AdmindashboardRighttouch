@@ -160,6 +160,14 @@ const getTechnicianImage = (tech) => {
   return tech?.profileImage || tech?.profile?.profileImage || (typeof tech?.userId === 'object' ? tech?.userId?.profileImage : "") || "";
 };
 
+const getImageUrl = (urlData) => {
+  if (!urlData) return "";
+  const url = Array.isArray(urlData) ? urlData[0] : urlData;
+  if (typeof url !== 'string') return "";
+  if (url.startsWith("http") || url.startsWith("data:")) return url;
+  return `https://righttouchservernew-727889857503.asia-south1.run.app/${url}`;
+};
+
 // Main Admin Management Component
 function AdminManagement() {
   // Chakra color mode
@@ -2335,10 +2343,10 @@ function AdminManagement() {
                           {kycRecord.documents?.aadhaarUrl ? (
                             <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
                               <img
-                                src={kycRecord.documents.aadhaarUrl}
+                                src={getImageUrl(kycRecord.documents.aadhaarUrl)}
                                 alt="Aadhaar Card"
                                 style={{ width: '100%', height: '150px', objectFit: 'cover' }}
-                                onClick={() => window.open(kycRecord.documents.aadhaarUrl, '_blank')}
+                                onClick={() => window.open(getImageUrl(kycRecord.documents.aadhaarUrl), '_blank')}
                                 cursor="pointer"
                               />
                               <Button
@@ -2346,7 +2354,7 @@ function AdminManagement() {
                                 width="100%"
                                 borderRadius="0"
                                 as="a"
-                                href={kycRecord.documents.aadhaarUrl}
+                                href={getImageUrl(kycRecord.documents.aadhaarUrl)}
                                 target="_blank"
                                 colorScheme="purple"
                                 variant="ghost"
@@ -2365,10 +2373,10 @@ function AdminManagement() {
                           {kycRecord.documents?.panUrl ? (
                             <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
                               <img
-                                src={kycRecord.documents.panUrl}
+                                src={getImageUrl(kycRecord.documents.panUrl)}
                                 alt="PAN Card"
                                 style={{ width: '100%', height: '150px', objectFit: 'cover' }}
-                                onClick={() => window.open(kycRecord.documents.panUrl, '_blank')}
+                                onClick={() => window.open(getImageUrl(kycRecord.documents.panUrl), '_blank')}
                                 cursor="pointer"
                               />
                               <Button
@@ -2376,7 +2384,7 @@ function AdminManagement() {
                                 width="100%"
                                 borderRadius="0"
                                 as="a"
-                                href={kycRecord.documents.panUrl}
+                                href={getImageUrl(kycRecord.documents.panUrl)}
                                 target="_blank"
                                 colorScheme="purple"
                                 variant="ghost"
@@ -2395,10 +2403,10 @@ function AdminManagement() {
                           {kycRecord.documents?.dlUrl ? (
                             <Box border="1px solid #eee" borderRadius="md" overflow="hidden" boxShadow="sm">
                               <img
-                                src={kycRecord.documents.dlUrl}
+                                src={getImageUrl(kycRecord.documents.dlUrl)}
                                 alt="Driving License"
                                 style={{ width: '100%', height: '150px', objectFit: 'cover' }}
-                                onClick={() => window.open(kycRecord.documents.dlUrl, '_blank')}
+                                onClick={() => window.open(getImageUrl(kycRecord.documents.dlUrl), '_blank')}
                                 cursor="pointer"
                               />
                               <Button
@@ -2406,7 +2414,7 @@ function AdminManagement() {
                                 width="100%"
                                 borderRadius="0"
                                 as="a"
-                                href={kycRecord.documents.dlUrl}
+                                href={getImageUrl(kycRecord.documents.dlUrl)}
                                 target="_blank"
                                 colorScheme="purple"
                                 variant="ghost"
@@ -2430,6 +2438,10 @@ function AdminManagement() {
                             <Box>
                               <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Account Holder</Text>
                               <Text fontSize="md" fontWeight="semibold" color="gray.700">{kycRecord.bankDetails.accountHolderName || "N/A"}</Text>
+                            </Box>
+                            <Box>
+                              <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Account Number</Text>
+                              <Text fontSize="md" fontWeight="semibold" color="gray.800" fontFamily="monospace">{kycRecord.bankDetails.accountNumber || "N/A"}</Text>
                             </Box>
                             <Box>
                               <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">Bank / Branch</Text>
@@ -2601,7 +2613,7 @@ function AdminManagement() {
                 ml={3}
                 size="sm"
               >
-                Delete Admin
+                Delete Technician
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -2738,6 +2750,7 @@ function AdminManagement() {
                         <Box>
                           <Text mb={1} fontSize="sm"><strong>Bank:</strong> {kycMatch.bankDetails.bankName || "N/A"}</Text>
                           <Text mb={1} fontSize="sm"><strong>A/C Holder:</strong> {kycMatch.bankDetails.accountHolderName || "N/A"}</Text>
+                          <Text mb={1} fontSize="sm"><strong>A/C Number:</strong> {kycMatch.bankDetails.accountNumber || "N/A"}</Text>
                           <Text mb={1} fontSize="sm"><strong>IFSC:</strong> {kycMatch.bankDetails.ifscCode || "N/A"}</Text>
                           <Text fontSize="sm"><strong>UPI:</strong> {kycMatch.bankDetails.upiId || "N/A"}</Text>
                         </Box>

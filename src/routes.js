@@ -17,19 +17,20 @@ import {
 
 import ProductManagement from "views/Dashboard/ProductManagement";
 
+import { clearAuth } from "views/utils/axiosInstance";
+
 const ICON_COLOR = "#008080";
 
 
 const Logout = () => {
-  localStorage.clear();
-  sessionStorage.clear();
+  clearAuth();
   const base = window.location.origin + window.location.pathname;
   window.location.replace(`${base}#/auth/signin`);
   return <div>Logging out...</div>;
 };
 
 const getCurrentUserRole = () => {
-  const userString = localStorage.getItem("user");
+  const userString = localStorage.getItem("user") || sessionStorage.getItem("user");
   if (!userString) return "";
 
   try {
@@ -46,6 +47,7 @@ const userRole = getCurrentUserRole();
 const isOwner = userRole === "owner";
 console.log("User Role:", userRole);
 console.log("Is Owner:", isOwner);
+
 
 const dashRoutes = [
   // ---------------- OWNER ONLY ROUTES ----------------

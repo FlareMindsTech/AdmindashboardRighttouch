@@ -2,12 +2,13 @@
 import React from "react";
 import { Box, Heading, Text, Button, VStack, Container } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
+import { clearAuth } from "../utils/axiosInstance";
 
 export default function AccessDenied() {
   const navigate = useNavigate();
 
   const handleGoHome = () => {
-    const userString = localStorage.getItem("user");
+    const userString = localStorage.getItem("user") || sessionStorage.getItem("user");
     if (userString) {
       try {
         const userData = JSON.parse(userString);
@@ -47,7 +48,7 @@ export default function AccessDenied() {
             variant="outline"
             size="lg"
             onClick={() => {
-              localStorage.clear();
+              clearAuth();
               navigate("/auth/signin");
             }}
           >
@@ -57,4 +58,4 @@ export default function AccessDenied() {
       </VStack>
     </Container>
   );
-}
+}

@@ -20,6 +20,7 @@ import {
 import { MdAdminPanelSettings, MdLightbulb } from "react-icons/md";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { setAuth } from "../utils/axiosInstance";
 
 
 function AdminLogin() {
@@ -128,17 +129,12 @@ function AdminLogin() {
 
       const { token, role, id } = res.data.result;
 
+      setAuth(token, {
+        identifier: identifier,
+        role: role,
+        id,
+      });
 
-      sessionStorage.setItem("token", token);
-
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          identifier: identifier,
-          role: role,
-          id,
-        })
-      );
 
       toast({
         title: "Login Successful",

@@ -10,7 +10,7 @@ import {
 import { FaUsers, FaBoxOpen, FaEdit, FaSignOutAlt, FaSave, FaTimes, FaChartPie, FaCrown, FaStar, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import Card from "components/Card/Card";
 import { useNavigate } from "react-router-dom";
-import { getAllBookings, getAllServiceBooking, getAllTechnicians, getAllProduct, getAllServices } from "views/utils/axiosInstance";
+import { getAllBookings, getAllServiceBooking, getAllTechnicians, getAllProduct, getAllServices, clearAuth } from "views/utils/axiosInstance";
 
 import ReactApexChart from 'react-apexcharts';
 
@@ -422,10 +422,11 @@ export default function OwnerProfile() {
   };
 
   const handleLogout = () => {
-    localStorage.clear();
+    clearAuth();
     toast({ title: "Logged Out", status: "info", duration: 2000 });
     navigate("/auth/signin");
   };
+
 
   const handleSaveProfile = (updatedData) => {
     setOwnerData(updatedData);

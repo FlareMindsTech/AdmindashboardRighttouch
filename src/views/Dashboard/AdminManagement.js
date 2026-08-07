@@ -88,7 +88,9 @@ import {
   verifyKYC,
   deleteKYC,
   updateTrainingStatus,
+  clearAuth,
 } from "views/utils/axiosInstance";
+
 import { useNavigate } from "react-router-dom";
 
 // Helper to resolve technician name safely
@@ -355,11 +357,8 @@ function AdminManagement() {
             duration: 3000,
             isClosable: true,
           });
-          localStorage.removeItem("user");
-          localStorage.removeItem("token");
-          localStorage.removeItem("adminToken");
-          sessionStorage.removeItem("token");
-          sessionStorage.removeItem("adminToken");
+          clearAuth();
+
           setTimeout(() => {
             navigate("/auth/signin");
           }, 1000);

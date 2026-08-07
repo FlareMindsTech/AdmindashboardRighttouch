@@ -31,7 +31,7 @@ export default function Dashboard(props) {
   document.documentElement.dir = "ltr";
 
   useEffect(() => {
-    const userString = localStorage.getItem("user");
+    const userString = localStorage.getItem("user") || sessionStorage.getItem("user");
     if (!userString) {
       setUserRole(null);
       setIsLoading(false);

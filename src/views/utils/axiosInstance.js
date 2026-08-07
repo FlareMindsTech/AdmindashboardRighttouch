@@ -5,7 +5,51 @@ import axios from "axios";
 const API_BASE_URL = "https://righttouchservernew-727889857503.asia-south1.run.app";
 const BASE_URL = "https://righttouchservernew-727889857503.asia-south1.run.app/api";
 const TIMEOUT_MS = 10000;
-// https://righttouch-backend-fn9z.onrender.com"
+
+// =========================================================
+// AUTH HELPERS (Unified token & user storage across localStorage & sessionStorage)
+// =========================================================
+export const setAuth = (token, user) => {
+  if (token) {
+    localStorage.setItem("token", token);
+    localStorage.setItem("adminToken", token);
+    sessionStorage.setItem("token", token);
+    sessionStorage.setItem("adminToken", token);
+  }
+  if (user) {
+    const userStr = typeof user === "string" ? user : JSON.stringify(user);
+    localStorage.setItem("user", userStr);
+    sessionStorage.setItem("user", userStr);
+  }
+};
+
+export const clearAuth = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("adminToken");
+  localStorage.removeItem("user");
+  sessionStorage.removeItem("token");
+  sessionStorage.removeItem("adminToken");
+  sessionStorage.removeItem("user");
+  localStorage.clear();
+  sessionStorage.clear();
+};
+
+export const getToken = () =>
+  localStorage.getItem("token") ||
+  sessionStorage.getItem("token") ||
+  localStorage.getItem("adminToken") ||
+  sessionStorage.getItem("adminToken");
+
+export const getUser = () => {
+  const userStr = localStorage.getItem("user") || sessionStorage.getItem("user");
+  if (!userStr) return null;
+  try {
+    return JSON.parse(userStr);
+  } catch (e) {
+    return null;
+  }
+};
+
 // =========================================================
 // 1. GENERAL USER AXIOS INSTANCE
 // =========================================================
@@ -17,8 +61,7 @@ const axiosInstance = axios.create({
 
 axiosInstance.interceptors.request.use(
   (config) => {
-    const token =
-      localStorage.getItem("token") || sessionStorage.getItem("token");
+    const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -38,11 +81,9 @@ const adminAxiosInstance = axios.create({
 
 adminAxiosInstance.interceptors.request.use(
   (config) => {
-    const adminToken =
-      localStorage.getItem("adminToken") ||
-      sessionStorage.getItem("adminToken");
-    if (adminToken) {
-      config.headers.Authorization = `Bearer ${adminToken}`;
+    const token = getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
@@ -55,13 +96,7 @@ adminAxiosInstance.interceptors.request.use(
 const unauthorizedResponseHandler = (error) => {
   if (error.response && error.response.status === 401) {
     console.warn("⚠️ Unauthorized (401). Clearing auth data...");
-
-    // Clear both localStorage & sessionStorage tokens
-    localStorage.clear();
-    sessionStorage.clear();
-
-    // Optional redirect
-    // window.location.href = "/#/auth/signin";
+    clearAuth();
   }
   return Promise.reject(error);
 };
@@ -82,14 +117,6 @@ adminAxiosInstance.interceptors.response.use(
 export default axiosInstance;
 export { adminAxiosInstance };
 
-// =========================================================
-// 5. Helper function to get token (checks both storages)
-// =========================================================
-const getToken = () =>
-  localStorage.getItem("token") ||
-  sessionStorage.getItem("token") ||
-  localStorage.getItem("adminToken") ||
-  sessionStorage.getItem("adminToken");
 
 // =========================================================
 // 6. API CALL FUNCTIONS

@@ -81,7 +81,6 @@ import {
   FaCheck,
   FaTimes,
 } from "react-icons/fa";
-import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdAdminPanelSettings, MdPerson, MdVerified, MdOutlinePending, MdWarning } from "react-icons/md";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
 import {
@@ -1094,7 +1093,7 @@ function AdminManagement() {
         <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 5 }} spacing={{ base: 3, md: 4 }}>
           {/* 1. Total Technician */}
           <Card
-            minH="90px"
+            minH="100px"
             cursor="pointer"
             onClick={() => handleCardClick("all")}
             border={activeTab === "all" ? "2px solid" : "1px solid"}
@@ -1105,16 +1104,21 @@ function AdminManagement() {
             _hover={{ transform: "translateY(-3px)", shadow: "md", borderColor: customColor }}
           >
             <CardBody p={4}>
-              <Flex align="center" justify="space-between">
-                <Stat>
-                  <StatLabel fontSize="xs" color="gray.600" fontWeight="bold">
+              <Flex align="flex-start" justify="space-between">
+                <Box flex="1" mr={2}>
+                  <Text fontSize="xs" color="gray.600" fontWeight="bold" noOfLines={1}>
                     Total Technician
-                  </StatLabel>
-                  <StatNumber fontSize="2xl" fontWeight="black" color={textColor} mt={1}>
+                  </Text>
+                  <Text fontSize="2xl" fontWeight="black" color={textColor} mt={1} lineHeight="1.2">
                     {loading ? <Skeleton height="24px" width="40px" /> : totalCount}
-                  </StatNumber>
-                </Stat>
-                <IconBox h="42px" w="42px" bg={customColor} color="white">
+                  </Text>
+                  <Box mt={1.5} minH="18px">
+                    <Text fontSize="10px" color="gray.400" fontWeight="medium">
+                      All Registered
+                    </Text>
+                  </Box>
+                </Box>
+                <IconBox h="42px" w="42px" bg={customColor} color="white" flexShrink={0}>
                   <Icon as={FaUsers} boxSize="20px" />
                 </IconBox>
               </Flex>
@@ -1123,7 +1127,7 @@ function AdminManagement() {
 
           {/* 2. New Technician */}
           <Card
-            minH="90px"
+            minH="100px"
             cursor="pointer"
             onClick={() => handleCardClick("NewTechnician")}
             border={activeTab === "NewTechnician" ? "2px solid" : "1px solid"}
@@ -1134,31 +1138,36 @@ function AdminManagement() {
             _hover={{ transform: "translateY(-3px)", shadow: "md", borderColor: customColor }}
           >
             <CardBody p={4}>
-              <Flex align="center" justify="space-between">
-                <Stat>
-                  <StatLabel fontSize="xs" color="gray.600" fontWeight="bold">
+              <Flex align="flex-start" justify="space-between">
+                <Box flex="1" mr={2}>
+                  <Text fontSize="xs" color="gray.600" fontWeight="bold" noOfLines={1}>
                     New Technician
-                  </StatLabel>
-                  <Flex align="baseline" gap={2} mt={1}>
-                    <StatNumber fontSize="2xl" fontWeight="black" color="blue.600" m={0}>
-                      {loading ? <Skeleton height="24px" width="40px" /> : newTechCount}
-                    </StatNumber>
-                    {!loading && newUnverifiedCount > 0 && (
+                  </Text>
+                  <Text fontSize="2xl" fontWeight="black" color="blue.600" mt={1} lineHeight="1.2">
+                    {loading ? <Skeleton height="24px" width="40px" /> : newTechCount}
+                  </Text>
+                  <Box mt={1.5} minH="18px">
+                    {!loading && newUnverifiedCount > 0 ? (
                       <Badge
                         colorScheme="red"
                         variant="subtle"
-                        fontSize="10px"
-                        px={1.5}
+                        fontSize="9px"
+                        px={2}
                         py={0.5}
-                        borderRadius="md"
+                        borderRadius="full"
                         fontWeight="bold"
+                        textTransform="capitalize"
                       >
                         {newUnverifiedCount} unverified
                       </Badge>
+                    ) : (
+                      <Text fontSize="10px" color="gray.400" fontWeight="medium">
+                        All verified
+                      </Text>
                     )}
-                  </Flex>
-                </Stat>
-                <IconBox h="42px" w="42px" bg="blue.500" color="white">
+                  </Box>
+                </Box>
+                <IconBox h="42px" w="42px" bg="blue.500" color="white" flexShrink={0}>
                   <Icon as={FaUserClock} boxSize="20px" />
                 </IconBox>
               </Flex>
@@ -1167,7 +1176,7 @@ function AdminManagement() {
 
           {/* 3. Active Technician */}
           <Card
-            minH="90px"
+            minH="100px"
             cursor="pointer"
             onClick={() => handleCardClick("Active")}
             border={activeTab === "Active" ? "2px solid" : "1px solid"}
@@ -1178,17 +1187,31 @@ function AdminManagement() {
             _hover={{ transform: "translateY(-3px)", shadow: "md", borderColor: customColor }}
           >
             <CardBody p={4}>
-              <Flex align="center" justify="space-between">
-                <Stat>
-                  <StatLabel fontSize="xs" color="gray.600" fontWeight="bold">
+              <Flex align="flex-start" justify="space-between">
+                <Box flex="1" mr={2}>
+                  <Text fontSize="xs" color="gray.600" fontWeight="bold" noOfLines={1}>
                     Active Technician
-                  </StatLabel>
-                  <StatNumber fontSize="2xl" fontWeight="black" color="green.600" mt={1}>
+                  </Text>
+                  <Text fontSize="2xl" fontWeight="black" color="green.600" mt={1} lineHeight="1.2">
                     {loading ? <Skeleton height="24px" width="40px" /> : activeTechCount}
-                  </StatNumber>
-                </Stat>
-                <IconBox h="42px" w="42px" bg="green.500" color="white">
-                  <Icon as={IoCheckmarkDoneCircleSharp} boxSize="22px" />
+                  </Text>
+                  <Box mt={1.5} minH="18px">
+                    <Badge
+                      colorScheme="green"
+                      variant="subtle"
+                      fontSize="9px"
+                      px={2}
+                      py={0.5}
+                      borderRadius="full"
+                      fontWeight="bold"
+                      textTransform="capitalize"
+                    >
+                      Active & ready
+                    </Badge>
+                  </Box>
+                </Box>
+                <IconBox h="42px" w="42px" bg="green.500" color="white" flexShrink={0}>
+                  <Icon as={FaCheckCircle} boxSize="20px" />
                 </IconBox>
               </Flex>
             </CardBody>
@@ -1196,7 +1219,7 @@ function AdminManagement() {
 
           {/* 4. KYC Verification */}
           <Card
-            minH="90px"
+            minH="100px"
             cursor="pointer"
             onClick={() => handleCardClick("KYCVerification")}
             border={activeTab === "KYCVerification" ? "2px solid" : "1px solid"}
@@ -1207,31 +1230,36 @@ function AdminManagement() {
             _hover={{ transform: "translateY(-3px)", shadow: "md", borderColor: customColor }}
           >
             <CardBody p={4}>
-              <Flex align="center" justify="space-between">
-                <Stat>
-                  <StatLabel fontSize="xs" color="gray.600" fontWeight="bold">
+              <Flex align="flex-start" justify="space-between">
+                <Box flex="1" mr={2}>
+                  <Text fontSize="xs" color="gray.600" fontWeight="bold" noOfLines={1}>
                     KYC Verification
-                  </StatLabel>
-                  <Flex align="baseline" gap={2} mt={1}>
-                    <StatNumber fontSize="2xl" fontWeight="black" color="purple.600" m={0}>
-                      {loading ? <Skeleton height="24px" width="40px" /> : kycVerifiedCount}
-                    </StatNumber>
-                    {!loading && kycUnverifiedCount > 0 && (
+                  </Text>
+                  <Text fontSize="2xl" fontWeight="black" color="purple.600" mt={1} lineHeight="1.2">
+                    {loading ? <Skeleton height="24px" width="40px" /> : kycVerifiedCount}
+                  </Text>
+                  <Box mt={1.5} minH="18px">
+                    {!loading && kycUnverifiedCount > 0 ? (
                       <Badge
                         colorScheme="purple"
                         variant="subtle"
-                        fontSize="10px"
-                        px={1.5}
+                        fontSize="9px"
+                        px={2}
                         py={0.5}
-                        borderRadius="md"
+                        borderRadius="full"
                         fontWeight="bold"
+                        textTransform="capitalize"
                       >
                         {kycUnverifiedCount} unverified
                       </Badge>
+                    ) : (
+                      <Text fontSize="10px" color="gray.400" fontWeight="medium">
+                        All verified
+                      </Text>
                     )}
-                  </Flex>
-                </Stat>
-                <IconBox h="42px" w="42px" bg="purple.500" color="white">
+                  </Box>
+                </Box>
+                <IconBox h="42px" w="42px" bg="purple.500" color="white" flexShrink={0}>
                   <Icon as={FaIdCard} boxSize="20px" />
                 </IconBox>
               </Flex>
@@ -1240,7 +1268,7 @@ function AdminManagement() {
 
           {/* 5. Bank Verification */}
           <Card
-            minH="90px"
+            minH="100px"
             cursor="pointer"
             onClick={() => handleCardClick("BankVerification")}
             border={activeTab === "BankVerification" ? "2px solid" : "1px solid"}
@@ -1251,31 +1279,36 @@ function AdminManagement() {
             _hover={{ transform: "translateY(-3px)", shadow: "md", borderColor: customColor }}
           >
             <CardBody p={4}>
-              <Flex align="center" justify="space-between">
-                <Stat>
-                  <StatLabel fontSize="xs" color="gray.600" fontWeight="bold">
+              <Flex align="flex-start" justify="space-between">
+                <Box flex="1" mr={2}>
+                  <Text fontSize="xs" color="gray.600" fontWeight="bold" noOfLines={1}>
                     Bank Verification
-                  </StatLabel>
-                  <Flex align="baseline" gap={2} mt={1}>
-                    <StatNumber fontSize="2xl" fontWeight="black" color="orange.600" m={0}>
-                      {loading ? <Skeleton height="24px" width="40px" /> : bankVerifiedCount}
-                    </StatNumber>
-                    {!loading && bankUnverifiedCount > 0 && (
+                  </Text>
+                  <Text fontSize="2xl" fontWeight="black" color="orange.600" mt={1} lineHeight="1.2">
+                    {loading ? <Skeleton height="24px" width="40px" /> : bankVerifiedCount}
+                  </Text>
+                  <Box mt={1.5} minH="18px">
+                    {!loading && bankUnverifiedCount > 0 ? (
                       <Badge
                         colorScheme="orange"
                         variant="subtle"
-                        fontSize="10px"
-                        px={1.5}
+                        fontSize="9px"
+                        px={2}
                         py={0.5}
-                        borderRadius="md"
+                        borderRadius="full"
                         fontWeight="bold"
+                        textTransform="capitalize"
                       >
                         {bankUnverifiedCount} unverified
                       </Badge>
+                    ) : (
+                      <Text fontSize="10px" color="gray.400" fontWeight="medium">
+                        All verified
+                      </Text>
                     )}
-                  </Flex>
-                </Stat>
-                <IconBox h="42px" w="42px" bg="orange.500" color="white">
+                  </Box>
+                </Box>
+                <IconBox h="42px" w="42px" bg="orange.500" color="white" flexShrink={0}>
                   <Icon as={FaUniversity} boxSize="20px" />
                 </IconBox>
               </Flex>

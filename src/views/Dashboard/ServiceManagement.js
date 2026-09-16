@@ -97,7 +97,6 @@ import {
   FaRedo,
   FaTrophy,
 } from "react-icons/fa";
-import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdCategory, MdInventory, MdWarning, MdAttachMoney } from "react-icons/md";
 
 
@@ -2545,7 +2544,7 @@ export default function ServiceManagement() {
                   transition="all 0.2s ease-in-out"
                 >
                   <Icon
-                    as={IoCheckmarkDoneCircleSharp}
+                    as={FaCheckCircle}
                     h={{ base: "14px", md: "18px" }}
                     w={{ base: "14px", md: "18px" }}
                     color="white"

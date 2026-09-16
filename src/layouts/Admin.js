@@ -251,10 +251,20 @@ export default function Dashboard(props) {
       />
 
       <MainPanel
-        maxH={{ base: "auto", sm: "auto", md: "98vh", lg: "98vh", xl: "98vh", "2xl": "98vh" }}
-        overflow={{ sm: "auto", md: "hidden" }}
+        maxH="100vh"
+        minH="100vh"
+        overflowX="hidden"
+        overflowY="auto"
         w={{ base: "100%", sm: "100%", md: "100%", lg: "calc(100% - 300px)", xl: "calc(100% - 310px)", "2xl": "calc(100% - 310px)" }}
         transition="all 0.33s cubic-bezier(0.685, 0.0473, 0.346, 1)"
+        css={{
+          scrollbarWidth: "thin",
+          scrollbarColor: "#cbd5e1 transparent",
+          "&::-webkit-scrollbar": { width: "8px" },
+          "&::-webkit-scrollbar-track": { background: "transparent" },
+          "&::-webkit-scrollbar-thumb": { background: "#cbd5e1", borderRadius: "10px" },
+          "&:hover::-webkit-scrollbar-thumb": { background: "#94a3b8" },
+        }}
       >
         <Portal>
           <AdminNavbar

@@ -91,6 +91,9 @@ import {
   MdAccountTree,
   MdAnalytics,
   MdGpsFixed,
+  MdLocationCity,
+  MdAddCircleOutline,
+  MdInfoOutline,
 } from "react-icons/md";
 
 import {
@@ -196,10 +199,10 @@ export default function CityZones() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Filters & Search State
   const [searchTerm, setSearchTerm] = useState("");
   const [districtFilter, setDistrictFilter] = useState("all"); // 'all' | 'active' | 'inactive' | districtId
   const [selectedDistrictFilter, setSelectedDistrictFilter] = useState("all");
+  const [permissionFilter, setPermissionFilter] = useState("all"); // 'all' | 'multi_district' | 'single_district'
   const [selectedZoneStatusFilter, setSelectedZoneStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
@@ -1087,13 +1090,28 @@ export default function CityZones() {
       const city = (t.city || t.primaryCityId?.name || "").toLowerCase();
       const matchesSearch = name.includes(search) || phone.includes(search) || city.includes(search);
 
+      // District filter: check primary district and additional permitted districts
+      let matchesDistrict = true;
       if (selectedDistrictFilter !== "all") {
-        const primaryId = t.primaryCityId?._id || t.primaryCityId;
-        return matchesSearch && primaryId === selectedDistrictFilter;
+        const primaryId = String(t.primaryCityId?._id || t.primaryCityId || "");
+        const allowedDistIds = (t.allowedDistricts || t.permittedDistricts || t.districtPermissions || t.secondaryDistricts || []).map((d) =>
+          String(d._id || d.districtId || d.id || d)
+        );
+        matchesDistrict = primaryId === selectedDistrictFilter || allowedDistIds.includes(selectedDistrictFilter);
       }
-      return matchesSearch;
+
+      // Permission type filter
+      let matchesPermType = true;
+      const permCount = (t.allowedDistricts || t.permittedDistricts || t.districtPermissions || t.secondaryDistricts || []).length;
+      if (permissionFilter === "multi_district") {
+        matchesPermType = permCount > 0;
+      } else if (permissionFilter === "single_district") {
+        matchesPermType = permCount === 0;
+      }
+
+      return matchesSearch && matchesDistrict && matchesPermType;
     });
-  }, [technicians, searchTerm, selectedDistrictFilter]);
+  }, [technicians, searchTerm, selectedDistrictFilter, permissionFilter]);
 
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -1120,6 +1138,7 @@ export default function CityZones() {
     setSearchTerm("");
     setDistrictFilter("all");
     setSelectedDistrictFilter("all");
+    setPermissionFilter("all");
     setCurrentPage(1);
   };
 
@@ -1311,16 +1330,88 @@ export default function CityZones() {
     }
   };
 
+  const getTechDisplayName = (tech) => {
+    if (!tech) return "Technician";
+    const first = tech.fname || tech.firstName || tech.userId?.fname || tech.userId?.firstName || "";
+    const last = tech.lname || tech.lastName || tech.userId?.lname || tech.userId?.lastName || "";
+    const fullName = `${first} ${last}`.trim();
+    if (fullName) return fullName;
+    if (tech.name) return tech.name;
+    if (tech.profile?.name) return tech.profile.name;
+    if (tech.userId?.name) return tech.userId.name;
+    const phone = tech.mobileNumber || tech.phone || tech.phoneNumber || tech.userId?.mobileNumber || tech.userId?.phone;
+    if (phone) return `Technician (${phone})`;
+    if (tech.email || tech.userId?.email) return `Technician (${tech.email || tech.userId?.email})`;
+    return "Technician";
+  };
+
+  const getResolvedPrimaryDistrict = () => {
+    if (techPermissions?.primaryDistrict && typeof techPermissions.primaryDistrict === "object") {
+      return techPermissions.primaryDistrict;
+    }
+    const pId =
+      (typeof techPermissions?.primaryDistrict === "string" ? techPermissions.primaryDistrict : null) ||
+      selectedTechForPermission?.primaryCityId?._id ||
+      selectedTechForPermission?.primaryCityId;
+    if (pId) {
+      const match = districts.find((d) => String(d._id) === String(pId));
+      if (match) return match;
+    }
+    const cityName =
+      selectedTechForPermission?.city ||
+      selectedTechForPermission?.primaryCityId?.name ||
+      techPermissions?.primaryDistrict?.name ||
+      techPermissions?.primaryDistrict?.city;
+    if (cityName) {
+      const cleanCity = cityName.toLowerCase().trim();
+      const match = districts.find((d) => {
+        const dCity = (d.city || "").toLowerCase().trim();
+        const dName = (d.name || "").toLowerCase().trim();
+        return dCity === cleanCity || dName === cleanCity || dName.includes(cleanCity);
+      });
+      if (match) return match;
+    }
+    if (techZonePermissions?.groupedZonesByDistrict) {
+      const permittedGroups = Object.values(techZonePermissions.groupedZonesByDistrict).filter((g) => g.hasDistrictPermission);
+      if (permittedGroups.length > 0) {
+        const groupDistId = permittedGroups[0].districtId;
+        const match = districts.find((d) => String(d._id) === String(groupDistId));
+        if (match) return match;
+        return {
+          _id: groupDistId,
+          name: permittedGroups[0].districtName || "Operational Range",
+          city: permittedGroups[0].districtName?.replace(/Operational Range/i, "").trim() || "Base Hub",
+        };
+      }
+    }
+    return null;
+  };
+
   const handleOpenTechPermissions = async (tech) => {
     try {
       setIsLoading(true);
       setSelectedTechForPermission(tech);
       setTechServiceRadius(tech.serviceRadiusKm || 10);
       const [distRes, zoneRes] = await Promise.all([
-        getTechnicianDistricts(tech._id).catch(() => ({ result: { primaryDistrict: null, permissions: [] } })),
+        getTechnicianDistricts(tech._id).catch(() => ({ result: { primaryDistrict: null, additionalPermissions: [] } })),
         getTechnicianZonePermissions(tech._id).catch(() => null),
       ]);
-      setTechPermissions(distRes.result || { primaryDistrict: null, permissions: [] });
+      const rawRes = distRes?.result || distRes?.data || distRes || {};
+      const perms = Array.isArray(rawRes?.additionalPermissions)
+        ? rawRes.additionalPermissions
+        : (Array.isArray(rawRes?.permissions)
+          ? rawRes.permissions
+          : (Array.isArray(rawRes) ? rawRes : []));
+      const primary = rawRes?.primaryDistrict || tech?.primaryCityId || null;
+      const allowedIds = Array.isArray(rawRes?.allowedDistrictIds) ? rawRes.allowedDistrictIds : [];
+
+      setTechPermissions({
+        ...rawRes,
+        primaryDistrict: primary,
+        permissions: perms,
+        additionalPermissions: perms,
+        allowedDistrictIds: allowedIds,
+      });
       setTechZonePermissions(zoneRes || null);
       setSelectedDistrictToGrant("");
       setIsPermissionModalOpen(true);
@@ -1333,17 +1424,68 @@ export default function CityZones() {
 
   const refreshPermissions = async (techId) => {
     const [distRes, zoneRes] = await Promise.all([
-      getTechnicianDistricts(techId).catch(() => ({ result: { primaryDistrict: null, permissions: [] } })),
+      getTechnicianDistricts(techId).catch(() => ({ result: { primaryDistrict: null, additionalPermissions: [] } })),
       getTechnicianZonePermissions(techId).catch(() => null),
     ]);
-    setTechPermissions(distRes.result || { primaryDistrict: null, permissions: [] });
+    const rawRes = distRes?.result || distRes?.data || distRes || {};
+    const perms = Array.isArray(rawRes?.additionalPermissions)
+      ? rawRes.additionalPermissions
+      : (Array.isArray(rawRes?.permissions)
+        ? rawRes.permissions
+        : (Array.isArray(rawRes) ? rawRes : []));
+    const primary = rawRes?.primaryDistrict || selectedTechForPermission?.primaryCityId || null;
+    const allowedIds = Array.isArray(rawRes?.allowedDistrictIds) ? rawRes.allowedDistrictIds : [];
+
+    setTechPermissions({
+      ...rawRes,
+      primaryDistrict: primary,
+      permissions: perms,
+      additionalPermissions: perms,
+      allowedDistrictIds: allowedIds,
+    });
     setTechZonePermissions(zoneRes || null);
   };
 
   const handleGrantDistrictPermission = async () => {
     if (!selectedDistrictToGrant || !selectedTechForPermission) return;
 
+    const resolvedPrimary = getResolvedPrimaryDistrict();
+    const primaryId = resolvedPrimary?._id ? String(resolvedPrimary._id) : "";
+    const primaryCity = (resolvedPrimary?.city || resolvedPrimary?.name || "").toLowerCase().trim();
+
+    const currentAdditional = techPermissions?.permissions || techPermissions?.additionalPermissions || [];
+    const existingPermDistIds = currentAdditional.map((p) =>
+      String(p.districtId?._id || p.districtId?.id || p.districtId || "")
+    );
+
     const targetDist = districts.find((d) => String(d._id) === String(selectedDistrictToGrant));
+    const targetCity = (targetDist?.city || targetDist?.name || "").toLowerCase().trim();
+
+    if (
+      (primaryId && String(selectedDistrictToGrant) === primaryId) ||
+      (primaryCity && targetCity && primaryCity === targetCity)
+    ) {
+      toast({
+        title: "Primary Base District",
+        description: `"${targetDist?.name || 'This district'}" is already the technician's primary registered base hub. It is always enabled by default.`,
+        status: "info",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (existingPermDistIds.includes(String(selectedDistrictToGrant))) {
+      toast({
+        title: "Permission Already Exists",
+        description: `District permission for "${targetDist?.name || 'this district'}" is already granted to this technician.`,
+        status: "info",
+        duration: 4000,
+        isClosable: true,
+      });
+      return;
+    }
+
     if (targetDist) {
       if (targetDist.active === false || targetDist.isActive === false) {
         toast({
@@ -1370,12 +1512,40 @@ export default function CityZones() {
     try {
       setIsSubmitting(true);
       await addTechnicianDistrictPermission(selectedTechForPermission._id, selectedDistrictToGrant);
-      toast({ title: "Permission Granted", description: "Additional district enabled for technician.", status: "success", duration: 3000, isClosable: true });
+      toast({
+        title: "Permission Granted",
+        description: `Additional district access granted for "${targetDist?.name || 'district'}".`,
+        status: "success",
+        duration: 3000,
+        isClosable: true
+      });
       await refreshPermissions(selectedTechForPermission._id);
       setSelectedDistrictToGrant("");
       await fetchData();
     } catch (err) {
-      toast({ title: "Permission Error", description: err.message || "Failed to grant permission.", status: "error", duration: 3000, isClosable: true });
+      if (
+        err.message?.includes("already granted") ||
+        err.message?.includes("already exists") ||
+        err.message?.includes("already technician's primary")
+      ) {
+        toast({
+          title: "Permission Already Active",
+          description: err.message || "This district permission is already active for this technician.",
+          status: "info",
+          duration: 3500,
+          isClosable: true,
+        });
+        await refreshPermissions(selectedTechForPermission._id);
+        setSelectedDistrictToGrant("");
+      } else {
+        toast({
+          title: "Permission Error",
+          description: err.message || "Failed to grant district permission.",
+          status: "error",
+          duration: 3500,
+          isClosable: true
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -2183,7 +2353,7 @@ export default function CityZones() {
                 {(activeTab === 1 || activeTab === 3) && (
                   <Select
                     size="sm"
-                    w={{ base: "100%", sm: "240px" }}
+                    w={{ base: "100%", sm: "220px" }}
                     borderRadius="8px"
                     bg="white"
                     border="1px solid"
@@ -2198,7 +2368,24 @@ export default function CityZones() {
                   </Select>
                 )}
 
-                {(searchTerm || districtFilter !== "all" || selectedDistrictFilter !== "all") && (
+                {activeTab === 3 && (
+                  <Select
+                    size="sm"
+                    w={{ base: "100%", sm: "190px" }}
+                    borderRadius="8px"
+                    bg="white"
+                    border="1px solid"
+                    borderColor="gray.300"
+                    value={permissionFilter}
+                    onChange={(e) => { setPermissionFilter(e.target.value); setCurrentPage(1); }}
+                  >
+                    <option value="all">All Permissions</option>
+                    <option value="multi_district">Multi-District Granted</option>
+                    <option value="single_district">Primary District Only</option>
+                  </Select>
+                )}
+
+                {(searchTerm || districtFilter !== "all" || selectedDistrictFilter !== "all" || permissionFilter !== "all") && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -2658,6 +2845,7 @@ export default function CityZones() {
                           <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">TECHNICIAN</Th>
                           <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">PHONE</Th>
                           <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">PRIMARY DISTRICT</Th>
+                          <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">PERMISSIONED DISTRICTS</Th>
                           <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">SERVICE RADIUS</Th>
                           <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">GEOFENCE STATUS</Th>
                           <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="right" whiteSpace="nowrap">ACTIONS</Th>
@@ -2665,7 +2853,7 @@ export default function CityZones() {
                       </Thead>
                       <Tbody>
                         {currentTechnicians.length === 0 ? (
-                          <Tr><Td colSpan={7} textAlign="center" py={10} color="gray.500">No technicians found.</Td></Tr>
+                          <Tr><Td colSpan={8} textAlign="center" py={10} color="gray.500">No technicians found.</Td></Tr>
                         ) : (
                           currentTechnicians.map((tech, idx) => {
                             const techName = (tech.fname || tech.lname)
@@ -2676,6 +2864,7 @@ export default function CityZones() {
                             const primaryCityName = tech.primaryCityId?.name || tech.city || null;
                             const primaryDistName = primaryCityName || "Not Assigned";
                             const isVerified = tech.isLocationVerified !== false;
+                            const permissions = tech.allowedDistricts || tech.permittedDistricts || tech.districtPermissions || tech.secondaryDistricts || [];
 
                             return (
                               <Tr key={tech._id} _hover={{ bg: "teal.50" }} transition="background 0.15s">
@@ -2687,6 +2876,27 @@ export default function CityZones() {
                                     <Icon as={MdLocationOn} mr={1} />
                                     {primaryDistName}
                                   </Tag>
+                                </Td>
+                                <Td py={3}>
+                                  {permissions.length === 0 ? (
+                                    <Badge colorScheme="gray" variant="subtle" fontSize="10px" px={2} py={0.5} borderRadius="full">
+                                      Primary Only
+                                    </Badge>
+                                  ) : (
+                                    <HStack spacing={1} flexWrap="wrap">
+                                      <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="full" fontWeight="bold">
+                                        +{permissions.length} Additional
+                                      </Badge>
+                                      {permissions.slice(0, 2).map((p, pIdx) => {
+                                        const name = p.name || p.districtName || getDistrictNameById(p._id || p.districtId || p);
+                                        return name && name !== "N/A" ? (
+                                          <Tag key={pIdx} size="sm" colorScheme="blue" borderRadius="4px" fontSize="10px">
+                                            {name}
+                                          </Tag>
+                                        ) : null;
+                                      })}
+                                    </HStack>
+                                  )}
                                 </Td>
                                 <Td py={3}>
                                   <Tag colorScheme="purple" size="sm" borderRadius="6px" fontWeight="700">
@@ -3748,60 +3958,113 @@ export default function CityZones() {
       <Modal isOpen={isDistrictTechModalOpen} onClose={() => setIsDistrictTechModalOpen(false)} size="xl">
         <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
         <ModalContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401}>
-          <ModalHeader bg="white" color={BRAND}>Technicians Authorized in {viewingDistrictName}</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6}>
+          <ModalHeader bg="white" color={BRAND} pb={2} borderBottom="1px solid" borderColor="gray.100">
+            <HStack spacing={2}>
+              <Icon as={MdPersonAdd} color={BRAND} />
+              <Text fontSize="md" fontWeight="700">Technicians Authorized in {viewingDistrictName}</Text>
+            </HStack>
+          </ModalHeader>
+          <ModalCloseButton top={4} right={4} />
+          <ModalBody py={4}>
             {(!Array.isArray(districtTechList) || districtTechList.length === 0) ? (
-              <Text color="gray.500" py={4} textAlign="center">No technicians currently authorized for this district.</Text>
+              <Text color="gray.500" py={6} textAlign="center" fontSize="xs">
+                No technicians currently authorized for this district.
+              </Text>
             ) : (
-              <Table size="sm" variant="simple">
-                <Thead bg="teal.50">
-                  <Tr>
-                    <Th>NAME</Th>
-                    <Th>PHONE</Th>
-                    <Th>PERMISSION TYPE</Th>
-                    <Th>STATUS</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {(Array.isArray(districtTechList) ? districtTechList : []).map((t, idx) => {
-                    const fname = t.userId?.fname || t.fname || t.userId?.name || t.name || "Technician";
-                    const lname = t.userId?.lname || t.lname || "";
-                    const fullName = `${fname} ${lname}`.trim();
-                    const phone = t.userId?.mobileNumber || t.userId?.phone || t.mobileNumber || t.phone || "N/A";
-                    return (
-                      <Tr key={t._id || idx}>
-                        <Td fontWeight="600">{fullName}</Td>
-                        <Td>{phone}</Td>
-                        <Td><Tag colorScheme={t.permissionType === "PRIMARY" ? "teal" : "purple"}>{t.permissionType || "STANDARD"}</Tag></Td>
-                        <Td><StatusPill tone="active">Enabled</StatusPill></Td>
-                      </Tr>
-                    );
-                  })}
-                </Tbody>
-              </Table>
+              <Box border="1px solid" borderColor="gray.200" borderRadius="8px" overflow="hidden">
+                <Table size="sm" variant="simple">
+                  <Thead bg="teal.50">
+                    <Tr>
+                      <Th fontSize="10px" py={3} color="teal.800" textTransform="uppercase" letterSpacing="0.5px">NAME</Th>
+                      <Th fontSize="10px" py={3} color="teal.800" textTransform="uppercase" letterSpacing="0.5px">PHONE</Th>
+                      <Th fontSize="10px" py={3} color="teal.800" textAlign="center" textTransform="uppercase" letterSpacing="0.5px" w="140px">PERMISSION TYPE</Th>
+                      <Th fontSize="10px" py={3} color="teal.800" textAlign="center" textTransform="uppercase" letterSpacing="0.5px" w="120px">STATUS</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {(Array.isArray(districtTechList) ? districtTechList : []).map((t, idx) => {
+                      const fname = t.userId?.fname || t.fname || t.userId?.name || t.name || "Technician";
+                      const lname = t.userId?.lname || t.lname || "";
+                      const fullName = `${fname} ${lname}`.trim();
+                      const phone = t.userId?.mobileNumber || t.userId?.phone || t.mobileNumber || t.phone || "N/A";
+                      return (
+                        <Tr key={t._id || idx} borderBottom="1px solid" borderColor="gray.100" _hover={{ bg: "gray.50" }}>
+                          <Td py={3} fontWeight="600" fontSize="xs">{fullName}</Td>
+                          <Td py={3} fontSize="xs">{phone}</Td>
+                          <Td py={3} textAlign="center">
+                            <Badge colorScheme={t.permissionType === "PRIMARY" ? "teal" : "purple"} fontSize="10px" px={2.5} py={0.5} borderRadius="full">
+                              {t.permissionType || "STANDARD"}
+                            </Badge>
+                          </Td>
+                          <Td py={3} textAlign="center">
+                            <StatusPill tone="active">Enabled</StatusPill>
+                          </Td>
+                        </Tr>
+                      );
+                    })}
+                  </Tbody>
+                </Table>
+              </Box>
             )}
           </ModalBody>
+          <ModalFooter borderTop="1px solid" borderColor="gray.100" pt={3} pb={3}>
+            <Button colorScheme="teal" borderRadius="8px" size="sm" onClick={() => setIsDistrictTechModalOpen(false)}>
+              Close
+            </Button>
+          </ModalFooter>
         </ModalContent>
       </Modal>
 
       {/* MANAGE TECHNICIAN DISTRICT & CITY ZONE PERMISSIONS MODAL */}
-      <Modal isOpen={isPermissionModalOpen} onClose={() => setIsPermissionModalOpen(false)} size="xl">
+      {/* MANAGE TECHNICIAN DISTRICT & CITY ZONE PERMISSIONS MODAL */}
+      <Modal isOpen={isPermissionModalOpen} onClose={() => setIsPermissionModalOpen(false)} size="2xl">
         <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
-        <ModalContent bg="white" borderRadius="16px" maxH="85vh" boxShadow="2xl" zIndex={1401}>
-          <ModalHeader bg="white" color={BRAND}>
-            Technician Permissions — {selectedTechForPermission?.fname} {selectedTechForPermission?.lname}
+        <ModalContent bg="white" borderRadius="16px" maxH="88vh" boxShadow="2xl" zIndex={1401}>
+          <ModalHeader bg="white" color={BRAND} pb={2} borderBottom="1px solid" borderColor="gray.100">
+            <Flex align="center" justify="space-between" pr={6}>
+              <HStack spacing={3}>
+                <Box p={2} bg="teal.50" color={BRAND} borderRadius="10px">
+                  <Icon as={MdSecurity} boxSize={5} />
+                </Box>
+                <Box>
+                  <Text fontSize="lg" fontWeight="700" color={BRAND}>
+                    Technician Permissions — {getTechDisplayName(selectedTechForPermission)}
+                  </Text>
+                  <HStack spacing={2} mt={0.5}>
+                    <Badge colorScheme="teal" fontSize="10px">
+                      Base Hub: {getResolvedPrimaryDistrict()?.name || selectedTechForPermission?.city || "Primary Assigned"}
+                    </Badge>
+                    {(selectedTechForPermission?.mobileNumber || selectedTechForPermission?.phone || selectedTechForPermission?.userId?.mobileNumber) && (
+                      <Text fontSize="11px" color="gray.500">
+                        📱 {selectedTechForPermission?.mobileNumber || selectedTechForPermission?.phone || selectedTechForPermission?.userId?.mobileNumber}
+                      </Text>
+                    )}
+                  </HStack>
+                </Box>
+              </HStack>
+            </Flex>
           </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody overflowY="auto" css={globalScrollbarStyles}>
-            <VStack spacing={5} align="stretch">
-              <Box p={3} bg="teal.50" borderRadius="10px" borderLeft="4px solid" borderColor={BRAND}>
-                <Text fontSize="11px" fontWeight="700" color="teal.800" textTransform="uppercase" letterSpacing="0.5px">
-                  Primary Registered District
-                </Text>
-                <Text fontSize="sm" fontWeight="700" color={BRAND}>
-                  {techPermissions?.primaryDistrict?.name || selectedTechForPermission?.primaryCityId?.name || selectedTechForPermission?.city || "None Specified"}
-                </Text>
+          <ModalCloseButton top={4} right={4} />
+          <ModalBody overflowY="auto" css={globalScrollbarStyles} py={4}>
+            <VStack spacing={4} align="stretch">
+              <Box p={3.5} bg="teal.50" borderRadius="12px" border="1px solid" borderColor="teal.200">
+                <Flex justify="space-between" align="center" flexWrap="wrap" gap={2}>
+                  <Box>
+                    <HStack spacing={1.5} mb={0.5}>
+                      <Icon as={MdLocationOn} color="teal.700" />
+                      <Text fontSize="11px" fontWeight="700" color="teal.800" textTransform="uppercase" letterSpacing="0.5px">
+                        Primary Registered District
+                      </Text>
+                      <Badge colorScheme="teal" fontSize="9px" px={1.5}>Default Base Hub</Badge>
+                    </HStack>
+                    <Text fontSize="sm" fontWeight="700" color={BRAND}>
+                      {getResolvedPrimaryDistrict()?.name || selectedTechForPermission?.city || "None Specified"}
+                    </Text>
+                    <Text fontSize="10px" color="gray.600">
+                      Auto-authorized for all bookings in this hub. Cannot be disabled without reassigning base registration hub.
+                    </Text>
+                  </Box>
+                </Flex>
               </Box>
 
               <Box p={3} bg="blue.50" borderRadius="10px" border="1px solid" borderColor="blue.200">
@@ -3838,80 +4101,268 @@ export default function CityZones() {
               </Box>
 
               {/* 1. DISTRICT PERMISSIONS */}
-              <Box p={4} border="1px solid" borderColor={SURFACE_BORDER} borderRadius="12px" bg="white">
-                <Text fontSize="xs" fontWeight="700" color="gray.700" mb={3} textTransform="uppercase" letterSpacing="0.5px">
-                  1. District Permissions
-                </Text>
+              {(() => {
+                const resolvedPrim = getResolvedPrimaryDistrict();
+                const primaryId = resolvedPrim?._id ? String(resolvedPrim._id) : "";
+                const primaryCity = (resolvedPrim?.city || resolvedPrim?.name || "").toLowerCase().trim();
 
-                <HStack mb={3}>
-                  <Select
-                    placeholder="Select Additional District to Enable..."
-                    size="sm"
-                    borderRadius="8px"
-                    value={selectedDistrictToGrant}
-                    onChange={(e) => setSelectedDistrictToGrant(e.target.value)}
-                  >
-                    {districts.map((d) => {
-                      const isAct = d.active !== false && d.isActive !== false;
-                      const isJobOn = d.isJobEnabled !== false;
-                      const isDisabled = !isAct || !isJobOn;
-                      let statusNote = "";
-                      if (!isAct) statusNote = " — [INACTIVE: Activate District First]";
-                      else if (!isJobOn) statusNote = " — [JOBS DISABLED: Enable Jobs First]";
+                const currentRawAddl = techPermissions?.permissions || techPermissions?.additionalPermissions || [];
+                const currentAddl = currentRawAddl.filter((p) => {
+                  const dId = String(p.districtId?._id || p.districtId?.id || p.districtId || "");
+                  const dCity = (p.districtId?.city || "").toLowerCase().trim();
+                  const dName = (p.districtId?.name || getDistrictNameById(dId) || "").toLowerCase().trim();
+                  if (primaryId && dId === primaryId) return false;
+                  if (primaryCity && (dCity === primaryCity || dName.includes(primaryCity))) return false;
+                  return true;
+                });
 
-                      return (
-                        <option key={d._id} value={d._id} disabled={isDisabled} style={{ color: isDisabled ? "red" : "inherit" }}>
-                          {d.name} ({d.city}){statusNote}
-                        </option>
-                      );
-                    })}
-                  </Select>
-                  <Button size="sm" bg={BRAND} color="white" _hover={{ bg: BRAND_DARK }} borderRadius="8px" onClick={handleGrantDistrictPermission} isLoading={isSubmitting}>
-                    Enable District
-                  </Button>
-                </HStack>
+                return (
+                  <Box p={4} border="1px solid" borderColor={SURFACE_BORDER} borderRadius="12px" bg="white" boxShadow="xs">
+                    <Flex justify="space-between" align="center" mb={3} flexWrap="wrap" gap={2}>
+                      <Box>
+                        <HStack spacing={1.5}>
+                          <Icon as={MdLocationCity} color={BRAND} />
+                          <Text fontSize="xs" fontWeight="700" color="gray.800" textTransform="uppercase" letterSpacing="0.5px">
+                            1. District Permissions & Coverage
+                          </Text>
+                        </HStack>
+                        <Text fontSize="11px" color="gray.500">
+                          Authorized operational hubs for service request dispatch.
+                        </Text>
+                      </Box>
+                      <Badge colorScheme="purple" fontSize="11px" px={2.5} py={0.5} borderRadius="full">
+                        {1 + currentAddl.length} Authorized Hub{1 + currentAddl.length === 1 ? "" : "s"}
+                      </Badge>
+                    </Flex>
 
-                {(!techPermissions?.permissions || techPermissions.permissions.length === 0) ? (
-                  <Text fontSize="xs" color="gray.500" py={1}>No additional districts enabled.</Text>
-                ) : (
-                  <Table size="sm" variant="simple">
-                    <Thead bg={SURFACE_MUTED}>
-                      <Tr>
-                        <Th fontSize="10px">DISTRICT</Th>
-                        <Th fontSize="10px">STATUS</Th>
-                        <Th fontSize="10px" textAlign="right">ACTION</Th>
-                      </Tr>
-                    </Thead>
-                    <Tbody>
-                      {techPermissions.permissions.map((p) => {
-                        const distId = p.districtId?._id || p.districtId;
-                        const distName = p.districtId?.name || getDistrictNameById(distId);
-                        return (
-                          <Tr key={p._id || distId}>
-                            <Td fontWeight="600" fontSize="xs">{distName}</Td>
-                            <Td>
-                              <Switch
-                                isChecked={p.isEnabled}
-                                colorScheme="teal"
-                                onChange={() => handleTogglePermission(distId, p.isEnabled)}
-                              />
-                            </Td>
-                            <Td textAlign="right">
-                              <IconButton
-                                size="xs"
-                                icon={<MdDelete />}
-                                colorScheme="red"
-                                variant="ghost"
-                                onClick={() => handleRemovePermission(distId)}
-                              />
-                            </Td>
+                    <HStack mb={3.5} spacing={2}>
+                      <Select
+                        placeholder="Select Additional District to Enable..."
+                        size="sm"
+                        borderRadius="8px"
+                        value={selectedDistrictToGrant}
+                        onChange={(e) => setSelectedDistrictToGrant(e.target.value)}
+                        bg="gray.50"
+                        _focus={{ bg: "white", borderColor: BRAND }}
+                      >
+                        {districts.map((d) => {
+                          const isAct = d.active !== false && d.isActive !== false;
+                          const isJobOn = d.isJobEnabled !== false;
+                          const targetCity = (d.city || d.name || "").toLowerCase().trim();
+
+                          const isPrimary = (primaryId && String(d._id) === primaryId) || (primaryCity && targetCity && primaryCity === targetCity);
+                          const isAlreadyGranted = currentAddl.some(
+                            (p) => String(p.districtId?._id || p.districtId?.id || p.districtId) === String(d._id)
+                          );
+
+                          const isDisabled = !isAct || !isJobOn || isPrimary || isAlreadyGranted;
+                          let statusNote = "";
+                          if (isPrimary) statusNote = " — [PRIMARY BASE DISTRICT - ACTIVE]";
+                          else if (isAlreadyGranted) statusNote = " — [ALREADY PERMISSIONED]";
+                          else if (!isAct) statusNote = " — [INACTIVE: Activate in District Master]";
+                          else if (!isJobOn) statusNote = " — [JOBS DISABLED: Enable in District Master]";
+
+                          return (
+                            <option
+                              key={d._id}
+                              value={d._id}
+                              disabled={isDisabled}
+                              style={{
+                                color: (isPrimary || isAlreadyGranted) ? "#718096" : (isDisabled ? "#E53E3E" : "inherit"),
+                                backgroundColor: (isPrimary || isAlreadyGranted) ? "#EDF2F7" : "inherit",
+                              }}
+                            >
+                              {d.name} ({d.city}){statusNote}
+                            </option>
+                          );
+                        })}
+                      </Select>
+                      <Button
+                        size="sm"
+                        bg={BRAND}
+                        color="white"
+                        _hover={{ bg: BRAND_DARK }}
+                        borderRadius="8px"
+                        onClick={handleGrantDistrictPermission}
+                        isLoading={isSubmitting}
+                        leftIcon={<MdAddCircleOutline />}
+                        flexShrink={0}
+                      >
+                        Enable District
+                      </Button>
+                    </HStack>
+
+                    <Box border="1px solid" borderColor="gray.200" borderRadius="8px" overflow="hidden">
+                      <Table size="sm" variant="simple">
+                        <Thead bg={SURFACE_MUTED}>
+                          <Tr>
+                            <Th fontSize="10px" py={3} color="gray.600" textTransform="uppercase" letterSpacing="0.5px">
+                              District / Operational Hub
+                            </Th>
+                            <Th fontSize="10px" py={3} color="gray.600" textAlign="center" textTransform="uppercase" letterSpacing="0.5px" w="140px">
+                              Permission Type
+                            </Th>
+                            <Th fontSize="10px" py={3} color="gray.600" textAlign="center" textTransform="uppercase" letterSpacing="0.5px" w="150px">
+                              Status
+                            </Th>
+                            <Th fontSize="10px" py={3} color="gray.600" textAlign="center" textTransform="uppercase" letterSpacing="0.5px" w="110px">
+                              Action
+                            </Th>
                           </Tr>
-                        );
-                      })}
-                    </Tbody>
-                  </Table>
-                )}
-              </Box>
+                        </Thead>
+                        <Tbody>
+                          {/* ROW 1: PRIMARY BASE DISTRICT */}
+                          {(() => {
+                            const pName = resolvedPrim?.name || (selectedTechForPermission?.city ? `${selectedTechForPermission.city} Operational Range` : "Primary Base District");
+                            const pCity = resolvedPrim?.city || selectedTechForPermission?.city || "";
+                            return (
+                              <Tr bg="teal.50" borderBottom="1px solid" borderColor="teal.100">
+                                <Td py={3}>
+                                  <HStack spacing={3} align="center">
+                                    <Flex
+                                      w="32px"
+                                      h="32px"
+                                      bg="teal.100"
+                                      color="teal.800"
+                                      borderRadius="8px"
+                                      align="center"
+                                      justify="center"
+                                      flexShrink={0}
+                                    >
+                                      <Icon as={MdLocationOn} boxSize={4} />
+                                    </Flex>
+                                    <Box>
+                                      <Text fontWeight="700" fontSize="xs" color="teal.900" lineHeight="short">
+                                        {pName} {pCity && !pName.includes(pCity) ? `(${pCity})` : ""}
+                                      </Text>
+                                      <Text fontSize="10px" color="teal.700" mt={0.5}>
+                                        Technician home registration district
+                                      </Text>
+                                    </Box>
+                                  </HStack>
+                                </Td>
+                                <Td py={3} textAlign="center" whiteSpace="nowrap">
+                                  <Badge colorScheme="teal" variant="solid" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
+                                    PRIMARY BASE
+                                  </Badge>
+                                </Td>
+                                <Td py={3} textAlign="center" whiteSpace="nowrap">
+                                  <Badge colorScheme="green" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
+                                    <HStack spacing={1} justify="center">
+                                      <Icon as={MdCheckCircle} />
+                                      <Text>Always Active</Text>
+                                    </HStack>
+                                  </Badge>
+                                </Td>
+                                <Td py={3} textAlign="center" whiteSpace="nowrap">
+                                  <Badge
+                                    colorScheme="gray"
+                                    variant="outline"
+                                    fontSize="10px"
+                                    px={2.5}
+                                    py={1}
+                                    borderRadius="md"
+                                    whiteSpace="nowrap"
+                                    fontWeight="600"
+                                    bg="white"
+                                  >
+                                    Default Hub
+                                  </Badge>
+                                </Td>
+                              </Tr>
+                            );
+                          })()}
+
+                          {/* ROWS 2+: ADDITIONAL DISTRICT PERMISSIONS */}
+                          {currentAddl.map((p) => {
+                            const distId = p.districtId?._id || p.districtId?.id || p.districtId;
+                            const distName = p.districtId?.name || getDistrictNameById(distId);
+                            const distCity = p.districtId?.city || "";
+                            return (
+                              <Tr key={p._id || distId} _hover={{ bg: "gray.50" }} borderBottom="1px solid" borderColor="gray.100">
+                                <Td py={3}>
+                                  <HStack spacing={3} align="center">
+                                    <Flex
+                                      w="32px"
+                                      h="32px"
+                                      bg="purple.100"
+                                      color="purple.800"
+                                      borderRadius="8px"
+                                      align="center"
+                                      justify="center"
+                                      flexShrink={0}
+                                    >
+                                      <Icon as={MdLocationCity} boxSize={4} />
+                                    </Flex>
+                                    <Box>
+                                      <Text fontWeight="600" fontSize="xs" color={INK} lineHeight="short">
+                                        {distName} {distCity && !distName.includes(distCity) ? `(${distCity})` : ""}
+                                      </Text>
+                                      <Text fontSize="10px" color="gray.500" mt={0.5}>
+                                        Cross-district dispatch authorized
+                                      </Text>
+                                    </Box>
+                                  </HStack>
+                                </Td>
+                                <Td py={3} textAlign="center" whiteSpace="nowrap">
+                                  <Badge colorScheme="purple" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
+                                    ADDITIONAL GRANT
+                                  </Badge>
+                                </Td>
+                                <Td py={3} textAlign="center" whiteSpace="nowrap">
+                                  <HStack spacing={2} justify="center">
+                                    <Switch
+                                      size="sm"
+                                      isChecked={p.isEnabled}
+                                      colorScheme="teal"
+                                      onChange={() => handleTogglePermission(distId, p.isEnabled)}
+                                    />
+                                    <Badge
+                                      colorScheme={p.isEnabled ? "green" : "gray"}
+                                      fontSize="10px"
+                                      px={2}
+                                      py={0.5}
+                                      borderRadius="full"
+                                    >
+                                      {p.isEnabled ? "Enabled" : "Paused"}
+                                    </Badge>
+                                  </HStack>
+                                </Td>
+                                <Td py={3} textAlign="center" whiteSpace="nowrap">
+                                  <Button
+                                    size="xs"
+                                    leftIcon={<MdDelete />}
+                                    colorScheme="red"
+                                    variant="ghost"
+                                    borderRadius="6px"
+                                    h="26px"
+                                    px={2.5}
+                                    fontSize="11px"
+                                    title="Revoke additional district permission"
+                                    onClick={() => handleRemovePermission(distId)}
+                                  >
+                                    Revoke
+                                  </Button>
+                                </Td>
+                              </Tr>
+                            );
+                          })}
+                        </Tbody>
+                      </Table>
+                    </Box>
+
+                    {/* HELPER TEXT WHEN NO ADDITIONAL DISTRICTS ARE YET GRANTED */}
+                    {currentAddl.length === 0 && (
+                      <Flex align="center" mt={3} p={2.5} bg="gray.50" borderRadius="8px" border="1px dashed" borderColor="gray.300">
+                        <Icon as={MdInfoOutline} color="gray.500" mr={2} boxSize={4} />
+                        <Text fontSize="11px" color="gray.600">
+                          No additional districts granted yet. This technician currently operates exclusively within their <strong>Primary Base Hub</strong>. Select an operational district above to expand their dispatch coverage.
+                        </Text>
+                      </Flex>
+                    )}
+                  </Box>
+                );
+              })()}
 
               {/* 2. CITY ZONE PERMISSIONS (GROUPED BY DISTRICT) */}
               <Box p={4} border="1px solid" borderColor={SURFACE_BORDER} borderRadius="12px" bg="white">
@@ -3984,8 +4435,10 @@ export default function CityZones() {
               </Box>
             </VStack>
           </ModalBody>
-          <ModalFooter borderTop="1px solid" borderColor="gray.100" pt={2}>
-            <Button variant="ghost" borderRadius="8px" onClick={() => setIsPermissionModalOpen(false)}>Close</Button>
+          <ModalFooter borderTop="1px solid" borderColor="gray.100" pt={3} pb={3} px={6}>
+            <Button colorScheme="teal" borderRadius="8px" size="sm" px={6} onClick={() => setIsPermissionModalOpen(false)}>
+              Close
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
@@ -4340,7 +4793,7 @@ export default function CityZones() {
               <VStack spacing={4} align="stretch">
                 <Box p={3} bg="teal.50" borderRadius="10px">
                   <Text fontSize="xs" fontWeight="700" color="teal.900">
-                    {selectedTechForPermission?.fname} {selectedTechForPermission?.lname}
+                    {getTechDisplayName(selectedTechForPermission)}
                   </Text>
                   <Text fontSize="11px" color="teal.700">
                     Assigned District: {techGeofenceDetail.districtName || selectedTechForPermission?.primaryCityId?.name || "N/A"}

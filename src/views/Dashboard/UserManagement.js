@@ -61,8 +61,8 @@ import {
   FaUserClock,
   FaArrowLeft,
   FaTimes,
+  FaCheckCircle,
 } from "react-icons/fa";
-import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdWarning, MdOutlinePayment } from "react-icons/md";
 import {
   getUsersByRole,
@@ -774,7 +774,7 @@ export default function UserManagement() {
                   w={{ base: "28px", md: "32px" }}
                   bg="orange.500"
                 >
-                  <Icon as={IoCheckmarkDoneCircleSharp} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
+                  <Icon as={FaCheckCircle} h={{ base: "14px", md: "18px" }} w={{ base: "14px", md: "18px" }} color="white" />
                 </IconBox>
               </Flex>
             </CardBody>

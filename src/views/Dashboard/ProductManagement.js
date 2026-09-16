@@ -189,7 +189,6 @@ import {
   FaBan,
   FaFileDownload,
 } from "react-icons/fa";
-import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdCategory, MdInventory, MdWarning } from "react-icons/md";
 
 // Custom IconBox component

@@ -1217,7 +1217,7 @@ export default function TechnicianPayouts() {
   }, [techHistoryBookings, selectedTechWithdrawals, selectedTechHistory]);
 
   return (
-    <Flex direction="column" pt={{ base: "120px", md: "75px" }} w="100%" maxW="100%" overflowX="hidden">
+    <Flex direction="column" pt={{ base: "120px", md: "75px" }} w="100%" maxW="100%" overflowX="hidden" pb={{ base: "60px", md: "80px" }}>
       {/* 18. INTERACTIVE NOTIFICATION ALERT BAR */}
       <HStack spacing="12px" mb="20px" flexWrap="wrap" overflowX="auto" pb="4px" maxW="100%">
         {metrics.failedCount > 0 && (

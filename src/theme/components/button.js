@@ -20,17 +20,17 @@ export const buttonStyles = {
           _active: { bg: "navy.900" },
         },
         "no-effects": {
-          _hover: "none",
-          _active: "none",
-          _focus: "none",
+          _hover: { bg: "none" },
+          _active: { bg: "none" },
+          _focus: { boxShadow: "none" },
         },
         danger: () => ({
           color: "white",
           bg: "red.500",
           fontSize: "10px",
-          _hover: "red.400",
-          _focus: "red.400",
-          _active: "red.400",
+          _hover: { bg: "red.400" },
+          _focus: { bg: "red.400" },
+          _active: { bg: "red.400" },
         }),
         outlined: (props) => ({
           color: mode("blue.400", "white")(props),

@@ -586,6 +586,72 @@ export const ChakraLogoLight = createIcon({
   ),
 });
 
+export const ReportIcon = createIcon({
+  displayName: "ReportIcon",
+  viewBox: "0 0 24 24",
+  path: (
+    <path
+      fill='currentColor'
+      d='M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zM8 15h8v2H8v-2zm0-4h8v2H8v-2z'
+    />
+  ),
+});
+
+export const CommissionIcon = createIcon({
+  displayName: "CommissionIcon",
+  viewBox: "0 0 24 24",
+  path: (
+    <path
+      fill='currentColor'
+      d='M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z'
+    />
+  ),
+});
+
+export const CityIcon = createIcon({
+  displayName: "CityIcon",
+  viewBox: "0 0 24 24",
+  path: (
+    <path
+      fill='currentColor'
+      d='M15 11V5l-3-3-3 3v2H3v14h18V11h-6zm-8 8H5v-2h2v2zm0-4H5v-2h2v2zm0-4H5V9h2v2zm6 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V9h2v2zm0-4h-2V5h2v2zm6 12h-2v-2h2v2zm0-4h-2v-2h2v2z'
+    />
+  ),
+});
+
+export const ZoneIcon = createIcon({
+  displayName: "ZoneIcon",
+  viewBox: "0 0 24 24",
+  path: (
+    <path
+      fill='currentColor'
+      d='M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z'
+    />
+  ),
+});
+
+export const FinanceIcon = createIcon({
+  displayName: "FinanceIcon",
+  viewBox: "0 0 24 24",
+  path: (
+    <path
+      fill='currentColor'
+      d='M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm8.5 2c0 3.31-2.69 6-6 6h-1c-.68 1.73-2.33 3-4.25 3-1.83 0-3.39-.99-4.25-2.5C5.75 20.5 4 22 2 22c-.55 0-1-.45-1-1s.45-1 1-1c1.1 0 2-.9 2-2 0-1.83 1.17-3.33 2.75-3.92C7.21 13.5 7 12.79 7 12c0-1.24.5-2.35 1.3-3.17C9.4 8.24 11.64 8 12 8c.36 0 2.6.24 3.7.83C16.5 9.65 17 10.76 17 12c0 .79-.21 1.5-.75 2.08.92.28 1.75.92 1.75 1.92 1.1 0 2 .9 2 2 0 .37-.1.71-.27 1 .59-.63 1.27-1.31 1.27-2.37 0-1.48-.84-2.75-2.07-3.38.65-.63 1.07-1.5 1.07-2.5zM12 2c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z'
+    />
+  ),
+});
+
+export const PayoutIcon = createIcon({
+  displayName: "PayoutIcon",
+  viewBox: "0 0 24 24",
+  path: (
+    <path
+      fill='currentColor'
+      d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1.41 16.09V20h-2.67v-1.93c-1.71-.36-3.16-1.46-3.27-3.4h1.96c.1 1.05.82 1.87 2.65 1.87 1.96 0 2.4-.98 2.4-1.59 0-.83-.44-1.61-2.67-2.14-2.48-.6-4.18-1.62-4.18-3.67 0-1.72 1.39-2.84 3.11-3.21V4h2.67v1.95c1.86.45 2.79 1.86 2.85 3.39H14.3c-.05-1.11-.64-1.87-2.22-1.87-1.5 0-2.4.68-2.4 1.64 0 .84.65 1.39 2.67 1.91s4.18 1.39 4.18 3.91c-.01 1.83-1.38 2.83-3.12 3.16z'
+    />
+  ),
+});
+
 export const ChakraLogoBlue = createIcon({
   displayName: "Hello",
   viewBox: "0 0 82 21",

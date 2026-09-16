@@ -10,7 +10,7 @@ import {
 import { FaUsers, FaBoxOpen, FaEdit, FaSignOutAlt, FaSave, FaTimes, FaChartPie, FaCrown, FaStar, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import Card from "components/Card/Card";
 import { useNavigate } from "react-router-dom";
-import { getAllBookings, getAllServiceBooking, getAllTechnicians, getAllProduct, getAllServices, clearAuth } from "views/utils/axiosInstance";
+import { getAllBookings, getAllServiceBooking, getAllTechnicians, getAllProduct, getAllServices, clearAuth, getUser, getMyProfile, updateMyProfile } from "views/utils/axiosInstance";
 
 import ReactApexChart from 'react-apexcharts';
 
@@ -51,9 +51,7 @@ const getStatusColor = (status) => {
 };
 
 const getInitialOwnerData = () => {
-  const userString = localStorage.getItem("user");
-  let userData = {};
-  try { userData = JSON.parse(userString) || {}; } catch { }
+  const userData = getUser() || {};
 
   return {
     ownerId: userData._id || userData.id,
@@ -397,6 +395,30 @@ export default function OwnerProfile() {
     }
   }, [currentView, isOwner]);
 
+  useEffect(() => {
+    const loadMyProfile = async () => {
+      try {
+        const res = await getMyProfile();
+        const user = res?.result || res?.user || res?.data || res;
+        if (!user) return;
+        setOwnerData(prev => ({
+          ...prev,
+          ownerId: user._id || user.id || prev.ownerId,
+          name: user.fname && user.lname
+            ? `${user.fname} ${user.lname}`.trim()
+            : user.name || user.fname || prev.name,
+          email: user.email || prev.email,
+          role: user.role || prev.role,
+          avatar: user.avatar || user.profileImage || user.image || prev.avatar,
+          joined: user.createdAt ? new Date(user.createdAt).toLocaleDateString() : prev.joined,
+        }));
+      } catch (err) {
+        console.error("Error loading my profile:", err);
+      }
+    };
+    loadMyProfile();
+  }, []);
+
 
   const refreshProductsData = async () => {
     await fetchOwnerProducts();
@@ -428,10 +450,33 @@ export default function OwnerProfile() {
   };
 
 
-  const handleSaveProfile = (updatedData) => {
-    setOwnerData(updatedData);
+  const handleSaveProfile = async (updatedData) => {
     setIsEditingProfile(false);
-    toast({ title: "Profile updated", status: "success", duration: 2000 });
+    try {
+      const profilePayload = {
+        fname: updatedData.name || ownerData.name,
+        lname: updatedData.lname || ownerData.lname || "",
+        email: updatedData.email || ownerData.email,
+        role: updatedData.role || ownerData.role,
+      };
+
+      const res = await updateMyProfile(profilePayload);
+
+      setOwnerData(prev => ({ ...prev, ...updatedData }));
+
+      const userString = localStorage.getItem("user");
+      if (userString) {
+        try {
+          const storedUser = JSON.parse(userString);
+          localStorage.setItem("user", JSON.stringify({ ...storedUser, ...updatedData }));
+        } catch (e) { /* ignore */ }
+      }
+
+      toast({ title: "Profile updated", description: res.message || "Changes saved successfully", status: "success", duration: 2000 });
+    } catch (err) {
+      console.error("Error updating profile:", err);
+      toast({ title: "Update failed", description: err.message || "Failed to update profile", status: "error", duration: 3000 });
+    }
   };
 
   const handleCancelEdit = () => {

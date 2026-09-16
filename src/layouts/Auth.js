@@ -1,5 +1,5 @@
 // chakra imports
-import { Box, Portal } from "@chakra-ui/react";
+import { Box, Portal, Spinner, Flex } from "@chakra-ui/react";
 import Footer from "components/Footer/Footer.js";
 // core components
 import AuthNavbar from "components/Navbars/AuthNavbar.js";
@@ -93,11 +93,19 @@ export default function Pages(props) {
       </Portal>
       <Box w="100%">
         <Box ref={wrapper} w="100%">
-          <Routes>
-            {getRoutes(routes)}
-            {/* ✅ Default /auth redirect */}
-            <Route path="/auth" element={<Navigate to="/auth/signin" replace />} />
-          </Routes>
+          <React.Suspense
+            fallback={
+              <Flex justify="center" align="center" minH="50vh" w="100%">
+                <Spinner size="xl" color="#008080" thickness="4px" speed="0.65s" emptyColor="gray.200" />
+              </Flex>
+            }
+          >
+            <Routes>
+              {getRoutes(routes)}
+              {/* ✅ Default /auth redirect */}
+              <Route path="/auth" element={<Navigate to="/auth/signin" replace />} />
+            </Routes>
+          </React.Suspense>
         </Box>
       </Box>
       <Box px="24px" mx="auto" width="1044px" maxW="100%" mt="60px">

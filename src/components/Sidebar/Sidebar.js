@@ -22,6 +22,7 @@ import {
   AlertDialogOverlay,
   useToast,
   Image,
+  Badge,
 } from "@chakra-ui/react";
 import IconBox from "components/Icons/IconBox";
 import {
@@ -39,10 +40,29 @@ import { Scrollbars } from "react-custom-scrollbars";
 import { NavLink } from "react-router-dom";
 import FlareMindslogo from "assets/img/fm logo.png";
 
+import { clearAuth, getToken } from "views/utils/axiosInstance";
+import { useAdminNotificationCounts } from "hooks/useAdminNotificationCounts";
+
 function Sidebar(props) {
   const { sidebarVariant, logo, routes } = props;
   const mainPanel = React.useRef();
   const variantChange = "0.2s linear";
+
+  const { counts, markModuleRead } = useAdminNotificationCounts();
+
+  const getBadgeCount = (path) => {
+    if (path === "/product-management") return counts.productQuoteRequests || 0;
+    if (path === "/admin-management") return counts.technicianApplications || 0;
+    if (path === "/reports-ratings") return counts.customerReports || 0;
+    return 0;
+  };
+
+  const getModuleNameForPath = (path) => {
+    if (path === "/product-management") return "productQuoteRequests";
+    if (path === "/admin-management") return "technicianApplications";
+    if (path === "/reports-ratings") return "customerReports";
+    return null;
+  };
 
   const activeBg = useColorModeValue("#008080", "#008080"); // Purple background when active
   const inactiveBg = useColorModeValue("white", "navy.700");
@@ -68,8 +88,7 @@ function Sidebar(props) {
   const handleConfirmLogout = () => {
     try {
       closeLogout();
-      localStorage.clear();
-      sessionStorage.clear();
+      clearAuth();
       toast({
         title: "Logged out successfully",
         description: "Redirecting to the sign-in page...",
@@ -98,7 +117,7 @@ function Sidebar(props) {
 
   const createLinks = (routes) =>
     routes.map((prop, key) => {
-      if (prop.redirect) return null;
+      if (prop.redirect || prop.hideInSidebar) return null;
 
       if (prop.category) {
         return (
@@ -166,8 +185,8 @@ function Sidebar(props) {
             _active={{ bg: activeBg, transform: "none", borderColor: "transparent" }}
             _focus={{ boxShadow: "none" }}
             onClick={() => {
-              const user = localStorage.getItem("user") || sessionStorage.getItem("user");
-              if (!user) {
+              const token = getToken();
+              if (!token) {
                 // If not logged in, prompt to go to sign-in
                 openSigninPrompt();
                 return;
@@ -194,8 +213,19 @@ function Sidebar(props) {
         );
       }
 
+      const count = getBadgeCount(prop.path);
+      const modName = getModuleNameForPath(prop.path);
+
       return (
-        <NavLink to={prop.layout + prop.path} key={key}>
+        <NavLink
+          to={prop.layout + prop.path}
+          key={key}
+          onClick={() => {
+            if (modName && count > 0) {
+              markModuleRead(modName, null, true);
+            }
+          }}
+        >
           {({ isActive }) => (
             <Button
               boxSize="initial"
@@ -244,46 +274,76 @@ function Sidebar(props) {
               }}
               _focus={{ boxShadow: "none" }}
             >
-              <Flex>
-                <IconBox
-                  bg={isActive ? "white" : inactiveBg} // White background when active
-                  color={isActive ? "#008080" : "blue.500"} // Purple icon when active, blue when inactive
-                  h={{
-                    base: "24px",  // 320px - 480px
-                    sm: "26px",    // 481px - 767px
-                    md: "28px",    // 768px - 1024px
-                    lg: "30px",    // 1025px - 1280px
-                    xl: "30px"     // 1281px +
-                  }}
-                  w={{
-                    base: "24px",  // 320px - 480px
-                    sm: "26px",    // 481px - 767px
-                    md: "28px",    // 768px - 1024px
-                    lg: "30px",    // 1025px - 1280px
-                    xl: "30px"     // 1281px +
-                  }}
-                  me={{
-                    base: "8px",   // 320px - 480px
-                    sm: "10px",    // 481px - 767px
-                    md: "12px",    // 768px - 1024px
-                    lg: "12px",    // 1025px - 1280px
-                    xl: "12px"     // 1281px +
-                  }}
-                  transition="all 0.2s ease-in-out"
-                >
-                  {prop.icon}
-                </IconBox>
-                <Text my="auto" fontSize={{
-                  base: "xs",     // 320px - 480px
-                  sm: "sm",       // 481px - 767px
-                  md: "sm",       // 768px - 1024px
-                  lg: "sm",       // 1025px - 1280px
-                  xl: "sm"        // 1281px +
-                }}>
-                  {document.documentElement.dir === "rtl"
-                    ? prop.rtlName
-                    : prop.name}
-                </Text>
+              <Flex align="center" justify="space-between" w="100%" minW="0" gap={2}>
+                <Flex align="center" minW="0" flex="1">
+                  <IconBox
+                    bg={isActive ? "white" : inactiveBg} // White background when active
+                    color={isActive ? "#008080" : "blue.500"} // Purple icon when active, blue when inactive
+                    h={{
+                      base: "24px",  // 320px - 480px
+                      sm: "26px",    // 481px - 767px
+                      md: "28px",    // 768px - 1024px
+                      lg: "30px",    // 1025px - 1280px
+                      xl: "30px"     // 1281px +
+                    }}
+                    w={{
+                      base: "24px",  // 320px - 480px
+                      sm: "26px",    // 481px - 767px
+                      md: "28px",    // 768px - 1024px
+                      lg: "30px",    // 1025px - 1280px
+                      xl: "30px"     // 1281px +
+                    }}
+                    me={{
+                      base: "8px",   // 320px - 480px
+                      sm: "10px",    // 481px - 767px
+                      md: "12px",    // 768px - 1024px
+                      lg: "12px",    // 1025px - 1280px
+                      xl: "12px"     // 1281px +
+                    }}
+                    transition="all 0.2s ease-in-out"
+                    flexShrink={0}
+                  >
+                    {prop.icon}
+                  </IconBox>
+                  <Text
+                    my="auto"
+                    fontSize={{
+                      base: "xs",     // 320px - 480px
+                      sm: "sm",       // 481px - 767px
+                      md: "sm",       // 768px - 1024px
+                      lg: "sm",       // 1025px - 1280px
+                      xl: "sm"        // 1281px +
+                    }}
+                    fontWeight={isActive ? "700" : "600"}
+                    noOfLines={1}
+                    isTruncated
+                  >
+                    {document.documentElement.dir === "rtl"
+                      ? prop.rtlName
+                      : prop.name}
+                  </Text>
+                </Flex>
+                {count > 0 && (
+                  <Badge
+                    display="inline-flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    minW="20px"
+                    h="20px"
+                    px={count > 9 ? "6px" : "4px"}
+                    borderRadius="full"
+                    fontSize="11px"
+                    fontWeight="800"
+                    lineHeight="1"
+                    bg={isActive ? "white" : "red.500"}
+                    color={isActive ? "#008080" : "white"}
+                    boxShadow={isActive ? "0 2px 4px rgba(0,0,0,0.12)" : "0 1px 3px rgba(239, 68, 68, 0.35)"}
+                    border={isActive ? "1px solid rgba(0, 128, 128, 0.2)" : "none"}
+                    flexShrink={0}
+                  >
+                    {count > 99 ? "99+" : count}
+                  </Badge>
+                )}
               </Flex>
             </Button>
           )}
@@ -489,6 +549,22 @@ export function SidebarResponsive(props) {
   const { logo, routes, hamburgerColor, isOpen, onOpen, onClose } = props;
   const mainPanel = React.useRef();
 
+  const { counts, markModuleRead } = useAdminNotificationCounts();
+
+  const getBadgeCount = (path) => {
+    if (path === "/product-management") return counts.productQuoteRequests || 0;
+    if (path === "/admin-management") return counts.technicianApplications || 0;
+    if (path === "/reports-ratings") return counts.customerReports || 0;
+    return 0;
+  };
+
+  const getModuleNameForPath = (path) => {
+    if (path === "/product-management") return "productQuoteRequests";
+    if (path === "/admin-management") return "technicianApplications";
+    if (path === "/reports-ratings") return "customerReports";
+    return null;
+  };
+
   // Logout / signin state for responsive drawer
   const [isLogoutOpenResp, setIsLogoutOpenResp] = useState(false);
   const [isSigninPromptOpenResp, setIsSigninPromptOpenResp] = useState(false);
@@ -505,8 +581,7 @@ export function SidebarResponsive(props) {
     try {
       closeLogoutResp();
       if (onClose) onClose();
-      localStorage.clear();
-      sessionStorage.clear();
+      clearAuth();
       toastResp({
         title: "Logged out successfully",
         description: "Redirecting to the sign-in page...",
@@ -546,7 +621,7 @@ export function SidebarResponsive(props) {
 
   const createLinks = (routes) =>
     routes.map((prop, key) => {
-      if (prop.redirect) return null;
+      if (prop.redirect || prop.hideInSidebar) return null;
       if (prop.category) {
         return (
           <React.Fragment key={key}>
@@ -605,8 +680,8 @@ export function SidebarResponsive(props) {
             _active={{ bg: activeBg, transform: "none", borderColor: "transparent" }}
             _focus={{ boxShadow: "none" }}
             onClick={() => {
-              const user = localStorage.getItem("user") || sessionStorage.getItem("user");
-              if (!user) {
+              const token = getToken();
+              if (!token) {
                 openSigninPromptResp();
                 return;
               }
@@ -632,8 +707,20 @@ export function SidebarResponsive(props) {
         );
       }
 
+      const count = getBadgeCount(prop.path);
+      const modName = getModuleNameForPath(prop.path);
+
       return (
-        <NavLink to={prop.layout + prop.path} key={key} onClick={onClose}>
+        <NavLink
+          to={prop.layout + prop.path}
+          key={key}
+          onClick={() => {
+            if (modName && count > 0) {
+              markModuleRead(modName, null, true);
+            }
+            if (onClose) onClose();
+          }}
+        >
           {({ isActive }) => (
             <Button
               boxSize="initial"
@@ -674,38 +761,68 @@ export function SidebarResponsive(props) {
               }}
               _focus={{ boxShadow: "none" }}
             >
-              <Flex>
-                <IconBox
-                  bg={isActive ? "white" : inactiveBg} // White background when active
-                  color={isActive ? "#008080" : "blue.500"} // Purple icon when active, blue when inactive
-                  h={{
-                    base: "24px",  // 320px - 480px
-                    sm: "26px",    // 481px - 767px
-                    md: "28px"     // 768px - 1024px
-                  }}
-                  w={{
-                    base: "24px",  // 320px - 480px
-                    sm: "26px",    // 481px - 767px
-                    md: "28px"     // 768px - 1024px
-                  }}
-                  me={{
-                    base: "8px",   // 320px - 480px
-                    sm: "10px",    // 481px - 767px
-                    md: "12px"     // 768px - 1024px
-                  }}
-                  transition="all 0.2s ease-in-out"
-                >
-                  {prop.icon}
-                </IconBox>
-                <Text my="auto" fontSize={{
-                  base: "xs",     // 320px - 480px
-                  sm: "sm",       // 481px - 767px
-                  md: "sm"        // 768px - 1024px
-                }}>
-                  {document.documentElement.dir === "rtl"
-                    ? prop.rtlName
-                    : prop.name}
-                </Text>
+              <Flex align="center" justify="space-between" w="100%" minW="0" gap={2}>
+                <Flex align="center" minW="0" flex="1">
+                  <IconBox
+                    bg={isActive ? "white" : inactiveBg} // White background when active
+                    color={isActive ? "#008080" : "blue.500"} // Purple icon when active, blue when inactive
+                    h={{
+                      base: "24px",  // 320px - 480px
+                      sm: "26px",    // 481px - 767px
+                      md: "28px"     // 768px - 1024px
+                    }}
+                    w={{
+                      base: "24px",  // 320px - 480px
+                      sm: "26px",    // 481px - 767px
+                      md: "28px"     // 768px - 1024px
+                    }}
+                    me={{
+                      base: "8px",   // 320px - 480px
+                      sm: "10px",    // 481px - 767px
+                      md: "12px"     // 768px - 1024px
+                    }}
+                    transition="all 0.2s ease-in-out"
+                    flexShrink={0}
+                  >
+                    {prop.icon}
+                  </IconBox>
+                  <Text
+                    my="auto"
+                    fontSize={{
+                      base: "xs",     // 320px - 480px
+                      sm: "sm",       // 481px - 767px
+                      md: "sm"        // 768px - 1024px
+                    }}
+                    fontWeight={isActive ? "700" : "600"}
+                    noOfLines={1}
+                    isTruncated
+                  >
+                    {document.documentElement.dir === "rtl"
+                      ? prop.rtlName
+                      : prop.name}
+                  </Text>
+                </Flex>
+                {count > 0 && (
+                  <Badge
+                    display="inline-flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    minW="20px"
+                    h="20px"
+                    px={count > 9 ? "6px" : "4px"}
+                    borderRadius="full"
+                    fontSize="11px"
+                    fontWeight="800"
+                    lineHeight="1"
+                    bg={isActive ? "white" : "red.500"}
+                    color={isActive ? "#008080" : "white"}
+                    boxShadow={isActive ? "0 2px 4px rgba(0,0,0,0.12)" : "0 1px 3px rgba(239, 68, 68, 0.35)"}
+                    border={isActive ? "1px solid rgba(0, 128, 128, 0.2)" : "none"}
+                    flexShrink={0}
+                  >
+                    {count > 99 ? "99+" : count}
+                  </Badge>
+                )}
               </Flex>
             </Button>
           )}

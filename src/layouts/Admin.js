@@ -5,6 +5,8 @@ import {
   Stack,
   Box,
   useColorMode,
+  Spinner,
+  Flex,
 } from "@chakra-ui/react";
 import { Image } from "@chakra-ui/react";
 import FlareLogo from "assets/img/Right_Touch.png";
@@ -17,6 +19,8 @@ import FixedPlugin from "components/FixedPlugin/FixedPlugin";
 import MainPanel from "components/Layout/MainPanel";
 import PanelContainer from "components/Layout/PanelContainer";
 import PanelContent from "components/Layout/PanelContent";
+
+import { getToken, getUser } from "views/utils/axiosInstance";
 
 export default function Dashboard(props) {
   const { ...rest } = props;
@@ -31,22 +35,18 @@ export default function Dashboard(props) {
   document.documentElement.dir = "ltr";
 
   useEffect(() => {
-    const userString = localStorage.getItem("user") || sessionStorage.getItem("user");
-    if (!userString) {
+    const token = getToken();
+    const userData = getUser();
+
+    if (!token || !userData) {
       setUserRole(null);
       setIsLoading(false);
       return;
     }
 
-    try {
-      const userData = JSON.parse(userString);
-      setUserRole(userData.role?.toLowerCase());
-    } catch (error) {
-      console.error("Error parsing user data:", error);
-      setUserRole(null);
-    } finally {
-      setIsLoading(false);
-    }
+    const role = userData?.role?.toLowerCase() || "";
+    setUserRole(role);
+    setIsLoading(false);
   }, []);
 
   // Filter routes for sidebar - ONLY OWNER ROUTES
@@ -111,7 +111,6 @@ export default function Dashboard(props) {
               key: `${route.layout}${route.path}`
             });
           }
-          // 🔴 EXCLUDE /admin layout routes completely
         }
       });
 
@@ -127,14 +126,7 @@ export default function Dashboard(props) {
 
     // 🔐 STRICT CHECK: ONLY OWNER CAN ACCESS
     if (!userRole || userRole !== "owner") {
-      return (
-        <>
-          <Route path="*" element={<Navigate to="/auth/signin" replace />} />
-          <Route path="/owner/*" element={<Navigate to="/auth/signin" replace />} />
-          {/* 🔴 BLOCK ALL ADMIN ACCESS */}
-          <Route path="/admin/*" element={<Navigate to="/auth/signin" replace />} />
-        </>
-      );
+      return <Route path="*" element={<Navigate to="/auth/signin" replace />} />;
     }
 
     // ✅ OWNER CAN ACCESS ONLY /owner ROUTES
@@ -149,27 +141,9 @@ export default function Dashboard(props) {
           />
         ))}
 
-        {/* Redirect from /owner to /owner/dashboard */}
+        {/* Catch-all for unmatched routes */}
         <Route
-          path="/owner"
-          element={<Navigate to="/owner/dashboard" replace />}
-        />
-
-        {/* 🔴 BLOCK /admin access completely - redirect to owner dashboard */}
-        <Route
-          path="/admin"
-          element={<Navigate to="/owner/dashboard" replace />}
-        />
-
-        {/* 🔴 BLOCK /admin/* access completely */}
-        <Route
-          path="/admin/*"
-          element={<Navigate to="/owner/dashboard" replace />}
-        />
-
-        {/* Catch-all for unmatched routes under /owner */}
-        <Route
-          path="/owner/*"
+          path="*"
           element={<Navigate to="/owner/dashboard" replace />}
         />
       </>
@@ -217,7 +191,7 @@ export default function Dashboard(props) {
 
   // 🔐 STRICT ACCESS CONTROL: ONLY OWNER
   if (userRole !== "owner") {
-    // Redirect to login page immediately if not owner
+    clearAuth();
     return <Navigate to="/auth/signin" replace />;
   }
 
@@ -297,11 +271,19 @@ export default function Dashboard(props) {
             px={{ base: "15px", sm: "20px", md: "25px", lg: "30px", xl: "35px" }}
             py={{ base: "15px", sm: "20px", md: "25px", lg: "30px", xl: "35px" }}
           >
-            <Routes>
-              {renderRoutes()}
-              {/* Default route */}
-              <Route path="/" element={<Navigate to="/owner/dashboard" replace />} />
-            </Routes>
+            <React.Suspense
+              fallback={
+                <Flex justify="center" align="center" minH="60vh" w="100%">
+                  <Spinner size="xl" color="#008080" thickness="4px" speed="0.65s" emptyColor="gray.200" />
+                </Flex>
+              }
+            >
+              <Routes>
+                {renderRoutes()}
+                {/* Default route */}
+                <Route path="/" element={<Navigate to="/owner/dashboard" replace />} />
+              </Routes>
+            </React.Suspense>
           </PanelContainer>
         </PanelContent>
 

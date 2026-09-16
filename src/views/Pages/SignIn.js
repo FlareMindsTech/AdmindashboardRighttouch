@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
 import {
   Flex,
@@ -20,25 +20,30 @@ import {
 import { MdAdminPanelSettings, MdLightbulb } from "react-icons/md";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { setAuth } from "../utils/axiosInstance";
-
+import { setAuth, getToken, getUser, clearAuth } from "../utils/axiosInstance";
 
 function AdminLogin() {
   const bgForm = useColorModeValue("white", "gray.800");
-  const titleColor = useColorModeValue("purple.600", "purple.300");
   const toast = useToast();
   const navigate = useNavigate();
 
+  // If valid owner token is present, bypass login screen
+  useEffect(() => {
+    const token = getToken();
+    const user = getUser();
+    const isOwner = token && user?.role?.toLowerCase() === "owner";
+    if (isOwner) {
+      navigate("/owner/dashboard", { replace: true });
+    } else if (token && !isOwner) {
+      clearAuth();
+    }
+  }, [navigate]);
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isGlow, setIsGlow] = useState(false);
-
-  // const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const mobileRegex = /^[0-9]{10}$/;
-  const passwordRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{8,}$/;
 
   // Animations
   const floatAnimation = keyframes`
@@ -73,35 +78,13 @@ function AdminLogin() {
     100% { transform: rotate(-5deg); }
   `;
 
-  const handleLogin = async () => {
+  const handleLogin = async (e) => {
+    if (e) e.preventDefault();
+
     if (!identifier || !password) {
       toast({
         title: "Missing fields",
-        description: "Mobile number and password are required",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    if (!mobileRegex.test(identifier)) {
-      toast({
-        title: "Invalid Mobile Number",
-        description: "Please enter a valid 10-digit mobile number",
-        status: "warning",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-
-    if (!passwordRegex.test(password)) {
-      toast({
-        title: "Invalid Password",
-        description:
-          "Password must be at least 8 characters, include uppercase, lowercase, and a number",
+        description: "Mobile number/Username and password are required",
         status: "warning",
         duration: 3000,
         isClosable: true,
@@ -113,7 +96,7 @@ function AdminLogin() {
 
     try {
       const res = await axios.post(
-        "https://righttouchservernew-727889857503.asia-south1.run.app/api/user/login/owner",
+        `${process.env.REACT_APP_API_BASE_URL || "https://righttouchservernew-727889857503.asia-south1.run.app"}/api/user/login/owner`,
         {
           identifier: identifier,
           password: password,
@@ -121,7 +104,6 @@ function AdminLogin() {
         },
         { headers: { "Content-Type": "application/json" } }
       );
-
 
       if (!res.data?.result) {
         throw new Error("Invalid server response");
@@ -135,7 +117,6 @@ function AdminLogin() {
         id,
       });
 
-
       toast({
         title: "Login Successful",
         description: `Welcome ${role}!`,
@@ -144,17 +125,13 @@ function AdminLogin() {
         isClosable: true,
       });
 
-      // Small delay to let toast show, then navigate
       setTimeout(() => {
-        // Direct hash navigation for HashRouter
         window.location.hash = "/owner/dashboard";
-        // Force reload to ensure routes.js and layouts re-render with new auth state
         window.location.reload();
       }, 500);
 
     } catch (err) {
-      console.error("Login error object:", err);
-      console.error("Login error response:", err.response);
+      console.error("Login error:", err);
       toast({
         title: err.response?.status === 429 ? "Too Many Attempts" : "Login Failed",
         description: err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : null) || err.message || "Server error",
@@ -166,8 +143,6 @@ function AdminLogin() {
       setLoading(false);
     }
   };
-
-
 
   return (
     <Flex
@@ -206,14 +181,12 @@ function AdminLogin() {
         transformOrigin="top center"
         animation={`${swing} 4s ease-in-out infinite`}
       >
-        {/* Wire */}
         <Box
           w="2px"
           h="150px"
           bg="rgba(0, 0, 0, 0.6)"
           boxShadow="0 0 10px rgba(0,0,0,0.5)"
         />
-        {/* Bulb Socket */}
         <Box
           w="24px"
           h="30px"
@@ -221,7 +194,6 @@ function AdminLogin() {
           borderRadius="4px"
           mt="-2px"
         />
-        {/* Bulb */}
         <Box
           position="relative"
           mt="-5px"
@@ -236,7 +208,6 @@ function AdminLogin() {
             filter={isGlow ? "drop-shadow(0 0 50px #FFD700)" : "none"}
             animation={isGlow ? `${bulbGlow} 2s infinite ease-in-out` : "none"}
           />
-          {/* Light beam effect */}
           {isGlow && (
             <Box
               position="absolute"
@@ -253,25 +224,14 @@ function AdminLogin() {
           )}
         </Box>
       </Box>
+
       {/* Animated Background Elements */}
       <Box
         position="absolute"
         top="15%"
         left="5%"
-        w={{
-          base: "30px",      // 320px-480px
-          sm: "40px",        // 481px-767px  
-          md: "50px",        // 768px-1024px
-          lg: "60px",        // 1025px-1280px
-          xl: "70px"         // 1281px+
-        }}
-        h={{
-          base: "30px",
-          sm: "40px",
-          md: "50px",
-          lg: "60px",
-          xl: "70px"
-        }}
+        w={{ base: "30px", sm: "40px", md: "50px", lg: "60px", xl: "70px" }}
+        h={{ base: "30px", sm: "40px", md: "50px", lg: "60px", xl: "70px" }}
         bg="rgba(255,255,255,0.15)"
         borderRadius="20%"
         animation={`${floatAnimation} 4s ease-in-out infinite`}
@@ -282,20 +242,8 @@ function AdminLogin() {
         position="absolute"
         bottom="25%"
         right="8%"
-        w={{
-          base: "25px",
-          sm: "35px",
-          md: "45px",
-          lg: "55px",
-          xl: "65px"
-        }}
-        h={{
-          base: "25px",
-          sm: "35px",
-          md: "45px",
-          lg: "55px",
-          xl: "65px"
-        }}
+        w={{ base: "25px", sm: "35px", md: "45px", lg: "55px", xl: "65px" }}
+        h={{ base: "25px", sm: "35px", md: "45px", lg: "55px", xl: "65px" }}
         bg="rgba(255,255,255,0.1)"
         borderRadius="30%"
         animation={`${floatAnimation} 5s ease-in-out infinite 0.5s`}
@@ -306,20 +254,8 @@ function AdminLogin() {
         position="absolute"
         top="60%"
         left="85%"
-        w={{
-          base: "20px",
-          sm: "30px",
-          md: "40px",
-          lg: "50px",
-          xl: "60px"
-        }}
-        h={{
-          base: "20px",
-          sm: "30px",
-          md: "40px",
-          lg: "50px",
-          xl: "60px"
-        }}
+        w={{ base: "20px", sm: "30px", md: "40px", lg: "50px", xl: "60px" }}
+        h={{ base: "20px", sm: "30px", md: "40px", lg: "50px", xl: "60px" }}
         bg="rgba(255,255,255,0.12)"
         borderRadius="25%"
         animation={`${floatAnimation} 6s ease-in-out infinite 1s`}
@@ -329,31 +265,10 @@ function AdminLogin() {
       {/* Main Login Container */}
       <Flex
         direction="column"
-        w={{
-          base: "90%",        // 320px-480px
-          sm: "85%",          // 481px-767px
-          md: "75%",          // 768px-1024px
-          lg: "65%",          // 1025px-1280px
-          xl: "55%"           // 1281px+
-        }}
-        h={{
-          xl: "90%"
-        }}
-        maxW={{
-          base: "400px",      // 320px-480px
-          sm: "450px",        // 481px-767px
-          md: "500px",        // 768px-1024px
-          lg: "550px",        // 1025px-1280px
-          xl: "500px"         // 1281px+
-        }}
+        w={{ base: "90%", sm: "85%", md: "75%", lg: "65%", xl: "55%" }}
+        maxW={{ base: "400px", sm: "450px", md: "500px", lg: "550px", xl: "500px" }}
         bg={bgForm}
-        borderRadius={{
-          base: "20px",       // 320px-480px
-          sm: "25px",         // 481px-767px
-          md: "30px",         // 768px-1024px
-          lg: "35px",         // 1025px-1280px
-          xl: "40px"          // 1281px+
-        }}
+        borderRadius={{ base: "20px", sm: "25px", md: "30px", lg: "35px", xl: "40px" }}
         boxShadow={isGlow ? "0 25px 60px -12px rgba(0, 0, 0, 0.5), 0 0 40px rgba(255, 215, 0, 0.3)" : "0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 30px rgba(0, 128, 128, 0.3)"}
         overflow="hidden"
         zIndex="2"
@@ -368,13 +283,7 @@ function AdminLogin() {
         <Flex
           bg="linear-gradient(135deg, #008080 0%, #006666 100%)"
           color="white"
-          p={{
-            base: "25px",     // 320px-480px
-            sm: "30px",       // 481px-767px
-            md: "35px",       // 768px-1024px
-            lg: "40px",       // 1025px-1280px
-            xl: "45px"        // 1281px+
-          }}
+          p={{ base: "25px", sm: "30px", md: "35px", lg: "40px", xl: "45px" }}
           h="200px"
           direction="column"
           align="center"
@@ -396,20 +305,8 @@ function AdminLogin() {
           }}
         >
           <Box
-            w={{
-              base: "60px",   // 320px-480px
-              sm: "70px",     // 481px-767px
-              md: "80px",     // 768px-1024px
-              lg: "90px",     // 1025px-1280px
-              xl: "15%"     // 1281px+
-            }}
-            h={{
-              base: "60px",
-              sm: "70px",
-              md: "80px",
-              lg: "90px",
-              xl: "100%"
-            }}
+            w={{ base: "60px", sm: "70px", md: "80px", lg: "90px", xl: "80px" }}
+            h={{ base: "60px", sm: "70px", md: "80px", lg: "90px", xl: "80px" }}
             bg="rgba(0, 128, 128, 0.4)"
             borderRadius="50%"
             display="flex"
@@ -419,53 +316,30 @@ function AdminLogin() {
             border="2px solid"
             borderColor="#FFD700"
           >
-            <Icon as={MdAdminPanelSettings} h="60px" w="60px" color="#FFD700" />
+            <Icon as={MdAdminPanelSettings} h="50px" w="50px" color="#FFD700" />
           </Box>
 
           <Text
-            fontSize={{
-              base: "22px",   // 320px-480px
-              sm: "24px",     // 481px-767px
-              md: "26px",     // 768px-1024px
-              lg: "28px",     // 1025px-1280px
-              xl: "30px"      // 1281px+
-            }}
+            fontSize={{ base: "22px", sm: "24px", md: "26px", lg: "28px", xl: "30px" }}
             fontWeight="bold"
             mt={3}
-
           >
-            Right Touch
+            Right Touch Admin
           </Text>
         </Flex>
 
         {/* Form Section */}
         <Flex
+          as="form"
+          onSubmit={handleLogin}
           direction="column"
           justify="center"
-          p={{
-            base: "25px",     // 320px-480px
-            sm: "30px",       // 481px-767px
-            md: "35px",       // 768px-1024px  
-            lg: "40px",       // 1025px-1280px
-            xl: "45px"        // 1281px+
-          }}
+          p={{ base: "25px", sm: "30px", md: "35px", lg: "40px", xl: "45px" }}
         >
-          <VStack spacing={{
-            base: "20px",     // 320px-480px
-            sm: "22px",       // 481px-767px
-            md: "25px",       // 768px-1024px
-            lg: "28px",       // 1025px-1280px
-            xl: "30px"        // 1281px+
-          }} align="stretch">
-            <FormControl>
+          <VStack spacing={{ base: "20px", sm: "22px", md: "25px", lg: "28px", xl: "30px" }} align="stretch">
+            <FormControl isRequired>
               <FormLabel
-                fontSize={{
-                  base: "14px",  // 320px-480px
-                  sm: "15px",    // 481px-767px
-                  md: "16px",    // 768px-1024px
-                  lg: "16px",    // 1025px-1280dx
-                  xl: "17px"     // 1281px+
-                }}
+                fontSize={{ base: "14px", sm: "15px", md: "16px", lg: "16px", xl: "17px" }}
                 fontWeight="600"
                 color="gray.700"
                 display="flex"
@@ -481,29 +355,18 @@ function AdminLogin() {
                   alignItems="center"
                   justifyContent="center"
                 >
-                  <Text fontSize="12px">�</Text>
+                  <Text fontSize="12px">📱</Text>
                 </Box>
-                Mobile Number
+                Mobile Number / Identifier
               </FormLabel>
               <Input
-                type="tel"
-                placeholder="Enter Mobile Number"
+                type="text"
+                placeholder="Enter Mobile Number or Username"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                size={{
-                  base: "md",    // 320px-480px
-                  sm: "lg",      // 481px-767px
-                  md: "lg",      // 768px-1024px
-                  lg: "lg",      // 1025px-1280px
-                  xl: "lg"       // 1281px+
-                }}
-                h={{
-                  base: "45px",  // 320px-480px
-                  sm: "48px",    // 481px-767px
-                  md: "50px",    // 768px-1024px
-                  lg: "52px",    // 1025px-1280px
-                  xl: "55px"     // 1281px+
-                }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleLogin(e); }}
+                size={{ base: "md", sm: "lg", md: "lg", lg: "lg", xl: "lg" }}
+                h={{ base: "45px", sm: "48px", md: "50px", lg: "52px", xl: "55px" }}
                 p="4px"
                 borderRadius="12px"
                 border="2px solid"
@@ -519,15 +382,9 @@ function AdminLogin() {
               />
             </FormControl>
 
-            <FormControl>
+            <FormControl isRequired>
               <FormLabel
-                fontSize={{
-                  base: "14px",
-                  sm: "15px",
-                  md: "16px",
-                  lg: "16px",
-                  xl: "17px"
-                }}
+                fontSize={{ base: "14px", sm: "15px", md: "16px", lg: "16px", xl: "17px" }}
                 fontWeight="600"
                 color="gray.700"
                 display="flex"
@@ -547,25 +404,14 @@ function AdminLogin() {
                 </Box>
                 Password
               </FormLabel>
-              <InputGroup size={{
-                base: "md",
-                sm: "lg",
-                md: "lg",
-                lg: "lg",
-                xl: "lg"
-              }}>
+              <InputGroup size={{ base: "md", sm: "lg", md: "lg", lg: "lg", xl: "lg" }}>
                 <Input
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  h={{
-                    base: "45px",
-                    sm: "48px",
-                    md: "50px",
-                    lg: "52px",
-                    xl: "55px"
-                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleLogin(e); }}
+                  h={{ base: "45px", sm: "48px", md: "50px", lg: "52px", xl: "55px" }}
                   p="4px"
                   borderRadius="12px"
                   border="2px solid"
@@ -580,43 +426,19 @@ function AdminLogin() {
                   transition="all 0.3s ease"
                 />
                 <InputRightElement
-                  h={{
-                    base: "45px",
-                    sm: "48px",
-                    md: "50px",
-                    lg: "52px",
-                    xl: "55px"
-                  }}
-                  w={{
-                    base: "55px",
-                    sm: "60px",
-                    md: "60px",
-                    lg: "65px",
-                    xl: "65px"
-                  }}
+                  h={{ base: "45px", sm: "48px", md: "50px", lg: "52px", xl: "55px" }}
+                  w={{ base: "55px", sm: "60px", md: "60px", lg: "65px", xl: "65px" }}
                 >
                   <Button
-                    h={{
-                      base: "32px",
-                      sm: "34px",
-                      md: "36px",
-                      lg: "38px",
-                      xl: "40px"
-                    }}
-                    w={{
-                      base: "32px",
-                      sm: "34px",
-                      md: "36px",
-                      lg: "38px",
-                      xl: "40px"
-                    }}
+                    type="button"
+                    h={{ base: "32px", sm: "34px", md: "36px", lg: "38px", xl: "40px" }}
+                    w={{ base: "32px", sm: "34px", md: "36px", lg: "38px", xl: "40px" }}
                     bg="gray.100"
                     _hover={{ bg: "gray.200" }}
                     onClick={() => setShowPassword(!showPassword)}
                     borderRadius="10px"
                     transition="all 0.3s ease"
                   >
-
                     {showPassword ? <ViewIcon color="teal.500" /> : <ViewOffIcon color="teal.500" />}
                   </Button>
                 </InputRightElement>
@@ -624,27 +446,16 @@ function AdminLogin() {
             </FormControl>
 
             <Button
+              type="submit"
               w="100%"
-              h={{
-                base: "48px",   // 320px-480px
-                sm: "50px",     // 481px-767px
-                md: "52px",     // 768px-1024px
-                lg: "55px",     // 1025px-1280px
-                xl: "58px"      // 1281px+
-              }}
+              h={{ base: "48px", sm: "50px", md: "52px", lg: "55px", xl: "58px" }}
               borderRadius="14px"
               bg="linear-gradient(135deg, #FFD700 0%, #F5B700 100%)"
               color="#004d4d"
               onClick={handleLogin}
               isLoading={loading}
               loadingText="Authenticating..."
-              fontSize={{
-                base: "16px",   // 320px-480px
-                sm: "17px",     // 481px-767px
-                md: "18px",     // 768px-1024px
-                lg: "18px",     // 1025px-1280px
-                xl: "19px"      // 1281px+
-              }}
+              fontSize={{ base: "16px", sm: "17px", md: "18px", lg: "18px", xl: "19px" }}
               fontWeight="bold"
               _hover={{
                 bg: "linear-gradient(135deg, #F5B700 0%, #FFD700 100%)",
@@ -670,13 +481,7 @@ function AdminLogin() {
             <HStack
               justify="center"
               spacing="8px"
-              mt={{
-                base: "10px",   // 320px-480px
-                sm: "12px",     // 481px-767px
-                md: "15px",     // 768px-1024px
-                lg: "18px",     // 1025px-1280px
-                xl: "20px"      // 1281px+
-              }}
+              mt={{ base: "10px", sm: "12px", md: "15px", lg: "18px", xl: "20px" }}
             >
               <Box
                 w="12px"
@@ -686,13 +491,7 @@ function AdminLogin() {
                 animation={`${floatAnimation} 2s ease-in-out infinite`}
               />
               <Text
-                fontSize={{
-                  base: "12px",   // 320px-480px
-                  sm: "13px",     // 481px-767px
-                  md: "14px",     // 768px-1024px
-                  lg: "14px",     // 1025px-1280px
-                  xl: "14px"      // 1281px+
-                }}
+                fontSize={{ base: "12px", sm: "13px", md: "14px", lg: "14px", xl: "14px" }}
                 color="teal.600"
                 fontWeight="600"
               >

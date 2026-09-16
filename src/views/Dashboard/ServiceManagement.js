@@ -14,6 +14,9 @@ import {
   uploadServiceImages,
   uploadCategoryImage,
   deleteServiceImage,
+  setServicePolygon,
+  removeServicePolygon,
+  toggleZoneRestriction,
 } from "../utils/axiosInstance";
 
 import {
@@ -57,6 +60,11 @@ import {
   VStack,
   HStack,
   Stack,
+  InputGroup,
+  InputLeftElement,
+  InputRightElement,
+  Progress,
+  Tooltip,
 } from "@chakra-ui/react";
 
 
@@ -80,9 +88,17 @@ import {
   FaChartLine,
   FaPlus,
   FaTimes,
+  FaTools,
+  FaTag,
+  FaStar,
+  FaAward,
+  FaMoneyBillWave,
+  FaFilter,
+  FaRedo,
+  FaTrophy,
 } from "react-icons/fa";
 import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
-import { MdCategory, MdInventory, MdWarning } from "react-icons/md";
+import { MdCategory, MdInventory, MdWarning, MdAttachMoney } from "react-icons/md";
 
 
 
@@ -116,6 +132,8 @@ export default function ServiceManagement() {
   const [itemToDelete, setItemToDelete] = useState(null);
   const [deleteType, setDeleteType] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [polygonInput, setPolygonInput] = useState("");
+  const [polygonSubmitting, setPolygonSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const [serviceSearch, setServiceSearch] = useState("");
@@ -132,6 +150,21 @@ export default function ServiceManagement() {
   const [faultInput, setFaultInput] = useState("");
   const [toolsInput, setToolsInput] = useState("");
   const [checklistInput, setChecklistInput] = useState("");
+
+  // Service Analysis Filters State
+  const [analysisCategoryFilter, setAnalysisCategoryFilter] = useState("");
+  const [analysisTypeFilter, setAnalysisTypeFilter] = useState("");
+  const [analysisStatusFilter, setAnalysisStatusFilter] = useState("");
+  const [analysisPricingFilter, setAnalysisPricingFilter] = useState("");
+  const [analysisSearchTerm, setAnalysisSearchTerm] = useState("");
+
+  const resetAnalysisFilters = () => {
+    setAnalysisCategoryFilter("");
+    setAnalysisTypeFilter("");
+    setAnalysisStatusFilter("");
+    setAnalysisPricingFilter("");
+    setAnalysisSearchTerm("");
+  };
 
   // Category form
   const initialCategory = {
@@ -161,6 +194,7 @@ export default function ServiceManagement() {
     serviceWarranty: "",
     cancellationPolicy: "",
     requiresSpareParts: false,
+    zoneRestricted: false,
     duration: "",
     siteVisitRequired: true,
     isActive: true,
@@ -239,6 +273,46 @@ export default function ServiceManagement() {
   }, [services]);
 
   const chartData = getRevenueByTypeData();
+
+  // Filtered Services for Service Analysis View
+  const filteredAnalysisServices = services.filter((service) => {
+    if (analysisCategoryFilter) {
+      const catId = service.categoryId?._id || service.categoryId;
+      if (catId !== analysisCategoryFilter) return false;
+    }
+    if (analysisTypeFilter && service.serviceType !== analysisTypeFilter) {
+      return false;
+    }
+    if (analysisStatusFilter === "active" && !service.isActive) return false;
+    if (analysisStatusFilter === "inactive" && service.isActive) return false;
+    if (analysisPricingFilter && service.pricingType !== analysisPricingFilter) return false;
+    if (analysisSearchTerm) {
+      const query = analysisSearchTerm.toLowerCase();
+      const matchesName = service.serviceName?.toLowerCase().includes(query);
+      const matchesCat = (service.categoryId?.category || categories.find(c => c._id === service.categoryId)?.category || "").toLowerCase().includes(query);
+      if (!matchesName && !matchesCat) return false;
+    }
+    return true;
+  });
+
+  const analysisStats = {
+    totalCount: filteredAnalysisServices.length,
+    activeServices: filteredAnalysisServices.filter((s) => s.isActive).length,
+    popularServices: filteredAnalysisServices.filter((s) => s.isPopular).length,
+    recommendedServices: filteredAnalysisServices.filter((s) => s.isRecommended).length,
+    totalRevenue: filteredAnalysisServices.reduce((sum, s) => sum + (s.serviceCost || 0), 0),
+    avgCost: filteredAnalysisServices.length > 0 
+      ? Math.round(filteredAnalysisServices.reduce((sum, s) => sum + (s.serviceCost || 0), 0) / filteredAnalysisServices.length) 
+      : 0,
+    highestCost: filteredAnalysisServices.length > 0 
+      ? Math.max(...filteredAnalysisServices.map(s => s.serviceCost || 0)) 
+      : 0,
+    activeFiltersCount: [analysisCategoryFilter, analysisTypeFilter, analysisStatusFilter, analysisPricingFilter, analysisSearchTerm].filter(Boolean).length
+  };
+
+  const uniqueServiceTypes = Array.from(
+    new Set(services.map((s) => s.serviceType).filter(Boolean))
+  );
 
 
 
@@ -872,6 +946,7 @@ export default function ServiceManagement() {
         serviceWarranty: newService.serviceWarranty?.trim() || "",
         cancellationPolicy: newService.cancellationPolicy?.trim() || "",
         requiresSpareParts: newService.requiresSpareParts || false,
+        zoneRestricted: newService.zoneRestricted || false,
         duration: newService.duration?.trim() || "",
         siteVisitRequired: newService.siteVisitRequired !== false,
         isActive: newService.isActive !== false,
@@ -914,6 +989,21 @@ export default function ServiceManagement() {
           duration: 3000,
           isClosable: true,
         });
+
+        if (!!newService.zoneRestricted !== !!selectedService.zoneRestricted) {
+          try {
+            await toggleZoneRestriction(selectedService._id, !!newService.zoneRestricted);
+          } catch (zoneErr) {
+            console.error("Zone restriction toggle failed:", zoneErr);
+            toast({
+              title: "Zone Restriction Warning",
+              description: "Service saved, but the zone-restriction setting failed to sync.",
+              status: "warning",
+              duration: 5000,
+              isClosable: true,
+            });
+          }
+        }
       } else {
         response = await createService(serviceData);
 
@@ -992,6 +1082,7 @@ export default function ServiceManagement() {
 
   const handleEditService = (service) => {
     setSelectedService(service);
+    setPolygonInput(service.polygon ? JSON.stringify(service.polygon, null, 2) : "");
     setNewService({
       serviceName: service.serviceName || "",
       description: service.description || "",
@@ -1009,6 +1100,7 @@ export default function ServiceManagement() {
       serviceWarranty: service.serviceWarranty || "",
       cancellationPolicy: service.cancellationPolicy || "",
       requiresSpareParts: service.requiresSpareParts || false,
+      zoneRestricted: service.zoneRestricted || false,
       duration: service.duration || "",
       siteVisitRequired: service.siteVisitRequired !== false,
       isActive: service.isActive !== false,
@@ -1024,6 +1116,102 @@ export default function ServiceManagement() {
       serviceChecklist: service.serviceChecklist || [],
     });
     setCurrentView("addService");
+  };
+
+  const handleSetServicePolygon = async () => {
+    if (!selectedService) return;
+    if (!polygonInput.trim()) {
+      return toast({
+        title: "Validation Error",
+        description: "Paste polygon GeoJSON before setting.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+    let polygon = null;
+    try {
+      const parsed = JSON.parse(polygonInput);
+      if (parsed && typeof parsed === "object" && parsed.type && Array.isArray(parsed.coordinates)) {
+        polygon = { type: parsed.type, coordinates: parsed.coordinates };
+      } else if (Array.isArray(parsed)) {
+        polygon = { type: "Polygon", coordinates: parsed };
+      } else {
+        return toast({
+          title: "Validation Error",
+          description: "Invalid polygon. Paste a GeoJSON object {type, coordinates} or a coordinate array.",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+    } catch {
+      return toast({
+        title: "Validation Error",
+        description: "Invalid JSON in polygon field.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+    setPolygonSubmitting(true);
+    try {
+      await setServicePolygon(selectedService._id, polygon);
+      toast({
+        title: "Polygon Set",
+        description: "Service coverage polygon saved. Customers can only book inside this area.",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      await fetchData();
+      const updated = await getAllServices();
+      const raw = updated.result || updated.data || updated.services || updated || [];
+      const svc = (Array.isArray(raw) ? raw : []).find((s) => s._id === selectedService._id);
+      if (svc) setSelectedService(svc);
+    } catch (err) {
+      toast({
+        title: "Polygon Error",
+        description: err.message || "Failed to set polygon.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setPolygonSubmitting(false);
+    }
+  };
+
+  const handleRemoveServicePolygon = async () => {
+    if (!selectedService) return;
+    if (!window.confirm("Remove the coverage polygon for this service? The service will be available everywhere.")) return;
+    setPolygonSubmitting(true);
+    try {
+      await removeServicePolygon(selectedService._id);
+      toast({
+        title: "Polygon Removed",
+        description: "Service coverage polygon removed. Service is now unrestricted.",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      setPolygonInput("");
+      await fetchData();
+      const updated = await getAllServices();
+      const raw = updated.result || updated.data || updated.services || updated || [];
+      const svc = (Array.isArray(raw) ? raw : []).find((s) => s._id === selectedService._id);
+      if (svc) setSelectedService(svc);
+    } catch (err) {
+      toast({
+        title: "Polygon Error",
+        description: err.message || "Failed to remove polygon.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setPolygonSubmitting(false);
+    }
   };
 
   const handleEditCategory = (category) => {
@@ -2052,6 +2240,17 @@ export default function ServiceManagement() {
 
                       <FormControl>
                         <Checkbox
+                          isChecked={newService.zoneRestricted}
+                          onChange={(e) => setNewService({ ...newService, zoneRestricted: e.target.checked })}
+                          colorScheme="blue"
+                          size="sm"
+                        >
+                          Restrict to Zones
+                        </Checkbox>
+                      </FormControl>
+
+                      <FormControl>
+                        <Checkbox
                           isChecked={newService.siteVisitRequired}
                           onChange={(e) => setNewService({ ...newService, siteVisitRequired: e.target.checked })}
                           colorScheme="blue"
@@ -2275,7 +2474,6 @@ export default function ServiceManagement() {
                   </Flex>
                 </Stat>
                 <IconBox
-                  as="box"
                   h={{ base: "28px", md: "32px" }}
                   w={{ base: "28px", md: "32px" }}
                   bg={customColor}
@@ -2341,7 +2539,6 @@ export default function ServiceManagement() {
                   </Flex>
                 </Stat>
                 <IconBox
-                  as="box"
                   h={{ base: "28px", md: "32px" }}
                   w={{ base: "28px", md: "32px" }}
                   bg={customColor}
@@ -2410,7 +2607,6 @@ export default function ServiceManagement() {
                   </Text>
                 </Stat>
                 <IconBox
-                  as="box"
                   h={{ base: "28px", md: "32px" }}
                   w={{ base: "28px", md: "32px" }}
                   bg={customColor}
@@ -2481,7 +2677,6 @@ export default function ServiceManagement() {
                   </Text>
                 </Stat>
                 <IconBox
-                  as="box"
                   h={{ base: "28px", md: "32px" }}
                   w={{ base: "28px", md: "32px" }}
                   bg="green.500"
@@ -2946,7 +3141,7 @@ export default function ServiceManagement() {
                         <Table variant="simple" size="sm" bg="transparent">
                           {/* Fixed Header */}
                           <Thead>
-                            <Tr>
+                            <Tr verticalAlign="middle">
                               <Th
                                 color="gray.100"
                                 borderColor={`${customColor}30`}
@@ -2956,7 +3151,10 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={2}
+                                py={3}
+                                textAlign="center"
+                                w="50px"
+                                minW="50px"
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
@@ -2971,11 +3169,13 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={2}
+                                py={3}
+                                textAlign="left"
+                                minW="180px"
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
-                                Service Name
+                                SERVICE NAME
                               </Th>
                               <Th
                                 color="gray.100"
@@ -2986,11 +3186,13 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={2}
+                                py={3}
+                                textAlign="left"
+                                minW="140px"
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
-                                Category
+                                CATEGORY
                               </Th>
                               <Th
                                 color="gray.100"
@@ -3001,11 +3203,13 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={2}
+                                py={3}
+                                textAlign="center"
+                                minW="120px"
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
-                                Type
+                                TYPE
                               </Th>
                               <Th
                                 color="gray.100"
@@ -3016,11 +3220,13 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={2}
+                                py={3}
+                                textAlign="center"
+                                minW="150px"
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
-                                Pricing
+                                PRICING
                               </Th>
                               <Th
                                 color="gray.100"
@@ -3031,11 +3237,13 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={2}
+                                py={3}
+                                textAlign="center"
+                                minW="140px"
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
-                                Status
+                                STATUS
                               </Th>
                               <Th
                                 color="gray.100"
@@ -3046,11 +3254,13 @@ export default function ServiceManagement() {
                                 zIndex={10}
                                 fontWeight="bold"
                                 fontSize="xs"
-                                py={2}
+                                py={3}
+                                textAlign="center"
+                                minW="130px"
                                 borderBottom="2px solid"
                                 borderBottomColor={`${customColor}50`}
                               >
-                                Actions
+                                ACTIONS
                               </Th>
                             </Tr>
                           </Thead>
@@ -3065,85 +3275,95 @@ export default function ServiceManagement() {
                                   _hover={{ bg: `${customColor}10` }}
                                   borderBottom="1px"
                                   borderColor={`${customColor}20`}
-                                  height="40px"
+                                  verticalAlign="middle"
                                 >
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5} textAlign="center" fontWeight="medium">
                                     {indexOfFirstItem + idx + 1}
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontWeight="medium" fontSize="xs" py={1.5}>
-                                    <Text noOfLines={1} maxW="150px">
+                                  <Td borderColor={`${customColor}20`} fontWeight="medium" fontSize="xs" py={2.5}>
+                                    <Text noOfLines={1} maxW="200px" title={service.serviceName}>
                                       {service.serviceName}
                                     </Text>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
-                                    <Text noOfLines={1} maxW="120px">
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5}>
+                                    <Text noOfLines={1} maxW="150px" color="gray.600">
                                       {service.categoryId?.category ||
                                         categories.find(c => c._id === service.categoryId)?.category ||
                                         "N/A"}
                                     </Text>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
-                                    <Badge
-                                      colorScheme={
-                                        service.serviceType === "Installation" ? "blue" :
-                                          service.serviceType === "Maintenance" ? "green" :
-                                            service.serviceType === "Repair" ? "orange" : "purple"
-                                      }
-                                      fontSize="2xs"
-                                      px={2}
-                                      py={0.5}
-                                      borderRadius="full"
-                                    >
-                                      {service.serviceType}
-                                    </Badge>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5} textAlign="center">
+                                    <Flex justify="center" align="center">
+                                      <Badge
+                                        colorScheme={
+                                          service.serviceType === "Installation" ? "blue" :
+                                            service.serviceType === "Maintenance" ? "green" :
+                                              service.serviceType === "Repair" ? "orange" : "purple"
+                                        }
+                                        fontSize="2xs"
+                                        px={2.5}
+                                        py={0.5}
+                                        borderRadius="full"
+                                        fontWeight="semibold"
+                                      >
+                                        {service.serviceType}
+                                      </Badge>
+                                    </Flex>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
-                                    <Flex direction="column" gap={0.5}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5} textAlign="center">
+                                    <HStack justify="center" spacing={2} align="center">
                                       <Badge
                                         colorScheme={service.pricingType === "fixed" ? "green" : "blue"}
                                         fontSize="3xs"
-                                        px={1}
+                                        px={2}
+                                        py={0.5}
                                         borderRadius="full"
-                                        textAlign="center"
+                                        textTransform="capitalize"
                                       >
                                         {service.pricingType}
                                       </Badge>
-                                      <Text fontSize="xs" fontWeight="bold">
+                                      <Text fontSize="xs" fontWeight="bold" color="gray.800">
                                         ₹{service.serviceCost}
                                       </Text>
-                                    </Flex>
+                                    </HStack>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
-                                    <Flex direction="column" gap={0.5}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5} textAlign="center">
+                                    <HStack justify="center" spacing={1.5} align="center">
                                       <Badge
                                         colorScheme={service.isActive ? "green" : "red"}
                                         fontSize="2xs"
                                         px={2}
+                                        py={0.5}
                                         borderRadius="full"
                                       >
                                         {service.isActive ? "Active" : "Inactive"}
                                       </Badge>
-                                      <HStack spacing={1}>
-                                        {service.isPopular && (
-                                          <Badge colorScheme="orange" fontSize="3xs">P</Badge>
-                                        )}
-                                        {service.isRecommended && (
-                                          <Badge colorScheme="teal" fontSize="3xs">R</Badge>
-                                        )}
-                                      </HStack>
-                                    </Flex>
+                                      {service.isPopular && (
+                                        <Badge colorScheme="orange" fontSize="3xs" px={1.5} py={0.5} borderRadius="md" title="Popular">
+                                          P
+                                        </Badge>
+                                      )}
+                                      {service.isRecommended && (
+                                        <Badge colorScheme="teal" fontSize="3xs" px={1.5} py={0.5} borderRadius="md" title="Recommended">
+                                          R
+                                        </Badge>
+                                      )}
+                                    </HStack>
                                   </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
-                                    <Flex gap={2}>
+                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5} textAlign="center">
+                                    <HStack justify="center" spacing={1.5} align="center">
                                       <IconButton
                                         aria-label="View service"
                                         icon={<FaEye />}
                                         bg="white"
                                         color="blue.500"
                                         border="1px"
-                                        borderColor="blue.500"
-                                        _hover={{ bg: "blue.500", color: "white" }}
+                                        borderColor="blue.300"
+                                        _hover={{ bg: "blue.500", color: "white", borderColor: "blue.500" }}
                                         size="xs"
+                                        h="28px"
+                                        w="28px"
+                                        borderRadius="md"
                                         onClick={() => handleViewService(service)}
                                       />
                                       <IconButton
@@ -3152,9 +3372,12 @@ export default function ServiceManagement() {
                                         bg="white"
                                         color={customColor}
                                         border="1px"
-                                        borderColor={customColor}
-                                        _hover={{ bg: customColor, color: "white" }}
+                                        borderColor={`${customColor}50`}
+                                        _hover={{ bg: customColor, color: "white", borderColor: customColor }}
                                         size="xs"
+                                        h="28px"
+                                        w="28px"
+                                        borderRadius="md"
                                         onClick={() => handleEditService(service)}
                                       />
                                       <IconButton
@@ -3163,12 +3386,15 @@ export default function ServiceManagement() {
                                         bg="white"
                                         color="red.500"
                                         border="1px"
-                                        borderColor="red.500"
-                                        _hover={{ bg: "red.500", color: "white" }}
+                                        borderColor="red.300"
+                                        _hover={{ bg: "red.500", color: "white", borderColor: "red.500" }}
                                         size="xs"
+                                        h="28px"
+                                        w="28px"
+                                        borderRadius="md"
                                         onClick={() => handleDeleteService(service)}
                                       />
-                                    </Flex>
+                                    </HStack>
                                   </Td>
                                 </Tr>
                               ))
@@ -3306,49 +3532,269 @@ export default function ServiceManagement() {
                     flexDirection="column"
                     overflowY="auto"
                     css={globalScrollbarStyles}
-                    p={4}
+                    p={{ base: 3, md: 5 }}
+                    gap={5}
                   >
+                    {/* Header & Interactive Filters Control Panel */}
+                    <Card bg="white" shadow="sm" borderRadius="xl" border="1px solid" borderColor="gray.100" p={4}>
+                      <Flex direction={{ base: "column", lg: "row" }} justify="space-between" align={{ base: "stretch", lg: "center" }} gap={4} mb={4}>
+                        <Box>
+                          <HStack spacing={2} align="center">
+                            <Icon as={FaChartLine} color={customColor} boxSize={5} />
+                            <Heading size="md" color="gray.800">
+                              Service Performance & Analytics
+                            </Heading>
+                            <Badge colorScheme="teal" borderRadius="full" px={2.5} py={0.5} fontSize="2xs">
+                              {analysisStats.totalCount} {analysisStats.totalCount === 1 ? "Service" : "Services"}
+                            </Badge>
+                          </HStack>
+                          <Text fontSize="xs" color="gray.500" mt={1}>
+                            Analyze service distribution, active status rates, valuation metrics, and cost rankings in real-time.
+                          </Text>
+                        </Box>
+
+                        {analysisStats.activeFiltersCount > 0 && (
+                          <Button
+                            leftIcon={<FaRedo />}
+                            size="xs"
+                            colorScheme="red"
+                            variant="light"
+                            onClick={resetAnalysisFilters}
+                            borderRadius="lg"
+                          >
+                            Reset Filters ({analysisStats.activeFiltersCount})
+                          </Button>
+                        )}
+                      </Flex>
+
+                      {/* Interactive Filter Grid */}
+                      <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)", md: "repeat(5, 1fr)" }} gap={3}>
+                        {/* Search Term */}
+                        <Box>
+                          <Text fontSize="2xs" fontWeight="bold" color="gray.600" mb={1} textTransform="uppercase">
+                            Search Service
+                          </Text>
+                          <InputGroup size="sm">
+                            <InputLeftElement pointerEvents="none">
+                              <FaSearch color="gray.400" size={12} />
+                            </InputLeftElement>
+                            <Input
+                              placeholder="Search by name..."
+                              value={analysisSearchTerm}
+                              onChange={(e) => setAnalysisSearchTerm(e.target.value)}
+                              borderRadius="lg"
+                              borderColor="gray.200"
+                              fontSize="xs"
+                              _focus={{ borderColor: customColor }}
+                            />
+                            {analysisSearchTerm && (
+                              <InputRightElement width="2rem">
+                                <IconButton
+                                  icon={<FaTimes />}
+                                  size="xs"
+                                  variant="ghost"
+                                  aria-label="Clear search"
+                                  onClick={() => setAnalysisSearchTerm("")}
+                                />
+                              </InputRightElement>
+                            )}
+                          </InputGroup>
+                        </Box>
+
+                        {/* Category Filter */}
+                        <Box>
+                          <Text fontSize="2xs" fontWeight="bold" color="gray.600" mb={1} textTransform="uppercase">
+                            Category
+                          </Text>
+                          <Select
+                            size="sm"
+                            borderRadius="lg"
+                            borderColor="gray.200"
+                            fontSize="xs"
+                            value={analysisCategoryFilter}
+                            onChange={(e) => setAnalysisCategoryFilter(e.target.value)}
+                            _focus={{ borderColor: customColor }}
+                          >
+                            <option value="">All Categories</option>
+                            {categories.map((cat) => (
+                              <option key={cat._id} value={cat._id}>
+                                {cat.category}
+                              </option>
+                            ))}
+                          </Select>
+                        </Box>
+
+                        {/* Service Type Filter */}
+                        <Box>
+                          <Text fontSize="2xs" fontWeight="bold" color="gray.600" mb={1} textTransform="uppercase">
+                            Service Type
+                          </Text>
+                          <Select
+                            size="sm"
+                            borderRadius="lg"
+                            borderColor="gray.200"
+                            fontSize="xs"
+                            value={analysisTypeFilter}
+                            onChange={(e) => setAnalysisTypeFilter(e.target.value)}
+                            _focus={{ borderColor: customColor }}
+                          >
+                            <option value="">All Types</option>
+                            {uniqueServiceTypes.map((type) => (
+                              <option key={type} value={type}>
+                                {type}
+                              </option>
+                            ))}
+                          </Select>
+                        </Box>
+
+                        {/* Status Filter */}
+                        <Box>
+                          <Text fontSize="2xs" fontWeight="bold" color="gray.600" mb={1} textTransform="uppercase">
+                            Status
+                          </Text>
+                          <Select
+                            size="sm"
+                            borderRadius="lg"
+                            borderColor="gray.200"
+                            fontSize="xs"
+                            value={analysisStatusFilter}
+                            onChange={(e) => setAnalysisStatusFilter(e.target.value)}
+                            _focus={{ borderColor: customColor }}
+                          >
+                            <option value="">All Statuses</option>
+                            <option value="active">Active Only</option>
+                            <option value="inactive">Inactive Only</option>
+                          </Select>
+                        </Box>
+
+                        {/* Pricing Type Filter */}
+                        <Box>
+                          <Text fontSize="2xs" fontWeight="bold" color="gray.600" mb={1} textTransform="uppercase">
+                            Pricing Model
+                          </Text>
+                          <Select
+                            size="sm"
+                            borderRadius="lg"
+                            borderColor="gray.200"
+                            fontSize="xs"
+                            value={analysisPricingFilter}
+                            onChange={(e) => setAnalysisPricingFilter(e.target.value)}
+                            _focus={{ borderColor: customColor }}
+                          >
+                            <option value="">All Pricing</option>
+                            <option value="fixed">Fixed Price</option>
+                            <option value="variable">Variable / Inspection</option>
+                          </Select>
+                        </Box>
+                      </Grid>
+                    </Card>
+
                     {currentView === "serviceAnalysis" && (
                       <>
-                        {/* Service Statistics */}
-                        <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={6}>
-                          <Card bg="white" shadow="sm" p={4}>
-                            <Text fontWeight="bold" color="gray.700" mb={4}>
-                              Service Statistics
-                            </Text>
-                            <SimpleGrid columns={2} spacing={4}>
-                              <Box textAlign="center">
-                                <Text fontSize="sm" color="gray.500">Total Services</Text>
-                                <Text fontSize="2xl" fontWeight="bold">{services.length}</Text>
+                        {/* Executive Metric Cards */}
+                        <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)", lg: "repeat(4, 1fr)" }} gap={4}>
+                          {/* Card 1: Total Services */}
+                          <Card bg="white" shadow="sm" borderRadius="xl" border="1px solid" borderColor="teal.100" p={4} position="relative" overflow="hidden">
+                            <Box position="absolute" top="-10px" right="-10px" w="70px" h="70px" bg="teal.50" borderRadius="full" zIndex={0} opacity={0.6} />
+                            <Flex justify="space-between" align="flex-start" position="relative" zIndex={1}>
+                              <Box>
+                                <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">
+                                  Total Services
+                                </Text>
+                                <Heading size="lg" color="teal.700" mt={1} fontWeight="extrabold">
+                                  {analysisStats.totalCount}
+                                </Heading>
+                                <Text fontSize="3xs" color="gray.500" mt={1}>
+                                  Out of {services.length} registered overall
+                                </Text>
                               </Box>
-                              <Box textAlign="center">
-                                <Text fontSize="sm" color="gray.500">Active</Text>
-                                <Text fontSize="2xl" fontWeight="bold" color="green.500">{stats.activeServices}</Text>
-                              </Box>
-                              <Box textAlign="center">
-                                <Text fontSize="sm" color="gray.500">Popular</Text>
-                                <Text fontSize="2xl" fontWeight="bold" color="orange.500">{stats.popularServices}</Text>
-                              </Box>
-                              <Box textAlign="center">
-                                <Text fontSize="sm" color="gray.500">Recommended</Text>
-                                <Text fontSize="2xl" fontWeight="bold" color="teal.500">{stats.recommendedServices}</Text>
-                              </Box>
-                            </SimpleGrid>
+                              <Flex w="40px" h="40px" bg="teal.500" color="white" borderRadius="xl" justify="center" align="center" shadow="sm">
+                                <Icon as={FaTools} boxSize={5} />
+                              </Flex>
+                            </Flex>
                           </Card>
 
-                          <Card bg="white" shadow="sm" p={4}>
-                            <Text fontWeight="bold" color="gray.700" mb={4}>
-                              Revenue Overview
-                            </Text>
-                            <Box textAlign="center">
-                              <Text fontSize="sm" color="gray.500">Total Service Value</Text>
-                              <Text fontSize="3xl" fontWeight="bold" color="green.500">
-                                ₹{stats.totalRevenue.toLocaleString()}
-                              </Text>
-                              <Text fontSize="sm" color="gray.500" mt={2}>
-                                Average per service: ₹{(stats.totalRevenue / (services.length || 1)).toFixed(0)}
-                              </Text>
-                            </Box>
+                          {/* Card 2: Active Services Rate */}
+                          <Card bg="white" shadow="sm" borderRadius="xl" border="1px solid" borderColor="green.100" p={4} position="relative" overflow="hidden">
+                            <Box position="absolute" top="-10px" right="-10px" w="70px" h="70px" bg="green.50" borderRadius="full" zIndex={0} opacity={0.6} />
+                            <Flex justify="space-between" align="flex-start" position="relative" zIndex={1}>
+                              <Box flex="1">
+                                <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">
+                                  Active Services
+                                </Text>
+                                <HStack spacing={2} align="baseline" mt={1}>
+                                  <Heading size="lg" color="green.600" fontWeight="extrabold">
+                                    {analysisStats.activeServices}
+                                  </Heading>
+                                  <Badge colorScheme="green" fontSize="3xs" borderRadius="full" px={1.5}>
+                                    {analysisStats.totalCount > 0
+                                      ? `${Math.round((analysisStats.activeServices / analysisStats.totalCount) * 100)}% Active`
+                                      : "0%"}
+                                  </Badge>
+                                </HStack>
+                                <Progress
+                                  value={analysisStats.totalCount > 0 ? (analysisStats.activeServices / analysisStats.totalCount) * 100 : 0}
+                                  size="xs"
+                                  colorScheme="green"
+                                  borderRadius="full"
+                                  mt={2.5}
+                                />
+                              </Box>
+                              <Flex w="40px" h="40px" bg="green.500" color="white" borderRadius="xl" justify="center" align="center" shadow="sm" ml={2}>
+                                <Icon as={FaCheckCircle} boxSize={5} />
+                              </Flex>
+                            </Flex>
+                          </Card>
+
+                          {/* Card 3: Featured & Highlights */}
+                          <Card bg="white" shadow="sm" borderRadius="xl" border="1px solid" borderColor="orange.100" p={4} position="relative" overflow="hidden">
+                            <Box position="absolute" top="-10px" right="-10px" w="70px" h="70px" bg="orange.50" borderRadius="full" zIndex={0} opacity={0.6} />
+                            <Flex justify="space-between" align="flex-start" position="relative" zIndex={1}>
+                              <Box>
+                                <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">
+                                  Featured Highlights
+                                </Text>
+                                <HStack spacing={3} mt={1.5}>
+                                  <VStack align="flex-start" spacing={0}>
+                                    <Text fontSize="2xs" color="gray.500">Popular</Text>
+                                    <Text fontSize="md" fontWeight="bold" color="orange.600">
+                                      {analysisStats.popularServices}
+                                    </Text>
+                                  </VStack>
+                                  <Box w="1px" h="24px" bg="gray.200" />
+                                  <VStack align="flex-start" spacing={0}>
+                                    <Text fontSize="2xs" color="gray.500">Recommended</Text>
+                                    <Text fontSize="md" fontWeight="bold" color="purple.600">
+                                      {analysisStats.recommendedServices}
+                                    </Text>
+                                  </VStack>
+                                </HStack>
+                              </Box>
+                              <Flex w="40px" h="40px" bg="orange.400" color="white" borderRadius="xl" justify="center" align="center" shadow="sm">
+                                <Icon as={FaStar} boxSize={5} />
+                              </Flex>
+                            </Flex>
+                          </Card>
+
+                          {/* Card 4: Total Portfolio Value */}
+                          <Card bg="white" shadow="sm" borderRadius="xl" border="1px solid" borderColor="purple.100" p={4} position="relative" overflow="hidden">
+                            <Box position="absolute" top="-10px" right="-10px" w="70px" h="70px" bg="purple.50" borderRadius="full" zIndex={0} opacity={0.6} />
+                            <Flex justify="space-between" align="flex-start" position="relative" zIndex={1}>
+                              <Box>
+                                <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">
+                                  Total Service Value
+                                </Text>
+                                <Heading size="lg" color="purple.700" mt={1} fontWeight="extrabold">
+                                  ₹{analysisStats.totalRevenue.toLocaleString()}
+                                </Heading>
+                                <Text fontSize="3xs" color="gray.500" mt={1}>
+                                  Avg: ₹{analysisStats.avgCost.toLocaleString()} | Max: ₹{analysisStats.highestCost.toLocaleString()}
+                                </Text>
+                              </Box>
+                              <Flex w="40px" h="40px" bg="purple.600" color="white" borderRadius="xl" justify="center" align="center" shadow="sm">
+                                <Icon as={FaMoneyBillWave} boxSize={5} />
+                              </Flex>
+                            </Flex>
                           </Card>
                         </Grid>
                       </>
@@ -3356,7 +3802,10 @@ export default function ServiceManagement() {
 
                     {/* Revenue Line Chart - only visible for revenue analysis */}
                     {currentView === "revenueAnalysis" && (
-                      <Card bg="white" shadow="sm" p={5} mt={0}>
+                      <Card bg="white" shadow="sm" borderRadius="xl" p={5}>
+                        <Heading size="xs" color="gray.700" mb={4}>
+                          Revenue Distribution by Service Category / Type
+                        </Heading>
                         <Box height="300px">
                           <ReactApexChart
                             options={{
@@ -3403,57 +3852,140 @@ export default function ServiceManagement() {
                       </Card>
                     )}
 
-                    {/* Top Services List */}
+                    {/* Ranked Services Table */}
                     {currentView === "serviceAnalysis" && (
-                      <Card bg="white" shadow="sm" p={4} mt={6}>
-                        <Text fontWeight="bold" color="gray.700" mb={4}>
-                          Top 10 Services by Cost
-                        </Text>
-                        {services.length > 0 ? (
-                          <Box overflowX="auto">
+                      <Card bg="white" shadow="sm" borderRadius="xl" p={5} border="1px solid" borderColor="gray.100">
+                        <Flex justify="space-between" align="center" mb={4}>
+                          <Box>
+                            <HStack spacing={2}>
+                              <Icon as={FaTrophy} color="amber.500" />
+                              <Heading size="xs" color="gray.800" textTransform="uppercase" letterSpacing="wide">
+                                Top Services Ranked by Cost
+                              </Heading>
+                            </HStack>
+                            <Text fontSize="xs" color="gray.500" mt={0.5}>
+                              Showing highest value services according to applied filter criteria.
+                            </Text>
+                          </Box>
+                          <Badge colorScheme="teal" px={3} py={1} borderRadius="full" fontSize="xs">
+                            {filteredAnalysisServices.length} Results
+                          </Badge>
+                        </Flex>
+
+                        {filteredAnalysisServices.length > 0 ? (
+                          <Box overflowX="auto" css={globalScrollbarStyles}>
                             <Table variant="simple" size="sm">
-                              <Thead>
-                                <Tr>
-                                  <Th>Service Name</Th>
-                                  <Th>Category</Th>
-                                  <Th>Type</Th>
-                                  <Th isNumeric>Cost</Th>
-                                  <Th>Status</Th>
+                              <Thead bg={`${customColor}10`}>
+                                <Tr verticalAlign="middle">
+                                  <Th textAlign="center" w="60px" color="gray.700" py={3}>RANK</Th>
+                                  <Th color="gray.700" py={3}>SERVICE NAME</Th>
+                                  <Th color="gray.700" py={3}>CATEGORY</Th>
+                                  <Th textAlign="center" color="gray.700" py={3}>SERVICE TYPE</Th>
+                                  <Th textAlign="right" color="gray.700" py={3}>COST (₹)</Th>
+                                  <Th textAlign="center" color="gray.700" py={3}>STATUS & PRICING</Th>
                                 </Tr>
                               </Thead>
                               <Tbody>
-                                {[...services]
+                                {[...filteredAnalysisServices]
                                   .sort((a, b) => (b.serviceCost || 0) - (a.serviceCost || 0))
                                   .slice(0, 10)
-                                  .map((service, index) => (
-                                    <Tr key={service._id}>
-                                      <Td>{service.serviceName}</Td>
-                                      <Td>{service.categoryId?.category || "N/A"}</Td>
-                                      <Td>
-                                        <Badge colorScheme={
-                                          service.serviceType === "Installation" ? "blue" :
-                                            service.serviceType === "Maintenance" ? "green" :
-                                              service.serviceType === "Repair" ? "orange" : "purple"
-                                        }>
-                                          {service.serviceType}
-                                        </Badge>
-                                      </Td>
-                                      <Td isNumeric fontWeight="bold">₹{service.serviceCost}</Td>
-                                      <Td>
-                                        <Badge colorScheme={service.isActive ? "green" : "red"}>
-                                          {service.isActive ? "Active" : "Inactive"}
-                                        </Badge>
-                                      </Td>
-                                    </Tr>
-                                  ))}
+                                  .map((service, index) => {
+                                    const rank = index + 1;
+                                    const isGold = rank === 1;
+                                    const isSilver = rank === 2;
+                                    const isBronze = rank === 3;
+
+                                    return (
+                                      <Tr key={service._id || index} _hover={{ bg: `${customColor}08` }} verticalAlign="middle">
+                                        <Td textAlign="center" py={3}>
+                                          {isGold ? (
+                                            <Badge colorScheme="yellow" bg="yellow.100" color="yellow.800" fontSize="2xs" px={2} py={0.5} borderRadius="full" fontWeight="bold">
+                                              🥇 #1
+                                            </Badge>
+                                          ) : isSilver ? (
+                                            <Badge colorScheme="gray" bg="gray.200" color="gray.800" fontSize="2xs" px={2} py={0.5} borderRadius="full" fontWeight="bold">
+                                              🥈 #2
+                                            </Badge>
+                                          ) : isBronze ? (
+                                            <Badge colorScheme="orange" bg="orange.100" color="orange.800" fontSize="2xs" px={2} py={0.5} borderRadius="full" fontWeight="bold">
+                                              🥉 #3
+                                            </Badge>
+                                          ) : (
+                                            <Text fontSize="xs" fontWeight="bold" color="gray.500">
+                                              #{rank}
+                                            </Text>
+                                          )}
+                                        </Td>
+                                        <Td py={3}>
+                                          <Text fontWeight="bold" fontSize="xs" color="gray.800" noOfLines={1} maxW="240px">
+                                            {service.serviceName}
+                                          </Text>
+                                        </Td>
+                                        <Td py={3}>
+                                          <Text fontSize="xs" color="gray.600" noOfLines={1} maxW="160px">
+                                            {service.categoryId?.category ||
+                                              categories.find(c => c._id === service.categoryId)?.category ||
+                                              "N/A"}
+                                          </Text>
+                                        </Td>
+                                        <Td textAlign="center" py={3}>
+                                          <Badge
+                                            colorScheme={
+                                              service.serviceType === "Installation" ? "blue" :
+                                                service.serviceType === "Maintenance" ? "green" :
+                                                  service.serviceType === "Repair" ? "orange" : "purple"
+                                            }
+                                            fontSize="2xs"
+                                            px={2.5}
+                                            py={0.5}
+                                            borderRadius="full"
+                                          >
+                                            {service.serviceType || "General"}
+                                          </Badge>
+                                        </Td>
+                                        <Td textAlign="right" py={3}>
+                                          <Text fontSize="xs" fontWeight="extrabold" color="teal.700">
+                                            ₹{(service.serviceCost || 0).toLocaleString()}
+                                          </Text>
+                                        </Td>
+                                        <Td textAlign="center" py={3}>
+                                          <HStack justify="center" spacing={1.5}>
+                                            <Badge
+                                              colorScheme={service.isActive ? "green" : "red"}
+                                              fontSize="3xs"
+                                              px={2}
+                                              py={0.5}
+                                              borderRadius="full"
+                                            >
+                                              {service.isActive ? "Active" : "Inactive"}
+                                            </Badge>
+                                            <Badge
+                                              colorScheme={service.pricingType === "fixed" ? "teal" : "blue"}
+                                              fontSize="3xs"
+                                              px={1.5}
+                                              py={0.5}
+                                              borderRadius="md"
+                                              textTransform="capitalize"
+                                            >
+                                              {service.pricingType || "fixed"}
+                                            </Badge>
+                                          </HStack>
+                                        </Td>
+                                      </Tr>
+                                    );
+                                  })}
                               </Tbody>
                             </Table>
                           </Box>
                         ) : (
-                          <Center py={10}>
-                            <Text fontSize="md" color="gray.500">
-                              No services available
+                          <Center py={10} flexDir="column" gap={2}>
+                            <Icon as={FaSearch} color="gray.300" boxSize={8} />
+                            <Text fontSize="sm" color="gray.500" fontWeight="medium">
+                              No services match the selected filter criteria.
                             </Text>
+                            <Button size="xs" colorScheme="teal" variant="outline" onClick={resetAnalysisFilters} mt={2}>
+                              Reset Filters
+                            </Button>
                           </Center>
                         )}
                       </Card>
@@ -3808,6 +4340,61 @@ export default function ServiceManagement() {
                     </Badge>
                   )}
                 </Flex>
+
+                {/* Service Coverage Polygon */}
+                <Box mt={4} p={4} border="1px solid" borderColor={`${customColor}20`} borderRadius="md" bg="gray.50">
+                  <Flex justify="space-between" align="center" mb={2}>
+                    <Text fontWeight="bold" color="gray.600" fontSize="sm">
+                      Service Coverage Polygon
+                    </Text>
+                    <Badge colorScheme={selectedService.polygon ? "green" : "gray"} fontSize="xs">
+                      {selectedService.polygon ? "Defined" : "Unrestricted"}
+                    </Badge>
+                  </Flex>
+                  {selectedService.polygon && (
+                    <Text fontSize="xs" color="gray.500" mb={2} fontFamily="monospace">
+                      {selectedService.polygon.type || "Polygon"} •{" "}
+                      {selectedService.polygon.coordinates?.length || 0} ring(s) •{" "}
+                      {(selectedService.polygon.coordinates?.[0]?.length || 0)} points
+                    </Text>
+                  )}
+                  <Textarea
+                    value={polygonInput}
+                    onChange={(e) => setPolygonInput(e.target.value)}
+                    placeholder={'{\n  "type": "Polygon",\n  "coordinates": [\n    [[72.83, 19.07], [72.94, 19.07], [72.94, 19.22], [72.83, 19.22], [72.83, 19.07]]\n  ]\n}'}
+                    size="sm"
+                    rows={4}
+                    fontFamily="monospace"
+                    fontSize="xs"
+                    bg="white"
+                    borderColor="gray.300"
+                  />
+                  <Flex gap={2} mt={2} justify="flex-end">
+                    {selectedService.polygon && (
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        borderColor="red.400"
+                        color="red.500"
+                        _hover={{ bg: "red.500", color: "white" }}
+                        onClick={handleRemoveServicePolygon}
+                        isLoading={polygonSubmitting}
+                      >
+                        Remove Polygon
+                      </Button>
+                    )}
+                    <Button
+                      size="xs"
+                      bg={customColor}
+                      color="white"
+                      _hover={{ bg: "#006666" }}
+                      onClick={handleSetServicePolygon}
+                      isLoading={polygonSubmitting}
+                    >
+                      Set Polygon
+                    </Button>
+                  </Flex>
+                </Box>
               </Box>
             )}
           </ModalBody>

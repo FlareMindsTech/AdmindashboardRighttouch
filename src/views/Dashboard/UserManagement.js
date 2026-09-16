@@ -65,12 +65,79 @@ import {
 import { IoCheckmarkDoneCircleSharp } from "react-icons/io5";
 import { MdWarning, MdOutlinePayment } from "react-icons/md";
 import {
-  getAllUsers,
-  deleteUser,
+  getUsersByRole,
+  deleteUserById,
   getAllServiceBooking,
   getAllCurrentTechJob,
   getAllTechnicians,
 } from "../utils/axiosInstance";
+
+export const getUserDisplayName = (user) => {
+  if (!user) return "Unknown User";
+
+  if (user.fname || user.lname) {
+    const name = `${user.fname || ''} ${user.lname || ''}`.trim();
+    if (name) return name;
+  }
+  if (user.profile?.fname || user.profile?.lname) {
+    const name = `${user.profile.fname || ''} ${user.profile.lname || ''}`.trim();
+    if (name) return name;
+  }
+  if (user.firstName || user.lastName) {
+    const name = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    if (name) return name;
+  }
+  if (user.profile?.firstName || user.profile?.lastName) {
+    const name = `${user.profile.firstName || ''} ${user.profile.lastName || ''}`.trim();
+    if (name) return name;
+  }
+  if (typeof user.name === 'string' && user.name.trim()) return user.name.trim();
+  if (typeof user.fullName === 'string' && user.fullName.trim()) return user.fullName.trim();
+  if (typeof user.userName === 'string' && user.userName.trim()) return user.userName.trim();
+  if (typeof user.username === 'string' && user.username.trim()) return user.username.trim();
+
+  if (user.bookings && Array.isArray(user.bookings) && user.bookings.length > 0) {
+    const b = user.bookings[0];
+    const bName = b.customerName || b.customerId?.fname || b.customerId?.name;
+    if (typeof bName === 'string' && bName.trim()) return bName.trim();
+  }
+
+  const phone = user.mobileNumber || user.phone || user.mobile || user.phoneNumber || user.contact || user.profile?.mobileNumber;
+  if (phone) return `Customer (${phone})`;
+
+  const id = user._id || user.id;
+  if (id) return `Customer #${String(id).slice(-6).toUpperCase()}`;
+
+  return "Unknown User";
+};
+
+export const getUserDisplayEmail = (user) => {
+  if (!user) return "No email registered";
+  if (typeof user.email === 'string' && user.email.trim()) return user.email.trim();
+  if (typeof user.emailId === 'string' && user.emailId.trim()) return user.emailId.trim();
+  if (typeof user.profile?.email === 'string' && user.profile.email.trim()) return user.profile.email.trim();
+
+  if (user.bookings && Array.isArray(user.bookings) && user.bookings.length > 0) {
+    const b = user.bookings[0];
+    if (typeof b.customerEmail === 'string' && b.customerEmail.trim()) return b.customerEmail.trim();
+  }
+
+  return "No email registered";
+};
+
+export const getUserDisplayPhone = (user) => {
+  if (!user) return "-";
+  return (
+    user.mobileNumber ||
+    user.phone ||
+    user.mobile ||
+    user.phoneNumber ||
+    user.contact ||
+    user.profile?.mobileNumber ||
+    user.profile?.phone ||
+    "-"
+  );
+};
 
 export default function UserManagement() {
   const textColor = useColorModeValue("gray.700", "white");
@@ -173,6 +240,15 @@ export default function UserManagement() {
     setCurrentUser(storedUser);
   }, [toast]);
 
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Fetch data
   const fetchData = useCallback(async () => {
     if (!currentUser) return;
@@ -180,11 +256,13 @@ export default function UserManagement() {
     setIsLoading(true);
     try {
       const [usersResponse, bookingsResponse, techJobsResponse, techniciansResponse] = await Promise.all([
-        getAllUsers(),
+        getUsersByRole("Customer"),
         getAllServiceBooking(),
         getAllCurrentTechJob().catch(err => []),
         getAllTechnicians().catch(err => []),
       ]);
+
+      if (!isMountedRef.current) return;
 
       // Parse responses
       const users = Array.isArray(usersResponse.result || usersResponse.data?.users || usersResponse.data || usersResponse?.users || usersResponse)
@@ -203,18 +281,10 @@ export default function UserManagement() {
       setAllBookings(bookings);
       setTechnicians(techList);
 
-      // Sort users alphabetically
       const sortedUsers = users.sort((a, b) => {
-        const getName = (u) => {
-          if (u.profile?.fname || u.profile?.lname) {
-            return `${u.profile.fname || ""} ${u.profile.lname || ""}`.trim();
-          }
-          if (u.profile?.firstName || u.profile?.lastName) {
-            return `${u.profile.firstName || ""} ${u.profile.lastName || ""}`.trim();
-          }
-          return (u.name || `${u.firstName || ''} ${u.lastName || ''}`).trim();
-        };
-        return getName(a).toLowerCase().localeCompare(getName(b).toLowerCase());
+        const nameA = getUserDisplayName(a).toLowerCase();
+        const nameB = getUserDisplayName(b).toLowerCase();
+        return nameA.localeCompare(nameB);
       });
 
       // Enrich users with data
@@ -250,6 +320,7 @@ export default function UserManagement() {
       setUserData(usersWithDetails);
       setFilteredData(usersWithDetails);
     } catch (err) {
+      if (!isMountedRef.current) return;
       console.error("Fetch error:", err);
       toast({
         title: "Fetch Error",
@@ -259,7 +330,9 @@ export default function UserManagement() {
         isClosable: true,
       });
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [currentUser, toast]);
 
@@ -275,15 +348,14 @@ export default function UserManagement() {
     setSearchTerm(value);
 
     const filtered = userData.filter(user => {
-      const userName = (
-        user.profile?.fname || user.profile?.firstName || user.name ||
-        `${user.firstName || ''} ${user.lastName || ''}`
-      ).toLowerCase();
+      const userName = getUserDisplayName(user).toLowerCase();
+      const userEmail = getUserDisplayEmail(user).toLowerCase();
+      const userPhone = getUserDisplayPhone(user).toLowerCase();
 
       return (
         userName.includes(value.toLowerCase()) ||
-        user.email?.toLowerCase().includes(value.toLowerCase()) ||
-        (user.mobileNumber || user.phone || "").toString().toLowerCase().includes(value.toLowerCase())
+        userEmail.includes(value.toLowerCase()) ||
+        userPhone.includes(value.toLowerCase())
       );
     });
 
@@ -388,7 +460,7 @@ export default function UserManagement() {
 
     setDeleteLoading(true);
     try {
-      await deleteUser(userToDelete._id);
+      await deleteUserById(userToDelete._id);
 
       toast({
         title: "User Deleted",
@@ -441,10 +513,9 @@ export default function UserManagement() {
     </Box>
   );
 
-  // Mobile Card Component for User
   const UserMobileCard = ({ user, idx }) => {
-    const userName = user.profile?.fname || user.profile?.firstName || user.name ||
-      `${user.firstName || ''} ${user.lastName || ''}`.trim() || "Unknown User";
+    const userName = getUserDisplayName(user);
+    const userEmail = getUserDisplayEmail(user);
 
     return (
       <Box
@@ -585,7 +656,6 @@ export default function UserManagement() {
                   </Flex>
                 </Stat>
                 <IconBox
-                  as="box"
                   h={{ base: "28px", md: "32px" }}
                   w={{ base: "28px", md: "32px" }}
                   bg={customColor}
@@ -643,7 +713,6 @@ export default function UserManagement() {
                   </Flex>
                 </Stat>
                 <IconBox
-                  as="box"
                   h={{ base: "28px", md: "32px" }}
                   w={{ base: "28px", md: "32px" }}
                   bg="green.500"
@@ -701,7 +770,6 @@ export default function UserManagement() {
                   </Flex>
                 </Stat>
                 <IconBox
-                  as="box"
                   h={{ base: "28px", md: "32px" }}
                   w={{ base: "28px", md: "32px" }}
                   bg="orange.500"
@@ -759,7 +827,6 @@ export default function UserManagement() {
                   </Flex>
                 </Stat>
                 <IconBox
-                  as="box"
                   h={{ base: "28px", md: "32px" }}
                   w={{ base: "28px", md: "32px" }}
                   bg="purple.500"
@@ -955,8 +1022,9 @@ export default function UserManagement() {
                     <Tbody bg="transparent">
                       {currentItems.length > 0 ? (
                         currentItems.map((user, idx) => {
-                          const userName = user.profile?.fname || user.profile?.firstName || user.name ||
-                            `${user.firstName || ''} ${user.lastName || ''}`.trim() || "Unknown User";
+                          const userName = getUserDisplayName(user);
+                          const userEmail = getUserDisplayEmail(user);
+                          const userPhone = getUserDisplayPhone(user);
 
                           return (
                             <Tr
@@ -974,17 +1042,17 @@ export default function UserManagement() {
                                 <Flex align="center" gap={2}>
                                   <Avatar size="xs" name={userName} src={user.profileImage} />
                                   <Box>
-                                    <Text fontWeight="medium" fontSize="xs" noOfLines={1}>
+                                    <Text fontWeight="bold" color="gray.800" fontSize="xs" noOfLines={1}>
                                       {userName}
                                     </Text>
-                                    <Text fontSize="2xs" color="gray.500">
-                                      {user.email || "No email"}
+                                    <Text fontSize="2xs" color="gray.500" noOfLines={1}>
+                                      {userEmail}
                                     </Text>
                                   </Box>
                                 </Flex>
                               </Td>
                               <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                {user.mobileNumber || user.phone || "-"}
+                                {userPhone}
                               </Td>
                               <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
                                 <Badge
@@ -1159,102 +1227,153 @@ export default function UserManagement() {
 
       {/* User Details Modal */}
       <Modal isOpen={isViewModalOpen} onClose={closeModal} size="lg">
-        <ModalOverlay />
-        <ModalContent maxW="600px">
-          <ModalHeader color="gray.700">User Details</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody maxH="70vh" overflowY="auto">
+        <ModalOverlay backdropFilter="blur(2px)" bg="blackAlpha.500" />
+        <ModalContent maxW="620px" borderRadius="xl" overflow="hidden" shadow="2xl">
+          <ModalHeader bg="gray.900" color="white" py={4} px={6}>
+            <Flex align="center" justify="space-between" pr={6}>
+              <HStack spacing={3}>
+                <Box p={2} bg={`${customColor}30`} borderRadius="md">
+                  <Icon as={FaUsers} color="teal.300" boxSize={5} />
+                </Box>
+                <Box>
+                  <Text fontSize="md" fontWeight="bold" color="white">
+                    User Profile & Account Dossier
+                  </Text>
+                  {selectedUser && (
+                    <Text fontSize="2xs" color="gray.400" fontFamily="mono">
+                      USER ID: #{String(selectedUser._id || selectedUser.id || "").slice(-8).toUpperCase()}
+                    </Text>
+                  )}
+                </Box>
+              </HStack>
+              {selectedUser && (
+                <Badge
+                  colorScheme={selectedUser.status?.toLowerCase() === "active" ? "green" : "red"}
+                  px={3}
+                  py={1}
+                  borderRadius="full"
+                  fontSize="xs"
+                >
+                  {selectedUser.status || "Active"}
+                </Badge>
+              )}
+            </Flex>
+          </ModalHeader>
+          <ModalCloseButton color="white" mt={1} />
+          <ModalBody p={5} maxH="75vh" overflowY="auto" bg="gray.50">
             {selectedUser && (
               <VStack spacing={4} align="stretch">
-                {/* Profile Header */}
-                <Flex align="center" gap={4} mb={2}>
-                  <Avatar
-                    size="xl"
-                    name={selectedUser.profile?.fname || selectedUser.name}
-                    src={selectedUser.profileImage}
-                  />
-                  <Box>
-                    <Heading size="md" color="gray.700">
-                      {selectedUser.profile?.fname || selectedUser.profile?.firstName || selectedUser.name ||
-                        `${selectedUser.firstName || ''} ${selectedUser.lastName || ''}`.trim()}
-                    </Heading>
-                    <Badge colorScheme={selectedUser.status?.toLowerCase() === "active" ? "green" : "red"} mt={1}>
-                      {selectedUser.status || "Active"}
-                    </Badge>
-                  </Box>
-                </Flex>
+                {/* Profile Banner Card */}
+                <Box bg="white" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200" shadow="xs">
+                  <Flex align="center" gap={4}>
+                    <Avatar
+                      size="xl"
+                      name={getUserDisplayName(selectedUser)}
+                      src={selectedUser.profileImage}
+                      border="2px solid"
+                      borderColor={customColor}
+                      shadow="md"
+                    />
+                    <Box flex="1">
+                      <Heading size="md" color="gray.800">
+                        {getUserDisplayName(selectedUser)}
+                      </Heading>
+                      <Text fontSize="xs" color="gray.600" mt={0.5}>
+                        {getUserDisplayEmail(selectedUser)}
+                      </Text>
+                      <HStack spacing={2} mt={2}>
+                        <Badge colorScheme="teal" fontSize="2xs" px={2} py={0.5} borderRadius="md">
+                          {selectedUser.role || "Registered Customer"}
+                        </Badge>
+                        <Badge colorScheme={selectedUser.allocatedTechnician !== "None" ? "purple" : "gray"} fontSize="2xs" px={2} py={0.5} borderRadius="md">
+                          {selectedUser.allocatedTechnician !== "None" ? "Assigned Tech" : "Unassigned"}
+                        </Badge>
+                      </HStack>
+                    </Box>
+                  </Flex>
+                </Box>
 
-                {/* Contact Information */}
-                <Box>
-                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Contact Information</Text>
-                  <SimpleGrid columns={2} spacing={3}>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Phone</Text>
-                      <Text fontSize="sm">{selectedUser.mobileNumber || selectedUser.phone || "N/A"}</Text>
+                {/* Contact & Personal Information */}
+                <Box bg="white" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200" shadow="xs">
+                  <Text fontWeight="bold" color="gray.700" fontSize="xs" textTransform="uppercase" letterSpacing="wide" mb={3}>
+                    Contact & Account Information
+                  </Text>
+                  <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3} fontSize="xs">
+                    <Box bg="gray.50" p={2.5} borderRadius="lg">
+                      <Text color="gray.500" fontSize="2xs">Mobile Phone</Text>
+                      <Text fontWeight="semibold" color="gray.800" fontSize="sm">
+                        {getUserDisplayPhone(selectedUser)}
+                      </Text>
+                    </Box>
+                    <Box bg="gray.50" p={2.5} borderRadius="lg">
+                      <Text color="gray.500" fontSize="2xs">Email Address</Text>
+                      <Text fontWeight="semibold" color="gray.800" isTruncated fontSize="xs">
+                        {getUserDisplayEmail(selectedUser)}
+                      </Text>
+                    </Box>
+                    <Box bg="gray.50" p={2.5} borderRadius="lg">
+                      <Text color="gray.500" fontSize="2xs">Joined Date</Text>
+                      <Text fontWeight="semibold" color="gray.800">
+                        {selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' }) : "N/A"}
+                      </Text>
+                    </Box>
+                    <Box bg="gray.50" p={2.5} borderRadius="lg">
+                      <Text color="gray.500" fontSize="2xs">Location / City</Text>
+                      <Text fontWeight="semibold" color="gray.800" textTransform="capitalize">
+                        {selectedUser.city || selectedUser.locality || selectedUser.address || selectedUser.profile?.city || "N/A"}
+                      </Text>
                     </Box>
                   </SimpleGrid>
                 </Box>
 
-                {/* Booking Statistics */}
-                <Box bg={`${customColor}05`} p={4} borderRadius="md">
-                  <Text fontWeight="bold" color={customColor} fontSize="sm" mb={3}>Booking Statistics</Text>
-                  <SimpleGrid columns={2} spacing={3}>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Total Bookings</Text>
-                      <Text fontSize="lg" fontWeight="bold">{selectedUser.bookingCount}</Text>
+                {/* Booking Statistics Grid */}
+                <Box bg="white" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200" shadow="xs">
+                  <Text fontWeight="bold" color="teal.700" fontSize="xs" textTransform="uppercase" letterSpacing="wide" mb={3}>
+                    Service Booking Metrics
+                  </Text>
+                  <SimpleGrid columns={4} spacing={2}>
+                    <Box bg="teal.50" p={2.5} borderRadius="lg" textAlign="center">
+                      <Text fontSize="2xs" color="teal.700" fontWeight="bold">TOTAL</Text>
+                      <Text fontSize="lg" fontWeight="black" color="teal.800">
+                        {selectedUser.bookings?.length || selectedUser.bookingCount || 0}
+                      </Text>
                     </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Completed</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="green.500">
+                    <Box bg="green.50" p={2.5} borderRadius="lg" textAlign="center">
+                      <Text fontSize="2xs" color="green.700" fontWeight="bold">COMPLETED</Text>
+                      <Text fontSize="lg" fontWeight="black" color="green.700">
                         {selectedUser.jobStats?.service?.completed || 0}
                       </Text>
                     </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Pending</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="orange.500">
-                        {(selectedUser.bookingCount || 0) - (selectedUser.jobStats?.service?.completed || 0)}
+                    <Box bg="orange.50" p={2.5} borderRadius="lg" textAlign="center">
+                      <Text fontSize="2xs" color="orange.700" fontWeight="bold">PENDING</Text>
+                      <Text fontSize="lg" fontWeight="black" color="orange.700">
+                        {Math.max(0, (selectedUser.bookingCount || selectedUser.bookings?.length || 0) - (selectedUser.jobStats?.service?.completed || 0))}
                       </Text>
                     </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Cancelled</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="red.500">
+                    <Box bg="red.50" p={2.5} borderRadius="lg" textAlign="center">
+                      <Text fontSize="2xs" color="red.700" fontWeight="bold">CANCELLED</Text>
+                      <Text fontSize="lg" fontWeight="black" color="red.700">
                         {selectedUser.jobStats?.service?.cancelled || 0}
                       </Text>
                     </Box>
                   </SimpleGrid>
                 </Box>
 
-                {/* Account Details */}
-                <Box>
-                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Account Details</Text>
-                  <SimpleGrid columns={2} spacing={3}>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Joined Date</Text>
-                      <Text fontSize="sm">
-                        {selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString() : "N/A"}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Last Login</Text>
-                      <Text fontSize="sm">
-                        {selectedUser.lastLoginAt ? new Date(selectedUser.lastLoginAt).toLocaleString() : "N/A"}
-                      </Text>
-                    </Box>
-                  </SimpleGrid>
-                </Box>
-
                 {/* Technician Assignment */}
-                <Box>
-                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Technician Assignment</Text>
+                <Box bg="white" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200" shadow="xs">
+                  <Text fontWeight="bold" color="gray.700" fontSize="xs" textTransform="uppercase" letterSpacing="wide" mb={2}>
+                    Allocated Technician
+                  </Text>
                   <Badge
                     colorScheme={selectedUser.allocatedTechnician !== "None" ? "green" : "gray"}
-                    fontSize="sm"
+                    fontSize="xs"
                     px={3}
-                    py={1}
+                    py={1.5}
+                    borderRadius="md"
                   >
                     {selectedUser.allocatedTechnician !== "None" ?
-                      `Assigned to: ${selectedUser.allocatedTechnician}` :
-                      "No technician assigned"}
+                      `Assigned Specialist: ${selectedUser.allocatedTechnician}` :
+                      "No active technician allocated"}
                   </Badge>
                 </Box>
               </VStack>
@@ -1265,92 +1384,105 @@ export default function UserManagement() {
 
       {/* Technician Allocation Modal */}
       <Modal isOpen={isTechModalOpen} onClose={closeModal} size="xl">
-        <ModalOverlay />
-        <ModalContent maxW="700px">
-          <ModalHeader color="gray.700">Technician Allocation Details</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody maxH="70vh" overflowY="auto">
+        <ModalOverlay backdropFilter="blur(2px)" bg="blackAlpha.500" />
+        <ModalContent maxW="700px" borderRadius="xl" overflow="hidden" shadow="2xl">
+          <ModalHeader bg="gray.900" color="white" py={4} px={6}>
+            <Flex align="center" gap={3}>
+              <Box p={2} bg={`${customColor}30`} borderRadius="md">
+                <Icon as={FaUserCog} color="teal.300" boxSize={5} />
+              </Box>
+              <Box>
+                <Text fontSize="md" fontWeight="bold" color="white">
+                  Technician Allocation & Job Details
+                </Text>
+                <Text fontSize="2xs" color="gray.400">
+                  Assigned technicians per booking
+                </Text>
+              </Box>
+            </Flex>
+          </ModalHeader>
+          <ModalCloseButton color="white" mt={1} />
+          <ModalBody p={5} maxH="75vh" overflowY="auto" bg="gray.50">
             {selectedUserForTech && (
               <VStack spacing={4} align="stretch">
                 {selectedUserForTech.bookings && selectedUserForTech.bookings.length > 0 ? (
-                  selectedUserForTech.bookings.map((booking, idx) => (
-                    <Box
-                      key={idx}
-                      p={4}
-                      border="1px solid"
-                      borderColor="gray.200"
-                      borderRadius="md"
-                      bg="gray.50"
-                    >
-                      <Text fontWeight="bold" color={customColor} fontSize="sm" mb={3}>
-                        Booking #{idx + 1}
-                      </Text>
+                  selectedUserForTech.bookings.map((booking, idx) => {
+                    const techObj = typeof booking.technicianId === 'object' && booking.technicianId
+                      ? (booking.technicianId.userId || booking.technicianId)
+                      : null;
+                    const techName = techObj
+                      ? (`${techObj.fname || techObj.firstName || ''} ${techObj.lname || techObj.lastName || ''}`.trim() || techObj.name || "Assigned Specialist")
+                      : (booking.technicianName || "No Technician Allocated");
+                    const techPhone = techObj?.mobileNumber || techObj?.phone || techObj?.mobile || booking.technicianPhone || "N/A";
+                    const techEmail = techObj?.email || "N/A";
 
-                      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                        <Box>
-                          <Text fontSize="xs" fontWeight="bold" color="teal.500" mb={1}>
-                            Technician Details
+                    return (
+                      <Box
+                        key={idx}
+                        p={4}
+                        border="1px solid"
+                        borderColor="gray.200"
+                        borderRadius="xl"
+                        bg="white"
+                        shadow="xs"
+                      >
+                        <Flex align="center" justify="space-between" mb={3} pb={2} borderBottom="1px dashed" borderColor="gray.200">
+                          <Text fontWeight="bold" color={customColor} fontSize="xs" textTransform="uppercase">
+                            Booking #{idx + 1} ({booking.bookingNumber || String(booking._id || "").slice(-6)})
                           </Text>
-                          {booking.technicianId ? (
-                            <>
-                              <Text fontSize="sm">
-                                <strong>Name:</strong> {
-                                  (() => {
-                                    const tUser = booking.technicianId.userId;
-                                    const name = `${tUser?.fname || tUser?.firstName || ''} ${tUser?.lname || tUser?.lastName || ''}`.trim() ||
-                                      tUser?.name || "Unknown";
-                                    return name;
-                                  })()
-                                }
-                              </Text>
-                              <Text fontSize="sm">
-                                <strong>Mobile:</strong> {booking.technicianId.userId?.mobileNumber || "N/A"}
-                              </Text>
-                              <Text fontSize="sm">
-                                <strong>Status:</strong> {booking.technicianId.workStatus || "N/A"}
-                              </Text>
-                              <Text fontSize="sm">
-                                <strong>Assigned:</strong> {booking.assignedAt ? new Date(booking.assignedAt).toLocaleString() : "N/A"}
-                              </Text>
-                            </>
-                          ) : (
-                            <Text fontSize="sm" color="red.500" fontStyle="italic">
-                              No technician allocated
+                          <Badge
+                            colorScheme={
+                              booking.status === 'completed' ? 'green' :
+                              booking.status === 'cancelled' ? 'red' : 'yellow'
+                            }
+                            fontSize="2xs"
+                            px={2.5}
+                            py={0.5}
+                            borderRadius="full"
+                          >
+                            {booking.status || "Pending"}
+                          </Badge>
+                        </Flex>
+
+                        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                          <Box bg="teal.50/50" p={3} borderRadius="lg" borderLeft="3px solid" borderColor="teal.400">
+                            <Text fontSize="2xs" fontWeight="bold" color="teal.700" textTransform="uppercase" mb={1.5}>
+                              Allocated Technician Profile
                             </Text>
-                          )}
-                        </Box>
+                            {booking.technicianId || booking.technicianName ? (
+                              <VStack align="stretch" spacing={1} fontSize="xs">
+                                <Text><strong>Name:</strong> {techName}</Text>
+                                <Text><strong>Phone:</strong> {techPhone}</Text>
+                                <Text><strong>Email:</strong> {techEmail}</Text>
+                                <Text><strong>Assigned:</strong> {booking.assignedAt ? new Date(booking.assignedAt).toLocaleString() : "System Auto-Allocated"}</Text>
+                              </VStack>
+                            ) : (
+                              <Text fontSize="xs" color="red.500" fontWeight="medium" fontStyle="italic">
+                                No technician allocated yet for this booking.
+                              </Text>
+                            )}
+                          </Box>
 
-                        <Box>
-                          <Text fontSize="xs" fontWeight="bold" color="blue.500" mb={1}>
-                            Service Details
-                          </Text>
-                          <Text fontSize="sm">
-                            <strong>Service:</strong> {booking.serviceId?.serviceName || "N/A"}
-                          </Text>
-                          <Text fontSize="sm">
-                            <strong>Type:</strong> {booking.serviceId?.serviceType || "N/A"}
-                          </Text>
-                          <Text fontSize="sm">
-                            <strong>Cost:</strong> ₹{booking.serviceId?.serviceCost || 0}
-                          </Text>
-                          <Text fontSize="sm" mt={1}>
-                            <strong>Status:</strong>{" "}
-                            <Badge
-                              colorScheme={
-                                booking.status === 'completed' ? 'green' :
-                                  booking.status === 'cancelled' ? 'red' : 'yellow'
-                              }
-                            >
-                              {booking.status}
-                            </Badge>
-                          </Text>
-                        </Box>
-                      </SimpleGrid>
-                    </Box>
-                  ))
+                          <Box bg="blue.50/50" p={3} borderRadius="lg" borderLeft="3px solid" borderColor="blue.400">
+                            <Text fontSize="2xs" fontWeight="bold" color="blue.700" textTransform="uppercase" mb={1.5}>
+                              Booked Service Details
+                            </Text>
+                            <VStack align="stretch" spacing={1} fontSize="xs">
+                              <Text><strong>Service:</strong> {booking.serviceId?.serviceName || booking.serviceName || booking.title || "Standard Service"}</Text>
+                              <Text><strong>Category:</strong> {booking.serviceId?.category || booking.bookingType || "Service"}</Text>
+                              <Text><strong>Amount:</strong> <Text as="span" fontWeight="bold" color="green.600">₹{booking.totalAmount || booking.amount || booking.serviceId?.serviceCost || 0}</Text></Text>
+                            </VStack>
+                          </Box>
+                        </SimpleGrid>
+                      </Box>
+                    );
+                  })
                 ) : (
-                  <Center py={6}>
-                    <Text color="gray.500">No bookings found for this user.</Text>
+                  <Center py={8}>
+                    <VStack spacing={2}>
+                      <Icon as={FaUsers} color="gray.400" boxSize={8} />
+                      <Text color="gray.500" fontSize="sm">No service bookings found for this customer.</Text>
+                    </VStack>
                   </Center>
                 )}
               </VStack>
@@ -1377,16 +1509,14 @@ export default function UserManagement() {
                 <Flex align="center" gap={3} p={3} bg="gray.50" borderRadius="md">
                   <Avatar
                     size="sm"
-                    name={selectedUserForPayment.user.profile?.fname || selectedUserForPayment.user.name}
+                    name={getUserDisplayName(selectedUserForPayment.user)}
                   />
                   <Box>
                     <Text fontWeight="bold">
-                      {selectedUserForPayment.user.profile?.fname ||
-                        selectedUserForPayment.user.name ||
-                        `${selectedUserForPayment.user.firstName || ''} ${selectedUserForPayment.user.lastName || ''}`.trim()}
+                      {getUserDisplayName(selectedUserForPayment.user)}
                     </Text>
                     <Text fontSize="xs" color="gray.500">
-                      {selectedUserForPayment.user.mobileNumber || selectedUserForPayment.user.phone || "No phone"}
+                      {getUserDisplayPhone(selectedUserForPayment.user)} • {getUserDisplayEmail(selectedUserForPayment.user)}
                     </Text>
                   </Box>
                 </Flex>
@@ -1444,7 +1574,7 @@ export default function UserManagement() {
                 <Text>
                   Are you sure you want to delete{" "}
                   <Text as="span" fontWeight="bold" color={customColor}>
-                    "{userToDelete.profile?.fname || userToDelete.name}"
+                    "{getUserDisplayName(userToDelete)}"
                   </Text>
                   ? This action cannot be undone.
                 </Text>

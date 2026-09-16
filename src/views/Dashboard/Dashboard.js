@@ -61,6 +61,34 @@ const getStatusColor = (status) => {
   return 'gray';
 };
 
+// --- Helper Error Boundary Component ---
+class ChartErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Chart Render Error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Flex h="300px" justify="center" align="center" direction="column" color="gray.400">
+          <Icon as={FaExclamationCircle} boxSize={8} mb={2} />
+          <Text>Unable to render analytics chart</Text>
+        </Flex>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function Dashboard() {
   // --- State ---
   const [serviceBookings, setServiceBookings] = useState([]);
@@ -75,42 +103,55 @@ export default function Dashboard() {
 
   // --- Fetch Data ---
   useEffect(() => {
+    let isMounted = true;
     const fetchData = async () => {
       try {
         setLoading(true);
         // Parallel Fetch
         const [bookingsRes, categoriesRes] = await Promise.all([
-          getAllServiceBooking(),
-          getAllCategories("service") // Assuming "service" type based on context, or fetch all
+          getAllServiceBooking().catch(err => {
+            console.warn("Bookings fetch warning:", err);
+            return [];
+          }),
+          getAllCategories("service").catch(err => {
+            console.warn("Categories fetch warning:", err);
+            return [];
+          })
         ]);
+
+        if (!isMounted) return;
 
         // Process Bookings
         const bookingsRaw = bookingsRes?.result || bookingsRes?.data || bookingsRes?.bookings || bookingsRes?.serviceBookings || bookingsRes || [];
-        const bookingsData = Array.isArray(bookingsRaw) ? bookingsRaw : (bookingsRaw.result || bookingsRaw.data || []);
+        const bookingsData = Array.isArray(bookingsRaw) ? bookingsRaw : (bookingsRaw?.result || bookingsRaw?.data || []);
 
         // Process Categories
         const categoriesRaw = categoriesRes?.result || categoriesRes?.data || categoriesRes?.categories || categoriesRes || [];
-        const categoriesData = Array.isArray(categoriesRaw) ? categoriesRaw : (categoriesRaw.categories || categoriesRaw.result || categoriesRaw.data || []);
+        const categoriesData = Array.isArray(categoriesRaw) ? categoriesRaw : (categoriesRaw?.categories || categoriesRaw?.result || categoriesRaw?.data || []);
 
-        setServiceBookings(bookingsData);
-        setCategories(categoriesData);
+        setServiceBookings(Array.isArray(bookingsData) ? bookingsData : []);
+        setCategories(Array.isArray(categoriesData) ? categoriesData : []);
 
       } catch (error) {
         console.error("Dashboard Data Fetch Error:", error);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     fetchData();
+    return () => { isMounted = false; };
   }, []);
 
   // --- Derived Metrics ---
   const kpiData = useMemo(() => {
-    const totalBookings = serviceBookings.length;
+    const bookingsList = Array.isArray(serviceBookings) ? serviceBookings : [];
+    const categoriesList = Array.isArray(categories) ? categories : [];
+
+    const totalBookings = bookingsList.length;
 
     // Filter for successful payments
-    const successBookings = serviceBookings.filter(b => {
+    const successBookings = bookingsList.filter(b => {
       const status = b?.paymentStatus?.toLowerCase();
       return status === 'success' || status === 'paid';
     });
@@ -122,18 +163,16 @@ export default function Dashboard() {
       return acc + (Number(curr?.baseAmount) || Number(curr?.amount) || 0);
     }, 0);
 
-    // Active Categories Count
-    // We need to map bookings to categories. 
-    // Assuming booking.serviceId.category is the link or we match by service name?
-    // Let's collect unique category IDs/Names from bookings
     const uniqueActiveCategories = new Set();
     const catMap = {};
-    categories.forEach(c => {
+    categoriesList.forEach(c => {
+      if (!c) return;
       const name = c.category || c.name;
       if (c._id && name) catMap[c._id] = name;
     });
 
-    serviceBookings.forEach(b => {
+    bookingsList.forEach(b => {
+      if (!b) return;
       const catRef = b?.categoryId || b?.category || b?.serviceId?.categoryId || b?.serviceId?.category || b?.serviceCategory;
       if (catRef) {
         let name;
@@ -150,23 +189,27 @@ export default function Dashboard() {
       totalBookings,
       successPaymentsCount,
       totalRevenue,
-      activeCategoriesCount: uniqueActiveCategories.size || categories.length
+      activeCategoriesCount: uniqueActiveCategories.size || categoriesList.length
     };
   }, [serviceBookings, categories]);
 
   // --- Category Performance Data ---
   const categoryPerformance = useMemo(() => {
-    // optimize category map
+    const bookingsList = Array.isArray(serviceBookings) ? serviceBookings : [];
+    const categoriesList = Array.isArray(categories) ? categories : [];
+
     const catMap = {};
-    categories.forEach(c => {
+    categoriesList.forEach(c => {
+      if (!c) return;
       const name = c.category || c.name;
       if (c._id && name) catMap[c._id] = name;
     });
 
     const perfMap = {};
 
-    // Initialize with all categories (even 0 bookings)
-    categories.forEach(c => {
+    // Initialize with all categories
+    categoriesList.forEach(c => {
+      if (!c) return;
       const name = c.category || c.name || "Unknown";
       if (!perfMap[name]) {
         perfMap[name] = { name, totalBookings: 0, revenue: 0, successCount: 0 };
@@ -174,7 +217,8 @@ export default function Dashboard() {
     });
 
     // Aggregate data
-    serviceBookings.forEach(b => {
+    bookingsList.forEach(b => {
+      if (!b) return;
       let catName = "Uncategorized";
       const catRef = b?.categoryId || b?.category || b?.serviceId?.categoryId || b?.serviceId?.category || b?.serviceCategory;
 
@@ -186,7 +230,6 @@ export default function Dashboard() {
         }
       }
 
-      // If still uncategorized, try matching keyword from service name if available
       if (catName === "Uncategorized" || (typeof catName === 'string' && catName.length > 20)) {
         const sName = (b?.serviceId?.serviceName || b?.serviceName || "").toLowerCase();
         if (sName) {
@@ -198,8 +241,7 @@ export default function Dashboard() {
           }
         }
       }
-      
-      // Final fallback: if catName is an ID that wasn't transformed, mark as Uncategorized for cleaner chart
+
       if (typeof catName === 'string' && catName.length > 20) {
         catName = "Uncategorized";
       }
@@ -208,10 +250,8 @@ export default function Dashboard() {
         perfMap[catName] = { name: catName, totalBookings: 0, revenue: 0, successCount: 0 };
       }
 
-      // Increment counts
       perfMap[catName].totalBookings += 1;
 
-      // Revenue logic
       const status = b?.paymentStatus?.toLowerCase();
       if (status === 'success' || status === 'paid') {
         perfMap[catName].successCount += 1;
@@ -219,7 +259,7 @@ export default function Dashboard() {
       }
     });
 
-    return Object.values(perfMap).sort((a, b) => b.revenue - a.revenue); // Sort by revenue desc
+    return Object.values(perfMap).sort((a, b) => b.revenue - a.revenue);
   }, [serviceBookings, categories]);
 
   // --- Chart Data ---
@@ -249,40 +289,40 @@ export default function Dashboard() {
         stroke: { show: true, width: 2, colors: ['transparent'] },
         xaxis: {
           categories: labels,
-          labels: { style: { colors: subTextColor, fontSize: '12px' } }
+          labels: { style: { colors: '#718096', fontSize: '12px' } }
         },
         yaxis: [
           {
             title: { text: 'Revenue (₹)', style: { color: '#008FFB' } },
-            labels: { style: { colors: subTextColor } }
+            labels: { style: { colors: '#718096' } }
           },
           {
             opposite: true,
             title: { text: 'Bookings', style: { color: '#00E396' } },
-            labels: { style: { colors: subTextColor } }
+            labels: { style: { colors: '#718096' } }
           }
         ],
         fill: { opacity: 1 },
         tooltip: {
           y: {
-            formatter: function (val, { seriesIndex }) {
-              return seriesIndex === 0 ? formatCurrency(val) : val;
+            formatter: function (val, opts) {
+              const seriesIndex = opts?.seriesIndex ?? 0;
+              return seriesIndex === 0 ? formatCurrency(val) : (val || 0);
             }
           }
         },
         colors: ['#008FFB', '#00E396']
       }
     };
-  }, [categoryPerformance, subTextColor]);
+  }, [categoryPerformance]);
 
   // --- Recent Bookings ---
-  // sort by createdAt desc, take top 5
-  // Warning: check date field name. Billing.js uses 'scheduledAt' or 'createdAt'.
   const recentBookings = useMemo(() => {
-    return [...serviceBookings]
+    const bookingsList = Array.isArray(serviceBookings) ? serviceBookings : [];
+    return [...bookingsList]
       .sort((a, b) => {
-        const dateA = new Date(a.createdAt || a.scheduledAt || 0);
-        const dateB = new Date(b.createdAt || b.scheduledAt || 0);
+        const dateA = new Date(a?.createdAt || a?.scheduledAt || 0);
+        const dateB = new Date(b?.createdAt || b?.scheduledAt || 0);
         return dateB - dateA;
       })
       .slice(0, 5);
@@ -418,12 +458,14 @@ export default function Dashboard() {
 
                 {categoryPerformance.length > 0 ? (
                   <Box h="350px">
-                    <ReactApexChart
-                      options={chartData.options}
-                      series={chartData.series}
-                      type="bar"
-                      height="100%"
-                    />
+                    <ChartErrorBoundary>
+                      <ReactApexChart
+                        options={chartData.options}
+                        series={chartData.series}
+                        type="bar"
+                        height="100%"
+                      />
+                    </ChartErrorBoundary>
                   </Box>
                 ) : (
                   <Flex h="300px" justify="center" align="center" direction="column" color="gray.400">
@@ -462,7 +504,7 @@ export default function Dashboard() {
                               {customerName}
                             </Text>
                             <Text fontSize="xs" color="gray.400" mt="1px">
-                              {formatDate(booking.createdAt || booking.scheduledAt)}
+                              {formatDate(booking?.createdAt || booking?.scheduledAt)}
                             </Text>
                           </Box>
                           <VStack align="end" spacing={0}>

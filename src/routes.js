@@ -1,26 +1,47 @@
 
-import React from "react";
-import Dashboard from "views/Dashboard/Dashboard.js";
-import Billing from "views/Dashboard/Billing.js";
-import Profile from "views/Dashboard/Profile.js";
-import SignIn from "views/Pages/SignIn.js";
-import AdminManagement from "views/Dashboard/AdminManagement.js"; 
-import UserManagement from "views/Dashboard/UserManagement.js"; 
-import ServiceManagement from "views/Dashboard/ServiceManagement.js";
-import { MdLogout } from "react-icons/md";
+import React, { lazy } from "react";
+
+// Lazy-loaded views for on-demand bundle splitting & fast initial paint
+const Dashboard = lazy(() => import("views/Dashboard/Dashboard.js"));
+const Billing = lazy(() => import("views/Dashboard/Billing.js"));
+const Profile = lazy(() => import("views/Dashboard/Profile.js"));
+const SignIn = lazy(() => import("views/Pages/SignIn.js"));
+const AdminManagement = lazy(() => import("views/Dashboard/AdminManagement.js")); 
+const UserManagement = lazy(() => import("views/Dashboard/UserManagement.js")); 
+const ServiceManagement = lazy(() => import("views/Dashboard/ServiceManagement.js"));
+const ReportsManagement = lazy(() => import("views/Dashboard/ReportsManagement.js"));
+const CommissionManagement = lazy(() => import("views/Dashboard/CommissionManagement.js"));
+const CityZones = lazy(() => import("views/Dashboard/CityZones.js"));
+const FinanceTracking = lazy(() => import("views/Dashboard/FinanceTracking.js"));
+const TechnicianPayouts = lazy(() => import("views/Dashboard/TechnicianPayouts.js"));
+const ProductManagement = lazy(() => import("views/Dashboard/ProductManagement"));
+
+// Icons for Sidebar Navigation
+import { 
+  MdLogout, 
+  MdLogin, 
+  MdHomeRepairService, 
+  MdInventory2, 
+  MdReceiptLong, 
+  MdPayments 
+} from "react-icons/md";
+import { 
+  FaUserGear, 
+  FaUsers, 
+  FaHandHoldingDollar, 
+  FaMapLocationDot, 
+  FaChartLine 
+} from "react-icons/fa6";
+import { HiDocumentChartBar } from "react-icons/hi2";
 
 import {
   HomeIcon,
-  StatsIcon,
-  CreditIcon,
 } from "components/Icons/Icons";
-
-import ProductManagement from "views/Dashboard/ProductManagement";
 
 import { clearAuth } from "views/utils/axiosInstance";
 
 const ICON_COLOR = "#008080";
-
+const ICON_SIZE = 20;
 
 const Logout = () => {
   clearAuth();
@@ -43,55 +64,89 @@ const getCurrentUserRole = () => {
 
 const userRole = getCurrentUserRole();
 
-
 const isOwner = userRole === "owner";
 console.log("User Role:", userRole);
 console.log("Is Owner:", isOwner);
-
 
 const dashRoutes = [
   // ---------------- OWNER ONLY ROUTES ----------------
   {
     path: "/dashboard",
     name: "Dashboard",
-    icon: <HomeIcon color="#008080" />,
+    icon: <HomeIcon color={ICON_COLOR} />,
     element: <Dashboard />,
-    layout: "/owner",
-  },
-  {
-    path: "/admin-management",
-    name: "Technician Management",
-    icon: <StatsIcon color="#008080" />,
-    element: <AdminManagement />,
-    layout: "/owner",
-  },
-  {
-    path: "/service-management",
-    name: "Service Management",
-    icon: <StatsIcon color="#008080" />,
-    element: <ServiceManagement />,
     layout: "/owner",
   },
   {
     path: "/product-management",
     name: "Product Management",
-    icon: <StatsIcon color="#008080" />,
+    icon: <MdInventory2 color={ICON_COLOR} size={ICON_SIZE} />,
     element: <ProductManagement />,
     layout: "/owner",
   },
-   {
+  {
+    path: "/service-management",
+    name: "Service Management",
+    icon: <MdHomeRepairService color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <ServiceManagement />,
+    layout: "/owner",
+  },
+  {
+    path: "/admin-management",
+    name: "Technician Management",
+    icon: <FaUserGear color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <AdminManagement />,
+    layout: "/owner",
+  },
+  {
     path: "/user-management",
     name: "User Management",
-    icon: <StatsIcon color="#008080" />,
+    icon: <FaUsers color={ICON_COLOR} size={ICON_SIZE} />,
     element: <UserManagement />,
     layout: "/owner",
-  }, 
+  },
+  {
+    path: "/city-zones",
+    name: "City Zone",
+    icon: <FaMapLocationDot color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <CityZones />,
+    layout: "/owner",
+  },
+  {
+    path: "/technician-payouts",
+    name: "Pay to Technician",
+    icon: <MdPayments color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <TechnicianPayouts />,
+    layout: "/owner",
+  },
+  {
+    path: "/commission-management",
+    name: "Commission Management",
+    icon: <FaHandHoldingDollar color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <CommissionManagement />,
+    layout: "/owner",
+  },
+  {
+    path: "/reports-ratings",
+    name: "Report & Ratings",
+    icon: <HiDocumentChartBar color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <ReportsManagement />,
+    layout: "/owner",
+  },
+  {
+    path: "/finance-tracking",
+    name: "Finance Tracking",
+    icon: <FaChartLine color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <FinanceTracking />,
+    layout: "/owner",
+  },
   {
     path: "/billing",
     name: "Billing",
-    icon: <CreditIcon color="#008080" />,
+    icon: <MdReceiptLong color={ICON_COLOR} size={ICON_SIZE} />,
     element: <Billing />,
     layout: "/owner",
+    hideInSidebar: true,
   },
   {
     path: "/profile",
@@ -104,14 +159,14 @@ const dashRoutes = [
   {
     path: "/signin",
     name: "Sign In",
-    icon: <MdLogout color={ICON_COLOR} />,
+    icon: <MdLogin color={ICON_COLOR} size={ICON_SIZE} />,
     element: <SignIn />,
     layout: "/auth",
   },
   {
     path: "/logout",
     name: "Logout",
-    icon: <MdLogout color={ICON_COLOR} />,
+    icon: <MdLogout color={ICON_COLOR} size={ICON_SIZE} />,
     element: <Logout />,
     layout: "/owner",
   },

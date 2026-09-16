@@ -8,10 +8,19 @@ import AccessDenied from "views/Pages/AccessDenied";
 
 import { ChakraProvider } from "@chakra-ui/react";
 import theme from "theme/theme.js";
+import { getToken, getUser } from "views/utils/axiosInstance";
+
+// Dynamic redirect component based on authentication state
+const AuthRedirect = () => {
+  const token = getToken();
+  const user = getUser();
+  const isOwner = token && user?.role?.toLowerCase() === "owner";
+  return isOwner ? <Navigate to="/owner/dashboard" replace /> : <Navigate to="/auth/signin" replace />;
+};
 
 ReactDOM.render(
   <ChakraProvider theme={theme} resetCss={false} position="relative">
-    <HashRouter>
+    <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         {/* Auth routes */}
         <Route path="/auth/*" element={<AuthLayout />} />
@@ -19,23 +28,21 @@ ReactDOM.render(
         {/*  ONLY OWNER ROUTES */}
         <Route path="/owner/*" element={<AdminLayout />} />
 
-
         <Route
           path="/admin/*"
-          element={<Navigate to="/auth/signin" replace />}
+          element={<AuthRedirect />}
         />
 
         <Route path="/access-denied" element={<AccessDenied />} />
 
         <Route
           path="/"
-          element={<Navigate to="/auth/signin" replace />}
+          element={<AuthRedirect />}
         />
-
 
         <Route
           path="*"
-          element={<Navigate to="/auth/signin" replace />}
+          element={<AuthRedirect />}
         />
       </Routes>
     </HashRouter>

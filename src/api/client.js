@@ -3,7 +3,7 @@
 // Base URL resolves to `${REACT_APP_API_BASE_URL}/api` so call sites use
 // paths like `/user/owner/login` instead of repeating `/api`.
 import axios from "axios";
-import { getToken, clearAuth } from "views/utils/axiosInstance";
+import { getToken, clearAuth, handleSessionExpiry } from "views/utils/axiosInstance";
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL ||
@@ -30,7 +30,12 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      clearAuth();
+      const url = error.config?.url || "";
+      if (!url.includes("/login") && !url.includes("/signin")) {
+        handleSessionExpiry();
+      } else {
+        clearAuth();
+      }
     }
     return Promise.reject(error);
   }

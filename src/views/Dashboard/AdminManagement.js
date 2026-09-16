@@ -193,25 +193,73 @@ const getImageUrl = (urlData) => {
 
 // Find matching KYC record for a technician
 const findKYCRecord = (admin, kycRecords = []) => {
-  if (!admin || !admin._id) return null;
+  if (!admin) return null;
+  const adminId = String(admin._id || admin.id || admin.userId || "");
   return (kycRecords || []).find((k) => {
-    const techId = k.technicianId?._id || k.technicianId || k.user?._id || k.userId;
-    return String(techId) === String(admin._id);
+    const techId = String(
+      k.technicianId?._id ||
+      k.technicianId ||
+      k.technician?._id ||
+      k.technician ||
+      k.user?._id ||
+      k.user ||
+      k.userId?._id ||
+      k.userId ||
+      k._id ||
+      ""
+    );
+    if (adminId && techId && techId === adminId) return true;
+    if (admin.email && k.email && admin.email.toLowerCase() === k.email.toLowerCase()) return true;
+    if (admin.phone && k.phone && admin.phone === k.phone) return true;
+    return false;
   });
 };
 
 const isTechnicianKYCVerified = (admin, kycRecords = []) => {
+  if (!admin) return false;
   const kycMatch = findKYCRecord(admin, kycRecords);
-  const status = kycMatch?.status?.toLowerCase() || kycMatch?.verificationStatus?.toLowerCase();
-  return status === "approved" || status === "verified" || admin?.kycVerified === true;
+  const status = (
+    kycMatch?.status ||
+    kycMatch?.verificationStatus ||
+    admin?.kycStatus ||
+    admin?.kycDetails?.status ||
+    admin?.kyc?.status ||
+    admin?.kyc?.verificationStatus ||
+    ""
+  ).toLowerCase();
+
+  return (
+    status === "approved" ||
+    status === "verified" ||
+    admin?.kycVerified === true ||
+    admin?.isKycVerified === true ||
+    admin?.kyc?.isVerified === true ||
+    admin?.kycDetails?.verified === true
+  );
 };
 
 const isTechnicianBankVerified = (admin, kycRecords = []) => {
+  if (!admin) return false;
   const kycMatch = findKYCRecord(admin, kycRecords);
+  const bankStatus = (
+    kycMatch?.bankDetails?.verificationStatus ||
+    kycMatch?.bankDetails?.status ||
+    admin?.bankDetails?.verificationStatus ||
+    admin?.bankDetails?.status ||
+    admin?.bankVerificationStatus ||
+    admin?.kyc?.bankDetails?.status ||
+    ""
+  ).toLowerCase();
+
   return Boolean(
     kycMatch?.bankDetails?.verified === true ||
     kycMatch?.bankVerified === true ||
-    admin?.bankVerified === true
+    bankStatus === "approved" ||
+    bankStatus === "verified" ||
+    admin?.bankVerified === true ||
+    admin?.isBankVerified === true ||
+    admin?.bankDetails?.verified === true ||
+    admin?.kyc?.bankDetails?.verified === true
   );
 };
 
@@ -468,6 +516,15 @@ function AdminManagement() {
     () => adminData.filter((a) => isNewTechnician(a, allKycRecords)).length,
     [adminData, allKycRecords]
   );
+  const newUnverifiedCount = useMemo(
+    () =>
+      adminData.filter(
+        (a) =>
+          isNewTechnician(a, allKycRecords) &&
+          (!isTechnicianKYCVerified(a, allKycRecords) || !isTechnicianBankVerified(a, allKycRecords))
+      ).length,
+    [adminData, allKycRecords]
+  );
   const activeTechCount = useMemo(
     () => adminData.filter((a) => isActiveTechnician(a, allKycRecords)).length,
     [adminData, allKycRecords]
@@ -476,8 +533,16 @@ function AdminManagement() {
     () => adminData.filter((a) => isTechnicianKYCVerified(a, allKycRecords)).length,
     [adminData, allKycRecords]
   );
+  const kycUnverifiedCount = useMemo(
+    () => adminData.filter((a) => !isTechnicianKYCVerified(a, allKycRecords)).length,
+    [adminData, allKycRecords]
+  );
   const bankVerifiedCount = useMemo(
     () => adminData.filter((a) => isTechnicianBankVerified(a, allKycRecords)).length,
+    [adminData, allKycRecords]
+  );
+  const bankUnverifiedCount = useMemo(
+    () => adminData.filter((a) => !isTechnicianBankVerified(a, allKycRecords)).length,
     [adminData, allKycRecords]
   );
 
@@ -1074,9 +1139,24 @@ function AdminManagement() {
                   <StatLabel fontSize="xs" color="gray.600" fontWeight="bold">
                     New Technician
                   </StatLabel>
-                  <StatNumber fontSize="2xl" fontWeight="black" color="blue.600" mt={1}>
-                    {loading ? <Skeleton height="24px" width="40px" /> : newTechCount}
-                  </StatNumber>
+                  <Flex align="baseline" gap={2} mt={1}>
+                    <StatNumber fontSize="2xl" fontWeight="black" color="blue.600" m={0}>
+                      {loading ? <Skeleton height="24px" width="40px" /> : newTechCount}
+                    </StatNumber>
+                    {!loading && newUnverifiedCount > 0 && (
+                      <Badge
+                        colorScheme="red"
+                        variant="subtle"
+                        fontSize="10px"
+                        px={1.5}
+                        py={0.5}
+                        borderRadius="md"
+                        fontWeight="bold"
+                      >
+                        {newUnverifiedCount} unverified
+                      </Badge>
+                    )}
+                  </Flex>
                 </Stat>
                 <IconBox h="42px" w="42px" bg="blue.500" color="white">
                   <Icon as={FaUserClock} boxSize="20px" />
@@ -1132,9 +1212,24 @@ function AdminManagement() {
                   <StatLabel fontSize="xs" color="gray.600" fontWeight="bold">
                     KYC Verification
                   </StatLabel>
-                  <StatNumber fontSize="2xl" fontWeight="black" color="purple.600" mt={1}>
-                    {loading ? <Skeleton height="24px" width="40px" /> : kycVerifiedCount}
-                  </StatNumber>
+                  <Flex align="baseline" gap={2} mt={1}>
+                    <StatNumber fontSize="2xl" fontWeight="black" color="purple.600" m={0}>
+                      {loading ? <Skeleton height="24px" width="40px" /> : kycVerifiedCount}
+                    </StatNumber>
+                    {!loading && kycUnverifiedCount > 0 && (
+                      <Badge
+                        colorScheme="purple"
+                        variant="subtle"
+                        fontSize="10px"
+                        px={1.5}
+                        py={0.5}
+                        borderRadius="md"
+                        fontWeight="bold"
+                      >
+                        {kycUnverifiedCount} unverified
+                      </Badge>
+                    )}
+                  </Flex>
                 </Stat>
                 <IconBox h="42px" w="42px" bg="purple.500" color="white">
                   <Icon as={FaIdCard} boxSize="20px" />
@@ -1161,9 +1256,24 @@ function AdminManagement() {
                   <StatLabel fontSize="xs" color="gray.600" fontWeight="bold">
                     Bank Verification
                   </StatLabel>
-                  <StatNumber fontSize="2xl" fontWeight="black" color="orange.600" mt={1}>
-                    {loading ? <Skeleton height="24px" width="40px" /> : bankVerifiedCount}
-                  </StatNumber>
+                  <Flex align="baseline" gap={2} mt={1}>
+                    <StatNumber fontSize="2xl" fontWeight="black" color="orange.600" m={0}>
+                      {loading ? <Skeleton height="24px" width="40px" /> : bankVerifiedCount}
+                    </StatNumber>
+                    {!loading && bankUnverifiedCount > 0 && (
+                      <Badge
+                        colorScheme="orange"
+                        variant="subtle"
+                        fontSize="10px"
+                        px={1.5}
+                        py={0.5}
+                        borderRadius="md"
+                        fontWeight="bold"
+                      >
+                        {bankUnverifiedCount} unverified
+                      </Badge>
+                    )}
+                  </Flex>
                 </Stat>
                 <IconBox h="42px" w="42px" bg="orange.500" color="white">
                   <Icon as={FaUniversity} boxSize="20px" />

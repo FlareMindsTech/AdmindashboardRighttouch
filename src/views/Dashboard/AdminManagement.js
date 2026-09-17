@@ -53,6 +53,7 @@ import {
   MenuList,
   MenuItem,
   Divider,
+  Link,
 } from "@chakra-ui/react";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
@@ -103,56 +104,351 @@ import {
 } from "views/utils/axiosInstance";
 import { useNavigate } from "react-router-dom";
 
+// Find matching KYC record for a technician safely
+const findKYCRecord = (admin, kycRecords = []) => {
+  if (!admin || !Array.isArray(kycRecords) || kycRecords.length === 0) return null;
+  const adminId = String(admin._id || admin.id || "");
+  const adminUserId = String(
+    admin.userId?._id ||
+    (typeof admin.userId === "string" ? admin.userId : "") ||
+    admin.user?._id ||
+    (typeof admin.user === "string" ? admin.user : "") ||
+    ""
+  );
+  const adminPhone = (admin.mobileNumber || admin.phone || admin.userId?.mobileNumber || admin.userId?.phone || "").toString().replace(/\D/g, "");
+  const adminEmail = (admin.email || admin.userId?.email || "").toLowerCase().trim();
+
+  return kycRecords.find((k) => {
+    if (!k) return false;
+    const kTechId = String(
+      k.technicianId?._id ||
+      k.technicianId ||
+      k.technician?._id ||
+      k.technician ||
+      ""
+    );
+    const kUserId = String(
+      k.userId?._id ||
+      k.userId ||
+      k.user?._id ||
+      k.user ||
+      ""
+    );
+    const kRecId = String(k._id || k.id || "");
+
+    if (adminId && (adminId === kTechId || adminId === kUserId || adminId === kRecId)) return true;
+    if (adminUserId && (adminUserId === kTechId || adminUserId === kUserId)) return true;
+
+    if (adminEmail && adminEmail !== "") {
+      const kEmail = (k.email || k.userId?.email || k.technicianId?.email || "").toLowerCase().trim();
+      if (kEmail && kEmail === adminEmail) return true;
+    }
+
+    if (adminPhone && adminPhone.length >= 8) {
+      const kPhone = (k.phone || k.mobileNumber || k.mobile || k.personalDetails?.phone || k.technicianId?.mobileNumber || k.userId?.mobileNumber || "").toString().replace(/\D/g, "");
+      if (kPhone && (kPhone.includes(adminPhone) || adminPhone.includes(kPhone))) return true;
+    }
+
+    return false;
+  });
+};
+
 // Helper to resolve technician name safely
-const getTechnicianName = (tech) => {
+const getTechnicianName = (tech, kycRecords = []) => {
   if (!tech) return "Unknown";
   const isDeleted = (str) =>
     str && typeof str === "string" && (str.startsWith("deleted_") || str.includes("example.invalid"));
 
-  if (tech.name && tech.name.trim() !== "") {
+  // 1. Direct name properties
+  if (tech.name && typeof tech.name === "string" && tech.name.trim() !== "") {
     if (isDeleted(tech.name)) return "Deleted Technician";
-    return tech.name;
+    return tech.name.trim();
+  }
+  if (tech.fullName && typeof tech.fullName === "string" && tech.fullName.trim() !== "") {
+    if (isDeleted(tech.fullName)) return "Deleted Technician";
+    return tech.fullName.trim();
+  }
+  if (tech.technicianName && typeof tech.technicianName === "string" && tech.technicianName.trim() !== "") {
+    if (isDeleted(tech.technicianName)) return "Deleted Technician";
+    return tech.technicianName.trim();
   }
   if (tech.firstName) {
     const fullName = `${tech.firstName} ${tech.lastName || ""}`.trim();
     if (isDeleted(fullName)) return "Deleted Technician";
-    return fullName;
+    if (fullName) return fullName;
   }
   if (tech.fname) {
     const fullName = `${tech.fname} ${tech.lname || ""}`.trim();
     if (isDeleted(fullName)) return "Deleted Technician";
-    return fullName;
+    if (fullName) return fullName;
   }
-  if (tech.profile?.name) {
-    if (isDeleted(tech.profile.name)) return "Deleted Technician";
-    return tech.profile.name;
-  }
-  if (tech.profile?.firstName) {
-    const fullName = `${tech.profile.firstName} ${tech.profile.lastName || ""}`.trim();
-    if (isDeleted(fullName)) return "Deleted Technician";
-    return fullName;
-  }
-  if (tech.userId && typeof tech.userId === "object") {
-    if (tech.userId.name) {
-      if (isDeleted(tech.userId.name)) return "Deleted Technician";
-      return tech.userId.name;
+
+  // 2. Profile nested object
+  if (tech.profile && typeof tech.profile === "object") {
+    if (tech.profile.name && typeof tech.profile.name === "string" && tech.profile.name.trim() !== "") {
+      if (isDeleted(tech.profile.name)) return "Deleted Technician";
+      return tech.profile.name.trim();
     }
-    if (tech.userId.firstName) {
-      const fullName = `${tech.userId.firstName} ${tech.userId.lastName || ""}`.trim();
+    if (tech.profile.fullName && typeof tech.profile.fullName === "string" && tech.profile.fullName.trim() !== "") {
+      if (isDeleted(tech.profile.fullName)) return "Deleted Technician";
+      return tech.profile.fullName.trim();
+    }
+    if (tech.profile.firstName) {
+      const fullName = `${tech.profile.firstName} ${tech.profile.lastName || ""}`.trim();
       if (isDeleted(fullName)) return "Deleted Technician";
-      return fullName;
+      if (fullName) return fullName;
     }
-    if (tech.userId.fname) {
-      const fullName = `${tech.userId.fname} ${tech.userId.lname || ""}`.trim();
+    if (tech.profile.fname) {
+      const fullName = `${tech.profile.fname} ${tech.profile.lname || ""}`.trim();
       if (isDeleted(fullName)) return "Deleted Technician";
-      return fullName;
+      if (fullName) return fullName;
     }
   }
-  if (tech.email) {
-    if (isDeleted(tech.email)) return "Deleted Technician";
-    return tech.email.split("@")[0];
+
+  // 3. userId or user populated object
+  const userObj =
+    (tech.userId && typeof tech.userId === "object" ? tech.userId : null) ||
+    (tech.user && typeof tech.user === "object" ? tech.user : null);
+  if (userObj) {
+    if (userObj.name && typeof userObj.name === "string" && userObj.name.trim() !== "") {
+      if (isDeleted(userObj.name)) return "Deleted Technician";
+      return userObj.name.trim();
+    }
+    if (userObj.fullName && typeof userObj.fullName === "string" && userObj.fullName.trim() !== "") {
+      if (isDeleted(userObj.fullName)) return "Deleted Technician";
+      return userObj.fullName.trim();
+    }
+    if (userObj.firstName) {
+      const fullName = `${userObj.firstName} ${userObj.lastName || ""}`.trim();
+      if (isDeleted(fullName)) return "Deleted Technician";
+      if (fullName) return fullName;
+    }
+    if (userObj.fname) {
+      const fullName = `${userObj.fname} ${userObj.lname || ""}`.trim();
+      if (isDeleted(fullName)) return "Deleted Technician";
+      if (fullName) return fullName;
+    }
+    if (userObj.username && typeof userObj.username === "string" && userObj.username.trim() !== "") {
+      if (isDeleted(userObj.username)) return "Deleted Technician";
+      return userObj.username.trim();
+    }
   }
+
+  // 4. Personal details object
+  if (tech.personalDetails?.name) return tech.personalDetails.name.trim();
+  if (tech.personalDetails?.fullName) return tech.personalDetails.fullName.trim();
+
+  // 5. Direct bank account holder name
+  if (tech.accountHolderName && typeof tech.accountHolderName === "string" && tech.accountHolderName.trim() !== "") {
+    return tech.accountHolderName.trim();
+  }
+  if (tech.bankDetails?.accountHolderName && typeof tech.bankDetails.accountHolderName === "string" && tech.bankDetails.accountHolderName.trim() !== "") {
+    return tech.bankDetails.accountHolderName.trim();
+  }
+
+  // 6. Match against KYC records (e.g. verified Bank Account Holder Name)
+  if (Array.isArray(kycRecords) && kycRecords.length > 0) {
+    const kycMatch = findKYCRecord(tech, kycRecords);
+    if (kycMatch) {
+      if (kycMatch.bankDetails?.accountHolderName && typeof kycMatch.bankDetails.accountHolderName === "string" && kycMatch.bankDetails.accountHolderName.trim() !== "") {
+        return kycMatch.bankDetails.accountHolderName.trim();
+      }
+      if (kycMatch.fullName && typeof kycMatch.fullName === "string" && kycMatch.fullName.trim() !== "") {
+        return kycMatch.fullName.trim();
+      }
+      if (kycMatch.name && typeof kycMatch.name === "string" && kycMatch.name.trim() !== "") {
+        return kycMatch.name.trim();
+      }
+      if (kycMatch.personalDetails?.name) return kycMatch.personalDetails.name.trim();
+      if (kycMatch.personalDetails?.fullName) return kycMatch.personalDetails.fullName.trim();
+      if (kycMatch.aadhaarDetails?.name) return kycMatch.aadhaarDetails.name.trim();
+      if (kycMatch.panDetails?.name) return kycMatch.panDetails.name.trim();
+      if (kycMatch.technicianId && typeof kycMatch.technicianId === "object") {
+        const t = kycMatch.technicianId;
+        if (t.name) return t.name;
+        if (t.fullName) return t.fullName;
+        if (t.fname) return `${t.fname} ${t.lname || ""}`.trim();
+      }
+      if (kycMatch.userId && typeof kycMatch.userId === "object") {
+        const u = kycMatch.userId;
+        if (u.name) return u.name;
+        if (u.fullName) return u.fullName;
+        if (u.fname) return `${u.fname} ${u.lname || ""}`.trim();
+      }
+    }
+  }
+
+  // 7. Email prefix fallback
+  const email = tech.email || userObj?.email || tech.profile?.email;
+  if (email && typeof email === "string" && email.includes("@")) {
+    const prefix = email.split("@")[0];
+    if (isDeleted(prefix)) return "Deleted Technician";
+    return prefix;
+  }
+
   return "Unknown";
+};
+
+// Helper to resolve technician phone number safely
+const getTechnicianPhone = (tech, kycRecords = []) => {
+  if (!tech) return "";
+  const candidates = [
+    tech.mobileNumber,
+    tech.phone,
+    tech.mobile,
+    tech.phoneNumber,
+    tech.contactNumber,
+    tech.contact,
+    tech.userId?.mobileNumber,
+    tech.userId?.phone,
+    tech.userId?.mobile,
+    tech.userId?.phoneNumber,
+    tech.userId?.identifier,
+    tech.user?.mobileNumber,
+    tech.user?.phone,
+    tech.user?.mobile,
+    tech.user?.phoneNumber,
+    tech.profile?.mobileNumber,
+    tech.profile?.phone,
+    tech.profile?.mobile,
+    tech.profile?.phoneNumber,
+    tech.personalDetails?.phone,
+    tech.personalDetails?.mobileNumber,
+    tech.personalDetails?.contactNumber,
+  ];
+
+  for (const c of candidates) {
+    if (c && typeof c === "string" && c.trim() !== "" && c.trim().toLowerCase() !== "n/a") {
+      return c.trim();
+    }
+    if (typeof c === "number") {
+      return String(c);
+    }
+  }
+
+  // Check KYC records
+  if (Array.isArray(kycRecords) && kycRecords.length > 0) {
+    const kycMatch = findKYCRecord(tech, kycRecords);
+    if (kycMatch) {
+      const kycCandidates = [
+        kycMatch.mobileNumber,
+        kycMatch.phone,
+        kycMatch.mobile,
+        kycMatch.phoneNumber,
+        kycMatch.contactNumber,
+        kycMatch.personalDetails?.phone,
+        kycMatch.personalDetails?.mobileNumber,
+        kycMatch.bankDetails?.registeredMobileNumber,
+        kycMatch.bankDetails?.phone,
+        kycMatch.technicianId?.mobileNumber,
+        kycMatch.technicianId?.phone,
+        kycMatch.userId?.mobileNumber,
+        kycMatch.userId?.phone,
+        kycMatch.userId?.identifier,
+      ];
+      for (const kc of kycCandidates) {
+        if (kc && typeof kc === "string" && kc.trim() !== "" && kc.trim().toLowerCase() !== "n/a") {
+          return kc.trim();
+        }
+        if (typeof kc === "number") {
+          return String(kc);
+        }
+      }
+    }
+  }
+
+  return "";
+};
+
+// Helper to resolve technician email safely
+const getTechnicianEmail = (tech, kycRecords = []) => {
+  if (!tech) return "";
+  const candidates = [
+    tech.email,
+    tech.mail,
+    tech.userEmail,
+    tech.userId?.email,
+    tech.userId?.mail,
+    tech.user?.email,
+    tech.profile?.email,
+    tech.personalDetails?.email,
+  ];
+
+  for (const c of candidates) {
+    if (c && typeof c === "string" && c.includes("@") && !c.includes("example.invalid")) {
+      return c.trim();
+    }
+  }
+
+  if (Array.isArray(kycRecords) && kycRecords.length > 0) {
+    const kycMatch = findKYCRecord(tech, kycRecords);
+    if (kycMatch) {
+      const kycEmailCandidates = [
+        kycMatch.email,
+        kycMatch.personalDetails?.email,
+        kycMatch.userId?.email,
+        kycMatch.technicianId?.email,
+      ];
+      for (const kc of kycEmailCandidates) {
+        if (kc && typeof kc === "string" && kc.includes("@") && !kc.includes("example.invalid")) {
+          return kc.trim();
+        }
+      }
+    }
+  }
+
+  return "";
+};
+
+// Helper to resolve technician address safely
+const getTechnicianAddress = (tech, kycRecords = []) => {
+  if (!tech) return "N/A";
+  const rawAddr =
+    tech.address ||
+    tech.locality ||
+    tech.profile?.address ||
+    tech.userId?.address ||
+    tech.user?.address ||
+    "";
+
+  if (typeof rawAddr === "string" && rawAddr.trim()) return rawAddr.trim();
+  if (typeof rawAddr === "object" && rawAddr !== null) {
+    const parts = [
+      rawAddr.line1 || rawAddr.street || rawAddr.addressLine1 || rawAddr.house,
+      rawAddr.line2 || rawAddr.addressLine2 || rawAddr.area,
+      rawAddr.city || rawAddr.district,
+      rawAddr.pincode || rawAddr.zip || rawAddr.postalCode,
+    ].filter(Boolean);
+    if (parts.length > 0) return parts.join(", ");
+  }
+
+  // Check KYC
+  if (Array.isArray(kycRecords) && kycRecords.length > 0) {
+    const kycMatch = findKYCRecord(tech, kycRecords);
+    if (kycMatch?.address) {
+      if (typeof kycMatch.address === "string" && kycMatch.address.trim()) return kycMatch.address.trim();
+      if (typeof kycMatch.address === "object") {
+        const parts = [
+          kycMatch.address.line1 || kycMatch.address.street,
+          kycMatch.address.city,
+          kycMatch.address.pincode,
+        ].filter(Boolean);
+        if (parts.length > 0) return parts.join(", ");
+      }
+    }
+  }
+
+  return "N/A";
+};
+
+// Helper to resolve technician specialization formatted cleanly
+const getTechnicianSpecialization = (tech) => {
+  if (!tech) return "General";
+  const spec = tech.specialization || tech.profile?.specialization || "General";
+  if (typeof spec !== "string") return "General";
+  const trimmed = spec.trim();
+  if (trimmed.toLowerCase() === "ac") return "AC Service";
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 };
 
 // Helper to resolve technician district safely
@@ -173,13 +469,20 @@ const getTechnicianDistrict = (tech) => {
   return "";
 };
 
-const getTechnicianImage = (tech) => {
-  return (
+const getTechnicianImage = (tech, kycRecords = []) => {
+  if (!tech) return "";
+  const direct =
     tech?.profileImage ||
     tech?.profile?.profileImage ||
     (typeof tech?.userId === "object" ? tech?.userId?.profileImage : "") ||
-    ""
-  );
+    "";
+  if (direct) return direct;
+  if (Array.isArray(kycRecords) && kycRecords.length > 0) {
+    const kycMatch = findKYCRecord(tech, kycRecords);
+    if (kycMatch?.profileImage) return kycMatch.profileImage;
+    if (kycMatch?.documents?.profileUrl) return kycMatch.documents.profileUrl;
+  }
+  return "";
 };
 
 const getImageUrl = (urlData) => {
@@ -188,30 +491,6 @@ const getImageUrl = (urlData) => {
   if (typeof url !== "string") return "";
   if (url.startsWith("http") || url.startsWith("data:")) return url;
   return `${process.env.REACT_APP_API_BASE_URL || "https://righttouchservernew-727889857503.asia-south1.run.app"}/${url}`;
-};
-
-// Find matching KYC record for a technician
-const findKYCRecord = (admin, kycRecords = []) => {
-  if (!admin) return null;
-  const adminId = String(admin._id || admin.id || admin.userId || "");
-  return (kycRecords || []).find((k) => {
-    const techId = String(
-      k.technicianId?._id ||
-      k.technicianId ||
-      k.technician?._id ||
-      k.technician ||
-      k.user?._id ||
-      k.user ||
-      k.userId?._id ||
-      k.userId ||
-      k._id ||
-      ""
-    );
-    if (adminId && techId && techId === adminId) return true;
-    if (admin.email && k.email && admin.email.toLowerCase() === k.email.toLowerCase()) return true;
-    if (admin.phone && k.phone && admin.phone === k.phone) return true;
-    return false;
-  });
 };
 
 const isTechnicianKYCVerified = (admin, kycRecords = []) => {
@@ -665,12 +944,12 @@ function AdminManagement() {
       const q = searchTerm.toLowerCase().trim();
       const qClean = q.replace(/[\s-]/g, "");
       list = list.filter((admin) => {
-        const fullName = getTechnicianName(admin).toLowerCase();
-        const email = (admin.email || "").toLowerCase();
-        const spec = (admin.specialization || admin.profile?.specialization || "").toLowerCase();
+        const fullName = getTechnicianName(admin, allKycRecords).toLowerCase();
+        const email = (getTechnicianEmail(admin, allKycRecords) || "").toLowerCase();
+        const spec = (getTechnicianSpecialization(admin) || "").toLowerCase();
         const city = (admin.city || admin.profile?.city || admin.locality || "").toLowerCase();
         const district = getTechnicianDistrict(admin).toLowerCase();
-        const phone = (admin.mobileNumber || admin.phone || "").toString().replace(/[\s-]/g, "");
+        const phone = (getTechnicianPhone(admin, allKycRecords) || "").toString().replace(/[\s-]/g, "");
         const kycMatch = findKYCRecord(admin, allKycRecords);
         const aadhaar = (kycMatch?.aadhaarNumber || "").toString().replace(/[\s-]/g, "");
         const pan = (kycMatch?.panNumber || "").toLowerCase();
@@ -723,7 +1002,7 @@ function AdminManagement() {
       await updateTrainingStatus(tech._id, nextStatus);
       toast({
         title: nextStatus ? "Training Approved" : "Training Incomplete",
-        description: `Technician ${getTechnicianName(tech)} marked as ${nextStatus ? "Training Completed" : "Training Incomplete"}.`,
+        description: `Technician ${getTechnicianName(tech, allKycRecords)} marked as ${nextStatus ? "Training Completed" : "Training Incomplete"}.`,
         status: "success",
         duration: 3000,
         isClosable: true,
@@ -1010,7 +1289,7 @@ function AdminManagement() {
       await deleteTechnician(adminToDelete._id);
       toast({
         title: "Technician Deleted",
-        description: `${getTechnicianName(adminToDelete)} has been removed.`,
+        description: `${getTechnicianName(adminToDelete, allKycRecords)} has been removed.`,
         status: "success",
         duration: 3000,
         isClosable: true,
@@ -1556,19 +1835,19 @@ function AdminManagement() {
                               >
                                 <Avatar
                                   size="sm"
-                                  name={getTechnicianName(tech)}
-                                  src={getTechnicianImage(tech)}
+                                  name={getTechnicianName(tech, allKycRecords)}
+                                  src={getTechnicianImage(tech, allKycRecords)}
                                   mr={3}
                                   border="1px solid"
                                   borderColor={customColor}
                                 />
                                 <Box maxW="150px">
-                                  <Text fontWeight="bold" color="gray.800" fontSize="sm" isTruncated title={getTechnicianName(tech)}>
-                                    {getTechnicianName(tech)}
+                                  <Text fontWeight="bold" color="gray.800" fontSize="sm" isTruncated title={getTechnicianName(tech, allKycRecords)}>
+                                    {getTechnicianName(tech, allKycRecords)}
                                   </Text>
                                   <Flex align="center" gap={1} mt={0.5}>
                                     <Text fontSize="xs" color="gray.500" isTruncated maxW="110px">
-                                      {tech.mobileNumber || tech.phone || tech.email || "No contact"}
+                                      {getTechnicianPhone(tech, allKycRecords) || getTechnicianEmail(tech, allKycRecords) || "No contact"}
                                     </Text>
                                     {tech.availability?.isOnline && (
                                       <Badge colorScheme="green" fontSize="9px" px={1} borderRadius="full" flexShrink={0}>
@@ -1583,7 +1862,7 @@ function AdminManagement() {
                             {/* Skill / Exp */}
                             <Td py={3} verticalAlign="middle">
                               <Text fontSize="xs" fontWeight="semibold" color="gray.700" isTruncated maxW="140px">
-                                {tech.specialization || tech.profile?.specialization || "General"}
+                                {getTechnicianSpecialization(tech)}
                               </Text>
                               <Text fontSize="xs" color="gray.500">
                                 {tech.experienceYears || tech.profile?.experienceYears || "0"} Years Exp
@@ -1903,7 +2182,7 @@ function AdminManagement() {
               <Box>
                 <Heading size="sm">Gate 2: KYC Identity Verification</Heading>
                 <Text fontSize="xs" color="gray.500" mt={0.5}>
-                  Technician: {getTechnicianName(selectedTechForKYC)}
+                  Technician: {getTechnicianName(selectedTechForKYC, allKycRecords)}
                 </Text>
               </Box>
               <HStack spacing={2}>
@@ -2320,7 +2599,7 @@ function AdminManagement() {
               <Box>
                 <Heading size="sm">Gate 3: Bank & Payout Verification</Heading>
                 <Text fontSize="xs" color="gray.500" mt={0.5}>
-                  Technician: {getTechnicianName(selectedTechForBank)}
+                  Technician: {getTechnicianName(selectedTechForBank, allKycRecords)}
                 </Text>
               </Box>
               <Button
@@ -2556,106 +2835,258 @@ function AdminManagement() {
             {selectedTechnician && (
               <VStack spacing={4} align="stretch">
                 {/* Header info */}
-                <Flex align="center" gap={4} p={3} bg="gray.50" borderRadius="12px">
+                <Flex align="center" gap={4} p={3.5} bg="gray.50" borderRadius="12px" border="1px solid" borderColor="gray.100">
                   <Avatar
                     size="lg"
-                    name={getTechnicianName(selectedTechnician)}
-                    src={getTechnicianImage(selectedTechnician)}
+                    name={getTechnicianName(selectedTechnician, allKycRecords)}
+                    src={getTechnicianImage(selectedTechnician, allKycRecords)}
                     border="2px solid"
                     borderColor={customColor}
                   />
-                  <Box>
-                    <Heading size="md">{getTechnicianName(selectedTechnician)}</Heading>
-                    <Flex gap={2} mt={1} flexWrap="wrap">
-                      <Badge colorScheme={selectedTechnician.workStatus === "approved" ? "green" : "orange"}>
+                  <Box flex="1">
+                    <Flex align="center" justify="space-between" flexWrap="wrap" gap={2}>
+                      <Heading size="md" color="gray.800">
+                        {getTechnicianName(selectedTechnician, allKycRecords)}
+                      </Heading>
+                      {selectedTechnician.availability?.isOnline !== undefined && (
+                        <Badge
+                          colorScheme={selectedTechnician.availability?.isOnline ? "green" : "gray"}
+                          variant="subtle"
+                          px={2}
+                          py={0.5}
+                          borderRadius="full"
+                          fontSize="xs"
+                        >
+                          ● {selectedTechnician.availability?.isOnline ? "Online" : "Offline"}
+                        </Badge>
+                      )}
+                    </Flex>
+                    <Flex gap={2} mt={1.5} flexWrap="wrap">
+                      <Badge colorScheme={selectedTechnician.workStatus === "approved" ? "green" : "orange"} px={2} py={0.5} borderRadius="md">
                         Work: {selectedTechnician.workStatus || "pending"}
                       </Badge>
-                      <Badge colorScheme={selectedTechnician.trainingCompleted ? "green" : "orange"}>
+                      <Badge colorScheme={selectedTechnician.trainingCompleted ? "green" : "orange"} px={2} py={0.5} borderRadius="md">
                         Training: {selectedTechnician.trainingCompleted ? "Completed" : "Pending"}
                       </Badge>
                       <Badge
                         colorScheme={
                           isTechnicianKYCVerified(selectedTechnician, allKycRecords) ? "green" : "purple"
                         }
+                        px={2}
+                        py={0.5}
+                        borderRadius="md"
                       >
                         KYC: {isTechnicianKYCVerified(selectedTechnician, allKycRecords) ? "Verified" : "Pending"}
                       </Badge>
+                      {isTechnicianBankVerified(selectedTechnician, allKycRecords) && (
+                        <Badge colorScheme="teal" px={2} py={0.5} borderRadius="md">
+                          Bank: Verified
+                        </Badge>
+                      )}
                     </Flex>
                   </Box>
                 </Flex>
 
                 {/* Info Cards */}
                 <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                  <Box p={3} border="1px solid #eee" borderRadius="10px">
-                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2}>
+                  <Box p={3.5} border="1px solid #e2e8f0" borderRadius="10px" bg="white">
+                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2.5} letterSpacing="wider">
                       CONTACT & LOCATION
                     </Text>
-                    <Text fontSize="xs" mb={1}>
-                      <strong>Mobile:</strong> {selectedTechnician.mobileNumber || selectedTechnician.phone || "N/A"}
-                    </Text>
-                    <Text fontSize="xs" mb={1}>
-                      <strong>Email:</strong> {selectedTechnician.email || "N/A"}
-                    </Text>
-                    <Text fontSize="xs" mb={1}>
-                      <strong>District (Mandatory):</strong>{" "}
-                      {getTechnicianDistrict(selectedTechnician) ? (
-                        <Badge colorScheme="teal" px={2} py={0.5} borderRadius="md" textTransform="capitalize" fontWeight="bold">
-                          📍 {getTechnicianDistrict(selectedTechnician)}
-                        </Badge>
-                      ) : (
-                        <Badge colorScheme="red" px={2} py={0.5} borderRadius="md">
-                          ⚠️ District Missing (Mandatory)
-                        </Badge>
-                      )}
-                    </Text>
-                    <Text fontSize="xs" mb={1}>
-                      <strong>City:</strong> {selectedTechnician.city || selectedTechnician.profile?.city || "N/A"}
-                    </Text>
-                    <Text fontSize="xs">
-                      <strong>Address:</strong> {selectedTechnician.address || selectedTechnician.locality || "N/A"}
-                    </Text>
+                    <VStack align="stretch" spacing={2} fontSize="xs">
+                      <Flex justify="space-between" align="center">
+                        <Text color="gray.600" fontWeight="medium">Mobile:</Text>
+                        {getTechnicianPhone(selectedTechnician, allKycRecords) ? (
+                          <Link
+                            href={`tel:${getTechnicianPhone(selectedTechnician, allKycRecords)}`}
+                            color="teal.600"
+                            fontWeight="semibold"
+                            _hover={{ textDecoration: "underline" }}
+                          >
+                            {getTechnicianPhone(selectedTechnician, allKycRecords)}
+                          </Link>
+                        ) : (
+                          <Text color="gray.400" fontStyle="italic">Not Provided</Text>
+                        )}
+                      </Flex>
+
+                      <Flex justify="space-between" align="center">
+                        <Text color="gray.600" fontWeight="medium">Email:</Text>
+                        {getTechnicianEmail(selectedTechnician, allKycRecords) ? (
+                          <Link
+                            href={`mailto:${getTechnicianEmail(selectedTechnician, allKycRecords)}`}
+                            color="teal.600"
+                            fontWeight="medium"
+                            isTruncated
+                            maxW="190px"
+                            _hover={{ textDecoration: "underline" }}
+                            title={getTechnicianEmail(selectedTechnician, allKycRecords)}
+                          >
+                            {getTechnicianEmail(selectedTechnician, allKycRecords)}
+                          </Link>
+                        ) : (
+                          <Text color="gray.400" fontStyle="italic">Not Provided</Text>
+                        )}
+                      </Flex>
+
+                      <Flex justify="space-between" align="center">
+                        <Text color="gray.600" fontWeight="medium">District (Mandatory):</Text>
+                        {getTechnicianDistrict(selectedTechnician) ? (
+                          <Badge colorScheme="teal" px={2} py={0.5} borderRadius="md" textTransform="capitalize" fontWeight="bold">
+                            📍 {getTechnicianDistrict(selectedTechnician)}
+                          </Badge>
+                        ) : (
+                          <Badge colorScheme="red" px={2} py={0.5} borderRadius="md">
+                            ⚠️ District Missing
+                          </Badge>
+                        )}
+                      </Flex>
+
+                      <Flex justify="space-between" align="center">
+                        <Text color="gray.600" fontWeight="medium">City / Town:</Text>
+                        <Text fontWeight="semibold" color="gray.800" textTransform="capitalize">
+                          {selectedTechnician.city || selectedTechnician.profile?.city || selectedTechnician.locality || "N/A"}
+                        </Text>
+                      </Flex>
+
+                      <Box pt={1} borderTop="1px dashed" borderColor="gray.100">
+                        <Text color="gray.600" fontWeight="medium" mb={0.5}>Address:</Text>
+                        <Text color="gray.700" lineHeight="short">
+                          {getTechnicianAddress(selectedTechnician, allKycRecords)}
+                        </Text>
+                      </Box>
+                    </VStack>
                   </Box>
 
-                  <Box p={3} border="1px solid #eee" borderRadius="10px">
-                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2}>
+                  <Box p={3.5} border="1px solid #e2e8f0" borderRadius="10px" bg="white">
+                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2.5} letterSpacing="wider">
                       PROFESSIONAL STATS
                     </Text>
-                    <Text fontSize="xs" mb={1}>
-                      <strong>Specialization:</strong> {selectedTechnician.specialization || "General"}
-                    </Text>
-                    <Text fontSize="xs" mb={1}>
-                      <strong>Experience:</strong> {selectedTechnician.experienceYears || 0} Years
-                    </Text>
-                    <Text fontSize="xs" mb={1}>
-                      <strong>Total Jobs:</strong> {selectedTechnician.totalJobsCompleted || selectedTechnician.jobStats?.completed || 0}
-                    </Text>
-                    <Text fontSize="xs">
-                      <strong>Rating:</strong> {selectedTechnician.rating?.avg?.toFixed(1) || "0.0"} ({selectedTechnician.rating?.count || 0} reviews)
-                    </Text>
+                    <VStack align="stretch" spacing={2} fontSize="xs">
+                      <Flex justify="space-between" align="center">
+                        <Text color="gray.600" fontWeight="medium">Specialization:</Text>
+                        <Badge colorScheme="blue" px={2} py={0.5} borderRadius="md">
+                          {getTechnicianSpecialization(selectedTechnician)}
+                        </Badge>
+                      </Flex>
+
+                      <Flex justify="space-between" align="center">
+                        <Text color="gray.600" fontWeight="medium">Experience:</Text>
+                        <Text fontWeight="semibold" color="gray.800">
+                          {selectedTechnician.experienceYears || selectedTechnician.profile?.experienceYears || 0} Years
+                        </Text>
+                      </Flex>
+
+                      <Flex justify="space-between" align="center">
+                        <Text color="gray.600" fontWeight="medium">Total Jobs:</Text>
+                        <Text fontWeight="bold" color="gray.800">
+                          {selectedTechnician.totalJobsCompleted || selectedTechnician.jobStats?.completed || 0}
+                        </Text>
+                      </Flex>
+
+                      <Flex justify="space-between" align="center">
+                        <Text color="gray.600" fontWeight="medium">Rating:</Text>
+                        <Text fontWeight="semibold" color="gray.800">
+                          ⭐ {selectedTechnician.rating?.avg ? Number(selectedTechnician.rating.avg).toFixed(1) : "0.0"} ({selectedTechnician.rating?.count || 0} reviews)
+                        </Text>
+                      </Flex>
+
+                      {selectedTechnician.createdAt && (
+                        <Flex justify="space-between" align="center" pt={1} borderTop="1px dashed" borderColor="gray.100">
+                          <Text color="gray.600" fontWeight="medium">Registered On:</Text>
+                          <Text color="gray.700">
+                            {new Date(selectedTechnician.createdAt).toLocaleDateString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric"
+                            })}
+                          </Text>
+                        </Flex>
+                      )}
+                    </VStack>
                   </Box>
                 </SimpleGrid>
+
+                {/* KYC Identity Gate 2 Overview if available */}
+                {(() => {
+                  const kycMatch = findKYCRecord(selectedTechnician, allKycRecords);
+                  if (!kycMatch) return null;
+                  return (
+                    <Box p={3.5} border="1px solid #e2e8f0" borderRadius="10px" bg="white">
+                      <Flex justify="space-between" align="center" mb={2}>
+                        <Text fontSize="xs" fontWeight="bold" color="gray.500" letterSpacing="wider">
+                          IDENTITY & KYC OVERVIEW
+                        </Text>
+                        <Badge colorScheme={isTechnicianKYCVerified(selectedTechnician, allKycRecords) ? "green" : "purple"}>
+                          {isTechnicianKYCVerified(selectedTechnician, allKycRecords) ? "KYC Approved" : "KYC Pending"}
+                        </Badge>
+                      </Flex>
+                      <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={2.5} fontSize="xs">
+                        <Box>
+                          <Text color="gray.500">Aadhaar</Text>
+                          <Text fontWeight="semibold" fontFamily="monospace">
+                            {kycMatch.aadhaarNumber ? (
+                              isTechnicianKYCVerified(selectedTechnician, allKycRecords)
+                                ? kycMatch.aadhaarNumber
+                                : `•••• •••• ${String(kycMatch.aadhaarNumber).slice(-4)}`
+                            ) : (
+                              <Text as="span" color="gray.400" fontStyle="italic">Not Uploaded</Text>
+                            )}
+                          </Text>
+                        </Box>
+                        <Box>
+                          <Text color="gray.500">PAN Card</Text>
+                          <Text fontWeight="semibold" fontFamily="monospace">
+                            {kycMatch.panNumber || <Text as="span" color="gray.400" fontStyle="italic">Not Uploaded</Text>}
+                          </Text>
+                        </Box>
+                        <Box>
+                          <Text color="gray.500">Driving License</Text>
+                          <Text fontWeight="semibold" fontFamily="monospace">
+                            {kycMatch.drivingLicenseNumber || <Text as="span" color="gray.400" fontStyle="italic">Not Uploaded</Text>}
+                          </Text>
+                        </Box>
+                      </SimpleGrid>
+                    </Box>
+                  );
+                })()}
 
                 {/* Bank Details Summary */}
                 {(() => {
                   const kycMatch = findKYCRecord(selectedTechnician, allKycRecords);
-                  const b = kycMatch?.bankDetails;
+                  const b = kycMatch?.bankDetails || selectedTechnician.bankDetails || selectedTechnician.profile?.bankDetails || selectedTechnician.bankAccount;
                   return (
-                    <Box p={3} border="1px solid #eee" borderRadius="10px">
-                      <Flex justify="space-between" align="center" mb={2}>
-                        <Text fontSize="xs" fontWeight="bold" color="gray.500">
+                    <Box p={3.5} border="1px solid #e2e8f0" borderRadius="10px" bg="white">
+                      <Flex justify="space-between" align="center" mb={2.5}>
+                        <Text fontSize="xs" fontWeight="bold" color="gray.500" letterSpacing="wider">
                           PAYOUT BANK ACCOUNT
                         </Text>
                         <Badge colorScheme={isTechnicianBankVerified(selectedTechnician, allKycRecords) ? "green" : "orange"}>
                           {isTechnicianBankVerified(selectedTechnician, allKycRecords) ? "Payouts Enabled" : "Pending Verification"}
                         </Badge>
                       </Flex>
-                      {b ? (
-                        <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={2} fontSize="xs">
-                          <Text><strong>Holder:</strong> {b.accountHolderName || "N/A"}</Text>
-                          <Text><strong>Bank:</strong> {b.bankName || "N/A"}</Text>
-                          <Text><strong>A/C:</strong> {b.accountNumber || "N/A"}</Text>
-                          <Text><strong>IFSC:</strong> {b.ifscCode || "N/A"}</Text>
-                          <Text><strong>UPI:</strong> {b.upiId || "N/A"}</Text>
+                      {b && (b.accountHolderName || b.accountNumber || b.bankName || b.upiId) ? (
+                        <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={2.5} fontSize="xs">
+                          <Box>
+                            <Text color="gray.500">Account Holder</Text>
+                            <Text fontWeight="semibold" color="gray.800">{b.accountHolderName || "N/A"}</Text>
+                          </Box>
+                          <Box>
+                            <Text color="gray.500">Bank Name</Text>
+                            <Text fontWeight="semibold" color="gray.800">{b.bankName || "N/A"}</Text>
+                          </Box>
+                          <Box>
+                            <Text color="gray.500">Account Number</Text>
+                            <Text fontWeight="semibold" fontFamily="monospace" color="gray.800">{b.accountNumber || "N/A"}</Text>
+                          </Box>
+                          <Box>
+                            <Text color="gray.500">IFSC Code</Text>
+                            <Text fontWeight="semibold" fontFamily="monospace" color="gray.800">{b.ifscCode || "N/A"}</Text>
+                          </Box>
+                          <Box gridColumn={{ base: "span 1", sm: "span 2" }}>
+                            <Text color="gray.500">UPI ID</Text>
+                            <Text fontWeight="semibold" color="gray.800" wordBreak="break-all">{b.upiId || "N/A"}</Text>
+                          </Box>
                         </SimpleGrid>
                       ) : (
                         <Text fontSize="xs" color="gray.400" fontStyle="italic">No bank details added</Text>
@@ -2718,7 +3149,7 @@ function AdminManagement() {
             </AlertDialogHeader>
             <AlertDialogBody>
               Are you sure you want to delete{" "}
-              <strong>{getTechnicianName(adminToDelete)}</strong>? This action cannot be undone.
+              <strong>{getTechnicianName(adminToDelete, allKycRecords)}</strong>? This action cannot be undone.
             </AlertDialogBody>
             <AlertDialogFooter>
               <Button ref={cancelRef} onClick={() => setIsDeleteDialogOpen(false)} size="sm">

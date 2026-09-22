@@ -174,8 +174,21 @@ const STATUS_COLORS = {
 
 export default function CityZones() {
   const textColor = useColorModeValue("gray.800", "white");
-  const toast = useToast();
+  const rawToast = useToast();
+  const toast = useCallback(
+    (options) =>
+      rawToast({
+        position: "top-right",
+        isClosable: true,
+        duration: 4000,
+        ...options,
+      }),
+    [rawToast]
+  );
   const cancelRef = React.useRef();
+
+  const [districtModalError, setDistrictModalError] = useState("");
+  const [zoneModalError, setZoneModalError] = useState("");
 
   const [currentUser, setCurrentUser] = useState(null);
   const [selectedMapDistrictId, setSelectedMapDistrictId] = useState("all");
@@ -1157,17 +1170,49 @@ export default function CityZones() {
     setCurrentPage(1);
   };
 
+  const getAvailableDistrictName = (cityName, existingDistrictsList) => {
+    const existingNames = new Set((existingDistrictsList || []).map((d) => (d.name || "").toLowerCase().trim()));
+    const baseName = `${cityName} Operational Range`;
+    if (!existingNames.has(baseName.toLowerCase())) return baseName;
+    const alt1 = `${cityName} Operational Hub`;
+    if (!existingNames.has(alt1.toLowerCase())) return alt1;
+    const alt2 = `${cityName} District`;
+    if (!existingNames.has(alt2.toLowerCase())) return alt2;
+    let counter = 2;
+    while (existingNames.has(`${cityName} Range ${counter}`.toLowerCase())) {
+      counter++;
+    }
+    return `${cityName} Range ${counter}`;
+  };
+
   // District Handlers
   const handleOpenCreateDistrict = () => {
     setIsEditingDistrict(false);
     setSelectedDistrict(null);
-    setDistrictFormData(initialDistrictForm);
+    setDistrictModalError("");
+
+    // Find first city not already in existing districts to prevent duplicate errors
+    const existingNames = new Set((districts || []).map((d) => (d.city || d.name || "").toLowerCase().trim()));
+    const defaultCity = TAMIL_NADU_CITIES.find((c) => !existingNames.has(c.name.toLowerCase().trim())) || TAMIL_NADU_CITIES[0];
+    const defaultPoly = defaultCity ? generateCircularGeoJSON(defaultCity.lat, defaultCity.lng, 10) : null;
+    const generatedName = defaultCity ? getAvailableDistrictName(defaultCity.name, districts) : "";
+
+    setDistrictFormData({
+      ...initialDistrictForm,
+      name: generatedName,
+      city: defaultCity ? defaultCity.name : "",
+      state: "Tamil Nadu",
+      country: "India",
+      code: defaultCity ? defaultCity.code : "",
+      polygonCoordinates: defaultPoly ? JSON.stringify(defaultPoly, null, 2) : "",
+    });
     setIsDistrictModalOpen(true);
   };
 
   const handleOpenEditDistrict = (dist) => {
     setIsEditingDistrict(true);
     setSelectedDistrict(dist);
+    setDistrictModalError("");
     let polyStr = "";
     if (dist.polygon && typeof dist.polygon === "object") {
       polyStr = JSON.stringify(dist.polygon, null, 2);
@@ -1192,11 +1237,17 @@ export default function CityZones() {
   };
 
   const handleSubmitDistrict = async () => {
+    setDistrictModalError("");
+
     if (!districtFormData.name.trim()) {
-      return toast({ title: "Validation Error", description: "District Name is required.", status: "error", duration: 3000, isClosable: true });
+      const msg = "District Name is required.";
+      setDistrictModalError(msg);
+      return toast({ title: "Validation Error", description: msg, status: "error", duration: 3000, isClosable: true });
     }
     if (!districtFormData.city.trim()) {
-      return toast({ title: "Validation Error", description: "City Name is required.", status: "error", duration: 3000, isClosable: true });
+      const msg = "City Name is required.";
+      setDistrictModalError(msg);
+      return toast({ title: "Validation Error", description: msg, status: "error", duration: 3000, isClosable: true });
     }
 
     let polygon = null;
@@ -1209,7 +1260,9 @@ export default function CityZones() {
           polygon = { type: "Polygon", coordinates: parsed };
         }
       } catch (e) {
-        return toast({ title: "Validation Error", description: "Invalid GeoJSON Polygon format.", status: "error", duration: 3000, isClosable: true });
+        const msg = "Invalid GeoJSON Polygon format.";
+        setDistrictModalError(msg);
+        return toast({ title: "Validation Error", description: msg, status: "error", duration: 3000, isClosable: true });
       }
     }
 
@@ -1238,7 +1291,9 @@ export default function CityZones() {
       await fetchData();
       setIsDistrictModalOpen(false);
     } catch (err) {
-      toast({ title: "Error", description: err.message || "Failed to save district.", status: "error", duration: 3000, isClosable: true });
+      const errMsg = err.message || "Failed to save district.";
+      setDistrictModalError(errMsg);
+      toast({ title: "Error", description: errMsg, status: "error", duration: 4000, isClosable: true });
     } finally {
       setIsSubmitting(false);
     }
@@ -1601,6 +1656,7 @@ export default function CityZones() {
   const handleOpenCreateZone = () => {
     setIsEditing(false);
     setSelectedZone(null);
+    setZoneModalError("");
     setFormData(initialForm);
     setIsModalOpen(true);
   };
@@ -1608,6 +1664,7 @@ export default function CityZones() {
   const handleOpenEditZone = (zone) => {
     setIsEditing(true);
     setSelectedZone(zone);
+    setZoneModalError("");
 
     let polygonStr = "";
     if (zone.polygon && typeof zone.polygon === "object") {
@@ -1625,9 +1682,23 @@ export default function CityZones() {
   };
 
   const handleSubmitZone = async () => {
-    if (!formData.name.trim()) return toast({ title: "Error", description: "Zone Name is required.", status: "error", duration: 3000, isClosable: true });
-    if (!formData.operationalCityId) return toast({ title: "Error", description: "Please select an Operational District.", status: "error", duration: 3000, isClosable: true });
-    if (!formData.zoneCode.trim()) return toast({ title: "Error", description: "Zone Code is required.", status: "error", duration: 3000, isClosable: true });
+    setZoneModalError("");
+
+    if (!formData.name.trim()) {
+      const msg = "Zone Name is required.";
+      setZoneModalError(msg);
+      return toast({ title: "Validation Error", description: msg, status: "error", duration: 3000, isClosable: true });
+    }
+    if (!formData.operationalCityId) {
+      const msg = "Please select an Operational District.";
+      setZoneModalError(msg);
+      return toast({ title: "Validation Error", description: msg, status: "error", duration: 3000, isClosable: true });
+    }
+    if (!formData.zoneCode.trim()) {
+      const msg = "Zone Code is required.";
+      setZoneModalError(msg);
+      return toast({ title: "Validation Error", description: msg, status: "error", duration: 3000, isClosable: true });
+    }
 
     let polygon = null;
     if (formData.polygonCoordinates.trim()) {
@@ -1637,7 +1708,9 @@ export default function CityZones() {
           polygon = { type: parsed.type, coordinates: parsed.coordinates };
         }
       } catch {
-        return toast({ title: "Error", description: "Invalid polygon JSON.", status: "error", duration: 3000, isClosable: true });
+        const msg = "Invalid polygon JSON format.";
+        setZoneModalError(msg);
+        return toast({ title: "Validation Error", description: msg, status: "error", duration: 3000, isClosable: true });
       }
     }
 
@@ -1662,7 +1735,9 @@ export default function CityZones() {
       await fetchData();
       setIsModalOpen(false);
     } catch (err) {
-      toast({ title: "Error", description: err.message || "Failed to save zone.", status: "error", duration: 3000, isClosable: true });
+      const errMsg = err.message || "Failed to save zone.";
+      setZoneModalError(errMsg);
+      toast({ title: "Error", description: errMsg, status: "error", duration: 4000, isClosable: true });
     } finally {
       setIsSubmitting(false);
     }
@@ -3124,18 +3199,9 @@ export default function CityZones() {
                               Live Real-Time Leaflet Geofence Canvas
                             </Heading>
                             <Text fontSize="xs" color="gray.500">
-                              Inspect boundaries, 10KM radii, and draw custom zone polygons directly onto the map.
+                              Inspect operational boundaries, geofence radius buffers, and live authorized technicians across Tamil Nadu.
                             </Text>
                           </Box>
-                          <Button
-                            size="xs"
-                            colorScheme={isDrawingMode ? "orange" : "purple"}
-                            leftIcon={<Icon as={MdEdit} />}
-                            onClick={() => setIsDrawingMode(!isDrawingMode)}
-                            borderRadius="6px"
-                          >
-                            {isDrawingMode ? "Exit Draw Mode" : "Draw Zone Polygon"}
-                          </Button>
                         </Flex>
 
                         <Box borderRadius="10px" overflow="hidden" border="1px solid" borderColor="gray.200">
@@ -3143,12 +3209,6 @@ export default function CityZones() {
                             allDistricts={districts}
                             allZones={zones}
                             technicians={technicians}
-                            drawingMode={isDrawingMode}
-                            onPolygonChange={(newPolyCoords) => {
-                              handleOpenCreateZone();
-                              setFormData(prev => ({ ...prev, polygonCoordinates: JSON.stringify(newPolyCoords) }));
-                              toast({ title: "Polygon Captured", status: "info", duration: 3000, isClosable: true });
-                            }}
                             height="380px"
                             interactive={true}
                           />
@@ -3617,13 +3677,15 @@ export default function CityZones() {
                       colorScheme="teal"
                       fontWeight={isSelected ? "700" : "600"}
                       onClick={() => {
+                        setDistrictModalError("");
                         const c = TAMIL_NADU_CITIES.find((x) => x.name.toLowerCase() === item.name.toLowerCase());
                         if (c) {
                           const cleanCity = c.name;
                           const poly = generateCircularGeoJSON(c.lat, c.lng, 10);
+                          const districtName = isEditingDistrict ? districtFormData.name : getAvailableDistrictName(cleanCity, districts);
                           setDistrictFormData((prev) => ({
                             ...prev,
-                            name: `${cleanCity} Operational Range`,
+                            name: districtName,
                             city: cleanCity,
                             state: "Tamil Nadu",
                             country: "India",
@@ -3650,15 +3712,17 @@ export default function CityZones() {
                 placeholder="-- Or select from all 60+ Tamil Nadu Districts &amp; Taluks --"
                 value={districtFormData.city ? TAMIL_NADU_CITIES.find(c => c.name.toLowerCase() === districtFormData.city.toLowerCase())?.name || "" : ""}
                 onChange={(e) => {
+                  setDistrictModalError("");
                   const selectedName = e.target.value;
                   if (!selectedName) return;
                   const c = TAMIL_NADU_CITIES.find((item) => item.name === selectedName);
                   if (c) {
                     const cleanCity = c.name.split("(")[0].trim();
                     const poly = generateCircularGeoJSON(c.lat, c.lng, 10);
+                    const districtName = isEditingDistrict ? districtFormData.name : getAvailableDistrictName(cleanCity, districts);
                     setDistrictFormData((prev) => ({
                       ...prev,
-                      name: `${cleanCity} Operational Range`,
+                      name: districtName,
                       city: cleanCity,
                       state: "Tamil Nadu",
                       country: "India",
@@ -3675,6 +3739,43 @@ export default function CityZones() {
                 ))}
               </Select>
             </Box>
+
+            {/* Inline Error Alert Banner */}
+            {districtModalError && (
+              <Flex
+                align="center"
+                bg="red.50"
+                border="1.5px solid"
+                borderColor="red.400"
+                color="red.800"
+                px={4}
+                py={3}
+                borderRadius="10px"
+                mb={4}
+                justify="space-between"
+                boxShadow="xs"
+              >
+                <HStack spacing={3} align="center">
+                  <Icon as={MdErrorOutline} boxSize={5} color="red.600" flexShrink={0} />
+                  <Box>
+                    <Text fontSize="xs" fontWeight="700" color="red.800">
+                      Cannot Create District
+                    </Text>
+                    <Text fontSize="xs" color="red.700">
+                      {districtModalError}
+                    </Text>
+                  </Box>
+                </HStack>
+                <IconButton
+                  size="xs"
+                  icon={<MdClear />}
+                  variant="ghost"
+                  colorScheme="red"
+                  onClick={() => setDistrictModalError("")}
+                  aria-label="Dismiss error"
+                />
+              </Flex>
+            )}
 
             {/* 2-Column Responsive Layout: Left = Form Fields, Right = Live Leaflet Map */}
             <Grid templateColumns={{ base: "1fr", lg: "1fr 1.15fr" }} gap={5}>
@@ -3693,7 +3794,10 @@ export default function CityZones() {
                       <Input
                         size="sm"
                         value={districtFormData.name}
-                        onChange={(e) => setDistrictFormData({ ...districtFormData, name: e.target.value })}
+                        onChange={(e) => {
+                          setDistrictModalError("");
+                          setDistrictFormData({ ...districtFormData, name: e.target.value });
+                        }}
                         placeholder="e.g. Salem Operational Range"
                         borderRadius="8px"
                         fontWeight="600"
@@ -3708,7 +3812,10 @@ export default function CityZones() {
                         <InputGroup size="sm">
                           <Input
                             value={districtFormData.city}
-                            onChange={(e) => setDistrictFormData({ ...districtFormData, city: e.target.value })}
+                            onChange={(e) => {
+                              setDistrictModalError("");
+                              setDistrictFormData({ ...districtFormData, city: e.target.value });
+                            }}
                             placeholder="e.g. Edappadi, Salem"
                             borderRadius="8px"
                           />
@@ -3720,6 +3827,7 @@ export default function CityZones() {
                               borderRadius="6px"
                               leftIcon={<MdLocationOn />}
                               onClick={() => {
+                                setDistrictModalError("");
                                 const clean = (districtFormData.city || "").trim().toLowerCase();
                                 const c = TAMIL_NADU_CITIES.find(x => x.name.toLowerCase() === clean);
                                 if (c) {
@@ -3745,7 +3853,10 @@ export default function CityZones() {
                         <Input
                           size="sm"
                           value={districtFormData.code}
-                          onChange={(e) => setDistrictFormData({ ...districtFormData, code: e.target.value })}
+                          onChange={(e) => {
+                            setDistrictModalError("");
+                            setDistrictFormData({ ...districtFormData, code: e.target.value });
+                          }}
                           placeholder="e.g. SLM"
                           borderRadius="8px"
                           textTransform="uppercase"
@@ -3762,7 +3873,10 @@ export default function CityZones() {
                         <Input
                           size="sm"
                           value={districtFormData.state}
-                          onChange={(e) => setDistrictFormData({ ...districtFormData, state: e.target.value })}
+                          onChange={(e) => {
+                            setDistrictModalError("");
+                            setDistrictFormData({ ...districtFormData, state: e.target.value });
+                          }}
                           placeholder="e.g. Tamil Nadu"
                           borderRadius="8px"
                         />
@@ -3774,7 +3888,10 @@ export default function CityZones() {
                         <Input
                           size="sm"
                           value={districtFormData.country}
-                          onChange={(e) => setDistrictFormData({ ...districtFormData, country: e.target.value })}
+                          onChange={(e) => {
+                            setDistrictModalError("");
+                            setDistrictFormData({ ...districtFormData, country: e.target.value });
+                          }}
                           borderRadius="8px"
                         />
                       </FormControl>
@@ -3888,13 +4005,12 @@ export default function CityZones() {
                     }}
                     height="380px"
                     interactive={true}
-                    allowDrawing={true}
                     allowRadiusSelect={true}
                     showToolbar={true}
                   />
                 </Box>
                 <Text fontSize="11px" color="gray.500" mt={2}>
-                  💡 <b>Tip:</b> Click <b>Draw Boundary</b> on the map toolbar to plot custom polygon vertices, or use <b>5KM/10KM/15KM/25KM</b> buttons to generate circular geofences.
+                  💡 <b>Tip:</b> Click anywhere on the map or select a <b>City Preset</b> to position the operational hub, and use <b>5KM/10KM/15KM/25KM</b> buttons to set the geofence boundary.
                 </Text>
               </Box>
             </Grid>
@@ -4467,6 +4583,43 @@ export default function CityZones() {
           <ModalCloseButton top={4} right={4} />
 
           <ModalBody overflowY="auto" p={6} css={globalScrollbarStyles} bg="gray.50">
+            {/* Inline Error Alert Banner for Zone Modal */}
+            {zoneModalError && (
+              <Flex
+                align="center"
+                bg="red.50"
+                border="1.5px solid"
+                borderColor="red.400"
+                color="red.800"
+                px={4}
+                py={3}
+                borderRadius="10px"
+                mb={4}
+                justify="space-between"
+                boxShadow="xs"
+              >
+                <HStack spacing={3} align="center">
+                  <Icon as={MdErrorOutline} boxSize={5} color="red.600" flexShrink={0} />
+                  <Box>
+                    <Text fontSize="xs" fontWeight="700" color="red.800">
+                      Cannot Save Zone
+                    </Text>
+                    <Text fontSize="xs" color="red.700">
+                      {zoneModalError}
+                    </Text>
+                  </Box>
+                </HStack>
+                <IconButton
+                  size="xs"
+                  icon={<MdClear />}
+                  variant="ghost"
+                  colorScheme="red"
+                  onClick={() => setZoneModalError("")}
+                  aria-label="Dismiss error"
+                />
+              </Flex>
+            )}
+
             <Grid templateColumns={{ base: "1fr", md: "1fr 1.15fr" }} gap={5}>
               {/* Left Column: Form Details */}
               <VStack spacing={4} align="stretch">
@@ -4479,7 +4632,10 @@ export default function CityZones() {
                       <Select
                         size="sm"
                         value={formData.operationalCityId}
-                        onChange={(e) => setFormData({ ...formData, operationalCityId: e.target.value })}
+                        onChange={(e) => {
+                          setZoneModalError("");
+                          setFormData({ ...formData, operationalCityId: e.target.value });
+                        }}
                         borderRadius="8px"
                         fontWeight="600"
                       >
@@ -4500,7 +4656,10 @@ export default function CityZones() {
                         <Input
                           size="sm"
                           value={formData.name}
-                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          onChange={(e) => {
+                            setZoneModalError("");
+                            setFormData({ ...formData, name: e.target.value });
+                          }}
                           placeholder="e.g. North Zone, Central Hub"
                           borderRadius="8px"
                         />
@@ -4512,7 +4671,10 @@ export default function CityZones() {
                         <Input
                           size="sm"
                           value={formData.zoneCode}
-                          onChange={(e) => setFormData({ ...formData, zoneCode: e.target.value })}
+                          onChange={(e) => {
+                            setZoneModalError("");
+                            setFormData({ ...formData, zoneCode: e.target.value });
+                          }}
                           placeholder="e.g. NZ01"
                           borderRadius="8px"
                           textTransform="uppercase"
@@ -4579,13 +4741,12 @@ export default function CityZones() {
                     onPolygonChange={(newPoly) => setFormData((prev) => ({ ...prev, polygonCoordinates: newPoly }))}
                     height="350px"
                     interactive={true}
-                    allowDrawing={true}
                     allowRadiusSelect={true}
                     showToolbar={true}
                   />
                 </Box>
                 <Text fontSize="11px" color="gray.500" mt={2}>
-                  💡 <b>Tip:</b> Click <b>Draw Boundary</b> on the map toolbar to plot custom polygon vertices for this zone.
+                  💡 <b>Tip:</b> Click anywhere on the map or use <b>5KM/10KM/15KM/25KM</b> buttons to configure the geofence boundary.
                 </Text>
               </Box>
             </Grid>

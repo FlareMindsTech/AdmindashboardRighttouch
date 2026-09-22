@@ -6,7 +6,6 @@ import {
   Button,
   HStack,
   VStack,
-  Badge,
   IconButton,
   Tooltip,
   Select,
@@ -15,16 +14,9 @@ import {
   Icon,
 } from "@chakra-ui/react";
 import {
-  MdMyLocation,
   MdClear,
-  MdCenterFocusStrong,
   MdPlace,
-  MdCheck,
-  MdUndo,
-  MdEdit,
   MdRadar,
-  MdLayers,
-  MdMap,
   MdRefresh,
 } from "react-icons/md";
 import L from "leaflet";
@@ -127,8 +119,8 @@ TAMIL_NADU_CITIES.forEach((c) => {
   CITY_LOOKUP[shortName] = [c.lat, c.lng];
 });
 
-// Generate circular octagon/16-point GeoJSON polygon around lat/lng
-export const generateCircularGeoJSON = (lat, lng, radiusKm = 10, numPoints = 20) => {
+// Generate circular 32-point GeoJSON polygon around lat/lng for smooth circle preview
+export const generateCircularGeoJSON = (lat, lng, radiusKm = 10, numPoints = 32) => {
   const points = [];
   const kmInDegLat = 1 / 110.574;
   const kmInDegLng = 1 / (111.32 * Math.cos((lat * Math.PI) / 180));
@@ -165,6 +157,19 @@ export function isPointInPolygon(pt, ring) {
   return inside;
 }
 
+// Calculate centroid of polygon points
+export function calculatePolygonCentroid(pts) {
+  if (!pts || pts.length === 0) return [11.1085, 77.3411];
+  let sumLat = 0;
+  let sumLng = 0;
+  const count = pts.length;
+  pts.forEach((p) => {
+    sumLng += p[0];
+    sumLat += p[1];
+  });
+  return [parseFloat((sumLat / count).toFixed(5)), parseFloat((sumLng / count).toFixed(5))];
+}
+
 const DEFAULT_LAYER_TOGGLES = {
   districtBoundary: true,
   zoneBoundaries: true,
@@ -194,10 +199,6 @@ export default function DistrictMap({
   customers = [],
   layerToggles = DEFAULT_LAYER_TOGGLES,
   onPointInspect,
-  isDrawingMode: externalDrawingMode,
-  drawingMode,
-  onFinishDrawPolygon,
-  allowDrawing = true,
   allowRadiusSelect = true,
   showToolbar = true,
   radiusKm = 10,
@@ -216,20 +217,14 @@ export default function DistrictMap({
   const techMarkersGroup = useRef(null);
   const customerMarkersGroup = useRef(null);
   const activePolygonGroup = useRef(null);
-  const drawingLayerGroup = useRef(null);
   const circleLayerGroup = useRef(null);
   const centerPinGroup = useRef(null);
 
-  const [centerCoords, setCenterCoords] = useState([11.6643, 78.146]); // Salem default
+  const [centerCoords, setCenterCoords] = useState([11.1085, 77.3411]); // Default Tirupur
   const [selectedRadius, setSelectedRadius] = useState(radiusKm || 10);
   const [geoStatus, setGeoStatus] = useState("");
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawnPoints, setDrawnPoints] = useState([]);
   const [selectedPresetCity, setSelectedPresetCity] = useState("");
   const [localLayerToggles, setLocalLayerToggles] = useState(layerToggles);
-
-  // Synchronize drawing mode from prop if provided
-  const activeDrawingMode = externalDrawingMode !== undefined ? externalDrawingMode : (drawingMode !== undefined ? drawingMode : isDrawing);
 
   useEffect(() => {
     if (radiusKm && radiusKm !== selectedRadius) {
@@ -258,6 +253,22 @@ export default function DistrictMap({
     }
   }, [cityName]);
 
+  // Extract center coords from existing polygon if available
+  useEffect(() => {
+    if (polygonCoordinates && polygonCoordinates.trim()) {
+      try {
+        const parsed = typeof polygonCoordinates === "object" ? polygonCoordinates : JSON.parse(polygonCoordinates);
+        if (parsed?.coordinates?.[0]?.length > 0) {
+          const ring = parsed.coordinates[0];
+          const centroid = calculatePolygonCentroid(ring.slice(0, -1));
+          if (centroid && Number.isFinite(centroid[0])) {
+            setCenterCoords(centroid);
+          }
+        }
+      } catch (e) {}
+    }
+  }, [polygonCoordinates]);
+
   // 1. Initialize Leaflet Map
   useEffect(() => {
     if (!mapRef.current) return;
@@ -275,7 +286,7 @@ export default function DistrictMap({
         maxZoom: 19,
       }).addTo(map);
 
-      // Add Attribution compactly
+      // Attribution
       L.control
         .attribution({ position: "bottomright", prefix: false })
         .addAttribution('&copy; <a href="https://openstreetmap.org">OSM</a>')
@@ -289,7 +300,6 @@ export default function DistrictMap({
       activePolygonGroup.current = L.layerGroup().addTo(map);
       circleLayerGroup.current = L.layerGroup().addTo(map);
       centerPinGroup.current = L.layerGroup().addTo(map);
-      drawingLayerGroup.current = L.layerGroup().addTo(map);
 
       leafletMap.current = map;
 
@@ -301,7 +311,6 @@ export default function DistrictMap({
       });
       resizeObserver.observe(mapRef.current);
 
-      // Invalidate size on initial mount delays
       setTimeout(() => {
         if (leafletMap.current) leafletMap.current.invalidateSize();
       }, 100);
@@ -319,7 +328,7 @@ export default function DistrictMap({
     }
   }, []);
 
-  // 2. Click Handler for Drawing Mode & Center Pin Placement
+  // 2. Click Handler for Center Pin Placement & Circular Geofence
   useEffect(() => {
     const map = leafletMap.current;
     if (!map) return;
@@ -327,23 +336,13 @@ export default function DistrictMap({
     const handleMapClick = (e) => {
       const { lat, lng } = e.latlng;
 
-      if (activeDrawingMode) {
-        setDrawnPoints((prev) => {
-          const updated = [...prev, [lng, lat]];
-          if (updated.length >= 3) {
-            const closed = [...updated, updated[0]];
-            const geoObj = { type: "Polygon", coordinates: [closed] };
-            if (onPolygonChange) onPolygonChange(JSON.stringify(geoObj, null, 2));
-          }
-          return updated;
-        });
-      } else if (interactive) {
+      if (interactive) {
         setCenterCoords([lat, lng]);
         setGeoStatus(`Operational Center Pin: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
 
-        // If no custom polygon exists yet, auto generate radius geofence
-        if (onPolygonChange && (!polygonCoordinates || polygonCoordinates.trim() === "")) {
-          const autoGeo = generateCircularGeoJSON(lat, lng, selectedRadius);
+        // Automatically update circular radius geofence around newly clicked center
+        const autoGeo = generateCircularGeoJSON(lat, lng, selectedRadius);
+        if (onPolygonChange) {
           onPolygonChange(JSON.stringify(autoGeo, null, 2));
         }
 
@@ -383,7 +382,6 @@ export default function DistrictMap({
       map.off("click", handleMapClick);
     };
   }, [
-    activeDrawingMode,
     interactive,
     zones,
     districts,
@@ -406,32 +404,27 @@ export default function DistrictMap({
     activePolygonGroup.current?.clearLayers();
     circleLayerGroup.current?.clearLayers();
     centerPinGroup.current?.clearLayers();
-    drawingLayerGroup.current?.clearLayers();
 
     const bounds = L.latLngBounds([]);
 
-    // A. Render Active Polygon (from prop polygonCoordinates)
+    // A. Render Active Polygon (from prop polygonCoordinates or radius circle)
+    let hasValidPolygon = false;
     if (polygonCoordinates && polygonCoordinates.trim()) {
       try {
-        let parsed = null;
-        if (typeof polygonCoordinates === "object") {
-          parsed = polygonCoordinates;
-        } else {
-          parsed = JSON.parse(polygonCoordinates);
-        }
+        const parsed = typeof polygonCoordinates === "object" ? polygonCoordinates : JSON.parse(polygonCoordinates);
 
         if (parsed && (parsed.type === "Polygon" || parsed.coordinates)) {
           const geoLayer = L.geoJSON(parsed, {
             style: {
-              color: "#0D9488", // Teal 600
-              weight: 3,
-              fillColor: "#14B8A6", // Teal 500
-              fillOpacity: 0.2,
-              dashArray: "3, 3",
+              color: "#0F766E", // Deep Teal outline
+              weight: 2.5,
+              fillColor: "#0D9488", // Teal 600 fill
+              fillOpacity: 0.1,
+              dashArray: "8, 8", // Clean dashed border matching screenshot
             },
           });
 
-          const nameTag = districtName || cityName || "Geofence Boundary";
+          const nameTag = districtName || cityName || "Operational Boundary";
           geoLayer.bindTooltip(`📍 <b>${nameTag}</b><br/>Operational Geofence Boundary`, {
             sticky: true,
           });
@@ -439,36 +432,43 @@ export default function DistrictMap({
 
           if (geoLayer.getBounds().isValid()) {
             bounds.extend(geoLayer.getBounds());
+            hasValidPolygon = true;
           }
         }
       } catch (err) {
-        // invalid polygon string, ignore
+        // ignore JSON parse error
       }
     }
 
-    // B. Render Center Pin
+    // B. Render Center Bullseye Pin (Exact Visual Match to Screenshot)
     if (centerCoords && centerCoords.length === 2 && Number.isFinite(centerCoords[0])) {
       const pinHtml = `
-        <div style="position:relative;display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:#0F766E;border:2px solid white;border-radius:50%;box-shadow:0 3px 10px rgba(0,0,0,0.35);color:white;font-size:14px;font-weight:bold;">
-          🎯
+        <div style="position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;background:#0F766E;border:3px solid #FFFFFF;border-radius:50%;box-shadow:0 4px 12px rgba(15,118,110,0.5);cursor:pointer;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="9" stroke="#E11D48" stroke-width="2.5" fill="#FFFFFF" />
+            <circle cx="12" cy="12" r="5" stroke="#E11D48" stroke-width="2" fill="#FFFFFF" />
+            <circle cx="12" cy="12" r="2.5" fill="#E11D48" />
+          </svg>
         </div>
       `;
       const pinIcon = L.divIcon({
         html: pinHtml,
-        className: "",
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
+        className: "leaflet-custom-center-pin",
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
       });
-      const pinMarker = L.marker(centerCoords, { icon: pinIcon });
+      const pinMarker = L.marker(centerCoords, { icon: pinIcon, zIndexOffset: 1000 });
       pinMarker.bindTooltip(
-        `<b>Center: ${cityName || districtName || "Operational Center"}</b><br/>Lat: ${centerCoords[0].toFixed(4)}, Lng: ${centerCoords[1].toFixed(4)}`,
+        `<b>Center: ${cityName || districtName || "Operational Hub"}</b><br/>Lat: ${centerCoords[0].toFixed(4)}, Lng: ${centerCoords[1].toFixed(4)}`,
         { sticky: true }
       );
       pinMarker.addTo(centerPinGroup.current);
+      bounds.extend(centerCoords);
     }
 
-    // C. Render Geofence Circle Radius Buffer
+    // C. Fallback: If no polygon coordinates yet, render dashed circle buffer
     if (
+      !hasValidPolygon &&
       localLayerToggles.radiusCircle &&
       centerCoords &&
       centerCoords.length === 2 &&
@@ -478,12 +478,13 @@ export default function DistrictMap({
         radius: selectedRadius * 1000,
         color: "#0F766E",
         fillColor: "#0D9488",
-        fillOpacity: 0.07,
-        weight: 2,
-        dashArray: "6, 6",
+        fillOpacity: 0.08,
+        weight: 2.5,
+        dashArray: "8, 8",
       });
-      circle.bindTooltip(`⭕ ${selectedRadius} KM Service Radius Buffer`, { sticky: true });
+      circle.bindTooltip(`⭕ ${selectedRadius} KM Service Radius Boundary`, { sticky: true });
       circle.addTo(circleLayerGroup.current);
+      bounds.extend(circle.getBounds());
     }
 
     // D. Render Other Districts
@@ -504,10 +505,6 @@ export default function DistrictMap({
           });
           geoLayer.bindTooltip(`District: ${d.name || d.city}`, { sticky: true });
           geoLayer.addTo(districtLayersGroup.current);
-
-          if (isSelected && geoLayer.getBounds().isValid()) {
-            bounds.extend(geoLayer.getBounds());
-          }
         } catch (e) {}
       });
     }
@@ -570,29 +567,9 @@ export default function DistrictMap({
       });
     }
 
-    // G. Render Active Drawing Points
-    if (drawnPoints.length > 0) {
-      const latLngs = drawnPoints.map((p) => [p[1], p[0]]);
-      latLngs.forEach((pt, idx) => {
-        L.circleMarker(pt, {
-          radius: 5,
-          color: "#EF4444",
-          fillColor: "#EF4444",
-          fillOpacity: 1,
-        })
-          .bindTooltip(`P${idx + 1}`)
-          .addTo(drawingLayerGroup.current);
-      });
-      if (latLngs.length >= 2) {
-        L.polyline(latLngs, { color: "#EF4444", weight: 3, dashArray: "5, 5" }).addTo(
-          drawingLayerGroup.current
-        );
-      }
-    }
-
-    // Auto-fit bounds if we have an active polygon and not drawing
-    if (bounds.isValid() && !activeDrawingMode) {
-      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+    // Auto-fit bounds if we have an active polygon
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [35, 35], maxZoom: 13 });
     }
   }, [
     polygonCoordinates,
@@ -606,8 +583,6 @@ export default function DistrictMap({
     zones,
     selectedZoneId,
     technicians,
-    drawnPoints,
-    activeDrawingMode,
     onSelectZone,
   ]);
 
@@ -633,8 +608,8 @@ export default function DistrictMap({
       }
 
       // Generate geofence polygon for selected city
+      const newPoly = generateCircularGeoJSON(lat, lng, selectedRadius);
       if (onPolygonChange) {
-        const newPoly = generateCircularGeoJSON(lat, lng, selectedRadius);
         onPolygonChange(JSON.stringify(newPoly, null, 2));
       }
 
@@ -642,7 +617,7 @@ export default function DistrictMap({
         onCitySelect(cityItem);
       }
 
-      setGeoStatus(`Jumped to ${cityItem.name} (${cityItem.code}) & updated geofence`);
+      setGeoStatus(`Jumped to ${cityItem.name} (${cityItem.code}) — Geofence boundary active`);
     }
   };
 
@@ -655,48 +630,23 @@ export default function DistrictMap({
       const newPoly = generateCircularGeoJSON(centerCoords[0], centerCoords[1], radiusKmVal);
       const jsonStr = JSON.stringify(newPoly, null, 2);
       if (onPolygonChange) onPolygonChange(jsonStr);
-      setGeoStatus(`Generated ${radiusKmVal} KM circular geofence boundary around center`);
+      setGeoStatus(`Active Geofence: ${radiusKmVal} KM radius boundary around operational center`);
     }
   };
 
-  // Drawing mode triggers
-  const handleToggleDrawing = () => {
-    const nextMode = !activeDrawingMode;
-    setIsDrawing(nextMode);
-    if (nextMode) {
-      setDrawnPoints([]);
-      setGeoStatus("Drawing Mode: Click anywhere on the map to place polygon boundary points.");
+  const handleResetBoundary = () => {
+    if (centerCoords) {
+      const resetPoly = generateCircularGeoJSON(centerCoords[0], centerCoords[1], selectedRadius);
+      if (onPolygonChange) onPolygonChange(JSON.stringify(resetPoly, null, 2));
     } else {
-      setGeoStatus("Drawing Mode cancelled.");
+      if (onPolygonChange) onPolygonChange("");
     }
-  };
-
-  const handleFinishDrawing = () => {
-    if (drawnPoints.length < 3) return;
-    const closed = [...drawnPoints, drawnPoints[0]];
-    const geoObj = { type: "Polygon", coordinates: [closed] };
-    const jsonStr = JSON.stringify(geoObj, null, 2);
-    if (onPolygonChange) onPolygonChange(jsonStr);
-    if (onFinishDrawPolygon) onFinishDrawPolygon(geoObj);
-    setDrawnPoints([]);
-    setIsDrawing(false);
-    setGeoStatus("Custom polygon drawing completed & boundary saved!");
-  };
-
-  const handleUndoDrawPoint = () => {
-    setDrawnPoints((prev) => prev.slice(0, -1));
-  };
-
-  const handleClearBoundary = () => {
-    setDrawnPoints([]);
-    setIsDrawing(false);
-    if (onPolygonChange) onPolygonChange("");
-    setGeoStatus("Cleared boundary polygon");
+    setGeoStatus("Reset boundary to default circular geofence.");
   };
 
   return (
     <VStack spacing={2} align="stretch" w="100%">
-      {/* Interactive Map Toolbar */}
+      {/* Interactive Map Toolbar (Clean: City Preset + Geofence KM Radii + Techs Toggle) */}
       {showToolbar && (
         <Flex
           align="center"
@@ -758,69 +708,23 @@ export default function DistrictMap({
             </HStack>
           )}
 
-          {/* Drawing & Layer Tools */}
+          {/* Controls: Reset + Techs Toggle */}
           <HStack spacing={2} flexWrap="wrap">
-            {allowDrawing && (
-              <>
-                {!activeDrawingMode ? (
-                  <Button
-                    size="xs"
-                    colorScheme="teal"
-                    variant="solid"
-                    borderRadius="6px"
-                    leftIcon={<MdEdit />}
-                    onClick={handleToggleDrawing}
-                  >
-                    Draw Boundary
-                  </Button>
-                ) : (
-                  <HStack spacing={1}>
-                    <Button
-                      size="xs"
-                      colorScheme="green"
-                      leftIcon={<MdCheck />}
-                      onClick={handleFinishDrawing}
-                      isDisabled={drawnPoints.length < 3}
-                    >
-                      Done ({drawnPoints.length} pts)
-                    </Button>
-                    <Button
-                      size="xs"
-                      colorScheme="orange"
-                      leftIcon={<MdUndo />}
-                      onClick={handleUndoDrawPoint}
-                      isDisabled={drawnPoints.length === 0}
-                    >
-                      Undo
-                    </Button>
-                    <Button
-                      size="xs"
-                      colorScheme="red"
-                      variant="outline"
-                      onClick={handleToggleDrawing}
-                    >
-                      Cancel
-                    </Button>
-                  </HStack>
-                )}
-
-                {polygonCoordinates && !activeDrawingMode && (
-                  <Tooltip label="Clear polygon boundary">
-                    <IconButton
-                      size="xs"
-                      icon={<MdClear />}
-                      colorScheme="red"
-                      variant="ghost"
-                      aria-label="Clear boundary"
-                      onClick={handleClearBoundary}
-                    />
-                  </Tooltip>
-                )}
-              </>
+            {polygonCoordinates && (
+              <Tooltip label="Reset boundary to circular geofence">
+                <IconButton
+                  size="xs"
+                  icon={<MdRefresh />}
+                  colorScheme="teal"
+                  variant="ghost"
+                  aria-label="Reset boundary"
+                  onClick={handleResetBoundary}
+                />
+              </Tooltip>
             )}
 
             {/* Quick layer toggles */}
-            <HStack spacing={2} display={{ base: "none", md: "flex" }}>
+            <HStack spacing={2}>
               <Tooltip label="Toggle Technicians on Map">
                 <HStack spacing={1}>
                   <Text fontSize="10px" fontWeight="600" color="gray.600">
@@ -848,7 +752,7 @@ export default function DistrictMap({
         w="100%"
         borderRadius="12px"
         border="2px solid"
-        borderColor={activeDrawingMode ? "red.400" : "teal.300"}
+        borderColor="teal.300"
         overflow="hidden"
         boxShadow="sm"
         position="relative"

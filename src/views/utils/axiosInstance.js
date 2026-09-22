@@ -3164,15 +3164,25 @@ export const getServiceBookings = async () => {
   }
 };
 
-// =========================================================
-// 22. CITY ZONES (MODULE 10) APIs
-// =========================================================
 const extractServerError = async (response) => {
   try {
-    const body = await response.json();
-    return body.message || body.error || "";
+    const text = await response.text();
+    try {
+      const body = JSON.parse(text);
+      if (typeof body === "string") return body;
+      if (body.message && typeof body.message === "string") return body.message;
+      if (body.error && typeof body.error === "string") return body.error;
+      if (body.error && typeof body.error === "object" && body.error.message) return body.error.message;
+      if (body.err && typeof body.err === "string") return body.err;
+      if (Array.isArray(body.errors)) {
+        return body.errors.map(e => (typeof e === "string" ? e : e.msg || e.message || JSON.stringify(e))).join(", ");
+      }
+      return text || `Error: ${response.status}`;
+    } catch {
+      return text || `Error: ${response.status}`;
+    }
   } catch (e) {
-    return "";
+    return `Error: ${response.status}`;
   }
 };
 
@@ -5405,52 +5415,66 @@ export const getTechnicianZonePermissions = async (technicianId) => {
   }
 };
 
-export const enableTechnicianZonePermission = async (technicianId, zoneId, reason = "") => {
+export const enableTechnicianZonePermission = async (technicianId, zoneIdOrIds, reason = "") => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/technicians/${technicianId}/zones/${zoneId}/enable`, {
+    const cityZoneIds = Array.isArray(zoneIdOrIds)
+      ? zoneIdOrIds
+      : typeof zoneIdOrIds === "object" && zoneIdOrIds !== null && zoneIdOrIds.cityZoneIds
+      ? zoneIdOrIds.cityZoneIds
+      : [zoneIdOrIds];
+    const payload = {
+      cityZoneIds,
+      reason: (typeof zoneIdOrIds === "object" && zoneIdOrIds?.reason) || reason,
+    };
+    const response = await fetch(`${BASE_URL}/admin/technicians/${technicianId}/city-zones`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ zoneId, reason }),
+      body: JSON.stringify(payload),
     });
-    if (!response.ok) {
-      // Fallback to generic city-zones route
-      const fallback = await fetch(`${BASE_URL}/admin/technicians/${technicianId}/city-zones`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ cityZoneId: zoneId, zoneId, reason }),
-      });
-      if (!fallback.ok) throw new Error((await extractServerError(fallback)) || `Error: ${fallback.status}`);
-      return await fallback.json();
-    }
+    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
     return await response.json();
   } catch (error) {
     console.error("Error enabling technician zone permission:", error);
     throw error;
   }
 };
+export const approveTechnicianZones = enableTechnicianZonePermission;
 
 export const disableTechnicianZonePermission = async (technicianId, zoneId, reason = "") => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/technicians/${technicianId}/zones/${zoneId}/disable`, {
-      method: "POST",
+    const response = await fetch(`${BASE_URL}/admin/technicians/${technicianId}/city-zones/${zoneId}`, {
+      method: "DELETE",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ reason }),
     });
-    if (!response.ok) {
-      // Fallback to delete city-zones route
-      const fallback = await fetch(`${BASE_URL}/admin/technicians/${technicianId}/city-zones/${zoneId}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ reason }),
-      });
-      if (!fallback.ok) throw new Error((await extractServerError(fallback)) || `Error: ${fallback.status}`);
-      return await fallback.json();
-    }
+    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
     return await response.json();
   } catch (error) {
     console.error("Error disabling technician zone permission:", error);
+    throw error;
+  }
+};
+export const revokeTechnicianZone = disableTechnicianZonePermission;
+
+export const bulkRevokeTechnicianZones = async (technicianId, cityZoneIds, reason = "") => {
+  try {
+    const token = getToken();
+    const payload = typeof cityZoneIds === "object" && !Array.isArray(cityZoneIds) && cityZoneIds !== null
+      ? cityZoneIds
+      : {
+          cityZoneIds: Array.isArray(cityZoneIds) ? cityZoneIds : [cityZoneIds],
+          reason,
+        };
+    const response = await fetch(`${BASE_URL}/admin/technicians/${technicianId}/city-zones`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error("Error bulk revoking technician zone permissions:", error);
     throw error;
   }
 };
@@ -5667,12 +5691,141 @@ export const rollbackPolygonVersion = async (data) => {
   }
 };
 
-export const getDispatchDebug = async (districtId, serviceId) => {
+export const getZoneTechnicianCandidates = async (zoneId) => {
+  try {
+    const token = getToken();
+    const response = await fetch(`${BASE_URL}/admin/zones/${zoneId}/technician-candidates`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    if (response.status === 404) return { result: [], data: [], candidates: [] };
+    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.warn("Error fetching zone technician candidates:", error.message);
+    return { result: [], data: [], candidates: [] };
+  }
+};
+
+export const createGeofenceCityZone = async (cityZoneData) => {
+  try {
+    const token = getToken();
+    const response = await fetch(`${BASE_URL}/admin/zone-geofence/city-zones`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(cityZoneData),
+    });
+    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error("Error creating geofence city zone:", error);
+    throw error;
+  }
+};
+
+export const listGeofenceCityZones = async (districtId) => {
+  try {
+    const token = getToken();
+    const query = districtId ? `?districtId=${districtId}` : "";
+    const response = await fetch(`${BASE_URL}/admin/zone-geofence/city-zones${query}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    if (response.status === 404) return { result: [], data: [], zones: [] };
+    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.warn("Error listing geofence city zones:", error.message);
+    return { result: [], data: [], zones: [] };
+  }
+};
+
+export const createGeofenceDistrict = async (districtData) => {
+  try {
+    const token = getToken();
+    const response = await fetch(`${BASE_URL}/admin/zone-geofence/districts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(districtData),
+    });
+    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error("Error creating geofence district:", error);
+    throw error;
+  }
+};
+
+export const listGeofenceDistricts = async () => {
+  try {
+    const token = getToken();
+    const response = await fetch(`${BASE_URL}/admin/zone-geofence/districts`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    if (response.status === 404) return { result: [], data: [], districts: [] };
+    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.warn("Error listing geofence districts:", error.message);
+    return { result: [], data: [], districts: [] };
+  }
+};
+
+export const grantDistrictToTechnician = async (technicianId, districtId, reason = "") => {
+  try {
+    const token = getToken();
+    const payload = typeof technicianId === "object"
+      ? technicianId
+      : { technicianId, districtId, reason };
+    const response = await fetch(`${BASE_URL}/admin/zone-geofence/technicians/grant-district`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error("Error granting district to technician:", error);
+    throw error;
+  }
+};
+
+export const revokeDistrictFromTechnician = async (technicianId, districtId, reason = "") => {
+  try {
+    const token = getToken();
+    const payload = typeof technicianId === "object"
+      ? technicianId
+      : { technicianId, districtId, reason };
+    const response = await fetch(`${BASE_URL}/admin/zone-geofence/technicians/revoke-district`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error("Error revoking district from technician:", error);
+    throw error;
+  }
+};
+
+export const getDispatchDebug = async (paramsOrTechId, maybeBookingId) => {
   try {
     const token = getToken();
     const q = new URLSearchParams();
-    if (districtId) q.append("districtId", districtId);
-    if (serviceId) q.append("serviceId", serviceId);
+    if (typeof paramsOrTechId === "object" && paramsOrTechId !== null) {
+      if (paramsOrTechId.technicianId) q.append("technicianId", paramsOrTechId.technicianId);
+      if (paramsOrTechId.bookingId) q.append("bookingId", paramsOrTechId.bookingId);
+      if (paramsOrTechId.districtId) q.append("districtId", paramsOrTechId.districtId);
+      if (paramsOrTechId.serviceId) q.append("serviceId", paramsOrTechId.serviceId);
+    } else {
+      if (paramsOrTechId) {
+        // If 24 hex chars or uuid, can be technicianId or districtId
+        q.append("technicianId", paramsOrTechId);
+      }
+      if (maybeBookingId) q.append("bookingId", maybeBookingId);
+    }
     const query = q.toString() ? `?${q.toString()}` : "";
     const response = await fetch(`${BASE_URL}/admin/dispatch-debug${query}`, {
       method: "GET",
@@ -5686,6 +5839,7 @@ export const getDispatchDebug = async (districtId, serviceId) => {
     return { result: { isDispatchable: true, availableTechnicians: 5, diagnostics: "Healthy" } };
   }
 };
+export const getDispatchDiagnostics = getDispatchDebug;
 
 export const checkTechnicianJobEligibility = async (technicianId, data) => {
   try {

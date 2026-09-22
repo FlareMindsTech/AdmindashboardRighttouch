@@ -1,7 +1,7 @@
 // src/api/index.js
 // Central barrel for the RightTouch Admin/Owner API layer.
 // Usage (modular):
-//   import { auth, users } from "api";
+//   import { auth, users, zones, zoneGeofence, serviceAvailability } from "api";
 //   const { data, error } = await auth.ownerLogin({ identifier, password });
 //
 // Each function returns { data, error } — data is the response body on
@@ -20,6 +20,8 @@ import * as operationalCities from "./operationalCities";
 import * as districts from "./districts";
 import * as zones from "./zones";
 import * as zoneMappings from "./zoneMappings";
+import * as zoneGeofence from "./zoneGeofence";
+import * as serviceAvailability from "./serviceAvailability";
 import * as technicians from "./technicians";
 import * as technicianDistricts from "./technicianDistricts";
 import * as refundsComplaints from "./refundsComplaints";
@@ -44,6 +46,8 @@ export {
   districts,
   zones,
   zoneMappings,
+  zoneGeofence,
+  serviceAvailability,
   technicians,
   technicianDistricts,
   refundsComplaints,
@@ -69,6 +73,8 @@ export default {
   districts,
   zones,
   zoneMappings,
+  zoneGeofence,
+  serviceAvailability,
   technicians,
   technicianDistricts,
   refundsComplaints,
@@ -78,4 +84,3 @@ export default {
   addresses,
   quotations,
 };
-

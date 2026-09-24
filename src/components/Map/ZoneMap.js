@@ -188,7 +188,6 @@ export default function ZoneMap({
 
   useEffect(() => {
     if (radiusKm && radiusKm !== radius) setRadius(radiusKm);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [radiusKm]);
 
   // Jump to cityName preset
@@ -213,7 +212,7 @@ export default function ZoneMap({
     const ring = parsedPolygon.coordinates[0];
     const c = calculatePolygonCentroid(ring.slice(0, -1));
     if (c && Number.isFinite(c[0])) setCenter(c);
-  }, [polyKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [polyKey]);
 
   const emitPolygon = useCallback(
     (poly) => {
@@ -258,7 +257,6 @@ export default function ZoneMap({
       map.remove();
       leafletMap.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // tile fallback layer

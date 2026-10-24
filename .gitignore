@@ -10,3 +10,8 @@ build
 /playwright/.auth/
 tests/.env
 .env.*
+
+# Environment files
+.env
+.env.*
+!.env.example

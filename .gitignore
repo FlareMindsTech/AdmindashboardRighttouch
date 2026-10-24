@@ -8,4 +8,5 @@ build
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
-tests/
+tests/.env
+.env.*

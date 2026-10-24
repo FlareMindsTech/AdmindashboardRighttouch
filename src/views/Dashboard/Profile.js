@@ -11,6 +11,11 @@ import { FaUsers, FaBoxOpen, FaEdit, FaSignOutAlt, FaSave, FaTimes, FaChartPie, 
 import Card from "components/Card/Card";
 import { useNavigate } from "react-router-dom";
 import { getAllBookings, getAllServiceBooking, getAllTechnicians, getAllProduct, getAllServices, clearAuth, getUser, getMyProfile, updateMyProfile } from "views/utils/axiosInstance";
+import { useAppDispatch, useAppSelector } from "store/hooks";
+import { selectUser, selectIsOwner, logout } from "store/slices/authSlice";
+import { fetchProducts, fetchServices, selectProducts, selectServices } from "store/slices/referenceSlice";
+import { fetchTechnicians, selectTechnicians } from "store/slices/techniciansSlice";
+import { fetchServiceBookings, selectServiceBookings } from "store/slices/bookingsSlice";
 
 import ReactApexChart from 'react-apexcharts';
 
@@ -228,11 +233,69 @@ const EditOwnerModal = ({ isOpen, onClose, owner, onSave }) => {
 };
 
 
+const ProfileEditComponent = ({ ownerData, onSave, onCancel }) => {
+  const [formData, setFormData] = useState({
+    name: ownerData?.name || "",
+    email: ownerData?.email || "",
+    role: ownerData?.role || "Owner",
+  });
+  const cardBg = useColorModeValue("white", "gray.800");
+
+  return (
+    <Card p={6} bg={cardBg}>
+      <Flex justify="space-between" align="center" mb={4}>
+        <Heading size="md">Edit Profile Information</Heading>
+        <HStack spacing={2}>
+          <Button size="sm" variant="ghost" leftIcon={<FaTimes />} onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button size="sm" colorScheme="teal" leftIcon={<FaSave />} onClick={() => onSave(formData)}>
+            Save Changes
+          </Button>
+        </HStack>
+      </Flex>
+      <VStack spacing={4} align="stretch">
+        <FormControl>
+          <FormLabel>Full Name</FormLabel>
+          <Input
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          />
+        </FormControl>
+        <FormControl>
+          <FormLabel>Email Address</FormLabel>
+          <Input
+            value={formData.email}
+            type="email"
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+          />
+        </FormControl>
+        <FormControl>
+          <FormLabel>Role</FormLabel>
+          <Input value={formData.role} isReadOnly variant="filled" />
+        </FormControl>
+      </VStack>
+    </Card>
+  );
+};
+
 export default function OwnerProfile() {
   const toast = useToast();
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
+  const reduxUser = useAppSelector(selectUser);
+  const isOwner = useAppSelector(selectIsOwner);
   const cardBg = useColorModeValue("white", "navy.800");
-  const [ownerData, setOwnerData] = useState(getInitialOwnerData());
+  const [ownerData, setOwnerData] = useState(() => {
+    const initial = getInitialOwnerData();
+    if (reduxUser) {
+      initial.name = reduxUser.name || reduxUser.fname || initial.name;
+      initial.email = reduxUser.email || initial.email;
+      initial.role = reduxUser.role || initial.role;
+      initial.ownerId = reduxUser._id || reduxUser.id || initial.ownerId;
+    }
+    return initial;
+  });
   const [loading, setLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
   const [currentView, setCurrentView] = useState("users");
@@ -255,9 +318,6 @@ export default function OwnerProfile() {
 
 
   const currentUserRole = ownerData.role?.toLowerCase();
-
-
-  const isOwner = currentUserRole === 'owner';
 
 
 
@@ -444,7 +504,11 @@ export default function OwnerProfile() {
   };
 
   const handleLogout = () => {
-    clearAuth();
+    try {
+      dispatch(logout());
+    } catch (e) {
+      clearAuth();
+    }
     toast({ title: "Logged Out", status: "info", duration: 2000 });
     navigate("/auth/signin");
   };

@@ -1,8 +1,8 @@
 // src/api/operationalCities.js  — Section 11: Operational Cities
 import apiClient, { handle } from "./client";
 
-export const listOperationalCities = () =>
-  handle(apiClient.get("/admin/operational-cities"));
+export const listOperationalCities = (params) =>
+  handle(apiClient.get("/admin/operational-cities", { params }));
 export const getActiveCity = () =>
   handle(apiClient.get("/admin/operational-cities/active"));
 export const getActivePolygons = () =>

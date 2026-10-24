@@ -7,18 +7,23 @@ import AdminLayout from "layouts/Admin.js";
 import AccessDenied from "views/Pages/AccessDenied";
 
 import { ChakraProvider } from "@chakra-ui/react";
+import { Provider } from "react-redux";
+import store from "store/store";
 import theme from "theme/theme.js";
-import { getToken, getUser } from "views/utils/axiosInstance";
+import { initializeAuth, selectIsOwner } from "store/slices/authSlice";
+import { useAppSelector } from "store/hooks";
+
+// Restore the pre-Redux session once, before any guard decides.
+store.dispatch(initializeAuth());
 
 // Dynamic redirect component based on authentication state
 const AuthRedirect = () => {
-  const token = getToken();
-  const user = getUser();
-  const isOwner = token && user?.role?.toLowerCase() === "owner";
+  const isOwner = useAppSelector(selectIsOwner);
   return isOwner ? <Navigate to="/owner/dashboard" replace /> : <Navigate to="/auth/signin" replace />;
 };
 
 ReactDOM.render(
+  <Provider store={store}>
   <ChakraProvider theme={theme} resetCss={false} position="relative">
     <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
@@ -46,6 +51,7 @@ ReactDOM.render(
         />
       </Routes>
     </HashRouter>
-  </ChakraProvider>,
+  </ChakraProvider>
+  </Provider>,
   document.getElementById("root")
 );

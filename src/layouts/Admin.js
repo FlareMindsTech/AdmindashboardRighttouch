@@ -20,14 +20,30 @@ import MainPanel from "components/Layout/MainPanel";
 import PanelContainer from "components/Layout/PanelContainer";
 import PanelContent from "components/Layout/PanelContent";
 
-import { getToken, getUser } from "views/utils/axiosInstance";
+import { useAppDispatch, useAppSelector } from "store/hooks";
+import {
+  initializeAuth,
+  selectRole,
+  selectAuthInitialized,
+  logout,
+} from "store/slices/authSlice";
+import { clearAuth } from "views/utils/axiosInstance";
+import { useNotificationCoordinator } from "hooks/useNotificationCoordinator";
 
 export default function Dashboard(props) {
   const { ...rest } = props;
   const [fixed, setFixed] = useState(false);
-  const [userRole, setUserRole] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const dispatch = useAppDispatch();
+  // Canonical auth state (Phase 2): restored once from legacy storage by
+  // initializeAuth (also dispatched at entry in index.js — idempotent).
+  const userRole = useAppSelector(selectRole);
+  const authInitialized = useAppSelector(selectAuthInitialized);
+  const isLoading = !authInitialized;
   const location = useLocation();
+
+  // Phase 3: single notification refresh owner for the owner session.
+  // Owns the badge/inbox-count polling + cross-tab sync; unmounts on logout.
+  useNotificationCoordinator();
 
   const { isOpen: isSidebarOpen, onOpen: onSidebarOpen, onClose: onSidebarClose } = useDisclosure();
   const { isOpen: isPluginOpen, onOpen: onPluginOpen, onClose: onPluginClose } = useDisclosure();
@@ -35,19 +51,11 @@ export default function Dashboard(props) {
   document.documentElement.dir = "ltr";
 
   useEffect(() => {
-    const token = getToken();
-    const userData = getUser();
-
-    if (!token || !userData) {
-      setUserRole(null);
-      setIsLoading(false);
-      return;
-    }
-
-    const role = userData?.role?.toLowerCase() || "";
-    setUserRole(role);
-    setIsLoading(false);
-  }, []);
+    // Idempotent restore (index.js already dispatched once at entry).
+    // Keeps direct navigation / hard refresh working without a flash of
+    // protected content: guards below wait for `initialized`.
+    dispatch(initializeAuth());
+  }, [dispatch]);
 
   // Filter routes for sidebar - ONLY OWNER ROUTES
   const filteredRoutes = useMemo(() => {
@@ -191,7 +199,11 @@ export default function Dashboard(props) {
 
   // 🔐 STRICT ACCESS CONTROL: ONLY OWNER
   if (userRole !== "owner") {
-    clearAuth();
+    try {
+      dispatch(logout());
+    } catch (e) {
+      clearAuth();
+    }
     return <Navigate to="/auth/signin" replace />;
   }
 
@@ -255,7 +267,7 @@ export default function Dashboard(props) {
         minH="100vh"
         overflowX="hidden"
         overflowY="auto"
-        w={{ base: "100%", sm: "100%", md: "100%", lg: "calc(100% - 300px)", xl: "calc(100% - 310px)", "2xl": "calc(100% - 310px)" }}
+        w={{ base: "100%", sm: "100%", md: "100%", lg: "calc(100% - 335px)", xl: "calc(100% - 340px)", "2xl": "calc(100% - 340px)" }}
         transition="all 0.33s cubic-bezier(0.685, 0.0473, 0.346, 1)"
         css={{
           scrollbarWidth: "thin",

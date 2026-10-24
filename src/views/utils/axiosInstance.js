@@ -5,6 +5,14 @@ import theme from "theme/theme.js";
 const standaloneToast = createStandaloneToast({ theme });
 let lastExpiryToastTime = 0;
 
+// Phase 2 bridge: the Redux store registers a reset callback here so the
+// single legacy 401/session-expiry path also clears Redux auth state.
+// No second redirect/toast mechanism — this only notifies the store.
+let authResetListener = null;
+export const setAuthResetListener = (listener) => {
+  authResetListener = typeof listener === "function" ? listener : null;
+};
+
 export const handleSessionExpiry = (customMessage) => {
   const now = Date.now();
   // Debounce (5 seconds) to prevent multiple duplicate toasts when several API calls fail simultaneously
@@ -15,6 +23,13 @@ export const handleSessionExpiry = (customMessage) => {
 
   console.warn("⚠️ Unauthorized (401) / Session expired. Clearing auth data...");
   clearAuth();
+
+  // Notify Redux (if registered) — storage already cleared above.
+  try {
+    if (authResetListener) authResetListener();
+  } catch (e) {
+    console.error("Auth reset listener error:", e);
+  }
 
   const toastId = "session-expired-toast";
   if (!standaloneToast.isActive(toastId)) {
@@ -1353,10 +1368,13 @@ export const updateProducts = async (productId, updatedData) => {
   }
 };
 
-export const deleteProducts = async (productId) => {
+export const deleteProducts = async (productId, force = true) => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/user/deleteProduct/${productId}`, {
+    const url = force
+      ? `${BASE_URL}/user/deleteProduct/${productId}?force=true`
+      : `${BASE_URL}/user/deleteProduct/${productId}`;
+    const response = await fetch(url, {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
@@ -1364,7 +1382,18 @@ export const deleteProducts = async (productId) => {
         Authorization: `Bearer ${token}`
       },
     });
-    if (!response.ok) throw new Error(`Error: ${response.status}`);
+    if (!response.ok) {
+      let errorMessage = `Error: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || errorMessage;
+      } catch (e) {
+        // response was not JSON (e.g. empty body) — keep status-based message
+      }
+      const err = new Error(errorMessage);
+      err.status = response.status;
+      throw err;
+    }
     return await response.json();
   } catch (error) {
     console.error("Error deleting product:", error);
@@ -5540,29 +5569,37 @@ export const getSpatialHierarchy = async () => {
       method: "GET",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
-    if (response.status === 404) return { result: [], data: [], tree: [] };
     if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
     return await response.json();
   } catch (error) {
-    console.warn("Spatial hierarchy fallback:", error.message);
-    return { result: [], data: [], tree: [] };
+    console.error("Spatial hierarchy error:", error.message);
+    throw error;
   }
 };
 
-export const getZoneImpactAnalysis = async (districtId) => {
+/**
+ * F-01A: impact analysis requires backend `?type=district|service&id=`.
+ * Accepts `{ type, id }`. Throws on every failure (including 404) so the UI
+ * can distinguish an empty impact result from a failed request — never a
+ * synthetic zero-impact object.
+ */
+export const getZoneImpactAnalysis = async ({ type, id } = {}) => {
+  const validTypes = ["district", "service"];
+  if (!validTypes.includes(type) || !id) {
+    throw new Error("Impact analysis requires an entity type (district/service) and id.");
+  }
   try {
     const token = getToken();
-    const query = districtId ? `?districtId=${districtId}` : "";
+    const query = `?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`;
     const response = await fetch(`${BASE_URL}/admin/zone-geofence/impact-analysis${query}`, {
       method: "GET",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
-    if (response.status === 404) return { result: { affectedTechnicians: 0, activeBookings: 0, unassignedZones: 0 } };
     if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
     return await response.json();
   } catch (error) {
-    console.warn("Zone impact analysis fallback:", error.message);
-    return { result: { affectedTechnicians: 0, activeBookings: 0, unassignedZones: 0 } };
+    console.error("Zone impact analysis error:", error.message);
+    throw error;
   }
 };
 
@@ -5573,12 +5610,11 @@ export const getDistrictDashboardDetails = async (districtId) => {
       method: "GET",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
-    if (response.status === 404) return { result: { activeTechs: 0, todayJobs: 0, coveragePercent: 100 } };
     if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
     return await response.json();
   } catch (error) {
-    console.warn("District dashboard details fallback:", error.message);
-    return { result: { activeTechs: 0, todayJobs: 0, coveragePercent: 100 } };
+    console.error("District dashboard details error:", error.message);
+    throw error;
   }
 };
 
@@ -5589,12 +5625,11 @@ export const inspectActiveJobLocation = async (bookingId) => {
       method: "GET",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
-    if (response.status === 404) return { result: { jobCoordinates: [76.9558, 11.0168], broadcastRadiusKm: 10, techniciansNearby: [] } };
     if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
     return await response.json();
   } catch (error) {
-    console.warn("Job location inspect fallback:", error.message);
-    return { result: { jobCoordinates: [76.9558, 11.0168], broadcastRadiusKm: 10, techniciansNearby: [] } };
+    console.error("Job location inspect error:", error.message);
+    throw error;
   }
 };
 
@@ -5605,12 +5640,11 @@ export const auditJobBroadcast = async (bookingId) => {
       method: "GET",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
-    if (response.status === 404) return { result: { candidates: [], auditSummary: "No broadcast records found." } };
     if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
     return await response.json();
   } catch (error) {
-    console.warn("Audit job broadcast fallback:", error.message);
-    return { result: { candidates: [], auditSummary: "No broadcast records found." } };
+    console.error("Audit job broadcast error:", error.message);
+    throw error;
   }
 };
 
@@ -5622,38 +5656,17 @@ export const getZoneHealthDashboard = async () => {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
     if (response.status === 404) {
-      // Try fallback endpoint
+      // Try the documented alias endpoint before failing honestly.
       const fb = await fetch(`${BASE_URL}/admin/zone-geofence/health-dashboard`, {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       });
       if (fb.ok) return await fb.json();
-      return {
-        systemHealth: "OPTIMAL",
-        totalDistricts: 12,
-        activeZones: 48,
-        brokenPolygons: 0,
-        orphanedZones: 0,
-        mismatchCounts: 0,
-        staleGpsCount: 0,
-        redisGeoStatus: "CONNECTED",
-        mongoGeoFallback: "ACTIVE",
-      };
     }
     if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
     return await response.json();
   } catch (error) {
-    console.warn("Zone health dashboard fallback:", error.message);
-    return {
-      systemHealth: "OPTIMAL",
-      totalDistricts: 12,
-      activeZones: 48,
-      brokenPolygons: 0,
-      orphanedZones: 0,
-      mismatchCounts: 0,
-      staleGpsCount: 0,
-      redisGeoStatus: "CONNECTED",
-      mongoGeoFallback: "ACTIVE",
-    };
+    console.error("Zone health dashboard error:", error.message);
+    throw error;
   }
 };
 
@@ -5666,16 +5679,33 @@ export const getLiveGeofenceMonitoring = async (queryParams = {}) => {
       method: "GET",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
-    if (response.status === 404) return { result: [], activeGeofences: 8, onlineTechnicians: 24, activeDistricts: 5 };
     if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
     return await response.json();
   } catch (error) {
-    console.warn("Live geofence monitor fallback:", error.message);
-    return { result: [], activeGeofences: 8, onlineTechnicians: 24, activeDistricts: 5 };
+    console.error("Live geofence monitor error:", error.message);
+    throw error;
   }
 };
 
+/**
+ * Supported rollback entity types (backend contract — Phase 4 B-16).
+ * Anything else is rejected client-side before any network call.
+ */
+export const ROLLBACK_ENTITY_TYPES = ["DISTRICT", "CITY_ZONE"];
+
 export const rollbackPolygonVersion = async (data) => {
+  const entityType = data?.entityType;
+  if (!ROLLBACK_ENTITY_TYPES.includes(entityType)) {
+    throw new Error(
+      `Unsupported rollback entity type "${entityType}". Supported types: ${ROLLBACK_ENTITY_TYPES.join(", ")}.`
+    );
+  }
+  if (!data?.entityId) {
+    throw new Error("Rollback requires a target entity id.");
+  }
+  if (!Number.isInteger(Number(data?.targetVersion)) || Number(data?.targetVersion) <= 0) {
+    throw new Error("Rollback requires a positive integer source version.");
+  }
   try {
     const token = getToken();
     const response = await fetch(`${BASE_URL}/admin/zone-geofence/polygons/rollback`, {
@@ -5698,12 +5728,21 @@ export const getZoneTechnicianCandidates = async (zoneId) => {
       method: "GET",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
-    if (response.status === 404) return { result: [], data: [], candidates: [] };
+    // F-02 (error-masking follow-up): preserve the legacy empty-list shape
+    // for existing callers, but tag failures with error/failed so new code
+    // can distinguish "no candidates" from "request failed". No CityZones
+    // caller depends on the silent-[] path today (verified by repo search).
+    if (response.status === 404) {
+      const message = (await extractServerError(response)) || "Not found";
+      return { result: [], data: [], candidates: [], error: message, failed: true, notFound: true };
+    }
     if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
-    return await response.json();
+    const json = await response.json();
+    return { error: null, failed: false, ...json };
   } catch (error) {
     console.warn("Error fetching zone technician candidates:", error.message);
-    return { result: [], data: [], candidates: [] };
+    // Network failure: same shape + explicit failure tags (compat preserved).
+    return { result: [], data: [], candidates: [], error: error.message, failed: true };
   }
 };
 
@@ -5731,12 +5770,19 @@ export const listGeofenceCityZones = async (districtId) => {
       method: "GET",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
-    if (response.status === 404) return { result: [], data: [], zones: [] };
+    // F-02 (error-masking follow-up): same compat-preserving failure tags as
+    // getZoneTechnicianCandidates. Existing callers read result/data/zones
+    // unchanged; new callers should branch on `failed`/`error`.
+    if (response.status === 404) {
+      const message = (await extractServerError(response)) || "Not found";
+      return { result: [], data: [], zones: [], error: message, failed: true, notFound: true };
+    }
     if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
-    return await response.json();
+    const json = await response.json();
+    return { error: null, failed: false, ...json };
   } catch (error) {
     console.warn("Error listing geofence city zones:", error.message);
-    return { result: [], data: [], zones: [] };
+    return { result: [], data: [], zones: [], error: error.message, failed: true };
   }
 };
 
@@ -5831,65 +5877,99 @@ export const getDispatchDebug = async (paramsOrTechId, maybeBookingId) => {
       method: "GET",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
-    if (response.status === 404) return { result: { isDispatchable: true, availableTechnicians: 5, diagnostics: "Healthy" } };
+    // F-01C: no synthetic healthy result — every failure (including 404)
+    // throws so the UI renders an explicit error state instead of fake health.
     if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
     return await response.json();
   } catch (error) {
-    console.warn("Dispatch debug fallback:", error.message);
-    return { result: { isDispatchable: true, availableTechnicians: 5, diagnostics: "Healthy" } };
+    console.error("Dispatch debug error:", error.message);
+    throw error;
   }
 };
 export const getDispatchDiagnostics = getDispatchDebug;
 
-export const checkTechnicianJobEligibility = async (technicianId, data) => {
-  try {
-    const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/technicians/${technicianId}/check-eligibility`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(data),
-    });
-    if (response.status === 404) return { eligible: true, score: 95, failedRules: [], passedSteps: 12 };
-    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
-    return await response.json();
-  } catch (error) {
-    console.warn("Technician job eligibility check fallback:", error.message);
-    return { eligible: true, score: 95, failedRules: [], passedSteps: 12 };
+/**
+ * F-01D: the historical `/admin/technicians/:id/check-eligibility` endpoint
+ * does not exist. Eligibility diagnostics are served by the real
+ * GET /api/admin/dispatch-debug contract ({technicianId, bookingId? |
+ * serviceId+latitude+longitude+districtId?} -> {success, diagnostic}).
+ * Throws on every failure — never a fabricated eligible score.
+ */
+export const checkTechnicianJobEligibility = async (technicianId, data = {}) => {
+  if (!technicianId) {
+    throw new Error("Eligibility diagnostics require a technician selection.");
   }
+  const params = { technicianId };
+  if (data?.bookingId) params.bookingId = data.bookingId;
+  if (data?.serviceId) params.serviceId = data.serviceId;
+  if (Number.isFinite(Number(data?.jobLat)) && Number.isFinite(Number(data?.jobLng))) {
+    params.latitude = Number(data.jobLat);
+    params.longitude = Number(data.jobLng);
+  }
+  if (data?.districtId) params.districtId = data.districtId;
+  const res = await getDispatchDebug(params);
+  const diagnostic = res?.diagnostic || null;
+  const eligibility = diagnostic?.eligibility || {};
+  return {
+    eligible: eligibility.eligible === true,
+    reasons: eligibility.reasons || [],
+    failedRules: eligibility.reasons || [],
+    details: eligibility.details || {},
+    technician: diagnostic?.technician || null,
+    diagnostic,
+  };
 };
 
-export const diagnoseDistanceAndGeofence = async (technicianId, bookingId) => {
-  try {
-    const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/zone-geofence/technicians/${technicianId}/distance-check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ bookingId }),
-    });
-    if (response.status === 404) return { within10KmRadius: true, calculatedDistanceKm: 3.8, isGpsFresh: true };
-    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
-    return await response.json();
-  } catch (error) {
-    console.warn("Distance check fallback:", error.message);
-    return { within10KmRadius: true, calculatedDistanceKm: 3.8, isGpsFresh: true };
+/**
+ * F-01D: the historical `distance-check` endpoint does not exist. Distance
+ * and GPS freshness come from the same real dispatch-debug diagnostic.
+ */
+export const diagnoseDistanceAndGeofence = async (technicianId, bookingIdOrOpts) => {
+  if (!technicianId) {
+    throw new Error("Distance diagnostics require a technician selection.");
   }
+  const opts = bookingIdOrOpts && typeof bookingIdOrOpts === "object" ? bookingIdOrOpts : { bookingId: bookingIdOrOpts };
+  const params = { technicianId };
+  if (opts.bookingId) params.bookingId = opts.bookingId;
+  if (opts.serviceId) params.serviceId = opts.serviceId;
+  if (Number.isFinite(Number(opts.latitude)) && Number.isFinite(Number(opts.longitude))) {
+    params.latitude = Number(opts.latitude);
+    params.longitude = Number(opts.longitude);
+  }
+  if (opts.districtId) params.districtId = opts.districtId;
+  const res = await getDispatchDebug(params);
+  const details = res?.diagnostic?.eligibility?.details || {};
+  const distanceMeters = Number.isFinite(Number(details.distanceMeters)) ? Number(details.distanceMeters) : null;
+  return {
+    distanceMeters,
+    calculatedDistanceKm: distanceMeters != null ? Number((distanceMeters / 1000).toFixed(2)) : null,
+    effectiveRadiusMeters: details.effectiveRadiusMeters ?? null,
+    withinRadius: details.radiusPassed ?? (details.distanceMeters == null ? null : (res?.diagnostic?.eligibility?.reasons || []).every((r) => r !== "RADIUS_EXCEEDED" && r !== "TECHNICIAN_OUTSIDE_RADIUS")),
+    isGpsFresh: details.gpsFresh ?? null,
+    reasons: res?.diagnostic?.eligibility?.reasons || [],
+    diagnostic: res?.diagnostic || null,
+  };
 };
 
+/**
+ * F-01D: the historical `debug-unavailability` endpoint does not exist. The
+ * canonical per-booking audit is GET /jobs/:id/broadcast-audit
+ * (assignmentAttempts). Returns real attempts (possibly empty) and throws
+ * on failure — never a fabricated busy reason.
+ */
 export const debugUnavailability = async (bookingId) => {
-  try {
-    const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/zone-geofence/debug-unavailability`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ bookingId }),
-    });
-    if (response.status === 404) return { primaryReason: "ALL_TECHNICIANS_BUSY", candidatesEvaluated: 14, rejectedCount: 14 };
-    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
-    return await response.json();
-  } catch (error) {
-    console.warn("Debug unavailability fallback:", error.message);
-    return { primaryReason: "ALL_TECHNICIANS_BUSY", candidatesEvaluated: 14, rejectedCount: 14 };
+  if (!bookingId || !String(bookingId).trim()) {
+    throw new Error("Unavailability debug requires a booking ID.");
   }
+  const res = await auditJobBroadcast(String(bookingId).trim());
+  const attempts = res?.result?.broadcastAudit || res?.result?.attempts || [];
+  return {
+    bookingId: res?.result?.bookingId || String(bookingId).trim(),
+    status: res?.result?.status || null,
+    attempts,
+    attemptCount: attempts.length,
+    empty: attempts.length === 0,
+  };
 };
 
 export const inspectJobLocationGeofence = inspectActiveJobLocation;
@@ -6549,55 +6629,80 @@ export const getWithdrawalReceipt = async (withdrawalId) => {
   }
 };
 
-// Spatial GeoJSON Tools
+// Spatial GeoJSON Tools — backed by the real POST validate-polygon endpoint
+// (F-01D). All three throw on failure; no synthesized valid/clean results.
+const postValidatePolygon = async (body) => {
+  const token = getToken();
+  const response = await fetch(`${BASE_URL}/admin/zone-geofence/validate-polygon`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+  const json = await response.json();
+  return json?.result || json;
+};
+
 export const validateGeofencePolygon = async (payload) => {
   try {
-    const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/zone-geofence/validate-polygon`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      const poly = payload?.polygon || payload;
-      const isValid = !!(poly && poly.coordinates && Array.isArray(poly.coordinates));
-      return { isValid, result: { codeOrder: "Counter-Clockwise (Standard)", vertexCount: poly?.coordinates?.[0]?.length || 0 } };
-    }
-    return await response.json();
+    const body = payload?.polygon ? payload : { polygon: payload };
+    const result = await postValidatePolygon(body);
+    return {
+      isValid: result.isValid === true,
+      errors: result.errors || [],
+      error: (result.errors || []).join("; ") || null,
+      sanitizedPolygon: result.sanitizedPolygon || null,
+      vertexCount: result.vertexCount ?? null,
+      codeOrder: result.codeOrder || "Counter-Clockwise (Standard)",
+      result,
+    };
   } catch (error) {
-    const poly = payload?.polygon || payload;
-    const isValid = !!(poly && poly.coordinates && Array.isArray(poly.coordinates));
-    return { isValid, result: { codeOrder: "Counter-Clockwise (Standard)", vertexCount: poly?.coordinates?.[0]?.length || 0 } };
+    console.error("Error validating polygon:", error.message);
+    throw error;
   }
 };
 
 export const checkPolygonOverlap = async (districtId, polygon) => {
   try {
-    const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/zone-geofence/check-overlap`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ districtId, polygon }),
-    });
-    if (!response.ok) return { hasOverlap: false };
-    return await response.json();
+    if (!districtId) throw new Error("Overlap check requires a district selection.");
+    const result = await postValidatePolygon({ polygon, districtId });
+    // Honest unknown: backend returns overlap:null when geometry itself is
+    // invalid (isValid:false) — report null, not a false "no overlap".
+    const checked = result?.overlap?.checked === true;
+    return {
+      hasOverlap: checked ? result.overlap.hasOverlap === true : null,
+      checked,
+      isValid: result?.isValid ?? null,
+      overlappingZone: result?.overlap?.overlappingZone || null,
+      message: result?.overlap?.message || null,
+      result,
+    };
   } catch (error) {
-    return { hasOverlap: false };
+    console.error("Error checking polygon overlap:", error.message);
+    throw error;
   }
 };
 
 export const checkParentBoundaryContainment = async (districtId, polygon) => {
   try {
-    const token = getToken();
-    const response = await fetch(`${BASE_URL}/admin/zone-geofence/check-containment`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ districtId, polygon }),
-    });
-    if (!response.ok) return { isFullyContained: true };
-    return await response.json();
+    if (!districtId) throw new Error("Containment check requires a district selection.");
+    const result = await postValidatePolygon({ polygon, districtId });
+    const containment = result?.containment || null;
+    // Honest unknown: containment:null when geometry invalid — report null,
+    // not a false "contained". Both spellings kept for render code.
+    const checked = containment?.checked === true;
+    return {
+      checked,
+      isValid: result?.isValid ?? null,
+      isFullyContained: checked ? containment.isFullyContained === true && containment.isContained !== false : null,
+      isContained: checked ? containment.isContained === true && containment.isFullyContained !== false : null,
+      message: containment?.message || containment?.reason || null,
+      reason: containment?.reason || containment?.message || null,
+      result,
+    };
   } catch (error) {
-    return { isFullyContained: true };
+    console.error("Error checking boundary containment:", error.message);
+    throw error;
   }
 };
 

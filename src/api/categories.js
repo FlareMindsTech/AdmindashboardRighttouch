@@ -22,8 +22,15 @@ export const removeCategoryImage = (categoryId) =>
     })
   );
 
-export const getAllCategories = () =>
-  handle(apiClient.get("/user/getAllcategory"));
+export const getAllCategories = (categoryType) => {
+  // Additive optional filter: legacy callers request
+  // GET /user/getAllcategory?categoryType=<service|product>. Omitting the
+  // argument preserves this module's original contract (no query string).
+  const url = categoryType
+    ? `/user/getAllcategory?categoryType=${encodeURIComponent(categoryType)}`
+    : "/user/getAllcategory";
+  return handle(apiClient.get(url));
+};
 export const getCategoryById = (id) =>
   handle(apiClient.get(`/user/getByIdcategory/${id}`));
 export const updateCategory = (id, body) =>

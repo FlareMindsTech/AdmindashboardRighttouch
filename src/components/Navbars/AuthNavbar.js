@@ -131,7 +131,7 @@ export default function AuthNavbar(props) {
       boxShadow={navbarShadow}
       filter={navbarFilter}
       backdropFilter={navbarBackdrop}
-      borderRadius="15px"
+      borderRadius="10px"
       px="16px"
       py="22px"
       mx="auto"

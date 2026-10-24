@@ -23,27 +23,19 @@ export default function Footer(props) {
           xl: "start",
         }}
         mb={{ base: "20px", xl: "0px" }}>
-        &copy; {1900 + new Date().getYear()},{" "}
+        &copy; {new Date().getFullYear()},{" "}
         <Text as='span'>
-          {document.documentElement.dir === "rtl"
-            ? " مصنوع من ❤️ بواسطة"
-            : "Made with ❤️ by "}
+          Made by{" "}
         </Text>
         <Link
-          color='blue.400'
+          color='teal.500'
+          fontWeight='700'
           href='https://flaremindstech.com/'
-          target='_blank'>
-          {document.documentElement.dir === "rtl"
-            ? " توقيت الإبداعية"
-            : "Flarminds"}
+          target='_blank'
+          rel='noopener noreferrer'>
+          FlareMinds Tech PVT LTD
         </Link>
-        
       </Text>
-      <List display='flex'>
-     
-        
-      
-      </List>
     </Flex>
   );
 }

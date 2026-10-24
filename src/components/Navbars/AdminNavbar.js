@@ -27,16 +27,23 @@ export default function AdminNavbar(props) {
   let navbarShadow = "none";
   let navbarBorder = "transparent";
 
+  // Hoisted unconditionally (Rules of Hooks); branch selection below is
+  // plain assignment, so rendered values are unchanged.
+  const navbarBgScrolled = useColorModeValue("white", "gray.800");
+  const navbarShadowScrolled = useColorModeValue(
+    "0px 7px 23px rgba(0, 0, 0, 0.1)",
+    "none"
+  );
+  const navbarBorderScrolled = useColorModeValue("#E2E8F0", "rgba(255,255,255,0.1)");
+  const navbarBgUnscrolled = useColorModeValue("#008080", "gray.800");
+
   if (fixed) {
     if (scrolled) {
-      navbarBg = useColorModeValue("white", "gray.800");
-      navbarShadow = useColorModeValue(
-        "0px 7px 23px rgba(0, 0, 0, 0.1)",
-        "none"
-      );
-      navbarBorder = useColorModeValue("#E2E8F0", "rgba(255,255,255,0.1)");
+      navbarBg = navbarBgScrolled;
+      navbarShadow = navbarShadowScrolled;
+      navbarBorder = navbarBorderScrolled;
     } else {
-      navbarBg = useColorModeValue("#008080", "gray.800");
+      navbarBg = navbarBgUnscrolled;
       navbarShadow = "0px 4px 20px rgba(0, 0, 0, 0.05)";
     }
   }

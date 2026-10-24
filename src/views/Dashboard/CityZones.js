@@ -1,4 +1,4 @@
-  import React, { useState, useEffect, useCallback, useMemo } from "react";
+  import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
   import {
     Box,
     Button,
@@ -33,6 +33,7 @@
     ModalBody,
     ModalCloseButton,
     Badge,
+    SimpleGrid,
     Grid,
     Textarea,
     Switch,
@@ -50,13 +51,24 @@
     Tooltip,
     Divider,
     Progress,
+    Checkbox,
   } from "@chakra-ui/react";
 
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
+import {
+  getSkeuomorphicCardStyle,
+  getSkeuomorphicIconBoxStyle,
+  skeuomorphicIconFilter,
+} from "components/common/skeuomorphicStyles";
 import DistrictMap, { TAMIL_NADU_CITIES, generateCircularGeoJSON } from "components/Map/DistrictMap.js";
 import ZoneMap from "components/Map/ZoneMap.js";
+import {
+  isPolygonDraftDirty,
+  confirmIfDirty,
+  attachBeforeUnload,
+} from "../utils/cityZoneInteraction";
 
   import {
     FaChevronLeft,
@@ -95,6 +107,8 @@ import ZoneMap from "components/Map/ZoneMap.js";
     MdLocationCity,
     MdAddCircleOutline,
     MdInfoOutline,
+    MdOutlineFactCheck,
+    MdWarning,
   } from "react-icons/md";
 
   import {
@@ -105,7 +119,6 @@ import ZoneMap from "components/Map/ZoneMap.js";
     getAllZoneMappings,
     deleteZoneMapping,
     getAllOperationalCities,
-    getAllServices,
     getAllDistricts,
     getDistrictById,
     createDistrict,
@@ -132,7 +145,6 @@ import ZoneMap from "components/Map/ZoneMap.js";
     checkParentBoundaryContainment,
     checkTechnicianJobEligibility,
     diagnoseDistanceAndGeofence,
-    debugUnavailability,
     getLiveGeofenceMonitoring,
     getZoneHealthDashboard,
     getSpatialHierarchy,
@@ -155,8 +167,10 @@ import ZoneMap from "components/Map/ZoneMap.js";
     bulkCreateZoneMappings,
     resolveCustomerZone,
     checkCustomerServiceAvailability,
-    getAllCategories,
   } from "../utils/axiosInstance";
+import { useAppDispatch } from "store/hooks";
+import { fetchCategories, fetchServices } from "store/slices/referenceSlice";
+import { fetchTechnicians as fetchTechniciansShared } from "store/slices/techniciansSlice";
 
   // ---------------------------------------------------------------------------
   // Design tokens — kept local so this screen stays visually consistent with
@@ -176,6 +190,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
 
   export default function CityZones() {
     const textColor = useColorModeValue("gray.800", "white");
+    const dispatch = useAppDispatch();
     const rawToast = useToast();
     const toast = useCallback(
       (options) =>
@@ -187,6 +202,13 @@ import ZoneMap from "components/Map/ZoneMap.js";
         }),
       [rawToast]
     );
+    const isMountedRef = useRef(true);
+    useEffect(() => {
+      isMountedRef.current = true;
+      return () => {
+        isMountedRef.current = false;
+      };
+    }, []);
     const cancelRef = React.useRef();
 
     const [districtModalError, setDistrictModalError] = useState("");
@@ -243,6 +265,19 @@ import ZoneMap from "components/Map/ZoneMap.js";
       polygonCoordinates: "",
     };
     const [districtFormData, setDistrictFormData] = useState(initialDistrictForm);
+    // F-02D: polygon snapshot taken when the district modal opens; closing
+    // with a diverged draft requires explicit confirmation. Snapshot resets
+    // on confirmed save or explicit discard (modal close).
+    const districtFormSnapshot = useRef("");
+    const districtModalDirty =
+      isDistrictModalOpen &&
+      isPolygonDraftDirty(districtFormData.polygonCoordinates || "", districtFormSnapshot.current || "");
+    useEffect(() => attachBeforeUnload(districtModalDirty), [districtModalDirty]);
+    const handleCloseDistrictModal = () => {
+      if (!confirmIfDirty(districtModalDirty, "You have unsaved district boundary changes. Close without saving?")) return;
+      districtFormSnapshot.current = "";
+      setIsDistrictModalOpen(false);
+    };
 
     // Live District Map Modal State
     const [isViewMapModalOpen, setIsViewMapModalOpen] = useState(false);
@@ -266,6 +301,17 @@ import ZoneMap from "components/Map/ZoneMap.js";
       polygonCoordinates: "",
     };
     const [formData, setFormData] = useState(initialForm);
+    // F-02D: same polygon-draft guard for the micro-zone modal.
+    const zoneFormSnapshot = useRef("");
+    const zoneModalDirty =
+      isModalOpen &&
+      isPolygonDraftDirty(formData.polygonCoordinates || "", zoneFormSnapshot.current || "");
+    useEffect(() => attachBeforeUnload(zoneModalDirty), [zoneModalDirty]);
+    const handleCloseZoneModal = () => {
+      if (!confirmIfDirty(zoneModalDirty, "You have unsaved zone boundary changes. Close without saving?")) return;
+      zoneFormSnapshot.current = "";
+      setIsModalOpen(false);
+    };
 
     // Delete Dialog
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -302,6 +348,10 @@ import ZoneMap from "components/Map/ZoneMap.js";
     const [selectedDashboardDistrictId, setSelectedDashboardDistrictId] = useState("");
     const [districtDashboardData, setDistrictDashboardData] = useState(null);
     const [impactAnalysisData, setImpactAnalysisData] = useState(null);
+    // F-01A: explicit error states so failed dashboard/impact requests are
+    // never rendered as (falsely healthy) empty data.
+    const [districtDashboardError, setDistrictDashboardError] = useState(null);
+    const [impactAnalysisError, setImpactAnalysisError] = useState(null);
     const [isLoadingDistrictDashboard, setIsLoadingDistrictDashboard] = useState(false);
 
     // Job Geofence Location Inspector & Broadcast Audit
@@ -313,11 +363,12 @@ import ZoneMap from "components/Map/ZoneMap.js";
     // Dispatch Health & Diagnostics Debug
     const [debugDistrictId, setDebugDistrictId] = useState("");
     const [debugServiceId, setDebugServiceId] = useState("");
+    const [debugTechId, setDebugTechId] = useState("");
     const [dispatchDebugData, setDispatchDebugData] = useState(null);
     const [isLoadingDispatchDebug, setIsLoadingDispatchDebug] = useState(false);
 
     // Polygon Rollback
-    const [rollbackEntityType, setRollbackEntityType] = useState("OperationalCity");
+    const [rollbackEntityType, setRollbackEntityType] = useState("DISTRICT");
     const [rollbackEntityId, setRollbackEntityId] = useState("");
     const [rollbackVersion, setRollbackVersion] = useState(1);
     const [rollbackReason, setRollbackReason] = useState("Reverting unexpected polygon boundary revision");
@@ -331,7 +382,10 @@ import ZoneMap from "components/Map/ZoneMap.js";
     const [isTestingCustomerService, setIsTestingCustomerService] = useState(false);
 
     // GeoJSON Tools State
-    const [geoToolPolygon, setGeoToolPolygon] = useState(`{
+    // F-02D: the textarea starts life as a saved baseline; any divergence is
+    // an unsaved draft that must survive accidental preset/district-load
+    // replacement and page unload until explicitly discarded or replaced.
+    const GEO_TOOL_INITIAL_POLYGON = `{
     "type": "Polygon",
     "coordinates": [
       [
@@ -342,7 +396,20 @@ import ZoneMap from "components/Map/ZoneMap.js";
         [80.20, 12.97]
       ]
     ]
-  }`);
+  }`;
+    const [geoToolPolygon, setGeoToolPolygon] = useState(GEO_TOOL_INITIAL_POLYGON);
+    const [geoToolSavedSnapshot, setGeoToolSavedSnapshot] = useState(GEO_TOOL_INITIAL_POLYGON);
+    const geoToolDirty = isPolygonDraftDirty(geoToolPolygon, geoToolSavedSnapshot);
+    useEffect(() => attachBeforeUnload(geoToolDirty), [geoToolDirty]);
+    // Replace the draft only with explicit confirmation when dirty; the
+    // snapshot advances only on confirmed replace/discard (never on audit).
+    const replaceGeoToolDraft = (next, sourceLabel) => {
+      if (!confirmIfDirty(geoToolDirty, `You have unsaved polygon changes. Replace them with ${sourceLabel || "the new polygon"}?`)) return false;
+      setGeoToolPolygon(next);
+      setGeoToolSavedSnapshot(next);
+      setGeoValidationResult(null);
+      return true;
+    };
     const [geoToolDistrictId, setGeoToolDistrictId] = useState("");
     const [geoValidationResult, setGeoValidationResult] = useState(null);
     const [isValidatingGeo, setIsValidatingGeo] = useState(false);
@@ -355,9 +422,9 @@ import ZoneMap from "components/Map/ZoneMap.js";
     const [diagBookingId, setDiagBookingId] = useState("");
     const [diagResult, setDiagResult] = useState(null);
     const [isDiagnosing, setIsDiagnosing] = useState(false);
-    const [unavailBookingId, setUnavailBookingId] = useState("");
-    const [unavailResult, setUnavailResult] = useState(null);
-    const [isDebugUnavail, setIsDebugUnavail] = useState(false);
+    // NOTE (F-01D): unavailability debugging is served by the broadcast
+    // audit rendered in the job-inspect panel above (debugUnavailability
+    // helper delegates to the real broadcast-audit endpoint).
 
     // Zone Health & Monitoring State
     const [healthData, setHealthData] = useState(null);
@@ -396,6 +463,24 @@ import ZoneMap from "components/Map/ZoneMap.js";
     });
     const [isConfirmingAction, setIsConfirmingAction] = useState(false);
 
+    // Batch Selection States for Service-Zone Matrix (Tab 2)
+    const [selectedMatrixServiceIds, setSelectedMatrixServiceIds] = useState([]);
+    const [batchMatrixDistrictId, setBatchMatrixDistrictId] = useState("");
+    const [isBatchMatrixLoading, setIsBatchMatrixLoading] = useState(false);
+
+    // Batch Selection States for Technician Permissions (Tab 3)
+    const [selectedTechIds, setSelectedTechIds] = useState([]);
+    const [batchTechDistrictId, setBatchTechDistrictId] = useState("");
+    const [batchTechRadius, setBatchTechRadius] = useState("10");
+    const [isBatchTechLoading, setIsBatchTechLoading] = useState(false);
+
+    // Modal Polygon Pre-Save Validation States
+    const [modalBoundaryCheckResult, setModalBoundaryCheckResult] = useState(null);
+    const [isCheckingModalBoundary, setIsCheckingModalBoundary] = useState(false);
+
+    // Sub-zone search filter inside ManageServiceModal
+    const [manageModalSubZoneSearch, setManageModalSubZoneSearch] = useState("");
+
     const globalScrollbarStyles = {
       scrollbarWidth: "thin",
       scrollbarColor: "#cbd5e1 #f8fafc",
@@ -425,8 +510,11 @@ import ZoneMap from "components/Map/ZoneMap.js";
           getAllZones(1, 100).catch(() => ({ result: [], data: [], zones: [] })),
           getAllZoneMappings(1, 200).catch(() => ({ result: [], data: [], mappings: [] })),
           getAllOperationalCities().catch(() => ({ result: [], data: [], cities: [] })),
-          getAllServices().catch(() => ({ result: [], data: [], services: [] })),
-          getAllTechnicians().catch(() => ({ result: [], data: [], technicians: [] })),
+          // Shared services cache (TTL); resolves to the raw list so the
+          // local parsing/sorting below is unchanged. Fallback preserved.
+          dispatch(fetchServices()).unwrap().then((r) => r.list).catch(() => []),
+          // Shared technicians cache (TTL). Fallback preserved.
+          dispatch(fetchTechniciansShared()).unwrap().then((r) => r.list).catch(() => ({ result: [], data: [], technicians: [] })),
         ]);
 
         const districtsRaw = (districtsData.result || districtsData.districts || districtsData.data || districtsData || []).slice();
@@ -450,6 +538,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
           return nameA.localeCompare(nameB);
         });
 
+        if (!isMountedRef.current) return;
         setDistricts(Array.isArray(districtsRaw) ? districtsRaw : []);
         setZones(Array.isArray(zonesRaw) ? zonesRaw : []);
         setMappings(Array.isArray(mappingsRaw) ? mappingsRaw : []);
@@ -457,6 +546,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
         setServices(Array.isArray(servicesRaw) ? servicesRaw : []);
         setTechnicians(Array.isArray(techRaw) ? techRaw : []);
       } catch (err) {
+        if (!isMountedRef.current) return;
         console.error("Fetch error:", err);
         toast({
           title: "Fetch Error",
@@ -466,9 +556,11 @@ import ZoneMap from "components/Map/ZoneMap.js";
           isClosable: true,
         });
       } finally {
-        setIsLoading(false);
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
       }
-    }, [toast]);
+    }, [dispatch, toast]);
 
     const fetchHealthAndMonitor = useCallback(async () => {
       try {
@@ -497,7 +589,8 @@ import ZoneMap from "components/Map/ZoneMap.js";
 
         const [res, catRes] = await Promise.all([
           getServiceZoneMatrix(params).catch(() => ({ result: [] })),
-          getAllCategories("service").catch(() => ({ result: [] })),
+          // Shared service-categories cache (TTL); fallback preserved.
+          dispatch(fetchCategories({ categoryType: "service" })).unwrap().then((r) => r.list).catch(() => ({ result: [] })),
         ]);
 
         const items = res.result || res.data || res || [];
@@ -507,7 +600,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
       } catch (err) {
         console.error("fetchMatrixData error:", err);
       }
-    }, [matrixSearch, matrixCategoryFilter, matrixDistrictFilter, matrixZoneStatusFilter, matrixServiceStatusFilter]);
+    }, [dispatch, matrixSearch, matrixCategoryFilter, matrixDistrictFilter, matrixZoneStatusFilter, matrixServiceStatusFilter]);
 
     useEffect(() => {
       const t = setTimeout(() => {
@@ -1143,6 +1236,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
         code: defaultCity ? defaultCity.code : "",
         polygonCoordinates: defaultPoly ? JSON.stringify(defaultPoly, null, 2) : "",
       });
+      districtFormSnapshot.current = defaultPoly ? JSON.stringify(defaultPoly, null, 2) : "";
       setIsDistrictModalOpen(true);
     };
 
@@ -1165,6 +1259,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
         isJobEnabled: dist.isJobEnabled !== false,
         polygonCoordinates: polyStr,
       });
+      districtFormSnapshot.current = polyStr;
       setIsDistrictModalOpen(true);
     };
 
@@ -1226,6 +1321,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
         }
 
         await fetchData();
+        districtFormSnapshot.current = "";
         setIsDistrictModalOpen(false);
       } catch (err) {
         const errMsg = err.message || "Failed to save district.";
@@ -1710,6 +1806,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
         }
       }
       setFormData({ ...initialForm, operationalCityId: districtId, polygonCoordinates: defaultPolyStr });
+      zoneFormSnapshot.current = defaultPolyStr;
       setIsModalOpen(true);
     };
 
@@ -1726,6 +1823,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
         active: zone.active !== false,
         polygonCoordinates: stringifyZonePolygon(zone),
       });
+      zoneFormSnapshot.current = stringifyZonePolygon(zone);
       setIsModalOpen(true);
     };
 
@@ -1787,6 +1885,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
         }
 
         await fetchData();
+        zoneFormSnapshot.current = "";
         setIsModalOpen(false);
         setFormData({ ...initialForm });
         setSelectedZone(null);
@@ -1925,19 +2024,37 @@ import ZoneMap from "components/Map/ZoneMap.js";
       }
     };
 
+    // F-01A: impact analysis uses the exact backend contract
+    // ({ type: "district", id }) and surfaces failures explicitly instead of
+    // rendering synthetic zero-impact data. Empty impact (backend 200 with
+    // zero counts) stays visually distinct from error states.
     const handleFetchDistrictDashboard = async (distId) => {
       if (!distId) return;
       try {
         setIsLoadingDistrictDashboard(true);
         setSelectedDashboardDistrictId(distId);
+        setDistrictDashboardError(null);
+        setImpactAnalysisError(null);
         const [dashRes, impactRes] = await Promise.all([
-          getDistrictDashboardDetails(distId).catch(() => null),
-          getZoneImpactAnalysis(distId).catch(() => null),
+          getDistrictDashboardDetails(distId).catch((err) => ({ __error: err.message })),
+          getZoneImpactAnalysis({ type: "district", id: distId }).catch((err) => ({ __error: err.message })),
         ]);
-        setDistrictDashboardData(dashRes?.result || dashRes?.data || dashRes || null);
-        setImpactAnalysisData(impactRes?.result || impactRes?.data || impactRes || null);
+        if (dashRes?.__error) {
+          setDistrictDashboardData(null);
+          setDistrictDashboardError(dashRes.__error);
+        } else {
+          setDistrictDashboardData(dashRes?.result || dashRes?.data || dashRes || null);
+        }
+        if (impactRes?.__error) {
+          setImpactAnalysisData(null);
+          setImpactAnalysisError(impactRes.__error);
+        } else {
+          setImpactAnalysisData(impactRes?.result || impactRes?.data || impactRes || null);
+        }
       } catch (err) {
         console.warn("District dashboard error:", err);
+        setDistrictDashboardData(null);
+        setDistrictDashboardError(err.message);
       } finally {
         setIsLoadingDistrictDashboard(false);
       }
@@ -1949,13 +2066,21 @@ import ZoneMap from "components/Map/ZoneMap.js";
       }
       try {
         setIsInspectingJob(true);
+        // F-01: helpers throw on failure — partial results are kept and
+        // reported honestly instead of a blanket success toast.
         const [locRes, auditRes] = await Promise.all([
-          inspectActiveJobLocation(inspectJobId.trim()).catch(() => null),
-          auditJobBroadcast(inspectJobId.trim()).catch(() => null),
+          inspectActiveJobLocation(inspectJobId.trim()).catch((err) => ({ __error: err.message })),
+          auditJobBroadcast(inspectJobId.trim()).catch((err) => ({ __error: err.message })),
         ]);
-        setJobLocationInspectData(locRes?.result || locRes?.data || locRes || null);
-        setBroadcastAuditData(auditRes?.result || auditRes?.data || auditRes || null);
-        toast({ title: "Job Location Inspection Complete", status: "success", duration: 2000, isClosable: true });
+        setJobLocationInspectData(locRes?.__error ? null : (locRes?.result || locRes?.data || locRes || null));
+        setBroadcastAuditData(auditRes?.__error ? null : (auditRes?.result || auditRes?.data || auditRes || null));
+        if (locRes?.__error && auditRes?.__error) {
+          toast({ title: "Inspection Failed", description: locRes.__error, status: "error", duration: 3000, isClosable: true });
+        } else if (locRes?.__error || auditRes?.__error) {
+          toast({ title: "Partial Results", description: locRes?.__error || auditRes?.__error, status: "warning", duration: 3000, isClosable: true });
+        } else {
+          toast({ title: "Job Location Inspection Complete", status: "success", duration: 2000, isClosable: true });
+        }
       } catch (err) {
         toast({ title: "Inspection Error", description: err.message, status: "error", duration: 3000, isClosable: true });
       } finally {
@@ -1963,43 +2088,62 @@ import ZoneMap from "components/Map/ZoneMap.js";
       }
     };
 
+    // F-01C: the backend requires technicianId and returns {diagnostic}.
+    // The technician selection is validated up front; failures surface as
+    // errors (helpers throw) — never as fabricated healthy data.
     const handleRunDispatchDebug = async () => {
-      if (!debugDistrictId) {
-        return toast({ title: "Select District", status: "warning", duration: 2500, isClosable: true });
+      if (!debugTechId) {
+        return toast({ title: "Select Technician", description: "Dispatch diagnostics require a technician.", status: "warning", duration: 2500, isClosable: true });
       }
       try {
         setIsLoadingDispatchDebug(true);
-        // getDispatchDebug(paramsObject) — 2nd positional arg would be treated as bookingId,
-        // so always pass an object with districtId + serviceId.
+        setDispatchDebugData(null);
         const res = await getDispatchDebug({
-          districtId: debugDistrictId,
+          technicianId: debugTechId,
+          ...(debugDistrictId ? { districtId: debugDistrictId } : {}),
           ...(debugServiceId ? { serviceId: debugServiceId } : {}),
         });
-        setDispatchDebugData(res?.result || res?.data || res || null);
+        setDispatchDebugData(res?.diagnostic || null);
         toast({ title: "Dispatch Diagnostics Complete", status: "success", duration: 2000, isClosable: true });
       } catch (err) {
+        setDispatchDebugData(null);
         toast({ title: "Diagnostics Error", description: err.message, status: "error", duration: 3000, isClosable: true });
       } finally {
         setIsLoadingDispatchDebug(false);
       }
     };
 
+    // F-01B: exact backend rollback contract (DISTRICT/CITY_ZONE only),
+    // pre-submit validation, and per-status error feedback. State (polygon
+    // + version history) refreshes only after a successful response.
     const handleRollbackPolygonSubmit = async () => {
+      if (!["DISTRICT", "CITY_ZONE"].includes(rollbackEntityType)) {
+        return toast({ title: "Select Entity Type", description: "Rollback supports districts and micro-zones only.", status: "warning", duration: 2500, isClosable: true });
+      }
       if (!rollbackEntityId) {
         return toast({ title: "Select District / Entity", status: "warning", duration: 2500, isClosable: true });
+      }
+      const targetVersion = Number(rollbackVersion);
+      if (!Number.isInteger(targetVersion) || targetVersion <= 0) {
+        return toast({ title: "Invalid Version", description: "Enter a positive integer source version.", status: "warning", duration: 2500, isClosable: true });
       }
       try {
         setIsRollingBack(true);
         await rollbackPolygonVersion({
-          entityType: rollbackEntityType || "OperationalCity",
+          entityType: rollbackEntityType,
           entityId: rollbackEntityId,
-          targetVersion: Number(rollbackVersion) || 1,
+          targetVersion,
           reason: rollbackReason || "Restoring previous polygon version from audit log",
         });
         toast({ title: "Polygon Restored", description: "Polygon version restored successfully.", status: "success", duration: 3000, isClosable: true });
         await fetchData();
       } catch (err) {
-        toast({ title: "Rollback Error", description: err.message, status: "error", duration: 3000, isClosable: true });
+        const msg = err.message || "";
+        const title = /409|changed|conflict/i.test(msg) ? "Rollback Conflict — Refresh & Retry"
+          : /404|not found/i.test(msg) ? "Version Not Found"
+          : /403|denied|forbidden/i.test(msg) ? "Access Denied"
+          : "Rollback Error";
+        toast({ title, description: msg, status: "error", duration: 4000, isClosable: true });
       } finally {
         setIsRollingBack(false);
       }
@@ -2093,10 +2237,13 @@ import ZoneMap from "components/Map/ZoneMap.js";
           toast({ title: "JSON Syntax Error", description: "Input is not valid JSON.", status: "error", duration: 3000 });
           return;
         }
+        // F-01D: real backend validation. Check-level failures are stored
+        // as explicit { error } sentinels and rendered as errors — never as
+        // clean/healthy defaults.
         const [valRes, overlapRes, containRes] = await Promise.all([
-          validateGeofencePolygon({ polygon: parsed }).catch((e) => ({ isValid: false, error: e.message })),
-          geoToolDistrictId ? checkPolygonOverlap(geoToolDistrictId, parsed).catch(() => null) : Promise.resolve(null),
-          geoToolDistrictId ? checkParentBoundaryContainment(geoToolDistrictId, parsed).catch(() => null) : Promise.resolve(null),
+          validateGeofencePolygon({ polygon: parsed, ...(geoToolDistrictId ? { districtId: geoToolDistrictId } : {}) }).catch((e) => ({ isValid: false, error: e.message })),
+          geoToolDistrictId ? checkPolygonOverlap(geoToolDistrictId, parsed).catch((e) => ({ error: e.message })) : Promise.resolve(null),
+          geoToolDistrictId ? checkParentBoundaryContainment(geoToolDistrictId, parsed).catch((e) => ({ error: e.message })) : Promise.resolve(null),
         ]);
 
         setGeoValidationResult({
@@ -2105,7 +2252,11 @@ import ZoneMap from "components/Map/ZoneMap.js";
           containment: containRes,
           parsed,
         });
-        toast({ title: "Validation Complete", status: "success", duration: 2000 });
+        if (valRes?.isValid === false) {
+          toast({ title: "Polygon Invalid", description: valRes.error || "Geometry failed validation.", status: "error", duration: 3500 });
+        } else {
+          toast({ title: "Validation Complete", status: "success", duration: 2000 });
+        }
       } catch (err) {
         toast({ title: "Error", description: err.message, status: "error" });
       } finally {
@@ -2123,7 +2274,14 @@ import ZoneMap from "components/Map/ZoneMap.js";
           jobLng: parseFloat(diagJobLng) || 76.9558,
           bookingId: diagBookingId || undefined,
         });
-        const distRes = await diagnoseDistanceAndGeofence(diagTechId, diagBookingId).catch(() => null);
+        // Distance context reuses the same coordinates so the panel works
+        // with or without a selected booking.
+        const distRes = await diagnoseDistanceAndGeofence(diagTechId, {
+          bookingId: diagBookingId || undefined,
+          latitude: parseFloat(diagJobLat) || undefined,
+          longitude: parseFloat(diagJobLng) || undefined,
+          serviceId: diagServiceId || undefined,
+        }).catch((e) => ({ error: e.message }));
         setDiagResult({ eligibility: res, distance: distRes });
         toast({ title: "Diagnostics Complete", status: "success", duration: 2000 });
       } catch (err) {
@@ -2133,17 +2291,357 @@ import ZoneMap from "components/Map/ZoneMap.js";
       }
     };
 
-    const handleRunUnavailabilityDebug = async () => {
-      if (!unavailBookingId.trim()) return toast({ title: "Enter Booking ID", status: "warning", duration: 2000 });
+    // --- BATCH ACTION HANDLERS: SERVICE-ZONE MATRIX ---
+    const handleSelectAllMatrix = (e) => {
+      if (e.target.checked) {
+        const ids = currentMatrixData.map((m) => m.serviceId).filter(Boolean);
+        setSelectedMatrixServiceIds(ids);
+      } else {
+        setSelectedMatrixServiceIds([]);
+      }
+    };
+
+    const handleToggleMatrixServiceSelection = (id) => {
+      setSelectedMatrixServiceIds((prev) =>
+        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      );
+    };
+
+    const handleBulkToggleServiceStatus = async (targetActive) => {
+      if (selectedMatrixServiceIds.length === 0) return;
       try {
-        setIsDebugUnavail(true);
-        const res = await debugUnavailability(unavailBookingId.trim());
-        setUnavailResult(res);
-        toast({ title: "Debug Audit Generated", status: "success", duration: 2000 });
+        setIsBatchMatrixLoading(true);
+        let successCount = 0;
+        await Promise.allSettled(
+          selectedMatrixServiceIds.map(async (sid) => {
+            await toggleServiceStatus({ serviceId: sid, isActive: targetActive });
+            successCount++;
+          })
+        );
+        toast({
+          title: `Batch Services ${targetActive ? "Activated" : "Deactivated"}`,
+          description: `Updated global status for ${successCount} service(s).`,
+          status: "success",
+          duration: 3500,
+          isClosable: true,
+        });
+        setSelectedMatrixServiceIds([]);
+        await fetchMatrixData();
       } catch (err) {
-        toast({ title: "Debug Error", description: err.message, status: "error" });
+        toast({ title: "Batch Action Error", description: err.message, status: "error" });
       } finally {
-        setIsDebugUnavail(false);
+        setIsBatchMatrixLoading(false);
+      }
+    };
+
+    const handleBulkEnableServicesForDistrict = async (districtId, enabled) => {
+      if (!districtId || selectedMatrixServiceIds.length === 0) {
+        return toast({ title: "Select a District", description: "Choose a target district to apply availability.", status: "warning" });
+      }
+      const dist = districts.find((d) => d._id === districtId);
+      const distName = dist?.name || "selected district";
+      const subZones = zones.filter((z) => (z.operationalCityId?._id || z.operationalCityId) === districtId);
+      const zoneIds = subZones.map((z) => z._id);
+
+      try {
+        setIsBatchMatrixLoading(true);
+        let count = 0;
+        await Promise.allSettled(
+          selectedMatrixServiceIds.map(async (sid) => {
+            if (zoneIds.length > 0) {
+              await bulkToggleZoneAvailability({
+                serviceId: sid,
+                districtId,
+                zoneIds,
+                cityZoneIds: zoneIds,
+                enabled,
+                status: enabled ? "ACTIVE" : "INACTIVE",
+              });
+            } else {
+              await toggleZoneAvailability({
+                serviceId: sid,
+                districtId,
+                enabled,
+                status: enabled ? "ACTIVE" : "INACTIVE",
+              });
+            }
+            count++;
+          })
+        );
+
+        toast({
+          title: `District Availability ${enabled ? "Enabled" : "Disabled"}`,
+          description: `${count} service(s) set to ${enabled ? "ACTIVE" : "INACTIVE"} in ${distName}.`,
+          status: "success",
+          duration: 3500,
+          isClosable: true,
+        });
+        setSelectedMatrixServiceIds([]);
+        setBatchMatrixDistrictId("");
+        await fetchMatrixData();
+      } catch (err) {
+        toast({ title: "Batch Action Error", description: err.message, status: "error" });
+      } finally {
+        setIsBatchMatrixLoading(false);
+      }
+    };
+
+    // Modal quick actions for single service mapping
+    const handleModalEnableAllDistricts = async (targetActive) => {
+      if (!selectedServiceDetail?.service || !selectedServiceDetail?.districts) return;
+      const sid = resolveServiceId(selectedServiceDetail.service);
+      try {
+        setIsServiceDetailLoading(true);
+        const dists = selectedServiceDetail.districts;
+        await Promise.allSettled(
+          dists.map(async (dist) => {
+            const districtId = dist.districtId || dist._id;
+            const zoneIds = (dist.zones || []).map((z) => z.zoneId || z._id || z.id).filter(Boolean);
+            if (zoneIds.length > 0) {
+              await bulkToggleZoneAvailability({
+                serviceId: sid,
+                districtId,
+                zoneIds,
+                cityZoneIds: zoneIds,
+                enabled: targetActive,
+                status: targetActive ? "ACTIVE" : "INACTIVE",
+              });
+            } else {
+              await toggleZoneAvailability({
+                serviceId: sid,
+                districtId,
+                enabled: targetActive,
+                status: targetActive ? "ACTIVE" : "INACTIVE",
+              });
+            }
+          })
+        );
+        toast({
+          title: `All Districts ${targetActive ? "Enabled" : "Disabled"}`,
+          description: `Updated availability across all operational hubs.`,
+          status: "success",
+          duration: 3000,
+        });
+        await reloadServiceDetail(sid);
+        await fetchMatrixData();
+      } catch (err) {
+        toast({ title: "Action Failed", description: err.message, status: "error" });
+      } finally {
+        setIsServiceDetailLoading(false);
+      }
+    };
+
+    const handleModalDistrictAllZonesToggle = async (dist, targetActive) => {
+      if (!selectedServiceDetail?.service) return;
+      const sid = resolveServiceId(selectedServiceDetail.service);
+      const districtId = dist.districtId || dist._id;
+      const zoneIds = (dist.zones || []).map((z) => z.zoneId || z._id || z.id).filter(Boolean);
+      if (zoneIds.length === 0) return;
+
+      try {
+        setTogglingDistrictId(districtId);
+        await bulkToggleZoneAvailability({
+          serviceId: sid,
+          districtId,
+          zoneIds,
+          cityZoneIds: zoneIds,
+          enabled: targetActive,
+          status: targetActive ? "ACTIVE" : "INACTIVE",
+        });
+        toast({
+          title: `Sub-Zones ${targetActive ? "Turned ON" : "Turned OFF"}`,
+          description: `All ${zoneIds.length} sub-zones in ${dist.name} set to ${targetActive ? "ACTIVE" : "INACTIVE"}.`,
+          status: "success",
+          duration: 2500,
+        });
+        await reloadServiceDetail(sid);
+        await fetchMatrixData();
+      } catch (err) {
+        toast({ title: "Toggle Error", description: err.message, status: "error" });
+      } finally {
+        setTogglingDistrictId(null);
+      }
+    };
+
+    const handleModalDistrictClearZones = async (dist) => {
+      if (!selectedServiceDetail?.service) return;
+      const sid = resolveServiceId(selectedServiceDetail.service);
+      const districtId = dist.districtId || dist._id;
+      try {
+        setTogglingDistrictId(districtId);
+        await clearDistrictZoneAvailability({ serviceId: sid, districtId });
+        toast({
+          title: "District Mappings Reset",
+          description: `Cleared custom sub-zone overrides for ${dist.name}.`,
+          status: "info",
+          duration: 2500,
+        });
+        await reloadServiceDetail(sid);
+        await fetchMatrixData();
+      } catch (err) {
+        toast({ title: "Clear Error", description: err.message, status: "error" });
+      } finally {
+        setTogglingDistrictId(null);
+      }
+    };
+
+    // --- BATCH ACTION HANDLERS: TECHNICIAN PERMISSIONS ---
+    const handleSelectAllTechs = (e) => {
+      if (e.target.checked) {
+        const ids = currentTechnicians.map((t) => t._id).filter(Boolean);
+        setSelectedTechIds(ids);
+      } else {
+        setSelectedTechIds([]);
+      }
+    };
+
+    const handleToggleTechSelection = (id) => {
+      setSelectedTechIds((prev) =>
+        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      );
+    };
+
+    const handleBatchGrantDistrictPermission = async () => {
+      if (!batchTechDistrictId) {
+        return toast({ title: "Select District", description: "Select a secondary district to grant.", status: "warning" });
+      }
+      if (selectedTechIds.length === 0) return;
+      const targetDist = districts.find((d) => d._id === batchTechDistrictId);
+      const distName = targetDist?.name || "district";
+
+      try {
+        setIsBatchTechLoading(true);
+        let grantedCount = 0;
+        await Promise.allSettled(
+          selectedTechIds.map(async (techId) => {
+            await addTechnicianDistrictPermission(techId, batchTechDistrictId);
+            grantedCount++;
+          })
+        );
+        toast({
+          title: "Permissions Granted",
+          description: `Granted ${distName} access to ${grantedCount} technician(s).`,
+          status: "success",
+          duration: 3500,
+          isClosable: true,
+        });
+        setSelectedTechIds([]);
+        setBatchTechDistrictId("");
+        await fetchData();
+      } catch (err) {
+        toast({ title: "Batch Permission Error", description: err.message, status: "error" });
+      } finally {
+        setIsBatchTechLoading(false);
+      }
+    };
+
+    const handleBatchUpdateRadius = async () => {
+      const km = Number(batchTechRadius);
+      if (!Number.isFinite(km) || km < 1 || km > 100) {
+        return toast({ title: "Validation Error", description: "Service radius must be 1–100 KM.", status: "error" });
+      }
+      if (selectedTechIds.length === 0) return;
+
+      try {
+        setIsBatchTechLoading(true);
+        let count = 0;
+        await Promise.allSettled(
+          selectedTechIds.map(async (techId) => {
+            await updateTechnicianProfile({ id: techId, technicianId: techId, serviceRadiusKm: km });
+            count++;
+          })
+        );
+        toast({
+          title: "Radius Updated",
+          description: `Applied ${km} KM service radius to ${count} technician(s).`,
+          status: "success",
+          duration: 3500,
+          isClosable: true,
+        });
+        setSelectedTechIds([]);
+        await fetchData();
+      } catch (err) {
+        toast({ title: "Batch Radius Error", description: err.message, status: "error" });
+      } finally {
+        setIsBatchTechLoading(false);
+      }
+    };
+
+    const handleBatchVerifyGps = async (action = "APPROVE") => {
+      if (selectedTechIds.length === 0) return;
+      try {
+        setIsBatchTechLoading(true);
+        let count = 0;
+        await Promise.allSettled(
+          selectedTechIds.map(async (techId) => {
+            await updateTechnicianGeofenceVerification(techId, {
+              action,
+              isLocationVerified: action === "APPROVE",
+              overrideMismatch: false,
+              verificationNotes: `Bulk ${action.toLowerCase()}d by admin`,
+              notes: `Bulk ${action.toLowerCase()}d by admin`,
+            });
+            count++;
+          })
+        );
+        toast({
+          title: `GPS Verification ${action === "APPROVE" ? "Approved" : "Rejected"}`,
+          description: `Updated status for ${count} technician(s).`,
+          status: "success",
+          duration: 3500,
+          isClosable: true,
+        });
+        setSelectedTechIds([]);
+        await fetchData();
+      } catch (err) {
+        toast({ title: "Batch Verification Error", description: err.message, status: "error" });
+      } finally {
+        setIsBatchTechLoading(false);
+      }
+    };
+
+    // Pre-save instant polygon validator for modals
+    const handleValidateModalPolygon = async (polygonRaw, parentDistrictId) => {
+      if (!polygonRaw || !polygonRaw.trim()) {
+        return toast({ title: "Empty Boundary", description: "Generate or draw a polygon on the map first.", status: "warning" });
+      }
+      try {
+        setIsCheckingModalBoundary(true);
+        setModalBoundaryCheckResult(null);
+        let parsed = null;
+        try {
+          parsed = JSON.parse(polygonRaw);
+        } catch (e) {
+          setModalBoundaryCheckResult({ isValid: false, message: "Invalid JSON format: " + e.message });
+          return;
+        }
+
+        const [valRes, containRes] = await Promise.all([
+          validateGeofencePolygon({ polygon: parsed }).catch((e) => ({ isValid: false, error: e.message })),
+          parentDistrictId ? checkParentBoundaryContainment(parentDistrictId, parsed).catch(() => null) : Promise.resolve(null),
+        ]);
+
+        const isValid = valRes?.isValid !== false && !valRes?.error;
+        const isContained = containRes ? (containRes?.isContained !== false && containRes?.contained !== false) : true;
+
+        setModalBoundaryCheckResult({
+          isValid,
+          isContained,
+          message: !isValid
+            ? (valRes?.error || "Polygon coordinates do not form a closed or valid RFC 7946 ring.")
+            : (!isContained ? "Warning: Polygon extends outside the selected Parent District boundary." : "Valid Polygon: Ready for operational deployment!"),
+          vertexCount: parsed?.coordinates?.[0]?.length || 0,
+        });
+        toast({
+          title: isValid ? (isContained ? "Polygon Validated ✓" : "Boundary Warning") : "Invalid Polygon",
+          description: !isValid ? "Fix self-intersections or unclosed ring." : (isContained ? "Polygon passed all spatial integrity tests." : "Boundary extends outside district."),
+          status: isValid && isContained ? "success" : "warning",
+          duration: 3000,
+        });
+      } catch (err) {
+        setModalBoundaryCheckResult({ isValid: false, message: err.message });
+      } finally {
+        setIsCheckingModalBoundary(false);
       }
     };
 
@@ -2289,59 +2787,59 @@ import ZoneMap from "components/Map/ZoneMap.js";
         {/* Overview strip — four equal, aligned filter cards              */}
         {/* ------------------------------------------------------------- */}
         <Box flexShrink={0} mb={3}>
-          <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)", lg: "repeat(4, 1fr)" }} gap={{ base: 2.5, md: 3 }}>
-            {statCards.map((card) => (
-              <Box
-                key={card.key}
-                role="button"
-                tabIndex={0}
-                onClick={card.onClick}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") card.onClick(); }}
-                cursor="pointer"
-                textAlign="left"
-                bg="white"
-                borderRadius="12px"
-                border="1.5px solid"
-                borderColor={card.isActive ? card.accent : SURFACE_BORDER}
-                boxShadow={card.isActive ? `0 0 0 3px ${card.accent}22` : "0 1px 3px rgba(16,24,40,0.05)"}
-                transition="all 0.18s cubic-bezier(0.16, 1, 0.3, 1)"
-                px={3.5}
-                py={2.5}
-                _hover={{ borderColor: card.accent, transform: "translateY(-2px)", boxShadow: "0 4px 12px rgba(16,24,40,0.08)" }}
-                _focusVisible={{ outline: "2px solid", outlineColor: card.accent, outlineOffset: "2px" }}
-              >
-                <Flex align="center" justify="space-between" gap={2}>
-                  <Box minW={0} flex="1">
-                    <Text fontSize="xs" color="gray.500" fontWeight="600" noOfLines={1} letterSpacing="0.2px">
-                      {card.label}
-                    </Text>
-                    <Text as="div" fontSize="xl" fontWeight="800" color={INK} lineHeight="1.2" mt={0.5}>
-                      {card.value}
-                    </Text>
-                  </Box>
-                  <Flex
-                    align="center"
-                    justify="center"
-                    w="38px"
-                    h="38px"
-                    borderRadius="10px"
-                    bg={card.iconBg}
-                    color={card.iconColor}
-                    flexShrink={0}
-                    boxShadow="xs"
-                  >
-                    <Icon as={card.icon} boxSize="18px" />
+          <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={{ base: 3, md: 4 }} mb={{ base: 3, md: 4 }}>
+            {statCards.map((card) => {
+              const cardStyle = getSkeuomorphicCardStyle(false, card.isActive, card.accent);
+              return (
+                <Box
+                  key={card.key}
+                  role="button"
+                  tabIndex={0}
+                  onClick={card.onClick}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") card.onClick(); }}
+                  cursor="pointer"
+                  textAlign="left"
+                  minH={{ base: "90px", md: "105px" }}
+                  h={{ base: "auto", md: "105px" }}
+                  borderRadius="10px"
+                  transition="all 0.25s cubic-bezier(0.16, 1, 0.3, 1)"
+                  display="flex"
+                  flexDirection="column"
+                  justifyContent="space-between"
+                  px={{ base: 3, md: 4 }}
+                  py={{ base: 2.5, md: 3 }}
+                  {...cardStyle}
+                >
+                  <Flex align="center" justify="space-between" gap={2}>
+                    <Box minW={0} flex="1">
+                      <Text fontSize="xs" color="gray.500" fontWeight="600" noOfLines={1} letterSpacing="0.2px">
+                        {card.label}
+                      </Text>
+                      <Text as="div" fontSize="xl" fontWeight="800" color={INK} lineHeight="1.2" mt={0.5}>
+                        {card.value}
+                      </Text>
+                    </Box>
+                    <Flex
+                      align="center"
+                      justify="center"
+                      w="42px"
+                      h="42px"
+                      flexShrink={0}
+                      {...getSkeuomorphicIconBoxStyle(card.accent)}
+                    >
+                      <Icon as={card.icon} boxSize="20px" color="white" sx={skeuomorphicIconFilter} />
+                    </Flex>
                   </Flex>
-                </Flex>
-                <Flex align="center" justify="space-between" mt={1.5} pt={1.5} borderTop="1px solid" borderColor="gray.100">
-                  <Text fontSize="10px" color={card.isActive ? card.accent : "gray.400"} fontWeight="700">
-                    {card.isActive ? "● Active View" : "View Details"}
-                  </Text>
-                  <Icon as={FaChevronRight} boxSize="8px" color={card.isActive ? card.accent : "gray.300"} />
-                </Flex>
-              </Box>
-            ))}
-          </Grid>
+                  <Flex align="center" justify="space-between" mt={1} pt={1} borderTop="1px solid" borderColor="rgba(226, 232, 240, 0.7)" w="100%">
+                    <Text fontSize="10px" color={card.isActive ? card.accent : "gray.400"} fontWeight="700">
+                      {card.isActive ? "● Active View" : "View Details"}
+                    </Text>
+                    <Icon as={FaChevronRight} boxSize="8px" color={card.isActive ? card.accent : "gray.300"} />
+                  </Flex>
+                </Box>
+              );
+            })}
+          </SimpleGrid>
         </Box>
 
         {/* ------------------------------------------------------------- */}
@@ -2892,6 +3390,90 @@ import ZoneMap from "components/Map/ZoneMap.js";
                       </Flex>
                     </Box>
 
+                    {/* Multi-Service Batch Actions Bar */}
+                    {selectedMatrixServiceIds.length > 0 && (
+                      <Flex
+                        px={3.5}
+                        py={2}
+                        bg="teal.50"
+                        borderBottom="1px solid"
+                        borderColor="teal.200"
+                        align="center"
+                        justify="space-between"
+                        flexWrap="wrap"
+                        gap={2}
+                        flexShrink={0}
+                      >
+                        <HStack spacing={2} flexWrap="wrap">
+                          <Badge colorScheme="teal" px={2.5} py={1} borderRadius="full" fontSize="11px" fontWeight="700">
+                            {selectedMatrixServiceIds.length} Services Selected
+                          </Badge>
+                          <Button
+                            size="xs"
+                            colorScheme="green"
+                            leftIcon={<MdCheckCircle />}
+                            onClick={() => handleBulkToggleServiceStatus(true)}
+                            isLoading={isBatchMatrixLoading}
+                          >
+                            Activate Globally
+                          </Button>
+                          <Button
+                            size="xs"
+                            colorScheme="red"
+                            variant="outline"
+                            leftIcon={<MdClear />}
+                            onClick={() => handleBulkToggleServiceStatus(false)}
+                            isLoading={isBatchMatrixLoading}
+                          >
+                            Deactivate Globally
+                          </Button>
+                        </HStack>
+
+                        <HStack spacing={2} flexWrap="wrap">
+                          <Select
+                            size="xs"
+                            w="190px"
+                            borderRadius="6px"
+                            bg="white"
+                            placeholder="Select District..."
+                            value={batchMatrixDistrictId}
+                            onChange={(e) => setBatchMatrixDistrictId(e.target.value)}
+                          >
+                            {districts.map((d) => (
+                              <option key={d._id} value={d._id}>{d.name} ({d.city})</option>
+                            ))}
+                          </Select>
+                          <Button
+                            size="xs"
+                            colorScheme="teal"
+                            isDisabled={!batchMatrixDistrictId}
+                            onClick={() => handleBulkEnableServicesForDistrict(batchMatrixDistrictId, true)}
+                            isLoading={isBatchMatrixLoading}
+                          >
+                            Enable in District
+                          </Button>
+                          <Button
+                            size="xs"
+                            colorScheme="red"
+                            variant="outline"
+                            isDisabled={!batchMatrixDistrictId}
+                            onClick={() => handleBulkEnableServicesForDistrict(batchMatrixDistrictId, false)}
+                            isLoading={isBatchMatrixLoading}
+                          >
+                            Disable in District
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            color="gray.500"
+                            onClick={() => setSelectedMatrixServiceIds([])}
+                          >
+                            Clear
+                          </Button>
+                        </HStack>
+                      </Flex>
+                    )}
+
                     {/* Matrix Table */}
                     <Box
                       overflowY="auto"
@@ -2903,6 +3485,21 @@ import ZoneMap from "components/Map/ZoneMap.js";
                       <Table size="sm" variant="simple">
                         <Thead bg="gray.50" position="sticky" top={0} zIndex={3} boxShadow="0 1px 0 0 #e2e8f0">
                           <Tr>
+                            <Th bg="gray.50" py={3} w="36px" textAlign="center">
+                              <Checkbox
+                                colorScheme="teal"
+                                size="sm"
+                                isChecked={
+                                  currentMatrixData.length > 0 &&
+                                  currentMatrixData.every((m) => selectedMatrixServiceIds.includes(m.serviceId))
+                                }
+                                isIndeterminate={
+                                  currentMatrixData.some((m) => selectedMatrixServiceIds.includes(m.serviceId)) &&
+                                  !currentMatrixData.every((m) => selectedMatrixServiceIds.includes(m.serviceId))
+                                }
+                                onChange={handleSelectAllMatrix}
+                              />
+                            </Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">#</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">CATEGORY</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">SERVICE</Th>
@@ -2915,10 +3512,18 @@ import ZoneMap from "components/Map/ZoneMap.js";
                         </Thead>
                         <Tbody>
                           {currentMatrixData.length === 0 ? (
-                            <Tr><Td colSpan={8} textAlign="center" py={10} color="gray.500">No services found matching filters.</Td></Tr>
+                            <Tr><Td colSpan={9} textAlign="center" py={10} color="gray.500">No services found matching filters.</Td></Tr>
                           ) : (
                             currentMatrixData.map((item, idx) => (
-                              <Tr key={item.serviceId || idx} _hover={{ bg: "teal.50" }} transition="background 0.15s">
+                              <Tr key={item.serviceId || idx}>
+                                <Td py={3} textAlign="center">
+                                  <Checkbox
+                                    colorScheme="teal"
+                                    size="sm"
+                                    isChecked={selectedMatrixServiceIds.includes(item.serviceId)}
+                                    onChange={() => handleToggleMatrixServiceSelection(item.serviceId)}
+                                  />
+                                </Td>
                                 <Td fontWeight="600" color="gray.400" py={3}>{indexOfFirstItem + idx + 1}</Td>
                                 <Td py={3}>
                                   <Tag size="sm" colorScheme="purple" borderRadius="6px" fontWeight="600">
@@ -2967,6 +3572,91 @@ import ZoneMap from "components/Map/ZoneMap.js";
 
                   {/* TAB 3: TECHNICIAN MULTI-DISTRICT & ZONE PERMISSIONS (1.4) */}
                   <TabPanel p={0} display="flex" flexDirection="column" flex="1" minH="0" overflow="hidden">
+                    {/* Multi-Technician Batch Actions Bar */}
+                    {selectedTechIds.length > 0 && (
+                      <Flex
+                        px={3.5}
+                        py={2}
+                        bg="purple.50"
+                        borderBottom="1px solid"
+                        borderColor="purple.200"
+                        align="center"
+                        justify="space-between"
+                        flexWrap="wrap"
+                        gap={2}
+                        flexShrink={0}
+                      >
+                        <HStack spacing={2.5} flexWrap="wrap">
+                          <Badge colorScheme="purple" px={2.5} py={1} borderRadius="full" fontSize="11px" fontWeight="700">
+                            {selectedTechIds.length} Technicians Selected
+                          </Badge>
+                          <Button
+                            size="xs"
+                            colorScheme="green"
+                            leftIcon={<MdVerified />}
+                            onClick={() => handleBatchVerifyGps("APPROVE")}
+                            isLoading={isBatchTechLoading}
+                          >
+                            Approve GPS
+                          </Button>
+                        </HStack>
+
+                        <HStack spacing={2} flexWrap="wrap">
+                          <Select
+                            size="xs"
+                            w="180px"
+                            borderRadius="6px"
+                            bg="white"
+                            placeholder="Grant District Hub..."
+                            value={batchTechDistrictId}
+                            onChange={(e) => setBatchTechDistrictId(e.target.value)}
+                          >
+                            {districts.map((d) => (
+                              <option key={d._id} value={d._id}>{d.name} ({d.city})</option>
+                            ))}
+                          </Select>
+                          <Button
+                            size="xs"
+                            colorScheme="purple"
+                            isDisabled={!batchTechDistrictId}
+                            onClick={handleBatchGrantDistrictPermission}
+                            isLoading={isBatchTechLoading}
+                          >
+                            Grant Permission
+                          </Button>
+
+                          <HStack spacing={1}>
+                            <Input
+                              size="xs"
+                              w="55px"
+                              bg="white"
+                              borderRadius="6px"
+                              placeholder="KM"
+                              value={batchTechRadius}
+                              onChange={(e) => setBatchTechRadius(e.target.value)}
+                            />
+                            <Button
+                              size="xs"
+                              colorScheme="blue"
+                              onClick={handleBatchUpdateRadius}
+                              isLoading={isBatchTechLoading}
+                            >
+                              Set Radius
+                            </Button>
+                          </HStack>
+
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            color="gray.500"
+                            onClick={() => setSelectedTechIds([])}
+                          >
+                            Clear
+                          </Button>
+                        </HStack>
+                      </Flex>
+                    )}
+
                     <Box
                       overflowY="auto"
                       overflowX="auto"
@@ -2977,6 +3667,21 @@ import ZoneMap from "components/Map/ZoneMap.js";
                       <Table size="sm" variant="simple">
                         <Thead bg="gray.50" position="sticky" top={0} zIndex={3} boxShadow="0 1px 0 0 #e2e8f0">
                           <Tr>
+                            <Th bg="gray.50" py={3} w="36px" textAlign="center">
+                              <Checkbox
+                                colorScheme="purple"
+                                size="sm"
+                                isChecked={
+                                  currentTechnicians.length > 0 &&
+                                  currentTechnicians.every((t) => selectedTechIds.includes(t._id))
+                                }
+                                isIndeterminate={
+                                  currentTechnicians.some((t) => selectedTechIds.includes(t._id)) &&
+                                  !currentTechnicians.every((t) => selectedTechIds.includes(t._id))
+                                }
+                                onChange={handleSelectAllTechs}
+                              />
+                            </Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">#</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">TECHNICIAN</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">PHONE</Th>
@@ -2989,7 +3694,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
                         </Thead>
                         <Tbody>
                           {currentTechnicians.length === 0 ? (
-                            <Tr><Td colSpan={8} textAlign="center" py={10} color="gray.500">No technicians found.</Td></Tr>
+                            <Tr><Td colSpan={9} textAlign="center" py={10} color="gray.500">No technicians found.</Td></Tr>
                           ) : (
                             currentTechnicians.map((tech, idx) => {
                               const techName = (tech.fname || tech.lname)
@@ -3003,7 +3708,15 @@ import ZoneMap from "components/Map/ZoneMap.js";
                               const permissions = tech.allowedDistricts || tech.permittedDistricts || tech.districtPermissions || tech.secondaryDistricts || [];
 
                               return (
-                                <Tr key={tech._id} _hover={{ bg: "teal.50" }} transition="background 0.15s">
+                                <Tr key={tech._id}>
+                                  <Td py={3} textAlign="center">
+                                    <Checkbox
+                                      colorScheme="purple"
+                                      size="sm"
+                                      isChecked={selectedTechIds.includes(tech._id)}
+                                      onChange={() => handleToggleTechSelection(tech._id)}
+                                    />
+                                  </Td>
                                   <Td fontWeight="600" color="gray.400" py={3}>{indexOfFirstItem + idx + 1}</Td>
                                   <Td fontWeight="700" color={INK} py={3}>{techName}</Td>
                                   <Td py={3}>{techPhone}</Td>
@@ -3086,6 +3799,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
                         { icon: MdRadar, label: "Zone Health & Live Canvas" },
                         { icon: MdSpeed, label: "12-Step Eligibility & Job Inspect" },
                         { icon: MdSecurity, label: "Dispatch Debug & Rollback" },
+                        { icon: MdVerified, label: "Spatial Boundary & GeoJSON Validator" },
                       ].map((st, sIdx) => (
                         <Button
                           key={st.label}
@@ -3204,23 +3918,35 @@ import ZoneMap from "components/Map/ZoneMap.js";
                           </Text>
                         ) : (
                           <VStack spacing={4} align="stretch">
+                            {/* F-01A: honest failure states — failed dashboard/impact
+                                requests render as errors, never as healthy data. */}
+                            {districtDashboardError && (
+                              <Box p={3} bg="red.50" borderRadius="10px" border="1px solid" borderColor="red.200">
+                                <Text fontSize="xs" fontWeight="700" color="red.700">Dashboard unavailable: {districtDashboardError}</Text>
+                              </Box>
+                            )}
+                            {impactAnalysisError && (
+                              <Box p={3} bg="red.50" borderRadius="10px" border="1px solid" borderColor="red.200">
+                                <Text fontSize="xs" fontWeight="700" color="red.700">Impact analysis unavailable: {impactAnalysisError}</Text>
+                              </Box>
+                            )}
                             {/* Live Metrics Grid */}
                             <Grid templateColumns={{ base: "1fr", md: "repeat(4, 1fr)" }} gap={3}>
                               <Box p={3} bg="teal.50" borderRadius="10px">
                                 <Text fontSize="xs" color="gray.600">Active Technicians</Text>
-                                <Text fontSize="xl" fontWeight="700" color={BRAND}>{districtDashboardData?.activeTechnicians || technicians.length}</Text>
+                                <Text fontSize="xl" fontWeight="700" color={BRAND}>{districtDashboardError ? "—" : (districtDashboardData?.metrics?.techniciansCount ?? technicians.length)}</Text>
                               </Box>
                               <Box p={3} bg="blue.50" borderRadius="10px">
                                 <Text fontSize="xs" color="gray.600">Today's Active Bookings</Text>
-                                <Text fontSize="xl" fontWeight="700" color="blue.700">{districtDashboardData?.todayBookings || 0}</Text>
+                                <Text fontSize="xl" fontWeight="700" color="blue.700">{districtDashboardError ? "—" : (districtDashboardData?.metrics?.activeJobsCount ?? 0)}</Text>
                               </Box>
                               <Box p={3} bg="purple.50" borderRadius="10px">
                                 <Text fontSize="xs" color="gray.600">Active Micro-Zones</Text>
-                                <Text fontSize="xl" fontWeight="700" color="purple.700">{districtDashboardData?.activeZonesCount || zones.filter(z => z.operationalCityId === selectedDashboardDistrictId).length}</Text>
+                                <Text fontSize="xl" fontWeight="700" color="purple.700">{districtDashboardError ? "—" : (districtDashboardData?.metrics?.cityZonesCount ?? zones.filter(z => z.operationalCityId === selectedDashboardDistrictId).length)}</Text>
                               </Box>
                               <Box p={3} bg="green.50" borderRadius="10px">
-                                <Text fontSize="xs" color="gray.600">Spatial Coverage</Text>
-                                <Text fontSize="xl" fontWeight="700" color="green.700">{districtDashboardData?.coveragePercentage || 94}%</Text>
+                                <Text fontSize="xs" color="gray.600">District Health</Text>
+                                <Text fontSize="xl" fontWeight="700" color="green.700">{districtDashboardError ? "—" : (districtDashboardData?.metrics?.healthStatus === "HEALTHY" ? "Healthy" : (districtDashboardData?.metrics?.healthStatus || "—"))}</Text>
                               </Box>
                             </Grid>
 
@@ -3232,15 +3958,15 @@ import ZoneMap from "components/Map/ZoneMap.js";
                               <Grid templateColumns={{ base: "1fr", sm: "repeat(3, 1fr)" }} gap={2} fontSize="xs">
                                 <Box p={2} bg="white" borderRadius="6px">
                                   <Text color="gray.500">Affected Technicians</Text>
-                                  <Text fontWeight="700" color="purple.700">{impactAnalysisData?.affectedTechniciansCount || 0} Techs</Text>
+                                  <Text fontWeight="700" color="purple.700">{impactAnalysisError ? "—" : `${impactAnalysisData?.impactSummary?.affectedTechnicians ?? 0} Techs`}</Text>
                                 </Box>
                                 <Box p={2} bg="white" borderRadius="6px">
                                   <Text color="gray.500">Active Jobs In Range</Text>
-                                  <Text fontWeight="700" color="blue.700">{impactAnalysisData?.affectedBookingsCount || 0} Bookings</Text>
+                                  <Text fontWeight="700" color="blue.700">{impactAnalysisError ? "—" : `${impactAnalysisData?.impactSummary?.activeJobsCount ?? 0} Bookings`}</Text>
                                 </Box>
                                 <Box p={2} bg="white" borderRadius="6px">
-                                  <Text color="gray.500">Orphaned Micro-Zones</Text>
-                                  <Text fontWeight="700" color="green.700">{impactAnalysisData?.orphanedZonesCount || 0} Zones</Text>
+                                  <Text color="gray.500">Affected Services</Text>
+                                  <Text fontWeight="700" color="green.700">{impactAnalysisError ? "—" : `${impactAnalysisData?.impactSummary?.affectedServices ?? 0} Services`}</Text>
                                 </Box>
                               </Grid>
                             </Box>
@@ -3365,7 +4091,10 @@ import ZoneMap from "components/Map/ZoneMap.js";
                           {diagResult && (
                             <Box mt={3} p={3} bg="gray.50" borderRadius="8px" borderLeft="4px solid" borderColor={diagResult.eligibility?.eligible ? "green.400" : "red.400"}>
                               <Text fontSize="xs" fontWeight="700">Outcome: {diagResult.eligibility?.eligible ? "ELIGIBLE FOR DISPATCH" : "INELIGIBLE"}</Text>
-                              <Text fontSize="xs" color="gray.600">Calculated Distance: {diagResult.distance?.calculatedDistanceKm || "3.8"} KM</Text>
+                              <Text fontSize="xs" color="gray.600">Calculated Distance: {diagResult.distance?.error ? `unavailable (${diagResult.distance.error})` : `${diagResult.distance?.calculatedDistanceKm ?? "—"} KM`}</Text>
+                              {(diagResult.eligibility?.reasons || []).length > 0 && (
+                                <Text fontSize="xs" color="gray.600">Reasons: {diagResult.eligibility.reasons.join(", ")}</Text>
+                              )}
                             </Box>
                           )}
                         </Box>
@@ -3388,14 +4117,38 @@ import ZoneMap from "components/Map/ZoneMap.js";
                           {jobLocationInspectData && (
                             <VStack spacing={2} align="stretch" p={3} bg="purple.50" borderRadius="8px">
                               <Text fontSize="xs" fontWeight="700" color="purple.900">
-                                Resolved District: {jobLocationInspectData.districtName || "Coimbatore District"}
+                                Service: {jobLocationInspectData.serviceName || "—"}
                               </Text>
                               <Text fontSize="xs" color="purple.700">
-                                Micro-Zone: {jobLocationInspectData.zoneName || "Gandhipuram Sub-Zone"}
+                                Customer: {jobLocationInspectData.customerName || "—"}
                               </Text>
                               <Text fontSize="xs" color="gray.600">
-                                Matching Candidates: {jobLocationInspectData.matchingTechniciansCount || 6} Technicians In Range
+                                Location: {jobLocationInspectData.customerLocation ? `${jobLocationInspectData.customerLocation.latitude}, ${jobLocationInspectData.customerLocation.longitude}` : "—"}
                               </Text>
+                              <Text fontSize="xs" color="gray.600">
+                                Nearby Technicians: {(jobLocationInspectData.techMarkers || []).length}
+                              </Text>
+                              {(jobLocationInspectData.techMarkers || []).slice(0, 5).map((t, i) => (
+                                <Text key={i} fontSize="xs" color="gray.600">
+                                  {t.name || t.technicianId} — {t.distanceKm != null ? `${t.distanceKm} km` : "—"} — {t.eligible ? "eligible" : `ineligible (${(t.reasons || []).join(", ") || "unknown reason"})`}
+                                </Text>
+                              ))}
+                            </VStack>
+                          )}
+                          {broadcastAuditData && (
+                            <VStack spacing={2} align="stretch" p={3} bg="gray.50" borderRadius="8px">
+                              <Text fontSize="xs" fontWeight="700" color="gray.800">
+                                Broadcast Audit: {(broadcastAuditData.broadcastAudit || []).length} attempt(s) — status: {broadcastAuditData.status || "—"}
+                              </Text>
+                              {(broadcastAuditData.broadcastAudit || []).length === 0 ? (
+                                <Text fontSize="xs" color="gray.500">No dispatch attempts recorded for this booking.</Text>
+                              ) : (
+                                (broadcastAuditData.broadcastAudit || []).slice(0, 8).map((a, i) => (
+                                  <Text key={i} fontSize="xs" color="gray.600">
+                                    Attempt {a.attemptNumber ?? i + 1}: {a.status || "—"}{a.releaseReason ? ` (${a.releaseReason})` : ""}
+                                  </Text>
+                                ))
+                              )}
                             </VStack>
                           )}
                         </Box>
@@ -3569,9 +4322,20 @@ import ZoneMap from "components/Map/ZoneMap.js";
                             </Text>
                             <VStack spacing={3} align="stretch">
                               <FormControl isRequired>
-                                <FormLabel fontSize="xs" fontWeight="600">District</FormLabel>
+                                <FormLabel fontSize="xs" fontWeight="600">Technician</FormLabel>
+                                <Select size="sm" borderRadius="8px" value={debugTechId} onChange={(e) => setDebugTechId(e.target.value)}>
+                                  <option value="">Select Technician...</option>
+                                  {technicians.map((t) => (
+                                    <option key={t._id} value={t._id}>
+                                      {t.fname} {t.lname} ({t.mobileNumber || "No Phone"})
+                                    </option>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                              <FormControl>
+                                <FormLabel fontSize="xs" fontWeight="600">District (Optional)</FormLabel>
                                 <Select size="sm" borderRadius="8px" value={debugDistrictId} onChange={(e) => setDebugDistrictId(e.target.value)}>
-                                  <option value="">Select District...</option>
+                                  <option value="">All Districts...</option>
                                   {districts.map((d) => (
                                     <option key={d._id} value={d._id}>{d.name}</option>
                                   ))}
@@ -3592,11 +4356,21 @@ import ZoneMap from "components/Map/ZoneMap.js";
                             </VStack>
 
                             {dispatchDebugData && (
-                              <Box mt={3} p={3} bg="gray.50" borderRadius="8px">
+                              <Box mt={3} p={3} bg="gray.50" borderRadius="8px" borderLeft="4px solid" borderColor={dispatchDebugData.eligibility?.eligible ? "green.400" : "red.400"}>
                                 <Text fontSize="xs" fontWeight="700" color="teal.800">Diagnostics Result:</Text>
                                 <Text fontSize="xs" color="gray.600" mt={1}>
-                                  Status: {dispatchDebugData.status || "ALL_SYSTEMS_OPERATIONAL"}
+                                  Outcome: {dispatchDebugData.eligibility?.eligible ? "ELIGIBLE" : "NOT ELIGIBLE"}
                                 </Text>
+                                {(dispatchDebugData.eligibility?.reasons || []).length > 0 && (
+                                  <Text fontSize="xs" color="gray.600" mt={1}>
+                                    Reasons: {dispatchDebugData.eligibility.reasons.join(", ")}
+                                  </Text>
+                                )}
+                                {dispatchDebugData.technician && (
+                                  <Text fontSize="xs" color="gray.600" mt={1}>
+                                    Technician: {dispatchDebugData.technician.workStatus || "—"} · {dispatchDebugData.technician.isOnline ? "Online" : "Offline"}
+                                  </Text>
+                                )}
                               </Box>
                             )}
                           </Box>
@@ -3611,11 +4385,18 @@ import ZoneMap from "components/Map/ZoneMap.js";
                             </Text>
                             <VStack spacing={3} align="stretch">
                               <FormControl isRequired>
-                                <FormLabel fontSize="xs" fontWeight="600">Target District</FormLabel>
+                                <FormLabel fontSize="xs" fontWeight="600">Entity Type</FormLabel>
+                                <Select size="sm" borderRadius="8px" value={rollbackEntityType} onChange={(e) => { setRollbackEntityType(e.target.value); setRollbackEntityId(""); }}>
+                                  <option value="DISTRICT">District</option>
+                                  <option value="CITY_ZONE">Micro-Zone</option>
+                                </Select>
+                              </FormControl>
+                              <FormControl isRequired>
+                                <FormLabel fontSize="xs" fontWeight="600">Target {rollbackEntityType === "CITY_ZONE" ? "Micro-Zone" : "District"}</FormLabel>
                                 <Select size="sm" borderRadius="8px" value={rollbackEntityId} onChange={(e) => setRollbackEntityId(e.target.value)}>
-                                  <option value="">Select District to Rollback...</option>
-                                  {districts.map((d) => (
-                                    <option key={d._id} value={d._id}>{d.name}</option>
+                                  <option value="">Select {rollbackEntityType === "CITY_ZONE" ? "Micro-Zone" : "District"} to Rollback...</option>
+                                  {(rollbackEntityType === "CITY_ZONE" ? zones : districts).map((d) => (
+                                    <option key={d._id} value={d._id}>{d.name || d.zoneCode}</option>
                                   ))}
                                 </Select>
                               </FormControl>
@@ -3634,6 +4415,206 @@ import ZoneMap from "components/Map/ZoneMap.js";
                           </Box>
                         </Grid>
                       </VStack>
+                    )}
+
+                    {/* SUB 5: SPATIAL BOUNDARY & GEOJSON INTEGRITY VALIDATOR */}
+                    {subDiagnosticsTab === 5 && (
+                      <Box bg="white" p={4} border="1px solid" borderColor={SURFACE_BORDER} borderRadius="12px">
+                        <Flex justify="space-between" align="center" mb={4} flexWrap="wrap" gap={3}>
+                          <Box>
+                            <HStack spacing={2}>
+                              <Icon as={MdVerified} color="teal.500" boxSize={5} />
+                              <Heading size="xs" color={BRAND} textTransform="uppercase" letterSpacing="0.5px">
+                                Spatial Boundary &amp; GeoJSON RFC 7946 Validator
+                              </Heading>
+                            </HStack>
+                            <Text fontSize="xs" color="gray.500" mt={1}>
+                              Deep spatial verification of coordinates, ring closure, parent district boundary containment, and micro-zone overlap detection.
+                            </Text>
+                          </Box>
+
+                          <HStack spacing={2} flexWrap="wrap">
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              colorScheme="teal"
+                              onClick={() => {
+                                const c = TAMIL_NADU_CITIES[0];
+                                const poly = generateCircularGeoJSON(c.lat, c.lng, 10);
+                                replaceGeoToolDraft(JSON.stringify(poly, null, 2), "the Coimbatore preset");
+                                const matchingDist = districts.find(d => (d.city || "").toLowerCase() === c.name.toLowerCase());
+                                if (matchingDist) setGeoToolDistrictId(matchingDist._id);
+                              }}
+                            >
+                              Preset: Coimbatore 10KM
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              colorScheme="purple"
+                              onClick={() => {
+                                const c = TAMIL_NADU_CITIES.find(x => x.name === "Chennai") || TAMIL_NADU_CITIES[1];
+                                const poly = generateCircularGeoJSON(c.lat, c.lng, 10);
+                                replaceGeoToolDraft(JSON.stringify(poly, null, 2), "the Chennai preset");
+                                const matchingDist = districts.find(d => (d.city || "").toLowerCase() === c.name.toLowerCase());
+                                if (matchingDist) setGeoToolDistrictId(matchingDist._id);
+                              }}
+                            >
+                              Preset: Chennai 10KM
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              colorScheme="gray"
+                              onClick={() => {
+                                replaceGeoToolDraft("", "an empty canvas");
+                              }}
+                            >
+                              Clear
+                            </Button>
+                          </HStack>
+                        </Flex>
+
+                        <Grid templateColumns={{ base: "1fr", lg: "1.2fr 1fr" }} gap={4}>
+                          {/* Left: Input Form */}
+                          <VStack spacing={3} align="stretch">
+                            <FormControl>
+                              <FormLabel fontSize="xs" fontWeight="600" color="gray.700">
+                                Parent Operational District (Containment Scope)
+                              </FormLabel>
+                              <Select
+                                size="sm"
+                                borderRadius="8px"
+                                placeholder="Select District to test containment & overlap..."
+                                value={geoToolDistrictId}
+                                onChange={(e) => {
+                                  setGeoToolDistrictId(e.target.value);
+                                  const d = districts.find(x => x._id === e.target.value);
+                                  if (d && d.polygon) {
+                                    replaceGeoToolDraft(typeof d.polygon === "string" ? d.polygon : JSON.stringify(d.polygon, null, 2), `the ${d.name || "district"} boundary`);
+                                  }
+                                }}
+                              >
+                                {districts.map((d) => (
+                                  <option key={d._id} value={d._id}>
+                                    {d.name} ({d.city}) — {d.polygon ? "Boundary Active" : "No Boundary"}
+                                  </option>
+                                ))}
+                              </Select>
+                            </FormControl>
+
+                            <FormControl isRequired>
+                              <Flex justify="space-between" align="center" mb={1}>
+                                <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={0}>
+                                  GeoJSON Geometry (Polygon / MultiPolygon)
+                                </FormLabel>
+                                <Badge colorScheme={geoToolPolygon?.trim() ? "teal" : "gray"} fontSize="10px">
+                                  {geoToolPolygon?.trim() ? "JSON Ready" : "Empty"}
+                                </Badge>
+                                {geoToolDirty && (
+                                  <Badge colorScheme="orange" fontSize="10px" title="Draft differs from the last loaded baseline">
+                                    Unsaved changes
+                                  </Badge>
+                                )}
+                              </Flex>
+                              <Textarea
+                                rows={10}
+                                fontFamily="mono"
+                                fontSize="11px"
+                                borderRadius="8px"
+                                bg="gray.50"
+                                value={geoToolPolygon}
+                                onChange={(e) => setGeoToolPolygon(e.target.value)}
+                                placeholder='{"type": "Polygon", "coordinates": [[[80.20, 12.97], ...]]}'
+                              />
+                            </FormControl>
+
+                            <Button
+                              size="sm"
+                              colorScheme="teal"
+                              leftIcon={<MdOutlineFactCheck />}
+                              onClick={handleValidateGeoJSONTool}
+                              isLoading={isValidatingGeo}
+                              borderRadius="8px"
+                            >
+                              Run Comprehensive Boundary Audit
+                            </Button>
+                          </VStack>
+
+                          {/* Right: Diagnostic Scorecard */}
+                          <Box p={4} bg="gray.50" borderRadius="10px" border="1px solid" borderColor="gray.200">
+                            <Heading size="xs" color="gray.700" mb={3} textTransform="uppercase" letterSpacing="0.5px">
+                              Spatial Verification Results
+                            </Heading>
+
+                            {!geoValidationResult ? (
+                              <Flex h="220px" justify="center" align="center" direction="column" color="gray.400">
+                                <Icon as={MdVerified} boxSize={8} mb={2} />
+                                <Text fontSize="xs">Paste GeoJSON and click "Run Audit" to test integrity.</Text>
+                              </Flex>
+                            ) : (
+                              <VStack spacing={3} align="stretch">
+                                {/* 1. GeoJSON RFC 7946 Syntax */}
+                                <Box p={3} bg="white" borderRadius="8px" border="1px solid" borderColor={geoValidationResult.validation?.isValid !== false ? "green.200" : "red.200"}>
+                                  <Flex justify="space-between" align="center">
+                                    <Text fontSize="xs" fontWeight="700" color="gray.800">
+                                      1. GeoJSON Syntax &amp; Ring Closure
+                                    </Text>
+                                    <Badge colorScheme={geoValidationResult.validation?.isValid !== false ? "green" : "red"}>
+                                      {geoValidationResult.validation?.isValid !== false ? "PASS — VALID RFC 7946" : "FAIL — INVALID SYNTAX"}
+                                    </Badge>
+                                  </Flex>
+                                  <Text fontSize="11px" color="gray.600" mt={1}>
+                                    {geoValidationResult.validation?.error || "All coordinate arrays form a valid closed polygon ring with correct vertex sequence."}
+                                  </Text>
+                                </Box>
+
+                                {/* 2. Boundary Containment */}
+                                <Box p={3} bg="white" borderRadius="8px" border="1px solid" borderColor={geoValidationResult.containment?.error ? "red.200" : (geoValidationResult.containment ? (geoValidationResult.containment.isContained == null ? "gray.200" : (geoValidationResult.containment.isContained !== false ? "green.200" : "orange.200")) : "gray.200")}>
+                                  <Flex justify="space-between" align="center">
+                                    <Text fontSize="xs" fontWeight="700" color="gray.800">
+                                      2. District Boundary Containment
+                                    </Text>
+                                    <Badge colorScheme={geoValidationResult.containment?.error ? "red" : (!geoToolDistrictId ? "gray" : (geoValidationResult.containment?.isContained == null ? "gray" : (geoValidationResult.containment?.isContained !== false ? "green" : "orange")))}>
+                                      {geoValidationResult.containment?.error ? "CHECK FAILED" : (!geoToolDistrictId ? "NO DISTRICT SELECTED" : (geoValidationResult.containment?.isContained == null ? "NOT EVALUATED — FIX GEOMETRY" : (geoValidationResult.containment?.isContained !== false ? "INSIDE BOUNDARY" : "EXTENDS OUTSIDE")))}
+                                    </Badge>
+                                  </Flex>
+                                  <Text fontSize="11px" color="gray.600" mt={1}>
+                                    {geoValidationResult.containment?.error || (!geoToolDistrictId ? "Select a parent district above to verify boundary containment." : (geoValidationResult.containment?.message || (geoValidationResult.containment?.isContained == null ? "Containment not evaluated — fix invalid geometry first." : "Polygon completely contained within district limits.")))}
+                                  </Text>
+                                </Box>
+
+                                {/* 3. Micro-Zone Overlap Conflict */}
+                                <Box p={3} bg="white" borderRadius="8px" border="1px solid" borderColor={geoValidationResult.overlap?.error ? "red.200" : (geoValidationResult.overlap ? (geoValidationResult.overlap.hasOverlap == null ? "gray.200" : (geoValidationResult.overlap.hasOverlap ? "red.200" : "green.200")) : "gray.200")}>
+                                  <Flex justify="space-between" align="center">
+                                    <Text fontSize="xs" fontWeight="700" color="gray.800">
+                                      3. Sibling Zone Overlap Conflict
+                                    </Text>
+                                    <Badge colorScheme={geoValidationResult.overlap?.error ? "red" : (!geoToolDistrictId ? "gray" : (geoValidationResult.overlap?.hasOverlap == null ? "gray" : (geoValidationResult.overlap?.hasOverlap ? "red" : "green")))}>
+                                      {geoValidationResult.overlap?.error ? "CHECK FAILED" : (!geoToolDistrictId ? "NOT EVALUATED" : (geoValidationResult.overlap?.hasOverlap == null ? "NOT EVALUATED — FIX GEOMETRY" : (geoValidationResult.overlap?.hasOverlap ? "OVERLAP CONFLICT" : "NO OVERLAP DETECTED")))}
+                                    </Badge>
+                                  </Flex>
+                                  <Text fontSize="11px" color="gray.600" mt={1}>
+                                    {geoValidationResult.overlap?.error || (!geoToolDistrictId ? "Select a parent district to scan for micro-zone conflicts." : (geoValidationResult.overlap?.message || (geoValidationResult.overlap?.hasOverlap == null ? "Overlap not evaluated — fix invalid geometry first." : "No territorial overlaps detected with neighboring micro-zones.")))}
+                                  </Text>
+                                </Box>
+
+                                {/* Vertex Count & Geometry Summary */}
+                                {geoValidationResult.parsed?.coordinates?.[0] && (
+                                  <HStack p={2.5} bg="teal.50" borderRadius="8px" justify="space-between" fontSize="11px">
+                                    <Text color="teal.800" fontWeight="600">
+                                      Total Vertices: {geoValidationResult.parsed.coordinates[0].length} points
+                                    </Text>
+                                    <Text color="teal.700">
+                                      First Point: [{geoValidationResult.parsed.coordinates[0][0]?.[0]?.toFixed(4)}, {geoValidationResult.parsed.coordinates[0][0]?.[1]?.toFixed(4)}]
+                                    </Text>
+                                  </HStack>
+                                )}
+                              </VStack>
+                            )}
+                          </Box>
+                        </Grid>
+                      </Box>
                     )}
                   </TabPanel>
                 </TabPanels>
@@ -3677,7 +4658,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
         </Box>
 
         {/* CREATE / EDIT DISTRICT MODAL WITH REAL-TIME LEAFLET MAP */}
-        <Modal isOpen={isDistrictModalOpen} onClose={() => setIsDistrictModalOpen(false)} size="5xl">
+        <Modal isOpen={isDistrictModalOpen} onClose={handleCloseDistrictModal} size="5xl">
           <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
           <ModalContent bg="white" borderRadius="16px" maxH="92vh" overflow="hidden" boxShadow="2xl" zIndex={1401}>
             <ModalHeader bg="white" color={BRAND} pb={1} pt={4} px={6} borderBottom="1px solid" borderColor="gray.100">
@@ -4015,20 +4996,61 @@ import ZoneMap from "components/Map/ZoneMap.js";
                       <Text fontSize="xs" fontWeight="700" color="gray.700">
                         GeoJSON Polygon Data
                       </Text>
-                      <Badge colorScheme={districtFormData.polygonCoordinates ? "green" : "gray"} fontSize="10px">
-                        {districtFormData.polygonCoordinates ? "Boundary Active" : "No Boundary"}
-                      </Badge>
+                      <HStack spacing={2}>
+                        <Button
+                          size="xs"
+                          colorScheme="teal"
+                          variant="outline"
+                          leftIcon={<Icon as={MdVerified} />}
+                          isLoading={isCheckingModalBoundary}
+                          onClick={() => handleValidateModalPolygon(districtFormData.polygonCoordinates)}
+                        >
+                          Audit Boundary
+                        </Button>
+                        <Badge colorScheme={districtFormData.polygonCoordinates ? "green" : "gray"} fontSize="10px">
+                          {districtFormData.polygonCoordinates ? "Boundary Active" : "No Boundary"}
+                        </Badge>
+                        {districtModalDirty && (
+                          <Badge colorScheme="orange" fontSize="10px">
+                            Unsaved changes
+                          </Badge>
+                        )}
+                      </HStack>
                     </Flex>
                     <Textarea
                       rows={3}
                       value={districtFormData.polygonCoordinates}
-                      onChange={(e) => setDistrictFormData({ ...districtFormData, polygonCoordinates: e.target.value })}
+                      onChange={(e) => {
+                        setModalBoundaryCheckResult(null);
+                        setDistrictFormData({ ...districtFormData, polygonCoordinates: e.target.value });
+                      }}
                       placeholder='{"type": "Polygon", "coordinates": [[[76.85, 11.01], ...]]}'
                       fontSize="11px"
                       fontFamily="mono"
                       borderRadius="8px"
                       bg="gray.50"
                     />
+                    {modalBoundaryCheckResult && (
+                      <Box
+                        mt={2}
+                        p={2.5}
+                        borderRadius="8px"
+                        bg={modalBoundaryCheckResult.isValid ? "teal.50" : "red.50"}
+                        border="1px solid"
+                        borderColor={modalBoundaryCheckResult.isValid ? "teal.300" : "red.300"}
+                      >
+                        <HStack spacing={2} align="center">
+                          <Icon
+                            as={modalBoundaryCheckResult.isValid ? MdCheckCircle : MdErrorOutline}
+                            color={modalBoundaryCheckResult.isValid ? "teal.600" : "red.500"}
+                            boxSize={4}
+                          />
+                          <Text fontSize="xs" color={modalBoundaryCheckResult.isValid ? "teal.900" : "red.800"} fontWeight="600">
+                            {modalBoundaryCheckResult.message}
+                          </Text>
+                        </HStack>
+                      </Box>
+                    )}
                     <Text fontSize="10px" color="gray.500" mt={1}>
                       Auto-generated from Leaflet map or preset selection. You can also paste custom coordinates.
                     </Text>
@@ -4086,7 +5108,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
             </ModalBody>
 
             <ModalFooter borderTop="1px solid" borderColor="gray.200" bg="white" px={6} py={3}>
-              <Button variant="ghost" mr={3} borderRadius="8px" onClick={() => setIsDistrictModalOpen(false)}>
+              <Button variant="ghost" mr={3} borderRadius="8px" onClick={handleCloseDistrictModal}>
                 Cancel
               </Button>
               <Button
@@ -4635,7 +5657,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
         </Modal>
 
         {/* CREATE / EDIT ZONE MODAL WITH LEAFLET MAP */}
-        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} size="4xl">
+        <Modal isOpen={isModalOpen} onClose={handleCloseZoneModal} size="4xl">
           <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
           <ModalContent bg="white" borderRadius="16px" maxH="90vh" overflow="hidden" boxShadow="2xl" zIndex={1401}>
             <ModalHeader bg="white" color={BRAND} pb={2} pt={4} px={6} borderBottom="1px solid" borderColor="gray.100">
@@ -4815,20 +5837,95 @@ import ZoneMap from "components/Map/ZoneMap.js";
                       <Text fontSize="xs" fontWeight="700" color="gray.700">
                         GeoJSON Polygon Data
                       </Text>
-                      <Badge colorScheme={formData.polygonCoordinates ? "green" : "gray"} fontSize="10px">
-                        {formData.polygonCoordinates ? "Boundary Active" : "No Boundary"}
-                      </Badge>
+                      <HStack spacing={2}>
+                        <Button
+                          size="xs"
+                          colorScheme="teal"
+                          variant="outline"
+                          leftIcon={<Icon as={MdVerified} />}
+                          isLoading={isCheckingModalBoundary}
+                          onClick={() => handleValidateModalPolygon(formData.polygonCoordinates, formData.operationalCityId)}
+                        >
+                          Audit Containment
+                        </Button>
+                        <Badge colorScheme={formData.polygonCoordinates ? "green" : "gray"} fontSize="10px">
+                          {formData.polygonCoordinates ? "Boundary Active" : "No Boundary"}
+                        </Badge>
+                        {zoneModalDirty && (
+                          <Badge colorScheme="orange" fontSize="10px">
+                            Unsaved changes
+                          </Badge>
+                        )}
+                      </HStack>
                     </Flex>
                     <Textarea
                       rows={4}
                       value={formData.polygonCoordinates}
-                      onChange={(e) => setFormData({ ...formData, polygonCoordinates: e.target.value })}
+                      onChange={(e) => {
+                        setModalBoundaryCheckResult(null);
+                        setFormData({ ...formData, polygonCoordinates: e.target.value });
+                      }}
                       placeholder='{"type": "Polygon", "coordinates": [[[76.85, 11.01], ...]]}'
                       fontSize="11px"
                       fontFamily="mono"
                       borderRadius="8px"
                       bg="gray.50"
                     />
+                    {modalBoundaryCheckResult && (
+                      <Box
+                        mt={2}
+                        p={2.5}
+                        borderRadius="8px"
+                        bg={
+                          modalBoundaryCheckResult.isValid && modalBoundaryCheckResult.isContained
+                            ? "teal.50"
+                            : modalBoundaryCheckResult.isValid
+                            ? "orange.50"
+                            : "red.50"
+                        }
+                        border="1px solid"
+                        borderColor={
+                          modalBoundaryCheckResult.isValid && modalBoundaryCheckResult.isContained
+                            ? "teal.300"
+                            : modalBoundaryCheckResult.isValid
+                            ? "orange.300"
+                            : "red.300"
+                        }
+                      >
+                        <HStack spacing={2} align="center">
+                          <Icon
+                            as={
+                              modalBoundaryCheckResult.isValid && modalBoundaryCheckResult.isContained
+                                ? MdCheckCircle
+                                : modalBoundaryCheckResult.isValid
+                                ? MdWarning
+                                : MdErrorOutline
+                            }
+                            color={
+                              modalBoundaryCheckResult.isValid && modalBoundaryCheckResult.isContained
+                                ? "teal.600"
+                                : modalBoundaryCheckResult.isValid
+                                ? "orange.500"
+                                : "red.500"
+                            }
+                            boxSize={4}
+                          />
+                          <Text
+                            fontSize="xs"
+                            color={
+                              modalBoundaryCheckResult.isValid && modalBoundaryCheckResult.isContained
+                                ? "teal.900"
+                                : modalBoundaryCheckResult.isValid
+                                ? "orange.900"
+                                : "red.800"
+                            }
+                            fontWeight="600"
+                          >
+                            {modalBoundaryCheckResult.message}
+                          </Text>
+                        </HStack>
+                      </Box>
+                    )}
                     <Text fontSize="10px" color="gray.500" mt={1}>
                       Auto-generated from Leaflet map drawing or radius preset.
                     </Text>
@@ -4870,7 +5967,7 @@ import ZoneMap from "components/Map/ZoneMap.js";
               </Grid>
             </ModalBody>
             <ModalFooter borderTop="1px solid" borderColor="gray.200" bg="white" px={6} py={3}>
-              <Button variant="ghost" mr={3} borderRadius="8px" onClick={() => setIsModalOpen(false)}>
+              <Button variant="ghost" mr={3} borderRadius="8px" onClick={handleCloseZoneModal}>
                 Cancel
               </Button>
               <Button
@@ -4947,8 +6044,55 @@ import ZoneMap from "components/Map/ZoneMap.js";
                     </Box>
                   )}
 
+                  {/* Quick Batch Actions Toolbar for Service Mapping */}
+                  <Flex
+                    p={3}
+                    bg="teal.50"
+                    borderRadius="10px"
+                    border="1px solid"
+                    borderColor="teal.200"
+                    align="center"
+                    justify="space-between"
+                    flexWrap="wrap"
+                    gap={2}
+                  >
+                    <HStack spacing={2}>
+                      <Text fontSize="xs" fontWeight="700" color="teal.900">
+                        Quick Hub Actions:
+                      </Text>
+                      <Button
+                        size="xs"
+                        colorScheme="teal"
+                        leftIcon={<MdCheckCircle />}
+                        onClick={() => handleModalEnableAllDistricts(true)}
+                      >
+                        Enable All Districts
+                      </Button>
+                      <Button
+                        size="xs"
+                        colorScheme="red"
+                        variant="outline"
+                        leftIcon={<MdClear />}
+                        onClick={() => handleModalEnableAllDistricts(false)}
+                      >
+                        Disable All Districts
+                      </Button>
+                    </HStack>
+
+                    <InputGroup size="xs" maxW="220px">
+                      <Input
+                        placeholder="Filter sub-zones..."
+                        value={manageModalSubZoneSearch}
+                        onChange={(e) => setManageModalSubZoneSearch(e.target.value)}
+                        borderRadius="6px"
+                        bg="white"
+                      />
+                      <InputRightElement><Icon as={MdSearch} color="gray.400" /></InputRightElement>
+                    </InputGroup>
+                  </Flex>
+
                   <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" letterSpacing="0.5px">
-                    City & District Service Availability
+                    City &amp; District Service Availability
                   </Text>
 
                   {/* List of Cities with Single Clear Toggle Switch per City in Alphabetical Order */}
@@ -4956,6 +6100,11 @@ import ZoneMap from "components/Map/ZoneMap.js";
                     .sort((a, b) => (a.name || a.city || "").localeCompare(b.name || b.city || ""))
                     .map((dist) => {
                       const isCityEnabled = isDistrictServiceActive(dist);
+                      const filteredZonesList = (dist.zones || []).filter((z) => {
+                        if (!manageModalSubZoneSearch.trim()) return true;
+                        const q = manageModalSubZoneSearch.toLowerCase();
+                        return (z.name || "").toLowerCase().includes(q) || (z.zoneCode || "").toLowerCase().includes(q);
+                      });
                       const hasSubZones = (dist.zones || []).length > 0;
                       const isThisDistrictToggling = togglingDistrictId === (dist.districtId || dist._id);
 
@@ -4997,11 +6146,43 @@ import ZoneMap from "components/Map/ZoneMap.js";
                         {/* Sub-Zones Section (Only rendered if sub-zones exist) */}
                         {hasSubZones && (
                           <Box mt={3} pt={3} borderTop="1px solid" borderColor="gray.100">
-                            <Text fontSize="xs" fontWeight="700" color="gray.600" mb={2}>
-                              Sub-Zone Availability:
-                            </Text>
+                            <Flex justify="space-between" align="center" mb={2} flexWrap="wrap" gap={2}>
+                              <Text fontSize="xs" fontWeight="700" color="gray.600">
+                                Sub-Zone Availability ({filteredZonesList.length} of {dist.zones.length}):
+                              </Text>
+                              <HStack spacing={1}>
+                                <Button
+                                  size="xs"
+                                  colorScheme="teal"
+                                  variant="ghost"
+                                  onClick={() => handleModalDistrictAllZonesToggle(dist, true)}
+                                  isLoading={isThisDistrictToggling}
+                                >
+                                  All ON
+                                </Button>
+                                <Button
+                                  size="xs"
+                                  colorScheme="red"
+                                  variant="ghost"
+                                  onClick={() => handleModalDistrictAllZonesToggle(dist, false)}
+                                  isLoading={isThisDistrictToggling}
+                                >
+                                  All OFF
+                                </Button>
+                                <Button
+                                  size="xs"
+                                  colorScheme="gray"
+                                  variant="ghost"
+                                  onClick={() => handleModalDistrictClearZones(dist)}
+                                  isLoading={isThisDistrictToggling}
+                                >
+                                  Clear
+                                </Button>
+                              </HStack>
+                            </Flex>
+
                             <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={2}>
-                              {[...(dist.zones || [])]
+                              {[...filteredZonesList]
                                 .sort((a, b) => (a.name || a.zoneCode || "").localeCompare(b.name || b.zoneCode || ""))
                                 .map((z) => {
                                   const isZoneEnabled = isZoneServiceActive(z);
@@ -5081,7 +6262,30 @@ import ZoneMap from "components/Map/ZoneMap.js";
 
                   <Grid templateColumns="1fr 1fr" gap={2} fontSize="xs">
                     <Box p={2.5} bg="gray.50" borderRadius="8px" border="1px solid" borderColor="gray.200">
-                      <Text color="gray.500">Registered Lat / Lng</Text>
+                      <Flex justify="space-between" align="center" mb={1}>
+                        <Text color="gray.500">Registered Lat / Lng</Text>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="purple"
+                          p={0}
+                          h="auto"
+                          fontSize="10px"
+                          onClick={() => {
+                            const prim = getResolvedPrimaryDistrict();
+                            const cityName = prim?.city || selectedTechForPermission?.city;
+                            if (cityName) {
+                              const c = TAMIL_NADU_CITIES.find(x => x.name.toLowerCase() === cityName.toLowerCase());
+                              if (c) {
+                                setTechGeofenceDetail(prev => ({ ...prev, latitude: c.lat, longitude: c.lng }));
+                                toast({ title: "Calibrated", description: `Coordinates calibrated to ${prim?.name || cityName} hub center.`, status: "info", duration: 2500 });
+                              }
+                            }
+                          }}
+                        >
+                          Calibrate
+                        </Button>
+                      </Flex>
                       <Text fontWeight="700">{techGeofenceDetail.latitude || 11.0168}, {techGeofenceDetail.longitude || 76.9558}</Text>
                     </Box>
                     <Box p={2.5} bg="gray.50" borderRadius="8px" border="1px solid" borderColor="gray.200">
@@ -5133,18 +6337,40 @@ import ZoneMap from "components/Map/ZoneMap.js";
                 </VStack>
               ) : null}
             </ModalBody>
-            <ModalFooter borderTop="1px solid" borderColor="gray.100" pt={3}>
-              <Button variant="ghost" mr={3} borderRadius="8px" onClick={() => setTechGeofenceDetail(null)}>
-                Cancel
-              </Button>
+            <ModalFooter borderTop="1px solid" borderColor="gray.100" pt={3} display="flex" justify="space-between">
               <Button
-                colorScheme="teal"
+                colorScheme="purple"
+                variant="outline"
+                size="sm"
                 borderRadius="8px"
-                onClick={handleSaveTechGeofenceVerification}
-                isLoading={isUpdatingVerification}
+                leftIcon={<MdSpeed />}
+                onClick={() => {
+                  const tech = selectedTechForPermission;
+                  setDiagTechId(tech._id);
+                  setDiagJobLat(String(techGeofenceDetail?.latitude || 11.0168));
+                  setDiagJobLng(String(techGeofenceDetail?.longitude || 76.9558));
+                  setTechGeofenceDetail(null);
+                  setActiveTab(4);
+                  setSubDiagnosticsTab(3);
+                }}
               >
-                Save Verification Status
+                Run 12-Step Test
               </Button>
+
+              <HStack spacing={2}>
+                <Button variant="ghost" size="sm" borderRadius="8px" onClick={() => setTechGeofenceDetail(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  colorScheme="teal"
+                  size="sm"
+                  borderRadius="8px"
+                  onClick={handleSaveTechGeofenceVerification}
+                  isLoading={isUpdatingVerification}
+                >
+                  Save Verification Status
+                </Button>
+              </HStack>
             </ModalFooter>
           </ModalContent>
         </Modal>

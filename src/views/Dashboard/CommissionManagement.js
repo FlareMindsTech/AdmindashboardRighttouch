@@ -56,6 +56,7 @@ import {
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
+import { InspectionModal } from "components/common";
 
 import {
   FaChevronLeft,
@@ -90,7 +91,6 @@ import {
 } from "react-icons/md";
 
 import {
-  getAllServices,
   getAllServiceCommissions,
   getServiceCommissionConfig,
   setServiceCommission,
@@ -109,6 +109,8 @@ import {
   exportAuditLogs,
   getAllBookings,
 } from "../utils/axiosInstance";
+import { useAppDispatch } from "store/hooks";
+import { fetchServices } from "store/slices/referenceSlice";
 
 const BRAND = "#008080";
 const BRAND_DARK = "#006666";
@@ -136,6 +138,7 @@ const globalScrollbarStyles = {
 
 export default function CommissionManagement() {
   const toast = useToast();
+  const dispatch = useAppDispatch();
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
 
@@ -250,15 +253,16 @@ export default function CommissionManagement() {
 
   const fetchAllServicesList = useCallback(async () => {
     try {
-      const response = await getAllServices();
-      const data = response.result || response.data || response.services || response || [];
-      const list = Array.isArray(data) ? data : (data.services || []);
+      // Shared cache (TTL): sorted locally as before; paginated booking
+      // reads below stay on their legacy helper (different contract).
+      const result = await dispatch(fetchServices()).unwrap();
+      const list = Array.isArray(result?.list) ? result.list : [];
       const sorted = list.slice().sort((a, b) => (a.serviceName || a.name || "").localeCompare(b.serviceName || b.name || ""));
       setAllServices(sorted);
     } catch (err) {
       console.error("Error fetching services:", err);
     }
-  }, []);
+  }, [dispatch]);
 
   const fetchBookingsList = useCallback(async () => {
     try {
@@ -732,7 +736,7 @@ export default function CommissionManagement() {
       {/* 1. KPI STAT CARDS BANNER                                        */}
       {/* ------------------------------------------------------------- */}
       <Box mb={5} flexShrink={0}>
-        <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)", lg: "repeat(5, 1fr)" }} gap={{ base: 3, md: 4 }}>
+        <SimpleGrid columns={{ base: 1, sm: 2, md: 3, xl: 5 }} spacing={{ base: 3, md: 4 }} mb={{ base: 3, md: 4 }}>
           {[
             {
               label: "Configured Services",
@@ -773,26 +777,30 @@ export default function CommissionManagement() {
             <Box
               key={idx}
               bg="white"
-              borderRadius="14px"
-              p={4}
+              minH={{ base: "90px", md: "105px" }}
+              h={{ base: "auto", md: "105px" }}
+              borderRadius="10px"
+              p={{ base: 3, md: 4 }}
               border="1.5px solid"
               borderColor="gray.200"
               boxShadow="0 1px 3px rgba(16,24,40,0.05)"
               transition="all 0.2s"
+              display="flex"
+              alignItems="center"
               _hover={{ borderColor: card.color, transform: "translateY(-2px)", boxShadow: "0 4px 12px rgba(16,24,40,0.08)" }}
             >
-              <Flex justify="space-between" align="center">
-                <Box>
-                  <Text fontSize="xs" fontWeight="600" color="gray.500" noOfLines={1}>
+              <Flex justify="space-between" align="center" w="100%">
+                <Box flex="1" mr={2} overflow="hidden">
+                  <Text fontSize={{ base: "xs", md: "sm" }} fontWeight="600" color="gray.500" noOfLines={1}>
                     {card.label}
                   </Text>
-                  <Text fontSize="2xl" fontWeight="800" color="gray.800" mt={1}>
+                  <Text fontSize={{ base: "lg", md: "2xl" }} fontWeight="800" color="gray.800" mt={0.5} noOfLines={1}>
                     {card.value}
                   </Text>
                 </Box>
                 <Flex
-                  w="42px"
-                  h="42px"
+                  w={{ base: "40px", md: "44px" }}
+                  h={{ base: "40px", md: "44px" }}
                   borderRadius="10px"
                   bg={card.bg}
                   color={card.color}
@@ -805,7 +813,7 @@ export default function CommissionManagement() {
               </Flex>
             </Box>
           ))}
-        </Grid>
+        </SimpleGrid>
       </Box>
 
       {/* ------------------------------------------------------------- */}
@@ -2035,69 +2043,41 @@ export default function CommissionManagement() {
       </Modal>
 
       {/* ============================================================= */}
-      {/* MODAL 4: AUDIT LOG DETAILS MODAL                              */}
+      {/* MODAL 4: AUDIT LOG DETAILS MODAL (Using Global InspectionModal) */}
       {/* ============================================================= */}
-      <Modal isOpen={isLogDetailOpen} onClose={() => setIsLogDetailOpen(false)} size="xl" isCentered>
-        <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(6px)" zIndex={1400} />
-        <ModalContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401} mx={4} overflow="hidden">
-          <ModalHeader bg="white" color="gray.800" borderBottom="1px solid" borderColor="gray.100" pr="50px" py={4}>
-            <HStack spacing={2.5}>
-              <Flex w="36px" h="36px" borderRadius="10px" bg="teal.50" color={BRAND} align="center" justify="center">
-                <Icon as={MdVisibility} boxSize={5} />
-              </Flex>
-              <Box>
-                <Text fontSize="md" fontWeight="800">Financial Audit Inspection</Text>
-                <Text fontSize="xs" fontWeight="500" color="gray.500">Deep immutable audit record details and payload</Text>
-              </Box>
-            </HStack>
-          </ModalHeader>
-          <ModalCloseButton top="16px" right="16px" borderRadius="full" _hover={{ bg: "gray.100" }} />
-
-          <ModalBody bg="white" py={5} px={6} maxH="65vh" overflowY="auto" css={globalScrollbarStyles}>
-            {selectedLog && (
-              <VStack spacing={4} align="stretch" fontSize="xs">
-                <SimpleGrid columns={{ base: 2, sm: 4 }} gap={2.5}>
-                  <Box p={3} bg="gray.50" borderRadius="10px" border="1px solid" borderColor="gray.200">
-                    <Text color="gray.500" fontSize="10px" fontWeight="600">ACTION</Text>
-                    <Badge colorScheme="teal" mt={1}>{selectedLog.action || "UPDATE"}</Badge>
-                  </Box>
-                  <Box p={3} bg="gray.50" borderRadius="10px" border="1px solid" borderColor="gray.200">
-                    <Text color="gray.500" fontSize="10px" fontWeight="600">TARGET TYPE</Text>
-                    <Text fontWeight="700" color="gray.800" mt={1}>{selectedLog.targetType || "Service"}</Text>
-                  </Box>
-                  <Box p={3} bg="gray.50" borderRadius="10px" border="1px solid" borderColor="gray.200">
-                    <Text color="gray.500" fontSize="10px" fontWeight="600">ACTOR</Text>
-                    <Text fontWeight="700" color="gray.800" mt={1}>{selectedLog.actor?.name || selectedLog.performedBy || "Administrator"}</Text>
-                  </Box>
-                  <Box p={3} bg="gray.50" borderRadius="10px" border="1px solid" borderColor="gray.200">
-                    <Text color="gray.500" fontSize="10px" fontWeight="600">TIMESTAMP</Text>
-                    <Text fontWeight="700" color="gray.800" mt={1}>
-                      {selectedLog.createdAt ? new Date(selectedLog.createdAt).toLocaleString() : "N/A"}
-                    </Text>
-                  </Box>
-                </SimpleGrid>
-
-                <Box p={4} bg="gray.50" borderRadius="12px" border="1px solid" borderColor="gray.200">
-                  <Text fontWeight="700" color="gray.700" mb={2} textTransform="uppercase" fontSize="11px">
-                    Raw Payload / State Differences
-                  </Text>
-                  <Box as="pre" fontSize="11px" fontFamily="mono" whiteSpace="pre-wrap" bg="white" p={3} borderRadius="8px" border="1px solid" borderColor="gray.200" color="gray.800">
-                    {typeof selectedLog.details === "object"
-                      ? JSON.stringify(selectedLog.details, null, 2)
-                      : selectedLog.details || selectedLog.reason || "No details available."}
-                  </Box>
-                </Box>
-              </VStack>
-            )}
-          </ModalBody>
-
-          <ModalFooter bg="gray.50" borderTop="1px solid" borderColor="gray.100" py={3} px={6}>
-            <Button size="sm" onClick={() => setIsLogDetailOpen(false)} borderRadius="8px">
-              Close
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <InspectionModal
+        isOpen={isLogDetailOpen}
+        onClose={() => setIsLogDetailOpen(false)}
+        title="Financial Audit Inspection"
+        subtitle="Deep immutable audit record details and payload"
+        icon={MdVisibility}
+        metadata={
+          selectedLog
+            ? [
+                {
+                  label: "ACTION",
+                  value: selectedLog.action || "UPDATE",
+                  isBadge: true,
+                  badgeScheme: "teal",
+                },
+                {
+                  label: "TARGET TYPE",
+                  value: selectedLog.targetType || "Service",
+                },
+                {
+                  label: "ACTOR",
+                  value: selectedLog.actor?.name || selectedLog.performedBy || "Administrator",
+                },
+                {
+                  label: "TIMESTAMP",
+                  value: selectedLog.createdAt ? new Date(selectedLog.createdAt).toLocaleString() : "N/A",
+                },
+              ]
+            : []
+        }
+        payloadTitle="Raw Payload / State Differences"
+        payload={selectedLog?.details || selectedLog?.reason}
+      />
     </Flex>
   );
 }

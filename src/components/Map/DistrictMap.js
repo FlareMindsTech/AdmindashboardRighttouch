@@ -311,14 +311,18 @@ export default function DistrictMap({
       });
       resizeObserver.observe(mapRef.current);
 
-      setTimeout(() => {
+      // F-02E: store invalidate-size timer handles so unmounting before
+      // they fire cannot touch a removed map (ZoneMap cleanup pattern).
+      const invalidateTimer1 = setTimeout(() => {
         if (leafletMap.current) leafletMap.current.invalidateSize();
       }, 100);
-      setTimeout(() => {
+      const invalidateTimer2 = setTimeout(() => {
         if (leafletMap.current) leafletMap.current.invalidateSize();
       }, 350);
 
       return () => {
+        clearTimeout(invalidateTimer1);
+        clearTimeout(invalidateTimer2);
         resizeObserver.disconnect();
         if (leafletMap.current) {
           leafletMap.current.remove();

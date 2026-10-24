@@ -20,71 +20,48 @@ import {
   Spinner,
   useToast,
 } from "@chakra-ui/react";
-import React, { useState, useEffect, useCallback } from "react";
+import React from "react";
 import { NavLink } from "react-router-dom";
 import { BellIcon } from "@chakra-ui/icons";
 import { ProfileIcon } from "components/Icons/Icons";
+import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
-  getAdminNotifications,
-  getAdminUnreadNotificationCount,
-  markAdminNotificationRead,
-  markAllAdminNotificationsRead,
-} from "views/utils/axiosInstance";
+  fetchInboxList,
+  markInboxRead as markInboxReadThunk,
+  markAllInboxRead as markAllInboxReadThunk,
+  selectInbox,
+  selectInboxUnreadCount,
+  selectInboxLoading,
+} from "store/slices/notificationsSlice";
 
 export default function HeaderLinks(props) {
   const { fixed, scrolled, secondary } = props;
   const toast = useToast();
+  const dispatch = useAppDispatch();
 
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [notifications, setNotifications] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  // Phase 3: inbox state lives in Redux (single coordinator owns the count
+  // polling; the list is still fetched on demand when the popover opens).
+  const unreadCount = useAppSelector(selectInboxUnreadCount);
+  const notifications = useAppSelector(selectInbox);
+  const isLoading = useAppSelector(selectInboxLoading);
 
-  let navbarIcon =
-    fixed && scrolled
-      ? useColorModeValue("gray.700", "gray.200")
-      : useColorModeValue("white", "gray.200");
+  // Hoisted unconditionally (Rules of Hooks); rendered value unchanged.
+  const navbarIconFixed = useColorModeValue("gray.700", "gray.200");
+  const navbarIconDefault = useColorModeValue("white", "gray.200");
+  let navbarIcon = fixed && scrolled ? navbarIconFixed : navbarIconDefault;
   if (secondary) navbarIcon = "white";
 
-  const fetchUnreadCount = useCallback(async () => {
-    try {
-      const res = await getAdminUnreadNotificationCount();
-      const count = res.count ?? res.unreadCount ?? res.result?.count ?? 0;
-      setUnreadCount(count);
-    } catch (err) {
-      // silently catch
-    }
-  }, []);
-
-  const fetchNotificationsList = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const res = await getAdminNotifications();
-      const list = res.notifications || res.result || res.data || (Array.isArray(res) ? res : []);
-      setNotifications(Array.isArray(list) ? list : []);
-    } catch (err) {
-      console.error("Error fetching notifications:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000);
-    return () => clearInterval(interval);
-  }, [fetchUnreadCount]);
+  const fetchNotificationsList = () => {
+    dispatch(fetchInboxList());
+  };
 
   const handleMarkRead = async (id) => {
     try {
-      await markAdminNotificationRead(id);
-      setNotifications((prev) =>
-        prev.map((n) => (n._id === id || n.id === id ? { ...n, isRead: true } : n))
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+      await dispatch(markInboxReadThunk(id)).unwrap();
     } catch (err) {
       toast({
         title: "Error",
-        description: err.message || "Failed to mark notification read",
+        description: err?.message || err || "Failed to mark notification read",
         status: "error",
         duration: 2000,
       });
@@ -93,9 +70,7 @@ export default function HeaderLinks(props) {
 
   const handleMarkAllRead = async () => {
     try {
-      await markAllAdminNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      setUnreadCount(0);
+      await dispatch(markAllInboxReadThunk()).unwrap();
       toast({
         title: "Success",
         description: "All notifications marked as read",
@@ -105,7 +80,7 @@ export default function HeaderLinks(props) {
     } catch (err) {
       toast({
         title: "Error",
-        description: err.message || "Failed to mark all as read",
+        description: err?.message || err || "Failed to mark all as read",
         status: "error",
         duration: 2000,
       });
@@ -147,7 +122,7 @@ export default function HeaderLinks(props) {
             )}
           </Box>
         </PopoverTrigger>
-        <PopoverContent w={{ base: "300px", sm: "360px" }} shadow="2xl" border="1px solid" borderColor="teal.100">
+        <PopoverContent w={{ base: "300px", sm: "360px" }} borderRadius="6px" shadow="2xl" border="1px solid" borderColor="teal.100">
           <PopoverArrow />
           <PopoverHeader fontWeight="bold" fontSize="sm" borderBottomWidth="1px">
             <Flex justify="space-between" align="center">
@@ -174,7 +149,7 @@ export default function HeaderLinks(props) {
                       key={id}
                       p={2.5}
                       bg={isRead ? "gray.50" : "teal.50"}
-                      borderRadius="md"
+                      borderRadius="6px"
                       borderLeft="3px solid"
                       borderLeftColor={isRead ? "gray.300" : "teal.500"}
                       cursor="pointer"

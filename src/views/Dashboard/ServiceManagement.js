@@ -1,10 +1,8 @@
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import ReactApexChart from "react-apexcharts";
 import {
-  getAllCategories,
-  getAllServices,
   createCategories,
   createService,
   updateCategories,
@@ -18,6 +16,15 @@ import {
   removeServicePolygon,
   toggleZoneRestriction,
 } from "../utils/axiosInstance";
+import { useAppDispatch, useAppSelector } from "store/hooks";
+import store from "store/store";
+import {
+  fetchCategories,
+  fetchServices,
+  invalidateReference,
+  selectCategoriesByType,
+  selectServices,
+} from "store/slices/referenceSlice";
 
 import {
   Flex,
@@ -72,6 +79,14 @@ import {
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
+import IconBox from "components/common/IconBox";
+import { MobileCard, MobileCardActions } from "components/common/MobileCard";
+import DataTable from "components/common/DataTable";
+import {
+  getSkeuomorphicCardStyle,
+  getSkeuomorphicIconBoxStyle,
+  skeuomorphicIconFilter,
+} from "components/common/skeuomorphicStyles";
 
 import {
   FaUsers,
@@ -82,8 +97,6 @@ import {
   FaTrash,
   FaSearch,
   FaCheckCircle,
-  FaChevronLeft,
-  FaChevronRight,
   FaExclamationTriangle,
   FaChartLine,
   FaPlus,
@@ -111,9 +124,19 @@ export default function ServiceManagement() {
   const customHoverColor = "#008080";
 
   // All state hooks - MUST BE IN SAME ORDER EVERY RENDER
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
   const [currentUser, setCurrentUser] = useState(null);
-  const [categories, setCategories] = useState([]);
-  const [services, setServices] = useState([]);
+  const dispatch = useAppDispatch();
+  // Shared reference collections (CRUD page: always force-fresh on load;
+  // cross-page cache invalidated after mutations below).
+  const categories = useAppSelector(selectCategoriesByType("service"));
+  const services = useAppSelector(selectServices);
 
 
   const [currentView, setCurrentView] = useState("categories");
@@ -554,20 +577,6 @@ export default function ServiceManagement() {
     }));
   };
 
-  const handleNextPage = () => {
-    if (currentView === "categories" && currentPage < totalCategoryPages) {
-      setCurrentPage(currentPage + 1);
-    } else if (currentView === "services" && currentPage < totalServicePages) {
-      setCurrentPage(currentPage + 1);
-    }
-  };
-
-  const handlePrevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
-  };
-
   const handleViewCategory = (category) => {
     setSelectedCategory(category);
     setViewModalType("category");
@@ -586,8 +595,9 @@ export default function ServiceManagement() {
     setSelectedService(null);
     setViewModalType("");
   };
-
   // Now define useCallback hooks that depend on the above functions
+  // CRUD page: force fresh reads (identical to legacy behavior); other pages
+  // reuse the cache until mutations invalidate it (see mutation handlers).
   const fetchData = useCallback(async () => {
     try {
       setIsLoadingData(true);
@@ -595,18 +605,11 @@ export default function ServiceManagement() {
       setIsLoadingServices(true);
 
 
-      const [categoryData, serviceData] = await Promise.all([
-        getAllCategories("service"),
-        getAllServices(),  // Using the function defined outside component
+      await Promise.all([
+        dispatch(fetchCategories({ categoryType: "service", force: true })).unwrap(),
+        dispatch(fetchServices({ force: true })).unwrap(),
 
       ]);
-
-      const categoriesRaw = categoryData.result || categoryData.data || categoryData.categories || categoryData || [];
-      const servicesRaw = serviceData.result || serviceData.data || serviceData.services || serviceData || [];
-
-      setCategories(Array.isArray(categoriesRaw) ? categoriesRaw : (categoriesRaw.categories || []));
-      setServices(Array.isArray(servicesRaw) ? servicesRaw : (servicesRaw.services || []));
-
 
 
     } catch (err) {
@@ -619,12 +622,20 @@ export default function ServiceManagement() {
         isClosable: true,
       });
     } finally {
-      setIsLoadingData(false);
-      setIsLoadingCategories(false);
-      setIsLoadingServices(false);
-
+      if (isMountedRef.current) {
+        setIsLoadingData(false);
+        setIsLoadingCategories(false);
+        setIsLoadingServices(false);
+      }
     }
-  }, [toast]);
+  }, [dispatch, toast]);
+
+  // Shared-cache invalidation after successful mutations: this page
+  // force-refreshes itself via fetchData, but Dashboard/Commission/CityZones
+  // reuse the cached service collections until invalidated here.
+  const invalidateSharedKeys = useCallback(() => {
+    dispatch(invalidateReference({ keys: ["categories:service", "services"] }));
+  }, [dispatch]);
 
   // All useEffect hooks must come after all useCallback hooks
   useEffect(() => {
@@ -738,6 +749,7 @@ export default function ServiceManagement() {
         duration: 3000,
         isClosable: true,
       });
+      invalidateSharedKeys();
       await fetchData();
       handleBack();
     } catch (err) {
@@ -791,6 +803,7 @@ export default function ServiceManagement() {
         duration: 3000,
         isClosable: true,
       });
+      invalidateSharedKeys();
       await fetchData();
       handleBack();
     } catch (error) {
@@ -859,6 +872,7 @@ export default function ServiceManagement() {
         });
       }
 
+      invalidateSharedKeys();
       await fetchData();
       closeDeleteModal();
     } catch (err) {
@@ -1044,6 +1058,7 @@ export default function ServiceManagement() {
         });
       }
 
+      invalidateSharedKeys();
       await fetchData();
       handleBack();
     } catch (err) {
@@ -1158,15 +1173,14 @@ export default function ServiceManagement() {
       await setServicePolygon(selectedService._id, polygon);
       toast({
         title: "Polygon Set",
-        description: "Service coverage polygon saved. Customers can only book inside this area.",
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
+          description: "Service coverage polygon saved. Customers can only book inside this area.",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+      invalidateSharedKeys();
       await fetchData();
-      const updated = await getAllServices();
-      const raw = updated.result || updated.data || updated.services || updated || [];
-      const svc = (Array.isArray(raw) ? raw : []).find((s) => s._id === selectedService._id);
+      const svc = selectServices(store.getState()).find((s) => s._id === selectedService._id);
       if (svc) setSelectedService(svc);
     } catch (err) {
       toast({
@@ -1195,10 +1209,9 @@ export default function ServiceManagement() {
         isClosable: true,
       });
       setPolygonInput("");
+      invalidateSharedKeys();
       await fetchData();
-      const updated = await getAllServices();
-      const raw = updated.result || updated.data || updated.services || updated || [];
-      const svc = (Array.isArray(raw) ? raw : []).find((s) => s._id === selectedService._id);
+      const svc = selectServices(store.getState()).find((s) => s._id === selectedService._id);
       if (svc) setSelectedService(svc);
     } catch (err) {
       toast({
@@ -1237,19 +1250,6 @@ export default function ServiceManagement() {
     </Tr>
   );
 
-  // Custom IconBox component
-  const IconBox = ({ children, ...rest }) => (
-    <Box
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      borderRadius="12px"
-      {...rest}
-    >
-      {children}
-    </Box>
-  );
-
   // Global scrollbar styles for mobile
   const globalScrollbarStyles = {
     '&::-webkit-scrollbar': {
@@ -1276,17 +1276,7 @@ export default function ServiceManagement() {
 
   // Mobile Card Component for Category
   const CategoryMobileCard = ({ cat, idx }) => (
-    <Box
-      p={3}
-      bg="white"
-      borderWidth="1px"
-      borderColor={`${customColor}20`}
-      borderRadius="md"
-      shadow="sm"
-      mb={3}
-      transition="all 0.2s"
-      _active={{ transform: "scale(0.98)" }}
-    >
+    <MobileCard>
       <Flex justify="space-between" align="center" mb={2}>
         <HStack spacing={2}>
           <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
@@ -1305,48 +1295,19 @@ export default function ServiceManagement() {
       <Text fontSize="2xs" color="gray.600" noOfLines={2} mb={3}>
         {cat.description || "No description provided."}
       </Text>
-      <Flex gap={2} justify="flex-end">
-        <IconButton
-          aria-label="View"
-          icon={<FaEye />}
-          size="xs"
-          colorScheme="blue"
-          variant="ghost"
-          onClick={() => handleViewCategory(cat)}
-        />
-        <IconButton
-          aria-label="Edit"
-          icon={<FaEdit />}
-          size="xs"
-          colorScheme="teal"
-          variant="ghost"
-          onClick={() => handleEditCategory(cat)}
-        />
-        <IconButton
-          aria-label="Delete"
-          icon={<FaTrash />}
-          size="xs"
-          colorScheme="red"
-          variant="ghost"
-          onClick={() => handleDeleteCategory(cat)}
-        />
-      </Flex>
-    </Box>
+      <MobileCardActions
+        actions={[
+          { label: "View", icon: <FaEye />, colorScheme: "blue", onClick: () => handleViewCategory(cat) },
+          { label: "Edit", icon: <FaEdit />, colorScheme: "teal", onClick: () => handleEditCategory(cat) },
+          { label: "Delete", icon: <FaTrash />, colorScheme: "red", onClick: () => handleDeleteCategory(cat) },
+        ]}
+      />
+    </MobileCard>
   );
 
   // Mobile Card Component for Service
   const ServiceMobileCard = ({ service, idx }) => (
-    <Box
-      p={3}
-      bg="white"
-      borderWidth="1px"
-      borderColor={`${customColor}20`}
-      borderRadius="md"
-      shadow="sm"
-      mb={3}
-      transition="all 0.2s"
-      _active={{ transform: "scale(0.98)" }}
-    >
+    <MobileCard>
       <Flex justify="space-between" align="start" mb={2}>
         <VStack align="start" spacing={0}>
           <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1} maxW="180px">
@@ -1372,33 +1333,14 @@ export default function ServiceManagement() {
         <Text fontWeight="bold" fontSize="xs" ml="auto">₹{service.serviceCost}</Text>
       </HStack>
 
-      <Flex gap={2} justify="flex-end">
-        <IconButton
-          aria-label="View"
-          icon={<FaEye />}
-          size="xs"
-          colorScheme="blue"
-          variant="ghost"
-          onClick={() => handleViewService(service)}
-        />
-        <IconButton
-          aria-label="Edit"
-          icon={<FaEdit />}
-          size="xs"
-          colorScheme="teal"
-          variant="ghost"
-          onClick={() => handleEditService(service)}
-        />
-        <IconButton
-          aria-label="Delete"
-          icon={<FaTrash />}
-          size="xs"
-          colorScheme="red"
-          variant="ghost"
-          onClick={() => handleDeleteService(service)}
-        />
-      </Flex>
-    </Box>
+      <MobileCardActions
+        actions={[
+          { label: "View", icon: <FaEye />, colorScheme: "blue", onClick: () => handleViewService(service) },
+          { label: "Edit", icon: <FaEdit />, colorScheme: "teal", onClick: () => handleEditService(service) },
+          { label: "Delete", icon: <FaTrash />, colorScheme: "red", onClick: () => handleDeleteService(service) },
+        ]}
+      />
+    </MobileCard>
   );
 
   // Render Form Views (Add/Edit Category/Service)
@@ -2421,272 +2363,114 @@ export default function ServiceManagement() {
       >
         <Grid
           templateColumns={{ base: "1fr 1fr", md: "1fr 1fr 1fr 1fr" }}
-          gap={{ base: "8px", md: "10px" }}
-          mb={{ base: "8px", md: "12px" }}
+          gap={{ base: "8px", md: "12px" }}
+          mb={{ base: "10px", md: "14px" }}
         >
-          {/* All Categories Card */}
+          {/* 1. All Categories */}
           <Card
-            minH={{ base: "55px", md: "60px" }}
+            minH={{ base: "65px", md: "75px" }}
+            borderRadius="20px"
             cursor="pointer"
             onClick={() => setCurrentView("categories")}
-            border={currentView === "categories" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "categories" ? customColor : `${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "none", md: "translateY(-2px)" },
-              shadow: { base: "none", md: "lg" },
-              _before: {
-                opacity: 1,
-              },
-              borderColor: customColor,
-            }}
+            p={0}
+            {...getSkeuomorphicCardStyle(false, currentView === "categories", customColor)}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
-              <Flex flexDirection="row" align="center" justify="center" w="100%">
+            <CardBody p={{ base: 2.5, md: 3.5 }}>
+              <Flex align="center" justify="space-between" w="100%">
                 <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }}
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="1px"
-                  >
+                  <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.600" fontWeight="bold" pb="2px">
                     All Categories
                   </StatLabel>
-                  <Flex>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                      {isLoadingCategories ? <Spinner size="xs" /> : categories.length}
-                    </StatNumber>
-                  </Flex>
+                  <StatNumber fontSize={{ base: "md", md: "lg" }} color={textColor} fontWeight="800">
+                    {isLoadingCategories ? <Spinner size="xs" /> : categories.length}
+                  </StatNumber>
                 </Stat>
-                <IconBox
-                  h={{ base: "28px", md: "32px" }}
-                  w={{ base: "28px", md: "32px" }}
-                  bg={customColor}
-                  transition="all 0.2s ease-in-out"
-                >
-                  <Icon
-                    as={MdCategory}
-                    h={{ base: "14px", md: "18px" }}
-                    w={{ base: "14px", md: "18px" }}
-                    color="white"
-                  />
+                <IconBox h={{ base: "36px", md: "42px" }} w={{ base: "36px", md: "42px" }} flexShrink={0} ml={2} {...getSkeuomorphicIconBoxStyle(customColor)}>
+                  <Icon as={MdCategory} boxSize={{ base: "18px", md: "20px" }} color="white" sx={skeuomorphicIconFilter} />
                 </IconBox>
               </Flex>
             </CardBody>
           </Card>
 
-          {/* All Services Card */}
+          {/* 2. All Services */}
           <Card
-            minH={{ base: "55px", md: "60px" }}
+            minH={{ base: "65px", md: "75px" }}
+            borderRadius="20px"
             cursor="pointer"
             onClick={() => setCurrentView("services")}
-            border={currentView === "services" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "services" ? customColor : `${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "none", md: "translateY(-2px)" },
-              shadow: { base: "none", md: "lg" },
-              _before: {
-                opacity: 1,
-              },
-              borderColor: customColor,
-            }}
+            p={0}
+            {...getSkeuomorphicCardStyle(false, currentView === "services", customColor)}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
-              <Flex flexDirection="row" align="center" justify="center" w="100%">
+            <CardBody p={{ base: 2.5, md: 3.5 }}>
+              <Flex align="center" justify="space-between" w="100%">
                 <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }}
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="1px"
-                  >
+                  <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.600" fontWeight="bold" pb="2px">
                     All Services
                   </StatLabel>
-                  <Flex>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                      {isLoadingServices ? <Spinner size="xs" /> : services.length}
-                    </StatNumber>
-                  </Flex>
+                  <StatNumber fontSize={{ base: "md", md: "lg" }} color={textColor} fontWeight="800">
+                    {isLoadingServices ? <Spinner size="xs" /> : services.length}
+                  </StatNumber>
                 </Stat>
-                <IconBox
-                  h={{ base: "28px", md: "32px" }}
-                  w={{ base: "28px", md: "32px" }}
-                  bg={customColor}
-                  transition="all 0.2s ease-in-out"
-                >
-                  <Icon
-                    as={FaCheckCircle}
-                    h={{ base: "14px", md: "18px" }}
-                    w={{ base: "14px", md: "18px" }}
-                    color="white"
-                  />
+                <IconBox h={{ base: "36px", md: "42px" }} w={{ base: "36px", md: "42px" }} flexShrink={0} ml={2} {...getSkeuomorphicIconBoxStyle("blue.500")}>
+                  <Icon as={FaCheckCircle} boxSize={{ base: "18px", md: "20px" }} color="white" sx={skeuomorphicIconFilter} />
                 </IconBox>
               </Flex>
             </CardBody>
           </Card>
 
-          {/* Active Services Card */}
+          {/* 3. Active Services */}
           <Card
-            minH={{ base: "55px", md: "60px" }}
+            minH={{ base: "65px", md: "75px" }}
+            borderRadius="20px"
             cursor="pointer"
             onClick={() => setCurrentView("serviceAnalysis")}
-            border={currentView === "serviceAnalysis" || currentView === "revenueAnalysis" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "serviceAnalysis" || currentView === "revenueAnalysis" ? customColor : `${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "none", md: "translateY(-2px)" },
-              shadow: { base: "none", md: "lg" },
-              _before: {
-                opacity: 1,
-              },
-              borderColor: customColor,
-            }}
+            p={0}
+            {...getSkeuomorphicCardStyle(false, currentView === "serviceAnalysis" || currentView === "revenueAnalysis", customColor)}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
-              <Flex flexDirection="row" align="center" justify="center" w="100%">
+            <CardBody p={{ base: 2.5, md: 3.5 }}>
+              <Flex align="center" justify="space-between" w="100%">
                 <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }}
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="1px"
-                  >
+                  <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.600" fontWeight="bold" pb="2px">
                     Active Services
                   </StatLabel>
-                  <Flex>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                      {isLoadingServices ? <Spinner size="xs" /> : stats.activeServices}
-                    </StatNumber>
-                  </Flex>
-                  <Text fontSize={{ base: "2xs", md: "xs" }} color="gray.500" mt={{ base: 0.5, md: 1 }}>
+                  <StatNumber fontSize={{ base: "md", md: "lg" }} color={textColor} fontWeight="800">
+                    {isLoadingServices ? <Spinner size="xs" /> : stats.activeServices}
+                  </StatNumber>
+                  <Text fontSize="10px" color="gray.500" mt={0.5}>
                     {stats.popularServices} popular
                   </Text>
                 </Stat>
-                <IconBox
-                  h={{ base: "28px", md: "32px" }}
-                  w={{ base: "28px", md: "32px" }}
-                  bg={customColor}
-                  transition="all 0.2s ease-in-out"
-                >
-                  <Icon
-                    as={FaChartLine}
-                    h={{ base: "14px", md: "18px" }}
-                    w={{ base: "14px", md: "18px" }}
-                    color="white"
-                  />
+                <IconBox h={{ base: "36px", md: "42px" }} w={{ base: "36px", md: "42px" }} flexShrink={0} ml={2} {...getSkeuomorphicIconBoxStyle("teal.500")}>
+                  <Icon as={FaChartLine} boxSize={{ base: "18px", md: "20px" }} color="white" sx={skeuomorphicIconFilter} />
                 </IconBox>
               </Flex>
             </CardBody>
           </Card>
 
-          {/* Total Revenue Card */}
+          {/* 4. Total Revenue */}
           <Card
-            minH={{ base: "55px", md: "60px" }}
+            minH={{ base: "65px", md: "75px" }}
+            borderRadius="20px"
             cursor="pointer"
             onClick={() => setCurrentView("revenueAnalysis")}
-            border={currentView === "revenueAnalysis" ? "2px solid" : "1px solid"}
-            borderColor={currentView === "revenueAnalysis" ? customColor : `${customColor}30`}
-            transition="all 0.2s ease-in-out"
-            bg="white"
-            position="relative"
-            overflow="hidden"
-            _before={{
-              content: '""',
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-              opacity: 0,
-              transition: "opacity 0.2s ease-in-out",
-            }}
-            _hover={{
-              transform: { base: "none", md: "translateY(-2px)" },
-              shadow: { base: "none", md: "lg" },
-              _before: {
-                opacity: 1,
-              },
-              borderColor: customColor,
-            }}
+            p={0}
+            {...getSkeuomorphicCardStyle(false, currentView === "revenueAnalysis", customColor)}
           >
-            <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
-              <Flex flexDirection="row" align="center" justify="center" w="100%">
+            <CardBody p={{ base: 2.5, md: 3.5 }}>
+              <Flex align="center" justify="space-between" w="100%">
                 <Stat me="auto">
-                  <StatLabel
-                    fontSize={{ base: "2xs", md: "xs" }}
-                    color="gray.600"
-                    fontWeight="bold"
-                    pb="1px"
-                  >
+                  <StatLabel fontSize={{ base: "xs", md: "sm" }} color="gray.600" fontWeight="bold" pb="2px">
                     Total Revenue
                   </StatLabel>
-                  <Flex>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-                      {isLoadingServices ? <Spinner size="xs" /> :
-                        `₹${stats.totalRevenue.toLocaleString()}`
-                      }
-                    </StatNumber>
-                  </Flex>
-                  <Text fontSize={{ base: "2xs", md: "xs" }} color="green.500" mt={{ base: 0.5, md: 1 }}>
+                  <StatNumber fontSize={{ base: "md", md: "lg" }} color="green.600" fontWeight="800">
+                    {isLoadingServices ? <Spinner size="xs" /> : `₹${stats.totalRevenue.toLocaleString()}`}
+                  </StatNumber>
+                  <Text fontSize="10px" color="green.600" mt={0.5}>
                     {services.length} services
                   </Text>
                 </Stat>
-                <IconBox
-                  h={{ base: "28px", md: "32px" }}
-                  w={{ base: "28px", md: "32px" }}
-                  bg="green.500"
-                  transition="all 0.2s ease-in-out"
-                >
-                  <Icon
-                    as={FaChartLine}
-                    h={{ base: "12px", md: "14px" }}
-                    w={{ base: "12px", md: "14px" }}
-                    color="white"
-                  />
+                <IconBox h={{ base: "36px", md: "42px" }} w={{ base: "36px", md: "42px" }} flexShrink={0} ml={2} {...getSkeuomorphicIconBoxStyle("green.500")}>
+                  <Icon as={FaChartLine} boxSize={{ base: "18px", md: "20px" }} color="white" sx={skeuomorphicIconFilter} />
                 </IconBox>
               </Flex>
             </CardBody>
@@ -2835,180 +2619,112 @@ export default function ServiceManagement() {
                       overflow="hidden"
                     >
                       {/* Desktop Table View */}
-                      <Box
-                        display={{ base: "none", md: "block" }}
-                        overflow="auto"
-                        css={globalScrollbarStyles}
-                      >
-                        <Table variant="simple" size="sm" bg="transparent">
-                          {/* Fixed Header */}
-                          <Thead>
-                            <Tr>
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={2}
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                #
-                              </Th>
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={2}
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                Category
-                              </Th>
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={2}
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                Description
-                              </Th>
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={2}
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                Status
-                              </Th>
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={2}
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                Actions
-                              </Th>
-                            </Tr>
-                          </Thead>
-
-                          {/* Scrollable Body */}
-                          <Tbody bg="transparent">
-                            {currentCategories.length > 0 ? (
-                              currentCategories.map((cat, idx) => (
-                                <Tr
-                                  key={cat._id || idx}
-                                  bg="transparent"
-                                  _hover={{ bg: `${customColor}10` }}
-                                  borderBottom="1px"
-                                  borderColor={`${customColor}20`}
-                                  height="40px"
+                      <Box display={{ base: "none", md: "block" }} flex={1} minH={0}>
+                        <DataTable
+                          showIndex
+                          keyExtractor={(cat, i) => cat._id || `cat-${i}`}
+                          rows={currentCategories}
+                          isLoading={isLoadingData && currentCategories.length === 0}
+                          emptyTitle={categories.length === 0 ? "No categories found" : "No categories match your search"}
+                          pagination={
+                            filteredCategories.length > 0
+                              ? {
+                                  page: currentPage,
+                                  totalPages: totalCategoryPages || 1,
+                                  totalRows: filteredCategories.length,
+                                  rowsPerPage: itemsPerPage,
+                                  onPageChange: setCurrentPage,
+                                  showRowsPerPage: false,
+                                  label: "categories",
+                                }
+                              : undefined
+                          }
+                          columns={[
+                            {
+                              key: "name",
+                              label: "Category",
+                              minWidth: "180px",
+                              cell: (cat) => (
+                                <Text fontWeight="medium" noOfLines={1} maxW="220px" title={cat.category || cat.name}>
+                                  {cat.category || cat.name}
+                                </Text>
+                              ),
+                            },
+                            {
+                              key: "description",
+                              label: "Description",
+                              minWidth: "220px",
+                              truncate: true,
+                              cell: (cat) => (
+                                <Text noOfLines={1} maxW="220px" color="gray.600">
+                                  {cat.description || "-"}
+                                </Text>
+                              ),
+                            },
+                            {
+                              key: "status",
+                              label: "Status",
+                              align: "center",
+                              width: "120px",
+                              cell: (cat) => (
+                                <Badge
+                                  colorScheme={cat.isActive ? "green" : "red"}
+                                  px={2}
+                                  py={0.5}
+                                  borderRadius="full"
+                                  fontSize="2xs"
+                                  fontWeight="bold"
                                 >
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
-                                    {indexOfFirstItem + idx + 1}
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`} fontWeight="medium" fontSize="xs" py={1.5}>
-                                    {cat.category || cat.name}
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
-                                    <Text noOfLines={1} maxW="200px">
-                                      {cat.description || "-"}
-                                    </Text>
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
-                                    <Badge
-                                      colorScheme={cat.isActive ? "green" : "red"}
-                                      px={2}
-                                      py={0.5}
-                                      borderRadius="full"
-                                      fontSize="2xs"
-                                      fontWeight="bold"
-                                    >
-                                      {cat.isActive ? "Active" : "Inactive"}
-                                    </Badge>
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={1.5}>
-                                    <Flex gap={2}>
-                                      <IconButton
-                                        aria-label="View category"
-                                        icon={<FaEye />}
-                                        bg="white"
-                                        color="blue.500"
-                                        border="1px"
-                                        borderColor="blue.500"
-                                        _hover={{ bg: "blue.500", color: "white" }}
-                                        size="xs"
-                                        onClick={() => handleViewCategory(cat)}
-                                      />
-                                      <IconButton
-                                        aria-label="Edit category"
-                                        icon={<FaEdit />}
-                                        bg="white"
-                                        color={customColor}
-                                        border="1px"
-                                        borderColor={customColor}
-                                        _hover={{ bg: customColor, color: "white" }}
-                                        size="xs"
-                                        onClick={() => handleEditCategory(cat)}
-                                      />
-                                      <IconButton
-                                        aria-label="Delete category"
-                                        icon={<FaTrash />}
-                                        bg="white"
-                                        color="red.500"
-                                        border="1px"
-                                        borderColor="red.500"
-                                        _hover={{ bg: "red.500", color: "white" }}
-                                        size="xs"
-                                        onClick={() => handleDeleteCategory(cat)}
-                                      />
-                                    </Flex>
-                                  </Td>
-                                </Tr>
-                              ))
-                            ) : (
-                              <Tr>
-                                <Td colSpan={5} textAlign="center" py={6}>
-                                  <Text fontSize="xs">
-                                    {categories.length === 0
-                                      ? "No categories found."
-                                      : "No categories match your search."}
-                                  </Text>
-                                </Td>
-                              </Tr>
-                            )}
-                          </Tbody>
-                        </Table>
+                                  {cat.isActive ? "Active" : "Inactive"}
+                                </Badge>
+                              ),
+                            },
+                            {
+                              key: "actions",
+                              label: "Actions",
+                              align: "right",
+                              width: "150px",
+                              thProps: { pr: 6 },
+                              cell: (cat) => (
+                                <Flex gap={2} justify="flex-end">
+                                  <IconButton
+                                    aria-label="View category"
+                                    icon={<FaEye />}
+                                    bg="white"
+                                    color="blue.500"
+                                    border="1px"
+                                    borderColor="blue.500"
+                                    _hover={{ bg: "blue.500", color: "white" }}
+                                    size="xs"
+                                    onClick={() => handleViewCategory(cat)}
+                                  />
+                                  <IconButton
+                                    aria-label="Edit category"
+                                    icon={<FaEdit />}
+                                    bg="white"
+                                    color={customColor}
+                                    border="1px"
+                                    borderColor={customColor}
+                                    _hover={{ bg: customColor, color: "white" }}
+                                    size="xs"
+                                    onClick={() => handleEditCategory(cat)}
+                                  />
+                                  <IconButton
+                                    aria-label="Delete category"
+                                    icon={<FaTrash />}
+                                    bg="white"
+                                    color="red.500"
+                                    border="1px"
+                                    borderColor="red.500"
+                                    _hover={{ bg: "red.500", color: "white" }}
+                                    size="xs"
+                                    onClick={() => handleDeleteCategory(cat)}
+                                  />
+                                </Flex>
+                              ),
+                            },
+                          ]}
+                        />
                       </Box>
 
                       {/* Mobile Card View */}
@@ -3033,92 +2749,6 @@ export default function ServiceManagement() {
                         )}
                       </Box>
                     </Box>
-
-                    {/* Pagination Controls */}
-                    {filteredCategories.length > 0 && (
-                      <Box
-                        flexShrink={0}
-                        p="16px"
-                        borderTop="1px solid"
-                        borderColor={`${customColor}20`}
-                        bg="transparent"
-                      >
-                        <Flex
-                          justify="flex-end"
-                          align="center"
-                          gap={3}
-                        >
-
-
-                          {/* Pagination Controls */}
-                          <Flex align="center" gap={2}>
-                            <Button
-                              size="sm"
-                              onClick={handlePrevPage}
-                              isDisabled={currentPage === 1}
-                              leftIcon={<FaChevronLeft />}
-                              bg="white"
-                              color={customColor}
-                              border="1px"
-                              borderColor={customColor}
-                              _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{
-                                opacity: 0.5,
-                                cursor: "not-allowed",
-                                bg: "gray.100",
-                                color: "gray.400",
-                                borderColor: "gray.300"
-                              }}
-                            >
-                              <Text display={{ base: "none", sm: "block" }}>Previous</Text>
-                            </Button>
-
-                            {/* Page Number Display */}
-                            <Flex
-                              align="center"
-                              gap={2}
-                              bg={`${customColor}10`}
-                              px={3}
-                              py={1}
-                              borderRadius="6px"
-                              minW="80px"
-                              justify="center"
-                            >
-                              <Text fontSize="sm" fontWeight="bold" color={customColor}>
-                                {currentPage}
-                              </Text>
-                              <Text fontSize="sm" color="gray.500">
-                                /
-                              </Text>
-                              <Text fontSize="sm" color="gray.600" fontWeight="medium">
-                                {totalCategoryPages}
-                              </Text>
-                            </Flex>
-
-                            <Button
-                              size="sm"
-                              onClick={handleNextPage}
-                              isDisabled={currentPage === totalCategoryPages}
-                              rightIcon={<FaChevronRight />}
-                              bg="white"
-                              color={customColor}
-                              border="1px"
-                              borderColor={customColor}
-                              _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{
-                                opacity: 0.5,
-                                cursor: "not-allowed",
-                                bg: "gray.100",
-                                color: "gray.400",
-                                borderColor: "gray.300"
-                              }}
-                            >
-                              <Text display={{ base: "none", sm: "block" }}>Next</Text>
-                            </Button>
-                          </Flex>
-                        </Flex>
-                      </Box>
-                    )}
                   </>
                 )}
 
@@ -3132,284 +2762,181 @@ export default function ServiceManagement() {
                       overflow="hidden"
                     >
                       {/* Desktop Table View */}
-                      <Box
-                        display={{ base: "none", md: "block" }}
-                        overflow="auto"
-                        css={globalScrollbarStyles}
-                      >
-                        <Table variant="simple" size="sm" bg="transparent">
-                          {/* Fixed Header */}
-                          <Thead>
-                            <Tr verticalAlign="middle">
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={3}
-                                textAlign="center"
-                                w="50px"
-                                minW="50px"
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                #
-                              </Th>
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={3}
-                                textAlign="left"
-                                minW="180px"
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                SERVICE NAME
-                              </Th>
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={3}
-                                textAlign="left"
-                                minW="140px"
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                CATEGORY
-                              </Th>
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={3}
-                                textAlign="center"
-                                minW="120px"
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                TYPE
-                              </Th>
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={3}
-                                textAlign="center"
-                                minW="150px"
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                PRICING
-                              </Th>
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={3}
-                                textAlign="center"
-                                minW="140px"
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                STATUS
-                              </Th>
-                              <Th
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={`${customColor}`}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={3}
-                                textAlign="center"
-                                minW="130px"
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                ACTIONS
-                              </Th>
-                            </Tr>
-                          </Thead>
-
-                          {/* Scrollable Body */}
-                          <Tbody bg="transparent">
-                            {currentServices.length > 0 ? (
-                              currentServices.map((service, idx) => (
-                                <Tr
-                                  key={service._id || idx}
-                                  bg="transparent"
-                                  _hover={{ bg: `${customColor}10` }}
-                                  borderBottom="1px"
-                                  borderColor={`${customColor}20`}
-                                  verticalAlign="middle"
-                                >
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5} textAlign="center" fontWeight="medium">
-                                    {indexOfFirstItem + idx + 1}
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`} fontWeight="medium" fontSize="xs" py={2.5}>
-                                    <Text noOfLines={1} maxW="200px" title={service.serviceName}>
-                                      {service.serviceName}
-                                    </Text>
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5}>
-                                    <Text noOfLines={1} maxW="150px" color="gray.600">
-                                      {service.categoryId?.category ||
-                                        categories.find(c => c._id === service.categoryId)?.category ||
-                                        "N/A"}
-                                    </Text>
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5} textAlign="center">
-                                    <Flex justify="center" align="center">
-                                      <Badge
-                                        colorScheme={
-                                          service.serviceType === "Installation" ? "blue" :
-                                            service.serviceType === "Maintenance" ? "green" :
-                                              service.serviceType === "Repair" ? "orange" : "purple"
-                                        }
-                                        fontSize="2xs"
-                                        px={2.5}
-                                        py={0.5}
-                                        borderRadius="full"
-                                        fontWeight="semibold"
-                                      >
-                                        {service.serviceType}
-                                      </Badge>
-                                    </Flex>
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5} textAlign="center">
-                                    <HStack justify="center" spacing={2} align="center">
-                                      <Badge
-                                        colorScheme={service.pricingType === "fixed" ? "green" : "blue"}
-                                        fontSize="3xs"
-                                        px={2}
-                                        py={0.5}
-                                        borderRadius="full"
-                                        textTransform="capitalize"
-                                      >
-                                        {service.pricingType}
-                                      </Badge>
-                                      <Text fontSize="xs" fontWeight="bold" color="gray.800">
-                                        ₹{service.serviceCost}
-                                      </Text>
-                                    </HStack>
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5} textAlign="center">
-                                    <HStack justify="center" spacing={1.5} align="center">
-                                      <Badge
-                                        colorScheme={service.isActive ? "green" : "red"}
-                                        fontSize="2xs"
-                                        px={2}
-                                        py={0.5}
-                                        borderRadius="full"
-                                      >
-                                        {service.isActive ? "Active" : "Inactive"}
-                                      </Badge>
-                                      {service.isPopular && (
-                                        <Badge colorScheme="orange" fontSize="3xs" px={1.5} py={0.5} borderRadius="md" title="Popular">
-                                          P
-                                        </Badge>
-                                      )}
-                                      {service.isRecommended && (
-                                        <Badge colorScheme="teal" fontSize="3xs" px={1.5} py={0.5} borderRadius="md" title="Recommended">
-                                          R
-                                        </Badge>
-                                      )}
-                                    </HStack>
-                                  </Td>
-                                  <Td borderColor={`${customColor}20`} fontSize="xs" py={2.5} textAlign="center">
-                                    <HStack justify="center" spacing={1.5} align="center">
-                                      <IconButton
-                                        aria-label="View service"
-                                        icon={<FaEye />}
-                                        bg="white"
-                                        color="blue.500"
-                                        border="1px"
-                                        borderColor="blue.300"
-                                        _hover={{ bg: "blue.500", color: "white", borderColor: "blue.500" }}
-                                        size="xs"
-                                        h="28px"
-                                        w="28px"
-                                        borderRadius="md"
-                                        onClick={() => handleViewService(service)}
-                                      />
-                                      <IconButton
-                                        aria-label="Edit service"
-                                        icon={<FaEdit />}
-                                        bg="white"
-                                        color={customColor}
-                                        border="1px"
-                                        borderColor={`${customColor}50`}
-                                        _hover={{ bg: customColor, color: "white", borderColor: customColor }}
-                                        size="xs"
-                                        h="28px"
-                                        w="28px"
-                                        borderRadius="md"
-                                        onClick={() => handleEditService(service)}
-                                      />
-                                      <IconButton
-                                        aria-label="Delete service"
-                                        icon={<FaTrash />}
-                                        bg="white"
-                                        color="red.500"
-                                        border="1px"
-                                        borderColor="red.300"
-                                        _hover={{ bg: "red.500", color: "white", borderColor: "red.500" }}
-                                        size="xs"
-                                        h="28px"
-                                        w="28px"
-                                        borderRadius="md"
-                                        onClick={() => handleDeleteService(service)}
-                                      />
-                                    </HStack>
-                                  </Td>
-                                </Tr>
-                              ))
-                            ) : (
-                              <Tr>
-                                <Td colSpan={7} textAlign="center" py={6}>
-                                  <Text fontSize="xs">
-                                    {services.length === 0
-                                      ? "No services found."
-                                      : "No services match your search."}
+                      <Box display={{ base: "none", md: "block" }} flex={1} minH={0}>
+                        <DataTable
+                          showIndex
+                          keyExtractor={(service, i) => service._id || `svc-${i}`}
+                          rows={currentServices}
+                          isLoading={isLoadingData && currentServices.length === 0}
+                          emptyTitle={services.length === 0 ? "No services found" : "No services match your search"}
+                          pagination={
+                            filteredServices.length > 0
+                              ? {
+                                  page: currentPage,
+                                  totalPages: totalServicePages || 1,
+                                  totalRows: filteredServices.length,
+                                  rowsPerPage: itemsPerPage,
+                                  onPageChange: setCurrentPage,
+                                  showRowsPerPage: false,
+                                  label: "services",
+                                }
+                              : undefined
+                          }
+                          columns={[
+                            {
+                              key: "serviceName",
+                              label: "Service Name",
+                              minWidth: "180px",
+                              cell: (service) => (
+                                <Text fontWeight="medium" noOfLines={1} maxW="200px" title={service.serviceName}>
+                                  {service.serviceName}
+                                </Text>
+                              ),
+                            },
+                            {
+                              key: "category",
+                              label: "Category",
+                              minWidth: "140px",
+                              truncate: true,
+                              cell: (service) => (
+                                <Text noOfLines={1} maxW="150px" color="gray.600">
+                                  {service.categoryId?.category ||
+                                    categories.find((c) => c._id === service.categoryId)?.category ||
+                                    "N/A"}
+                                </Text>
+                              ),
+                            },
+                            {
+                              key: "type",
+                              label: "Type",
+                              align: "center",
+                              width: "130px",
+                              cell: (service) => (
+                                <Flex justify="center" align="center">
+                                  <Badge
+                                    colorScheme={
+                                      service.serviceType === "Installation" ? "blue" :
+                                        service.serviceType === "Maintenance" ? "green" :
+                                          service.serviceType === "Repair" ? "orange" : "purple"
+                                    }
+                                    fontSize="2xs"
+                                    px={2.5}
+                                    py={0.5}
+                                    borderRadius="full"
+                                    fontWeight="semibold"
+                                  >
+                                    {service.serviceType}
+                                  </Badge>
+                                </Flex>
+                              ),
+                            },
+                            {
+                              key: "pricing",
+                              label: "Pricing",
+                              align: "center",
+                              width: "160px",
+                              cell: (service) => (
+                                <HStack justify="center" spacing={2} align="center">
+                                  <Badge
+                                    colorScheme={service.pricingType === "fixed" ? "green" : "blue"}
+                                    fontSize="3xs"
+                                    px={2}
+                                    py={0.5}
+                                    borderRadius="full"
+                                    textTransform="capitalize"
+                                  >
+                                    {service.pricingType}
+                                  </Badge>
+                                  <Text fontSize="xs" fontWeight="bold" color="gray.800">
+                                    ₹{service.serviceCost}
                                   </Text>
-                                </Td>
-                              </Tr>
-                            )}
-                          </Tbody>
-                        </Table>
+                                </HStack>
+                              ),
+                            },
+                            {
+                              key: "status",
+                              label: "Status",
+                              align: "center",
+                              width: "150px",
+                              cell: (service) => (
+                                <HStack justify="center" spacing={1.5} align="center">
+                                  <Badge
+                                    colorScheme={service.isActive ? "green" : "red"}
+                                    fontSize="2xs"
+                                    px={2}
+                                    py={0.5}
+                                    borderRadius="full"
+                                  >
+                                    {service.isActive ? "Active" : "Inactive"}
+                                  </Badge>
+                                  {service.isPopular && (
+                                    <Badge colorScheme="orange" fontSize="3xs" px={1.5} py={0.5} borderRadius="md" title="Popular">
+                                      P
+                                    </Badge>
+                                  )}
+                                  {service.isRecommended && (
+                                    <Badge colorScheme="teal" fontSize="3xs" px={1.5} py={0.5} borderRadius="md" title="Recommended">
+                                      R
+                                    </Badge>
+                                  )}
+                                </HStack>
+                              ),
+                            },
+                            {
+                              key: "actions",
+                              label: "Actions",
+                              align: "right",
+                              width: "160px",
+                              thProps: { pr: 6 },
+                              cell: (service) => (
+                                <HStack justify="flex-end" spacing={1.5} align="center">
+                                  <IconButton
+                                    aria-label="View service"
+                                    icon={<FaEye />}
+                                    bg="white"
+                                    color="blue.500"
+                                    border="1px"
+                                    borderColor="blue.300"
+                                    _hover={{ bg: "blue.500", color: "white", borderColor: "blue.500" }}
+                                    size="xs"
+                                    h="28px"
+                                    w="28px"
+                                    borderRadius="md"
+                                    onClick={() => handleViewService(service)}
+                                  />
+                                  <IconButton
+                                    aria-label="Edit service"
+                                    icon={<FaEdit />}
+                                    bg="white"
+                                    color={customColor}
+                                    border="1px"
+                                    borderColor={`${customColor}50`}
+                                    _hover={{ bg: customColor, color: "white", borderColor: customColor }}
+                                    size="xs"
+                                    h="28px"
+                                    w="28px"
+                                    borderRadius="md"
+                                    onClick={() => handleEditService(service)}
+                                  />
+                                  <IconButton
+                                    aria-label="Delete service"
+                                    icon={<FaTrash />}
+                                    bg="white"
+                                    color="red.500"
+                                    border="1px"
+                                    borderColor="red.300"
+                                    _hover={{ bg: "red.500", color: "white", borderColor: "red.500" }}
+                                    size="xs"
+                                    h="28px"
+                                    w="28px"
+                                    borderRadius="md"
+                                    onClick={() => handleDeleteService(service)}
+                                  />
+                                </HStack>
+                              ),
+                            },
+                          ]}
+                        />
                       </Box>
 
                       {/* Mobile Card View */}
@@ -3434,92 +2961,6 @@ export default function ServiceManagement() {
                         )}
                       </Box>
                     </Box>
-
-                    {/* Pagination Controls */}
-                    {filteredServices.length > 0 && (
-                      <Box
-                        flexShrink={0}
-                        p="16px"
-                        borderTop="1px solid"
-                        borderColor={`${customColor}20`}
-                        bg="transparent"
-                      >
-                        <Flex
-                          justify="flex-end"
-                          align="center"
-                          gap={3}
-                        >
-
-
-                          {/* Pagination Controls */}
-                          <Flex align="center" gap={2}>
-                            <Button
-                              size="sm"
-                              onClick={handlePrevPage}
-                              isDisabled={currentPage === 1}
-                              leftIcon={<FaChevronLeft />}
-                              bg="white"
-                              color={customColor}
-                              border="1px"
-                              borderColor={customColor}
-                              _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{
-                                opacity: 0.5,
-                                cursor: "not-allowed",
-                                bg: "gray.100",
-                                color: "gray.400",
-                                borderColor: "gray.300"
-                              }}
-                            >
-                              <Text display={{ base: "none", sm: "block" }}>Previous</Text>
-                            </Button>
-
-                            {/* Page Number Display */}
-                            <Flex
-                              align="center"
-                              gap={2}
-                              bg={`${customColor}10`}
-                              px={3}
-                              py={1}
-                              borderRadius="6px"
-                              minW="80px"
-                              justify="center"
-                            >
-                              <Text fontSize="sm" fontWeight="bold" color={customColor}>
-                                {currentPage}
-                              </Text>
-                              <Text fontSize="sm" color="gray.500">
-                                /
-                              </Text>
-                              <Text fontSize="sm" color="gray.600" fontWeight="medium">
-                                {totalServicePages}
-                              </Text>
-                            </Flex>
-
-                            <Button
-                              size="sm"
-                              onClick={handleNextPage}
-                              isDisabled={currentPage === totalServicePages}
-                              rightIcon={<FaChevronRight />}
-                              bg="white"
-                              color={customColor}
-                              border="1px"
-                              borderColor={customColor}
-                              _hover={{ bg: customColor, color: "white" }}
-                              _disabled={{
-                                opacity: 0.5,
-                                cursor: "not-allowed",
-                                bg: "gray.100",
-                                color: "gray.400",
-                                borderColor: "gray.300"
-                              }}
-                            >
-                              <Text display={{ base: "none", sm: "block" }}>Next</Text>
-                            </Button>
-                          </Flex>
-                        </Flex>
-                      </Box>
-                    )}
                   </>
                 )}
 

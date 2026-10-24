@@ -13,6 +13,10 @@ export const listGeofenceCityZones = (params = {}) =>
 export const createGeofenceDistrict = (body) =>
   handle(apiClient.post("/admin/zone-geofence/districts", body));
 
+// Update district via geofence controller (Postman folder 4)
+export const updateGeofenceDistrict = (id, body) =>
+  handle(apiClient.put(`/admin/zone-geofence/districts/${id}`, body));
+
 // List districts via geofence controller
 export const listGeofenceDistricts = () =>
   handle(apiClient.get("/admin/zone-geofence/districts"));
@@ -48,6 +52,14 @@ export const auditJobBroadcast = (bookingId) =>
 // Zone health overview & geo-engine status
 export const getZoneHealthDashboard = () =>
   handle(apiClient.get("/admin/zone-geofence/zone-health-dashboard"));
+
+// Alias: collection lists both /health-dashboard and /zone-health-dashboard
+export const getHealthDashboard = () =>
+  handle(apiClient.get("/admin/zone-geofence/health-dashboard"));
+
+// Live monitor (Postman folder 4) — same list-districts handler, own route
+export const getLiveMonitor = (params = {}) =>
+  handle(apiClient.get("/admin/zone-geofence/live-monitor", { params }));
 
 // List technicians with geofence metrics: { districtId }
 export const listGeofenceTechnicians = (params = {}) =>

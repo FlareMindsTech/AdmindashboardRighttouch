@@ -8,7 +8,8 @@ export const badgeStyles = {
                 }
             },
             baseStyle: {
-                textTransform: "capitalize"
+                textTransform: "capitalize",
+                borderRadius: "full"
             }
 
         }

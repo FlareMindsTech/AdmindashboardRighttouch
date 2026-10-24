@@ -20,6 +20,10 @@ export const removeTechnicianDistrictPermission = (technicianId, districtId) =>
 export const getTechnicianZonePermissions = (technicianId) =>
   handle(apiClient.get(`/admin/technicians/${technicianId}/city-zones`));
 
+// Alias: collection also uses /zones for the same zone-permission resource
+export const getTechnicianZones = (technicianId) =>
+  handle(apiClient.get(`/admin/technicians/${technicianId}/zones`));
+
 // Approve zone(s): body can be { cityZoneIds: [id], reason } or cityZoneIds directly
 export const approveTechnicianZones = (technicianId, cityZoneIds, reason = "") => {
   const payload = typeof cityZoneIds === "object" && !Array.isArray(cityZoneIds) && cityZoneIds !== null
@@ -49,3 +53,15 @@ export const bulkRevokeTechnicianZones = (technicianId, cityZoneIds, reason = ""
       };
   return handle(apiClient.delete(`/admin/technicians/${technicianId}/city-zones`, { data: payload }));
 };
+
+// Remove (bulk) via POST /city-zones/remove — same effect as bulk revoke,
+// kept as separate export because the collection lists both verbs
+export const removeTechnicianZones = (technicianId, body) =>
+  handle(apiClient.post(`/admin/technicians/${technicianId}/city-zones/remove`, body));
+
+// Per-zone enable / disable (collection: POST .../zones/:zoneId/enable|disable)
+export const enableTechnicianZone = (technicianId, zoneId, body = {}) =>
+  handle(apiClient.post(`/admin/technicians/${technicianId}/zones/${zoneId}/enable`, body));
+
+export const disableTechnicianZone = (technicianId, zoneId, body = {}) =>
+  handle(apiClient.post(`/admin/technicians/${technicianId}/zones/${zoneId}/disable`, body));

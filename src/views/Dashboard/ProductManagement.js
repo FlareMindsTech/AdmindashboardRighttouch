@@ -1,10 +1,15 @@
 // ProductManagement.js
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
-  getAllCategories,
+  fetchCategories,
+  fetchProducts,
+  selectCategoriesByType,
+  selectProducts,
+} from "store/slices/referenceSlice";
+import {
   createCategories,
-  getAllProducts,
   createProducts,
   updateCategories,
   deleteCategory,
@@ -138,6 +143,13 @@ import {
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
+import IconBox from "components/common/IconBox";
+import { MobileCard, MobileCardActions } from "components/common/MobileCard";
+import {
+  getSkeuomorphicCardStyle,
+  getSkeuomorphicIconBoxStyle,
+  skeuomorphicIconFilter,
+} from "components/common/skeuomorphicStyles";
 
 import {
   FaUsers,
@@ -191,35 +203,12 @@ import {
 } from "react-icons/fa";
 import { MdCategory, MdInventory, MdWarning } from "react-icons/md";
 
-// Custom IconBox component
-const IconBox = ({ children, ...rest }) => (
-  <Box
-    display="flex"
-    alignItems="center"
-    justifyContent="center"
-    borderRadius="12px"
-    {...rest}
-  >
-    {children}
-  </Box>
-);
-
 // Mobile Card Component for Categories
 const CategoryMobileCard = ({ cat, idx, indexOfFirstItem, onView, onEdit, onDelete, onAddProduct }) => {
   const customColor = "#008080";
 
   return (
-    <Box
-      p={3}
-      bg="white"
-      borderWidth="1px"
-      borderColor={`${customColor}20`}
-      borderRadius="md"
-      shadow="sm"
-      mb={3}
-      transition="all 0.2s"
-      _active={{ transform: "scale(0.98)" }}
-    >
+    <MobileCard>
       <Flex justify="space-between" align="center" mb={2}>
         <HStack spacing={2}>
           {cat.image || cat.url ? (
@@ -268,34 +257,15 @@ const CategoryMobileCard = ({ cat, idx, indexOfFirstItem, onView, onEdit, onDele
           Add Product
         </Button>
 
-        <HStack spacing={1}>
-          <IconButton
-            aria-label="View"
-            icon={<FaEye />}
-            size="xs"
-            colorScheme="blue"
-            variant="ghost"
-            onClick={() => onView(cat)}
-          />
-          <IconButton
-            aria-label="Edit"
-            icon={<FaEdit />}
-            size="xs"
-            colorScheme="teal"
-            variant="ghost"
-            onClick={() => onEdit(cat)}
-          />
-          <IconButton
-            aria-label="Delete"
-            icon={<FaTrash />}
-            size="xs"
-            colorScheme="red"
-            variant="ghost"
-            onClick={() => onDelete(cat)}
-          />
-        </HStack>
+        <MobileCardActions
+          actions={[
+            { label: "View", icon: <FaEye />, colorScheme: "blue", onClick: () => onView(cat) },
+            { label: "Edit", icon: <FaEdit />, colorScheme: "teal", onClick: () => onEdit(cat) },
+            { label: "Delete", icon: <FaTrash />, colorScheme: "red", onClick: () => onDelete(cat) },
+          ]}
+        />
       </Flex>
-    </Box>
+    </MobileCard>
   );
 };
 
@@ -319,17 +289,7 @@ const ProductMobileCard = ({ prod, idx, indexOfFirstItem, onView, onEdit, onDele
       (prod.price ? `₹${prod.price}` : "N/A"));
 
   return (
-    <Box
-      p={3}
-      bg="white"
-      borderWidth="1px"
-      borderColor={`${customColor}20`}
-      borderRadius="md"
-      shadow="sm"
-      mb={3}
-      transition="all 0.2s"
-      _active={{ transform: "scale(0.98)" }}
-    >
+    <MobileCard>
       <Flex justify="space-between" align="center" mb={2}>
         <HStack spacing={2}>
           <Avatar
@@ -363,33 +323,14 @@ const ProductMobileCard = ({ prod, idx, indexOfFirstItem, onView, onEdit, onDele
         </Text>
       </SimpleGrid>
 
-      <Flex gap={2} justify="flex-end">
-        <IconButton
-          aria-label="View"
-          icon={<FaEye />}
-          size="xs"
-          colorScheme="blue"
-          variant="ghost"
-          onClick={() => onView(prod)}
-        />
-        <IconButton
-          aria-label="Edit"
-          icon={<FaEdit />}
-          size="xs"
-          colorScheme="teal"
-          variant="ghost"
-          onClick={() => onEdit(prod)}
-        />
-        <IconButton
-          aria-label="Delete"
-          icon={<FaTrash />}
-          size="xs"
-          colorScheme="red"
-          variant="ghost"
-          onClick={() => onDelete(prod)}
-        />
-      </Flex>
-    </Box>
+      <MobileCardActions
+        actions={[
+          { label: "View", icon: <FaEye />, colorScheme: "blue", onClick: () => onView(prod) },
+          { label: "Edit", icon: <FaEdit />, colorScheme: "teal", onClick: () => onEdit(prod) },
+          { label: "Delete", icon: <FaTrash />, colorScheme: "red", onClick: () => onDelete(prod) },
+        ]}
+      />
+    </MobileCard>
   );
 };
 
@@ -591,9 +532,28 @@ export default function ProductManagement() {
   const customColor = "#008080";
   const customHoverColor = "#006666";
 
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
   const [currentUser, setCurrentUser] = useState(null);
-  const [categories, setCategories] = useState([]);
-  const [products, setProducts] = useState([]);
+  const dispatch = useAppDispatch();
+  // Shared reference collections (CRUD page: always force-fresh on load).
+  // Product name normalization stays local (page-specific display rule).
+  const rawCategories = useAppSelector(selectCategoriesByType("product"));
+  const rawProducts = useAppSelector(selectProducts);
+  const categories = rawCategories;
+  const products = useMemo(
+    () =>
+      (Array.isArray(rawProducts) ? rawProducts : []).map((product) => ({
+        ...product,
+        name: product.name || product.productName || "Unnamed Product",
+      })),
+    [rawProducts]
+  );
   const [currentView, setCurrentView] = useState("categories");
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -2155,67 +2115,17 @@ export default function ProductManagement() {
     setCurrentUser(storedUser);
   }, [navigate, toast]);
 
-  // Fetch data
+  // Fetch data (CRUD page: force fresh reads, identical to legacy behavior)
   const fetchData = useCallback(async () => {
     try {
       setIsLoadingData(true);
       setIsLoadingCategories(true);
       setIsLoadingProducts(true);
 
-      const [categoryData, productData] = await Promise.all([
-        getAllCategories(),
-        getAllProducts()
+      await Promise.all([
+        dispatch(fetchCategories({ force: true })).unwrap(),
+        dispatch(fetchProducts({ force: true })).unwrap()
       ]);
-
-      // Parse categories
-      let categoriesArray = [];
-      if (Array.isArray(categoryData)) {
-        categoriesArray = categoryData;
-      } else if (categoryData && Array.isArray(categoryData.categories)) {
-        categoriesArray = categoryData.categories;
-      } else if (categoryData && Array.isArray(categoryData.data)) {
-        categoriesArray = categoryData.data;
-      } else if (categoryData?.data?.categories) {
-        categoriesArray = categoryData.data.categories;
-      } else if (categoryData?.result && Array.isArray(categoryData.result)) {
-        categoriesArray = categoryData.result;
-      } else if (categoryData?.result?.categories) {
-        categoriesArray = categoryData.result.categories;
-      } else {
-        const maybeArray = Object.values(categoryData || {}).find((v) => Array.isArray(v));
-        if (Array.isArray(maybeArray)) {
-          categoriesArray = maybeArray;
-        }
-      }
-      setCategories(categoriesArray);
-
-      // Parse products
-      let productsArray = [];
-      if (Array.isArray(productData)) {
-        productsArray = productData;
-      } else if (productData && Array.isArray(productData.products)) {
-        productsArray = productData.products;
-      } else if (productData && Array.isArray(productData.data)) {
-        productsArray = productData.data;
-      } else if (productData?.data?.products) {
-        productsArray = productData.data.products;
-      } else if (productData?.result && Array.isArray(productData.result)) {
-        productsArray = productData.result;
-      } else if (productData?.result?.products) {
-        productsArray = productData.result.products;
-      } else {
-        const maybeArray = Object.values(productData || {}).find((v) => Array.isArray(v));
-        if (Array.isArray(maybeArray)) {
-          productsArray = maybeArray;
-        }
-      }
-
-      const normalizedProducts = productsArray.map(product => ({
-        ...product,
-        name: product.name || product.productName || "Unnamed Product"
-      }));
-
-      setProducts(normalizedProducts);
 
     } catch (err) {
       console.error("Fetch error:", err);
@@ -2227,11 +2137,13 @@ export default function ProductManagement() {
         isClosable: true,
       });
     } finally {
-      setIsLoadingData(false);
-      setIsLoadingCategories(false);
-      setIsLoadingProducts(false);
+      if (isMountedRef.current) {
+        setIsLoadingData(false);
+        setIsLoadingCategories(false);
+        setIsLoadingProducts(false);
+      }
     }
-  }, [toast]);
+  }, [dispatch, toast]);
 
   useEffect(() => {
     if (currentUser) {
@@ -2541,12 +2453,15 @@ export default function ProductManagement() {
           isClosable: true,
         });
       } else if (deleteType === "product") {
-        await deleteProducts(itemToDelete._id);
+        const res = await deleteProducts(itemToDelete._id);
+        const wasArchived = res?.result?.archived === true || /archived/i.test(res?.message || "");
         toast({
-          title: "Product Deleted",
-          description: `"${itemToDelete.name}" has been deleted successfully.`,
-          status: "success",
-          duration: 3000,
+          title: wasArchived ? "Product Archived" : "Product Deleted",
+          description: wasArchived
+            ? `"${itemToDelete.name}" has bookings, so it was deactivated instead of deleted.`
+            : `"${itemToDelete.name}" has been deleted successfully.`,
+          status: wasArchived ? "warning" : "success",
+          duration: 4000,
           isClosable: true,
         });
       }
@@ -2554,9 +2469,43 @@ export default function ProductManagement() {
       await fetchData();
       closeDeleteModal();
     } catch (err) {
+      const status = err?.status;
+      const msg = err.message || `Failed to delete ${deleteType}`;
+      const isBookingConflict =
+        deleteType === "product" &&
+        (status === 409 || /active bookings|referenced in|Error: 409/i.test(msg));
+      if (isBookingConflict) {
+        // Old production backend still returns 409 (redeploy pending).
+        // Fallback: deactivate via existing update endpoint so the
+        // product disappears from active lists without backend change.
+        try {
+          await updateProducts(itemToDelete._id, { isActive: false });
+          toast({
+            title: "Product Archived",
+            description: `"${itemToDelete.name}" has bookings, so it was deactivated instead of deleted.`,
+            status: "warning",
+            duration: 4000,
+            isClosable: true,
+          });
+          await fetchData();
+          closeDeleteModal();
+          return;
+        } catch (archiveErr) {
+          toast({
+            title: "Archive Failed",
+            description: archiveErr.message || "Could not deactivate product.",
+            status: "error",
+            duration: 4000,
+            isClosable: true,
+          });
+          return;
+        } finally {
+          setIsDeleting(false);
+        }
+      }
       toast({
         title: `Error Deleting ${deleteType === "category" ? "Category" : "Product"}`,
-        description: err.message || `Failed to delete ${deleteType}`,
+        description: msg,
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -3548,18 +3497,14 @@ export default function ProductManagement() {
           >
             {/* 1. All Categories Card */}
             <Card
-              minH={{ base: "52px", md: "60px" }}
+              minH={{ base: "65px", md: "75px" }}
+              borderRadius="20px"
               cursor="pointer"
               onClick={() => setCurrentView("categories")}
-              border={currentView === "categories" ? "2px solid" : "1px solid"}
-              borderColor={currentView === "categories" ? customColor : `${customColor}30`}
-              transition="all 0.2s ease-in-out"
-              bg="white"
-              position="relative"
-              overflow="hidden"
-              _hover={{ transform: { base: "none", md: "translateY(-2px)" }, shadow: "md", borderColor: customColor }}
+              p={0}
+              {...getSkeuomorphicCardStyle(false, currentView === "categories", customColor)}
             >
-              <CardBody p={{ base: 2, md: 3 }}>
+              <CardBody p={{ base: 2.5, md: 3.5 }}>
                 <Flex align="center" justify="space-between" w="100%" gap={2}>
                   <Stat me="auto" minW="0" flex="1">
                     <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
@@ -3569,8 +3514,8 @@ export default function ProductManagement() {
                       {isLoadingCategories ? <Spinner size="xs" /> : totalCategories}
                     </StatNumber>
                   </Stat>
-                  <IconBox h="34px" w="34px" bg={customColor} flexShrink={0} borderRadius="10px">
-                    <Icon as={MdCategory} h="18px" w="18px" color="white" />
+                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle(customColor)}>
+                    <Icon as={MdCategory} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
                   </IconBox>
                 </Flex>
               </CardBody>
@@ -3578,16 +3523,14 @@ export default function ProductManagement() {
 
             {/* 2. All Products Card */}
             <Card
-              minH={{ base: "52px", md: "60px" }}
+              minH={{ base: "65px", md: "75px" }}
+              borderRadius="20px"
               cursor="pointer"
               onClick={() => setCurrentView("products")}
-              border={currentView === "products" ? "2px solid" : "1px solid"}
-              borderColor={currentView === "products" ? customColor : `${customColor}30`}
-              transition="all 0.2s ease-in-out"
-              bg="white"
-              _hover={{ transform: { base: "none", md: "translateY(-2px)" }, shadow: "md", borderColor: customColor }}
+              p={0}
+              {...getSkeuomorphicCardStyle(false, currentView === "products", customColor)}
             >
-              <CardBody p={{ base: 2, md: 3 }}>
+              <CardBody p={{ base: 2.5, md: 3.5 }}>
                 <Flex align="center" justify="space-between" w="100%" gap={2}>
                   <Stat me="auto" minW="0" flex="1">
                     <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
@@ -3597,8 +3540,8 @@ export default function ProductManagement() {
                       {isLoadingProducts ? <Spinner size="xs" /> : totalProducts}
                     </StatNumber>
                   </Stat>
-                  <IconBox h="34px" w="34px" bg={customColor} flexShrink={0} borderRadius="10px">
-                    <Icon as={FaBox} h="18px" w="18px" color="white" />
+                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle(customColor)}>
+                    <Icon as={FaBox} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
                   </IconBox>
                 </Flex>
               </CardBody>
@@ -3606,22 +3549,19 @@ export default function ProductManagement() {
 
             {/* 3. Product Quotes Card */}
             <Card
-              minH={{ base: "52px", md: "60px" }}
+              minH={{ base: "65px", md: "75px" }}
+              borderRadius="20px"
               cursor="pointer"
               onClick={() => setCurrentView("quotations")}
-              border={currentView === "quotations" ? "2px solid" : "1px solid"}
-              borderColor={currentView === "quotations" ? customColor : `${customColor}30`}
-              transition="all 0.2s ease-in-out"
-              bg="white"
-              position="relative"
-              _hover={{ transform: { base: "none", md: "translateY(-2px)" }, shadow: "md", borderColor: customColor }}
+              p={0}
+              {...getSkeuomorphicCardStyle(false, currentView === "quotations", customColor)}
             >
               {activeQuoteRequestsCount > 0 && (
                 <Badge colorScheme="red" variant="solid" borderRadius="full" px={2} py={0.5} fontSize="3xs" position="absolute" top="-8px" right="-6px" zIndex={3}>
                   {activeQuoteRequestsCount} NEW
                 </Badge>
               )}
-              <CardBody p={{ base: 2, md: 3 }}>
+              <CardBody p={{ base: 2.5, md: 3.5 }}>
                 <Flex align="center" justify="space-between" w="100%" gap={2}>
                   <Stat me="auto" minW="0" flex="1">
                     <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
@@ -3631,8 +3571,8 @@ export default function ProductManagement() {
                       {isLoadingQuotations ? <Spinner size="xs" /> : Math.max(quoteRequests.length, quotationsList.length)}
                     </StatNumber>
                   </Stat>
-                  <IconBox h="34px" w="34px" bg={customColor} flexShrink={0} borderRadius="10px">
-                    <Icon as={FaFileInvoiceDollar} h="18px" w="18px" color="white" />
+                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle(customColor)}>
+                    <Icon as={FaFileInvoiceDollar} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
                   </IconBox>
                 </Flex>
               </CardBody>
@@ -3640,16 +3580,14 @@ export default function ProductManagement() {
 
             {/* 4. Accepted Bookings Card */}
             <Card
-              minH={{ base: "52px", md: "60px" }}
+              minH={{ base: "65px", md: "75px" }}
+              borderRadius="20px"
               cursor="pointer"
               onClick={() => { setCurrentView("bookings"); setBookingStatusFilter("active"); }}
-              border={currentView === "bookings" ? "2px solid" : "1px solid"}
-              borderColor={currentView === "bookings" ? customColor : `${customColor}30`}
-              transition="all 0.2s ease-in-out"
-              bg="white"
-              _hover={{ transform: { base: "none", md: "translateY(-2px)" }, shadow: "md", borderColor: customColor }}
+              p={0}
+              {...getSkeuomorphicCardStyle(false, currentView === "bookings", customColor)}
             >
-              <CardBody p={{ base: 2, md: 3 }}>
+              <CardBody p={{ base: 2.5, md: 3.5 }}>
                 <Flex align="center" justify="space-between" w="100%" gap={2}>
                   <Stat me="auto" minW="0" flex="1">
                     <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
@@ -3659,8 +3597,8 @@ export default function ProductManagement() {
                       {bookingsLoading ? <Spinner size="xs" /> : acceptedBookingsCount}
                     </StatNumber>
                   </Stat>
-                  <IconBox h="34px" w="34px" bg="blue.500" flexShrink={0} borderRadius="10px">
-                    <Icon as={FaClipboardCheck} h="18px" w="18px" color="white" />
+                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle("blue.500")}>
+                    <Icon as={FaClipboardCheck} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
                   </IconBox>
                 </Flex>
               </CardBody>
@@ -3668,16 +3606,14 @@ export default function ProductManagement() {
 
             {/* 5. Inventory & Stock Card */}
             <Card
-              minH={{ base: "52px", md: "60px" }}
+              minH={{ base: "65px", md: "75px" }}
+              borderRadius="20px"
               cursor="pointer"
               onClick={() => setCurrentView("inventory")}
-              border={currentView === "inventory" ? "2px solid" : "1px solid"}
-              borderColor={currentView === "inventory" ? customColor : `${customColor}30`}
-              transition="all 0.2s ease-in-out"
-              bg="white"
-              _hover={{ transform: { base: "none", md: "translateY(-2px)" }, shadow: "md", borderColor: customColor }}
+              p={0}
+              {...getSkeuomorphicCardStyle(false, currentView === "inventory", customColor)}
             >
-              <CardBody p={{ base: 2, md: 3 }}>
+              <CardBody p={{ base: 2.5, md: 3.5 }}>
                 <Flex align="center" justify="space-between" w="100%" gap={2}>
                   <Stat me="auto" minW="0" flex="1">
                     <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
@@ -3687,8 +3623,8 @@ export default function ProductManagement() {
                       {isLoadingInventory ? <Spinner size="xs" /> : inventoryList.length || totalProducts}
                     </StatNumber>
                   </Stat>
-                  <IconBox h="34px" w="34px" bg="orange.400" flexShrink={0} borderRadius="10px">
-                    <Icon as={MdInventory} h="18px" w="18px" color="white" />
+                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle("orange.400")}>
+                    <Icon as={MdInventory} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
                   </IconBox>
                 </Flex>
               </CardBody>
@@ -3696,16 +3632,14 @@ export default function ProductManagement() {
 
             {/* 6. Payments Tracking Card */}
             <Card
-              minH={{ base: "52px", md: "60px" }}
+              minH={{ base: "65px", md: "75px" }}
+              borderRadius="20px"
               cursor="pointer"
               onClick={() => setCurrentView("payments")}
-              border={currentView === "payments" ? "2px solid" : "1px solid"}
-              borderColor={currentView === "payments" ? customColor : `${customColor}30`}
-              transition="all 0.2s ease-in-out"
-              bg="white"
-              _hover={{ transform: { base: "none", md: "translateY(-2px)" }, shadow: "md", borderColor: customColor }}
+              p={0}
+              {...getSkeuomorphicCardStyle(false, currentView === "payments", customColor)}
             >
-              <CardBody p={{ base: 2, md: 3 }}>
+              <CardBody p={{ base: 2.5, md: 3.5 }}>
                 <Flex align="center" justify="space-between" w="100%" gap={2}>
                   <Stat me="auto" minW="0" flex="1">
                     <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
@@ -3715,8 +3649,8 @@ export default function ProductManagement() {
                       {isLoadingPaymentsList ? <Spinner size="xs" /> : paymentsList.length || 0}
                     </StatNumber>
                   </Stat>
-                  <IconBox h="34px" w="34px" bg="purple.500" flexShrink={0} borderRadius="10px">
-                    <Icon as={FaCreditCard} h="18px" w="18px" color="white" />
+                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle("purple.500")}>
+                    <Icon as={FaCreditCard} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
                   </IconBox>
                 </Flex>
               </CardBody>
@@ -3724,16 +3658,14 @@ export default function ProductManagement() {
 
             {/* 7. Reconciliation & Refunds Card */}
             <Card
-              minH={{ base: "52px", md: "60px" }}
+              minH={{ base: "65px", md: "75px" }}
+              borderRadius="20px"
               cursor="pointer"
               onClick={() => setCurrentView("reconciliation")}
-              border={currentView === "reconciliation" ? "2px solid" : "1px solid"}
-              borderColor={currentView === "reconciliation" ? customColor : `${customColor}30`}
-              transition="all 0.2s ease-in-out"
-              bg="white"
-              _hover={{ transform: { base: "none", md: "translateY(-2px)" }, shadow: "md", borderColor: customColor }}
+              p={0}
+              {...getSkeuomorphicCardStyle(false, currentView === "reconciliation", customColor)}
             >
-              <CardBody p={{ base: 2, md: 3 }}>
+              <CardBody p={{ base: 2.5, md: 3.5 }}>
                 <Flex align="center" justify="space-between" w="100%" gap={2}>
                   <Stat me="auto" minW="0" flex="1">
                     <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
@@ -3743,8 +3675,8 @@ export default function ProductManagement() {
                       {isLoadingReconciliation ? <Spinner size="xs" /> : `${unmatchedPayments.length} Unmatched`}
                     </StatNumber>
                   </Stat>
-                  <IconBox h="34px" w="34px" bg="teal.600" flexShrink={0} borderRadius="10px">
-                    <Icon as={FaExchangeAlt} h="18px" w="18px" color="white" />
+                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle("teal.600")}>
+                    <Icon as={FaExchangeAlt} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
                   </IconBox>
                 </Flex>
               </CardBody>
@@ -3752,16 +3684,14 @@ export default function ProductManagement() {
 
             {/* 8. Financial Reports & Audit Card */}
             <Card
-              minH={{ base: "52px", md: "60px" }}
+              minH={{ base: "65px", md: "75px" }}
+              borderRadius="20px"
               cursor="pointer"
               onClick={() => setCurrentView("reports")}
-              border={currentView === "reports" || currentView === "audit-logs" ? "2px solid" : "1px solid"}
-              borderColor={currentView === "reports" || currentView === "audit-logs" ? customColor : `${customColor}30`}
-              transition="all 0.2s ease-in-out"
-              bg="white"
-              _hover={{ transform: { base: "none", md: "translateY(-2px)" }, shadow: "md", borderColor: customColor }}
+              p={0}
+              {...getSkeuomorphicCardStyle(false, currentView === "reports" || currentView === "audit-logs", customColor)}
             >
-              <CardBody p={{ base: 2, md: 3 }}>
+              <CardBody p={{ base: 2.5, md: 3.5 }}>
                 <Flex align="center" justify="space-between" w="100%" gap={2}>
                   <Stat me="auto" minW="0" flex="1">
                     <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
@@ -3771,8 +3701,8 @@ export default function ProductManagement() {
                       Overview
                     </StatNumber>
                   </Stat>
-                  <IconBox h="34px" w="34px" bg="green.500" flexShrink={0} borderRadius="10px">
-                    <Icon as={FaChartLine} h="18px" w="18px" color="white" />
+                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle("green.500")}>
+                    <Icon as={FaChartLine} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
                   </IconBox>
                 </Flex>
               </CardBody>
@@ -4312,8 +4242,8 @@ export default function ProductManagement() {
                                         <Tr
                                           key={qId}
                                           cursor="pointer"
-                                          _hover={{ bg: "teal.50/60", transform: "translateY(-1px)", shadow: "xs" }}
-                                          transition="all 0.15s"
+                                          _hover={{ bg: "teal.50/60" }}
+                                          transition="background 0.15s"
                                           onClick={() => handleOpenQuotationDetail(q)}
                                         >
                                           {/* QUOTATION ID POPOVER */}
@@ -7282,7 +7212,7 @@ export default function ProductManagement() {
                             leftIcon={<Icon as={FaEdit} />}
                             borderRadius="full"
                             onClick={() => {
-                              setSelectedQuotation(null);
+                              setSelectedQuotationItem(null);
                               handleOpenReviseModal(q);
                             }}
                           >

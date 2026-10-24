@@ -61,7 +61,7 @@ export const buttonStyles = {
       },
       baseStyle: {
         fontWeight: "bold",
-        borderRadius: "8px",
+        borderRadius: "6px",
         fontSize: "10px",
       },
     },

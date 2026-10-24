@@ -23,6 +23,7 @@ import {
   useToast,
   Image,
   Badge,
+  Link,
 } from "@chakra-ui/react";
 import IconBox from "components/Icons/IconBox";
 import {
@@ -40,13 +41,17 @@ import { Scrollbars } from "react-custom-scrollbars";
 import { NavLink } from "react-router-dom";
 import FlareMindslogo from "assets/img/fm logo.png";
 
-import { clearAuth, getToken } from "views/utils/axiosInstance";
 import { useAdminNotificationCounts } from "hooks/useAdminNotificationCounts";
+import { useAppDispatch, useAppSelector } from "store/hooks";
+import { logout, selectToken } from "store/slices/authSlice";
 
 function Sidebar(props) {
   const { sidebarVariant, logo, routes } = props;
   const mainPanel = React.useRef();
   const variantChange = "0.2s linear";
+  const dispatch = useAppDispatch();
+  // Subscribed auth token (Phase 2) — replaces direct getToken() reads.
+  const authToken = useAppSelector(selectToken);
 
   const { counts, markModuleRead } = useAdminNotificationCounts();
 
@@ -64,14 +69,71 @@ function Sidebar(props) {
     return null;
   };
 
-  const activeBg = useColorModeValue("#008080", "#008080"); // Purple background when active
-  const inactiveBg = useColorModeValue("white", "navy.700");
-  const activeColor = useColorModeValue("white", "white"); // White text when active
-  const inactiveColor = useColorModeValue("gray.400", "gray.400");
-  const sidebarActiveShadow = "0px 7px 11px rgba(0, 0, 0, 0.04)";
-  const sidebarBg = useColorModeValue("white", "navy.800");
-  const sidebarRadius = "20px";
+  // Sidebar Container Tokens: Clean, elegant white card (no bulky neumorphic shadow)
+  const sidebarContainerBg = useColorModeValue("#FFFFFF", "navy.800");
+  const sidebarContainerBorder = useColorModeValue(
+    "1px solid rgba(0, 0, 0, 0.06)",
+    "1px solid rgba(255, 255, 255, 0.08)"
+  );
+  const sidebarContainerShadow = useColorModeValue(
+    "0px 10px 30px rgba(0, 0, 0, 0.05)",
+    "0px 10px 30px rgba(0, 0, 0, 0.4)"
+  );
+  const sidebarRadius = "10px";
   const sidebarMargins = "0px";
+
+  // Papermorphic Menu Item Tokens ("Inside menus only")
+  const paperItemBg = useColorModeValue("#FFFFFF", "navy.700");
+  const paperItemBorder = useColorModeValue(
+    "1px solid rgba(226, 232, 240, 0.8)",
+    "1px solid rgba(255, 255, 255, 0.06)"
+  );
+  const paperItemShadow = useColorModeValue(
+    "0 1px 3px rgba(0, 0, 0, 0.04), 0 3px 8px rgba(0, 0, 0, 0.03)",
+    "0 1px 3px rgba(0, 0, 0, 0.3), 0 3px 8px rgba(0, 0, 0, 0.2)"
+  );
+  const paperItemHoverShadow = useColorModeValue(
+    "0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.03)",
+    "0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2)"
+  );
+  const paperItemHoverBorder = useColorModeValue(
+    "1px solid rgba(0, 128, 128, 0.25)",
+    "1px solid rgba(0, 128, 128, 0.4)"
+  );
+
+  const activePaperBg = useColorModeValue(
+    "linear-gradient(135deg, #008f8f 0%, #007373 100%)",
+    "linear-gradient(135deg, #008f8f 0%, #006666 100%)"
+  );
+  const activeColor = "white";
+  const activePaperShadow = useColorModeValue(
+    "0 4px 14px rgba(0, 128, 128, 0.35), 0 1px 3px rgba(0, 128, 128, 0.2)",
+    "0 4px 14px rgba(0, 0, 0, 0.5)"
+  );
+
+  const inactiveColor = useColorModeValue("#4A5568", "#CBD5E1");
+
+  // Paper chip icon boxes
+  const inactiveIconBg = useColorModeValue("#F7FAFC", "navy.800");
+  const inactiveIconBorder = useColorModeValue(
+    "1px solid rgba(226, 232, 240, 0.9)",
+    "1px solid rgba(255, 255, 255, 0.06)"
+  );
+  const inactiveIconShadow = useColorModeValue(
+    "0 1px 2px rgba(0, 0, 0, 0.03)",
+    "none"
+  );
+
+  // Footer paper card
+  const footerBg = useColorModeValue("#F8FAFC", "navy.700");
+  const footerBorder = useColorModeValue(
+    "1px solid rgba(226, 232, 240, 0.8)",
+    "1px solid rgba(255, 255, 255, 0.06)"
+  );
+  const footerShadow = useColorModeValue(
+    "0 1px 3px rgba(0, 0, 0, 0.02)",
+    "none"
+  );
 
   // Desktop logout / signin dialog state
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
@@ -88,7 +150,9 @@ function Sidebar(props) {
   const handleConfirmLogout = () => {
     try {
       closeLogout();
-      clearAuth();
+      // Canonical logout: clears legacy storage (same cleanup as before)
+      // and resets Redux auth state.
+      dispatch(logout());
       toast({
         title: "Logged out successfully",
         description: "Redirecting to the sign-in page...",
@@ -172,21 +236,30 @@ function Sidebar(props) {
             boxSize="initial"
             justifyContent="flex-start"
             alignItems="center"
-            mb={{ base: "4px", sm: "5px", md: "6px", lg: "6px", xl: "6px" }}
-            mx={{ base: "auto", sm: "auto", md: "auto", lg: "auto", xl: "auto" }}
-            ps={{ base: "8px", sm: "9px", md: "10px", lg: "12px", xl: "16px" }}
-            py={{ base: "8px", sm: "10px", md: "12px", lg: "12px", xl: "12px" }}
-            borderRadius="15px"
+            mb={{ base: "8px", md: "10px" }}
+            mx="auto"
+            ps={{ base: "10px", md: "14px" }}
+            py={{ base: "10px", md: "12px" }}
+            borderRadius="6px"
             w="100%"
-            bg={"transparent"}
-            color={inactiveColor}
-            boxShadow={"none"}
-            _hover={{ bg: "gray.50" }}
-            _active={{ bg: activeBg, transform: "none", borderColor: "transparent" }}
+            bg={paperItemBg}
+            color={useColorModeValue("#E53E3E", "#FC8181")}
+            boxShadow={paperItemShadow}
+            border={paperItemBorder}
+            transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+            _hover={{
+              bg: useColorModeValue("#FFF5F5", "#2D1D1D"),
+              borderColor: useColorModeValue("#FED7D7", "#742A2A"),
+              boxShadow: paperItemHoverShadow,
+              transform: "translateY(-1.5px)",
+            }}
+            _active={{
+              transform: "translateY(1px)",
+              boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+            }}
             _focus={{ boxShadow: "none" }}
             onClick={() => {
-              const token = getToken();
-              if (!token) {
+              if (!authToken) {
                 // If not logged in, prompt to go to sign-in
                 openSigninPrompt();
                 return;
@@ -194,18 +267,23 @@ function Sidebar(props) {
               openLogout();
             }}
           >
-            <Flex>
+            <Flex align="center">
               <IconBox
-                bg={inactiveBg}
-                color={"blue.500"}
-                h={{ base: "24px", sm: "26px", md: "28px", lg: "30px", xl: "30px" }}
-                w={{ base: "24px", sm: "26px", md: "28px", lg: "30px", xl: "30px" }}
-                me={{ base: "8px", sm: "10px", md: "12px", lg: "12px", xl: "12px" }}
+                bg={useColorModeValue("#FFF5F5", "#2D1D1D")}
+                color={"#E53E3E"}
+                h="32px"
+                w="32px"
+                borderRadius="6px"
+                border="1px solid"
+                borderColor={useColorModeValue("#FED7D7", "#742A2A")}
+                boxShadow={inactiveIconShadow}
+                me="12px"
                 transition="all 0.2s ease-in-out"
+                flexShrink={0}
               >
                 {prop.icon}
               </IconBox>
-              <Text my="auto" fontSize={{ base: "xs", sm: "sm", md: "sm", lg: "sm", xl: "sm" }}>
+              <Text my="auto" fontSize={{ base: "xs", sm: "sm" }} fontWeight="600">
                 {document.documentElement.dir === "rtl" ? prop.rtlName : prop.name}
               </Text>
             </Flex>
@@ -232,74 +310,57 @@ function Sidebar(props) {
               justifyContent="flex-start"
               alignItems="center"
               mb={{
-                base: "4px",    // 320px - 480px
-                sm: "5px",      // 481px - 767px
-                md: "6px",      // 768px - 1024px
-                lg: "6px",      // 1025px - 1280px
-                xl: "6px"       // 1281px +
+                base: "8px",
+                md: "10px",
               }}
-              mx={{
-                base: "auto",   // 320px - 480px
-                sm: "auto",     // 481px - 767px
-                md: "auto",     // 768px - 1024px
-                lg: "auto",     // 1025px - 1280px
-                xl: "auto"      // 1281px +
-              }}
+              mx="auto"
               ps={{
-                base: "8px",    // 320px - 480px
-                sm: "9px",      // 481px - 767px
-                md: "10px",     // 768px - 1024px
-                lg: "12px",     // 1025px - 1280px
-                xl: "16px"      // 1281px +
+                base: "10px",
+                md: "12px",
+              }}
+              pe={{
+                base: "10px",
+                md: "10px",
               }}
               py={{
-                base: "8px",    // 320px - 480px
-                sm: "10px",     // 481px - 767px
-                md: "12px",     // 768px - 1024px
-                lg: "12px",     // 1025px - 1280px
-                xl: "12px"      // 1281px +
+                base: "10px",
+                md: "12px",
               }}
-              borderRadius="15px"
+              borderRadius="6px"
               w="100%"
-              bg={isActive ? activeBg : "transparent"}
+              bg={isActive ? activePaperBg : paperItemBg}
               color={isActive ? activeColor : inactiveColor}
-              boxShadow={isActive ? sidebarActiveShadow : "none"}
+              boxShadow={isActive ? activePaperShadow : paperItemShadow}
+              border={isActive ? "1px solid rgba(0, 128, 128, 0.2)" : paperItemBorder}
+              transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
               _hover={{
-                bg: isActive ? activeBg : "gray.50",
+                bg: isActive ? activePaperBg : paperItemBg,
+                boxShadow: isActive ? activePaperShadow : paperItemHoverShadow,
+                borderColor: isActive ? "rgba(0, 128, 128, 0.3)" : paperItemHoverBorder,
+                color: isActive ? activeColor : "#008080",
+                transform: isActive ? "none" : "translateY(-1.5px)",
               }}
               _active={{
-                bg: activeBg,
-                transform: "none",
-                borderColor: "transparent",
+                transform: "translateY(1px)",
+                boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
               }}
               _focus={{ boxShadow: "none" }}
             >
               <Flex align="center" justify="space-between" w="100%" minW="0" gap={2}>
                 <Flex align="center" minW="0" flex="1">
                   <IconBox
-                    bg={isActive ? "white" : inactiveBg} // White background when active
-                    color={isActive ? "#008080" : "blue.500"} // Purple icon when active, blue when inactive
-                    h={{
-                      base: "24px",  // 320px - 480px
-                      sm: "26px",    // 481px - 767px
-                      md: "28px",    // 768px - 1024px
-                      lg: "30px",    // 1025px - 1280px
-                      xl: "30px"     // 1281px +
-                    }}
-                    w={{
-                      base: "24px",  // 320px - 480px
-                      sm: "26px",    // 481px - 767px
-                      md: "28px",    // 768px - 1024px
-                      lg: "30px",    // 1025px - 1280px
-                      xl: "30px"     // 1281px +
-                    }}
-                    me={{
-                      base: "8px",   // 320px - 480px
-                      sm: "10px",    // 481px - 767px
-                      md: "12px",    // 768px - 1024px
-                      lg: "12px",    // 1025px - 1280px
-                      xl: "12px"     // 1281px +
-                    }}
+                    bg={isActive ? "white" : inactiveIconBg}
+                    color={"#008080"}
+                    h="32px"
+                    w="32px"
+                    borderRadius="6px"
+                    border={isActive ? "none" : inactiveIconBorder}
+                    boxShadow={
+                      isActive
+                        ? "0 2px 5px rgba(0, 0, 0, 0.08)"
+                        : inactiveIconShadow
+                    }
+                    me="12px"
                     transition="all 0.2s ease-in-out"
                     flexShrink={0}
                   >
@@ -308,13 +369,11 @@ function Sidebar(props) {
                   <Text
                     my="auto"
                     fontSize={{
-                      base: "xs",     // 320px - 480px
-                      sm: "sm",       // 481px - 767px
-                      md: "sm",       // 768px - 1024px
-                      lg: "sm",       // 1025px - 1280px
-                      xl: "sm"        // 1281px +
+                      base: "xs",
+                      sm: "sm",
                     }}
                     fontWeight={isActive ? "700" : "600"}
+                    letterSpacing="0.2px"
                     noOfLines={1}
                     isTruncated
                   >
@@ -335,10 +394,13 @@ function Sidebar(props) {
                     fontSize="11px"
                     fontWeight="800"
                     lineHeight="1"
-                    bg={isActive ? "white" : "red.500"}
+                    bg={isActive ? "white" : "#008080"}
                     color={isActive ? "#008080" : "white"}
-                    boxShadow={isActive ? "0 2px 4px rgba(0,0,0,0.12)" : "0 1px 3px rgba(239, 68, 68, 0.35)"}
-                    border={isActive ? "1px solid rgba(0, 128, 128, 0.2)" : "none"}
+                    boxShadow={
+                      isActive
+                        ? "0 2px 4px rgba(0, 0, 0, 0.12)"
+                        : "0 1px 3px rgba(0, 128, 128, 0.35)"
+                    }
                     flexShrink={0}
                   >
                     {count > 99 ? "99+" : count}
@@ -407,22 +469,23 @@ function Sidebar(props) {
         zIndex="1200"
       >
         <Box
-          bg={sidebarBg}
-          border="1px solid #F5B700"
+          bg={sidebarContainerBg}
+          boxShadow={sidebarContainerShadow}
+          border={sidebarContainerBorder}
           transition={variantChange}
           w={{
             base: "260px",
             sm: "270px",
-            md: "285px",
-            lg: "285px",
-            xl: "285px"
+            md: "295px",
+            lg: "315px",
+            xl: "315px"
           }}
           maxW={{
             base: "260px",
             sm: "270px",
-            md: "285px",
-            lg: "285px",
-            xl: "285px"
+            md: "295px",
+            lg: "315px",
+            xl: "315px"
           }}
           h={{
             base: "calc(100vh - 60px)",  // 320px - 480px
@@ -432,21 +495,20 @@ function Sidebar(props) {
             xl: "calc(100vh - 66px)"     // 1281px +
           }}
           ps={{
-            base: "15px",  // 320px - 480px
-            sm: "18px",    // 481px - 767px
-            md: "20px",    // 768px - 1024px
-            lg: "20px",    // 1025px - 1280px
-            xl: "20px"     // 1281px +
+            base: "14px",
+            sm: "16px",
+            md: "18px",
+            lg: "18px",
+            xl: "18px"
           }}
           pe={{
-            base: "15px",  // 320px - 480px
-            sm: "18px",    // 481px - 767px
-            md: "20px",    // 768px - 1024px
-            lg: "20px",    // 1025px - 1280px
-            xl: "20px"     // 1281px +
+            base: "14px",
+            sm: "16px",
+            md: "18px",
+            lg: "18px",
+            xl: "18px"
           }}
           m={sidebarMargins}
-          filter="drop-shadow(1px 5px 14px rgba(0, 0, 0, 0.05))"
           borderRadius={sidebarRadius}
           display="flex"
           flexDirection="column"
@@ -479,28 +541,43 @@ function Sidebar(props) {
           </Box>
           <Box
             textAlign="center"
-            py={{ base: "10px", md: "12px", lg: "12px" }}
-            fontSize={{ base: "11px", sm: "12px", md: "13px", lg: "13px" }}
-            color="#888"
+            py="10px"
+            px="14px"
+            my="10px"
+            borderRadius="6px"
+            bg={footerBg}
+            border={footerBorder}
+            boxShadow={footerShadow}
             flexShrink={0}
           >
             <Flex align="center" justify="center">
-              <Text
-                fontSize={{ base: "12px", sm: "13px", md: "14px", lg: "14px" }}
-                display="flex"
-                alignItems="center"
-                gap={{ base: "6px", md: "6px", lg: "6px" }}
-                whiteSpace="nowrap"
+              <Link
+                href="https://flaremindstech.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                _hover={{ textDecoration: "none", opacity: 0.85 }}
               >
-                Developed by
-                <Image
-                  src={FlareMindslogo}
-                  alt="FlareMinds Logo"
-                  boxSize={{ base: "20px", sm: "18px", md: "20px", lg: "20px" }}
-                  objectFit="contain"
-                />
-                <strong>FlareMinds</strong>
-              </Text>
+                <Text
+                  fontSize={{ base: "11px", sm: "12px" }}
+                  color={inactiveColor}
+                  fontWeight="500"
+                  display="flex"
+                  alignItems="center"
+                  gap="6px"
+                  whiteSpace="nowrap"
+                >
+                  Made by
+                  <Image
+                    src={FlareMindslogo}
+                    alt="FlareMinds Logo"
+                    boxSize="18px"
+                    objectFit="contain"
+                  />
+                  <Text as="span" fontWeight="700" color="#008080">
+                    FlareMinds Tech PVT LTD
+                  </Text>
+                </Text>
+              </Link>
             </Flex>
           </Box>
 
@@ -548,6 +625,9 @@ function Sidebar(props) {
 export function SidebarResponsive(props) {
   const { logo, routes, hamburgerColor, isOpen, onOpen, onClose } = props;
   const mainPanel = React.useRef();
+  const dispatchResp = useAppDispatch();
+  // Subscribed auth token (Phase 2) — replaces direct getToken() reads.
+  const authTokenResp = useAppSelector(selectToken);
 
   const { counts, markModuleRead } = useAdminNotificationCounts();
 
@@ -581,7 +661,9 @@ export function SidebarResponsive(props) {
     try {
       closeLogoutResp();
       if (onClose) onClose();
-      clearAuth();
+      // Canonical logout: clears legacy storage (same cleanup as before)
+      // and resets Redux auth state.
+      dispatchResp(logout());
       toastResp({
         title: "Logged out successfully",
         description: "Redirecting to the sign-in page...",
@@ -609,15 +691,69 @@ export function SidebarResponsive(props) {
     window.location.replace(`${base}#/auth/signin`);
   };
 
-  const activeBg = useColorModeValue("#008080", "#008080"); // Purple background when active
-  const inactiveBg = useColorModeValue("white", "navy.700");
-  const activeColor = useColorModeValue("white", "white"); // White text when active
-  const inactiveColor = useColorModeValue("gray.400", "white");
-  const sidebarActiveShadow = useColorModeValue(
-    "0px 7px 11px rgba(0, 0, 0, 0.04)",
+  // Sidebar Container Tokens: Clean, elegant white card (no bulky neumorphic shadow)
+  const sidebarContainerBg = useColorModeValue("#FFFFFF", "navy.800");
+  const sidebarContainerBorder = useColorModeValue(
+    "1px solid rgba(0, 0, 0, 0.06)",
+    "1px solid rgba(255, 255, 255, 0.08)"
+  );
+  const sidebarContainerShadow = useColorModeValue(
+    "0px 10px 30px rgba(0, 0, 0, 0.05)",
+    "0px 10px 30px rgba(0, 0, 0, 0.4)"
+  );
+
+  // Papermorphic Menu Item Tokens ("Inside menus only")
+  const paperItemBg = useColorModeValue("#FFFFFF", "navy.700");
+  const paperItemBorder = useColorModeValue(
+    "1px solid rgba(226, 232, 240, 0.8)",
+    "1px solid rgba(255, 255, 255, 0.06)"
+  );
+  const paperItemShadow = useColorModeValue(
+    "0 1px 3px rgba(0, 0, 0, 0.04), 0 3px 8px rgba(0, 0, 0, 0.03)",
+    "0 1px 3px rgba(0, 0, 0, 0.3), 0 3px 8px rgba(0, 0, 0, 0.2)"
+  );
+  const paperItemHoverShadow = useColorModeValue(
+    "0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.03)",
+    "0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2)"
+  );
+  const paperItemHoverBorder = useColorModeValue(
+    "1px solid rgba(0, 128, 128, 0.25)",
+    "1px solid rgba(0, 128, 128, 0.4)"
+  );
+
+  const activePaperBg = useColorModeValue(
+    "linear-gradient(135deg, #008f8f 0%, #007373 100%)",
+    "linear-gradient(135deg, #008f8f 0%, #006666 100%)"
+  );
+  const activeColor = "white";
+  const activePaperShadow = useColorModeValue(
+    "0 4px 14px rgba(0, 128, 128, 0.35), 0 1px 3px rgba(0, 128, 128, 0.2)",
+    "0 4px 14px rgba(0, 0, 0, 0.5)"
+  );
+
+  const inactiveColor = useColorModeValue("#4A5568", "#CBD5E1");
+
+  // Paper chip icon boxes
+  const inactiveIconBg = useColorModeValue("#F7FAFC", "navy.800");
+  const inactiveIconBorder = useColorModeValue(
+    "1px solid rgba(226, 232, 240, 0.9)",
+    "1px solid rgba(255, 255, 255, 0.06)"
+  );
+  const inactiveIconShadow = useColorModeValue(
+    "0 1px 2px rgba(0, 0, 0, 0.03)",
     "none"
   );
-  const sidebarBackgroundColor = useColorModeValue("white", "navy.800");
+
+  // Footer paper card
+  const footerBg = useColorModeValue("#F8FAFC", "navy.700");
+  const footerBorder = useColorModeValue(
+    "1px solid rgba(226, 232, 240, 0.8)",
+    "1px solid rgba(255, 255, 255, 0.06)"
+  );
+  const footerShadow = useColorModeValue(
+    "0 1px 3px rgba(0, 0, 0, 0.02)",
+    "none"
+  );
 
   const createLinks = (routes) =>
     routes.map((prop, key) => {
@@ -629,25 +765,25 @@ export function SidebarResponsive(props) {
               color={activeColor}
               fontWeight="bold"
               mb={{
-                base: "4px",    // 320px - 480px
-                sm: "5px",      // 481px - 767px
-                md: "6px"       // 768px - 1024px
+                base: "4px",
+                sm: "5px",
+                md: "6px",
               }}
               mx="auto"
               ps={{
-                base: "8px",    // 320px - 480px
-                sm: "9px",      // 481px - 767px
-                md: "10px"      // 768px - 1024px
+                base: "8px",
+                sm: "9px",
+                md: "10px",
               }}
               py={{
-                base: "8px",    // 320px - 480px
-                sm: "10px",     // 481px - 767px
-                md: "12px"      // 768px - 1024px
+                base: "8px",
+                sm: "10px",
+                md: "12px",
               }}
               fontSize={{
-                base: "xs",     // 320px - 480px
-                sm: "sm",       // 481px - 767px
-                md: "sm"        // 768px - 1024px
+                base: "xs",
+                sm: "sm",
+                md: "sm",
               }}
             >
               {document.documentElement.dir === "rtl"
@@ -659,6 +795,8 @@ export function SidebarResponsive(props) {
         );
       }
 
+      if (!prop.icon) return null;
+
       // Intercept logout route in responsive sidebar
       if (prop.path === "/logout") {
         return (
@@ -667,39 +805,53 @@ export function SidebarResponsive(props) {
             boxSize="initial"
             justifyContent="flex-start"
             alignItems="center"
-            mb={{ base: "4px", sm: "5px", md: "6px" }}
-            mx={{ base: "auto", sm: "auto", md: "auto" }}
-            ps={{ base: "8px", sm: "9px", md: "10px" }}
-            py={{ base: "8px", sm: "10px", md: "12px" }}
-            borderRadius="15px"
+            mb={{ base: "8px", md: "10px" }}
+            mx="auto"
+            ps={{ base: "10px", md: "14px" }}
+            py={{ base: "10px", md: "12px" }}
+            borderRadius="6px"
             w="100%"
-            bg={"transparent"}
-            color={inactiveColor}
-            boxShadow={"none"}
-            _hover={{ bg: "gray.50" }}
-            _active={{ bg: activeBg, transform: "none", borderColor: "transparent" }}
+            bg={paperItemBg}
+            color={useColorModeValue("#E53E3E", "#FC8181")}
+            boxShadow={paperItemShadow}
+            border={paperItemBorder}
+            transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+            _hover={{
+              bg: useColorModeValue("#FFF5F5", "#2D1D1D"),
+              borderColor: useColorModeValue("#FED7D7", "#742A2A"),
+              boxShadow: paperItemHoverShadow,
+              transform: "translateY(-1.5px)",
+            }}
+            _active={{
+              transform: "translateY(1px)",
+              boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+            }}
             _focus={{ boxShadow: "none" }}
             onClick={() => {
-              const token = getToken();
-              if (!token) {
+              if (!authTokenResp) {
                 openSigninPromptResp();
                 return;
               }
               openLogoutResp();
             }}
           >
-            <Flex>
+            <Flex align="center">
               <IconBox
-                bg={inactiveBg}
-                color={"blue.500"}
-                h={{ base: "24px", sm: "26px", md: "28px" }}
-                w={{ base: "24px", sm: "26px", md: "28px" }}
-                me={{ base: "8px", sm: "10px", md: "12px" }}
+                bg={useColorModeValue("#FFF5F5", "#2D1D1D")}
+                color={"#E53E3E"}
+                h="32px"
+                w="32px"
+                borderRadius="6px"
+                border="1px solid"
+                borderColor={useColorModeValue("#FED7D7", "#742A2A")}
+                boxShadow={inactiveIconShadow}
+                me="12px"
                 transition="all 0.2s ease-in-out"
+                flexShrink={0}
               >
                 {prop.icon}
               </IconBox>
-              <Text my="auto" fontSize={{ base: "xs", sm: "sm", md: "sm" }}>
+              <Text my="auto" fontSize={{ base: "xs", sm: "sm" }} fontWeight="600">
                 {document.documentElement.dir === "rtl" ? prop.rtlName : prop.name}
               </Text>
             </Flex>
@@ -727,60 +879,53 @@ export function SidebarResponsive(props) {
               justifyContent="flex-start"
               alignItems="center"
               mb={{
-                base: "4px",    // 320px - 480px
-                sm: "5px",      // 481px - 767px
-                md: "6px"       // 768px - 1024px
+                base: "8px",
+                md: "10px",
               }}
-              mx={{
-                base: "auto",   // 320px - 480px
-                sm: "auto",     // 481px - 767px
-                md: "auto"      // 768px - 1024px
-              }}
+              mx="auto"
               ps={{
-                base: "8px",    // 320px - 480px
-                sm: "9px",      // 481px - 767px
-                md: "10px"      // 768px - 1024px
+                base: "10px",
+                md: "14px",
               }}
               py={{
-                base: "8px",    // 320px - 480px
-                sm: "10px",     // 481px - 767px
-                md: "12px"      // 768px - 1024px
+                base: "10px",
+                md: "12px",
               }}
-              borderRadius="15px"
+              borderRadius="6px"
               w="100%"
-              bg={isActive ? activeBg : "transparent"}
+              bg={isActive ? activePaperBg : paperItemBg}
               color={isActive ? activeColor : inactiveColor}
-              boxShadow={isActive ? sidebarActiveShadow : "none"}
+              boxShadow={isActive ? activePaperShadow : paperItemShadow}
+              border={isActive ? "1px solid rgba(0, 128, 128, 0.2)" : paperItemBorder}
+              transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
               _hover={{
-                bg: isActive ? activeBg : "gray.50",
+                bg: isActive ? activePaperBg : paperItemBg,
+                boxShadow: isActive ? activePaperShadow : paperItemHoverShadow,
+                borderColor: isActive ? "rgba(0, 128, 128, 0.3)" : paperItemHoverBorder,
+                color: isActive ? activeColor : "#008080",
+                transform: isActive ? "none" : "translateY(-1.5px)",
               }}
               _active={{
-                bg: activeBg,
-                transform: "none",
-                borderColor: "transparent",
+                transform: "translateY(1px)",
+                boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
               }}
               _focus={{ boxShadow: "none" }}
             >
               <Flex align="center" justify="space-between" w="100%" minW="0" gap={2}>
                 <Flex align="center" minW="0" flex="1">
                   <IconBox
-                    bg={isActive ? "white" : inactiveBg} // White background when active
-                    color={isActive ? "#008080" : "blue.500"} // Purple icon when active, blue when inactive
-                    h={{
-                      base: "24px",  // 320px - 480px
-                      sm: "26px",    // 481px - 767px
-                      md: "28px"     // 768px - 1024px
-                    }}
-                    w={{
-                      base: "24px",  // 320px - 480px
-                      sm: "26px",    // 481px - 767px
-                      md: "28px"     // 768px - 1024px
-                    }}
-                    me={{
-                      base: "8px",   // 320px - 480px
-                      sm: "10px",    // 481px - 767px
-                      md: "12px"     // 768px - 1024px
-                    }}
+                    bg={isActive ? "white" : inactiveIconBg}
+                    color={"#008080"}
+                    h="32px"
+                    w="32px"
+                    borderRadius="6px"
+                    border={isActive ? "none" : inactiveIconBorder}
+                    boxShadow={
+                      isActive
+                        ? "0 2px 5px rgba(0, 0, 0, 0.08)"
+                        : inactiveIconShadow
+                    }
+                    me="12px"
                     transition="all 0.2s ease-in-out"
                     flexShrink={0}
                   >
@@ -789,11 +934,11 @@ export function SidebarResponsive(props) {
                   <Text
                     my="auto"
                     fontSize={{
-                      base: "xs",     // 320px - 480px
-                      sm: "sm",       // 481px - 767px
-                      md: "sm"        // 768px - 1024px
+                      base: "xs",
+                      sm: "sm",
                     }}
                     fontWeight={isActive ? "700" : "600"}
+                    letterSpacing="0.2px"
                     noOfLines={1}
                     isTruncated
                   >
@@ -814,10 +959,13 @@ export function SidebarResponsive(props) {
                     fontSize="11px"
                     fontWeight="800"
                     lineHeight="1"
-                    bg={isActive ? "white" : "red.500"}
+                    bg={isActive ? "white" : "#008080"}
                     color={isActive ? "#008080" : "white"}
-                    boxShadow={isActive ? "0 2px 4px rgba(0,0,0,0.12)" : "0 1px 3px rgba(239, 68, 68, 0.35)"}
-                    border={isActive ? "1px solid rgba(0, 128, 128, 0.2)" : "none"}
+                    boxShadow={
+                      isActive
+                        ? "0 2px 4px rgba(0, 0, 0, 0.12)"
+                        : "0 1px 3px rgba(0, 128, 128, 0.35)"
+                    }
                     flexShrink={0}
                   >
                     {count > 99 ? "99+" : count}
@@ -894,18 +1042,19 @@ export function SidebarResponsive(props) {
         <DrawerOverlay />
         <DrawerContent
           w={{
-            base: "270px",
-            sm: "280px",
-            md: "300px"
+            base: "285px",
+            sm: "300px",
+            md: "320px"
           }}
           maxW={{
-            base: "270px",
-            sm: "280px",
-            md: "300px"
+            base: "285px",
+            sm: "300px",
+            md: "320px"
           }}
-          bg={sidebarBackgroundColor}
-          border="1px solid #F5B700"
-          borderRadius="16px"
+          bg={sidebarContainerBg}
+          boxShadow={sidebarContainerShadow}
+          border={sidebarContainerBorder}
+          borderRadius="10px"
           mt={{
             base: "50px",  // 320px - 480px
             sm: "55px",    // 481px - 767px
@@ -980,6 +1129,11 @@ export function SidebarResponsive(props) {
               <Box
                 textAlign="center"
                 py={{ base: "10px", md: "12px" }}
+                my="10px"
+                bg={footerBg}
+                border={footerBorder}
+                boxShadow={footerShadow}
+                borderRadius="6px"
                 fontSize={{ base: "11px", sm: "12px", md: "13px" }}
                 color="#888"
                 flexShrink={0}
@@ -988,21 +1142,28 @@ export function SidebarResponsive(props) {
                   align="center"
                   justify="center"
                 >
-                  <Text
-                    fontSize={{ base: "12px", sm: "13px", md: "14px" }}
-                    display="flex"
-                    alignItems="center"
-                    gap="6px"
+                  <Link
+                    href="https://flaremindstech.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    _hover={{ textDecoration: "none", opacity: 0.85 }}
                   >
-                    Developed by
-                    <Image
-                      src={FlareMindslogo}
-                      alt="FlareMinds Logo"
-                      boxSize={{ base: "20px", sm: "20px", md: "22px" }}
-                      objectFit="contain"
-                    />
-                    <strong>FlareMinds</strong>
-                  </Text>
+                    <Text
+                      fontSize={{ base: "12px", sm: "13px", md: "14px" }}
+                      display="flex"
+                      alignItems="center"
+                      gap="6px"
+                    >
+                      Made by
+                      <Image
+                        src={FlareMindslogo}
+                        alt="FlareMinds Logo"
+                        boxSize={{ base: "20px", sm: "20px", md: "22px" }}
+                        objectFit="contain"
+                      />
+                      <strong style={{ color: "#008080" }}>FlareMinds Tech PVT LTD</strong>
+                    </Text>
+                  </Link>
                 </Flex>
               </Box>
 

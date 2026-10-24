@@ -20,6 +20,7 @@ import {
   StatNumber,
   StatHelpText,
   useColorModeValue,
+  useColorMode,
   useToast,
   Spinner,
   Badge,
@@ -55,6 +56,11 @@ import {
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
+import {
+  getSkeuomorphicCardStyle,
+  getSkeuomorphicIconBoxStyle,
+  skeuomorphicIconFilter,
+} from "components/common/skeuomorphicStyles";
 
 import {
   FaWallet,
@@ -79,20 +85,38 @@ import { HiDocumentText } from "react-icons/hi2";
 
 import {
   wallet,
-  finance,
   refundsComplaints,
   quotations,
   commission,
 } from "api";
+import { useAppDispatch, useAppSelector } from "store/hooks";
+import {
+  fetchWalletSummary,
+  fetchWithdrawals,
+  invalidateWallet,
+  selectWalletSummary,
+  selectWithdrawals,
+} from "store/slices/walletSlice";
+import {
+  fetchFinanceSummary,
+  fetchPaymentsLedger,
+  selectFinanceSummary,
+  selectPaymentsLedger,
+} from "store/slices/financeSlice";
 
 const BRAND_COLOR = "#008080";
 
 export default function BillingPaymentDashboard() {
+  const { colorMode } = useColorMode();
   const textColor = useColorModeValue("gray.700", "white");
   const subTextColor = useColorModeValue("gray.500", "gray.400");
   const cardBg = useColorModeValue("white", "gray.800");
   const borderColor = useColorModeValue("gray.200", "gray.700");
+  // Hoisted unconditionally (Rules of Hooks); previously called inline in
+  // five table headers with this exact pair — rendered value unchanged.
+  const tableHeaderBg = useColorModeValue("gray.50", "gray.900");
   const toast = useToast();
+  const dispatch = useAppDispatch();
 
   // Active Tab State
   const [tabIndex, setTabIndex] = useState(0);
@@ -100,10 +124,17 @@ export default function BillingPaymentDashboard() {
   // ----------------------------------------------------
   // 1. AUTOMATIC PAYOUT & WALLET MONITORING STATE
   // ----------------------------------------------------
-  const [walletSummary, setWalletSummary] = useState(null);
-  const [withdrawals, setWithdrawals] = useState([]);
+  // Reactive shared reads: same wallet cache TechnicianPayouts uses, keyed by
+  // the status filter so server-filtered rows never collide with the
+  // unfiltered console. Mode filter stays client-side (see filteredWithdrawals).
   const [withdrawalStatusFilter, setWithdrawalStatusFilter] = useState("");
   const [payoutModeFilter, setPayoutModeFilter] = useState(""); // automatic vs admin_manual
+  const withdrawalParams = useMemo(
+    () => ({ status: withdrawalStatusFilter }),
+    [withdrawalStatusFilter]
+  );
+  const walletSummary = useAppSelector(selectWalletSummary);
+  const withdrawals = useAppSelector(selectWithdrawals(withdrawalParams));
   const [walletLoading, setWalletLoading] = useState(false);
 
   // Transaction Audit Trail Drawer / Modal
@@ -132,8 +163,10 @@ export default function BillingPaymentDashboard() {
   // ----------------------------------------------------
   // 2. FINANCE STATE
   // ----------------------------------------------------
-  const [financeSummary, setFinanceSummary] = useState(null);
-  const [paymentsLedger, setPaymentsLedger] = useState([]);
+  // Reactive shared reads: same finance cache FinanceTracking uses.
+  const financeSummary = useAppSelector(selectFinanceSummary());
+  const paymentsLedgerData = useAppSelector(selectPaymentsLedger());
+  const paymentsLedger = paymentsLedgerData?.list || [];
   const [financeLoading, setFinanceLoading] = useState(false);
 
   // ----------------------------------------------------
@@ -191,44 +224,37 @@ export default function BillingPaymentDashboard() {
   const fetchWalletData = useCallback(async () => {
     setWalletLoading(true);
     try {
-      const [walletRes, withdrawRes] = await Promise.allSettled([
-        wallet.getPlatformWallet(),
-        wallet.getWithdrawalHistory({ status: withdrawalStatusFilter, type: payoutModeFilter }),
+      // Shared wallet cache (TTL), withdrawals keyed by status filter.
+      // Mode filter stays client-side in filteredWithdrawals below.
+      await Promise.allSettled([
+        dispatch(fetchWalletSummary()).unwrap(),
+        dispatch(
+          fetchWithdrawals(
+            withdrawalStatusFilter ? { status: withdrawalStatusFilter } : {}
+          )
+        ).unwrap(),
       ]);
-
-      if (walletRes.status === "fulfilled" && walletRes.value?.data) {
-        setWalletSummary(walletRes.value.data);
-      }
-      if (withdrawRes.status === "fulfilled" && withdrawRes.value?.data) {
-        const raw = withdrawRes.value.data;
-        setWithdrawals(Array.isArray(raw) ? raw : raw.requests || raw.history || []);
-      }
     } catch (err) {
       console.error("Error fetching wallet data:", err);
     } finally {
       setWalletLoading(false);
     }
-  }, [withdrawalStatusFilter, payoutModeFilter]);
+  }, [dispatch, withdrawalStatusFilter]);
 
   const fetchFinanceData = useCallback(async () => {
     setFinanceLoading(true);
     try {
-      const [sumRes, payRes] = await Promise.allSettled([
-        finance.getFinanceSummary(),
-        finance.getPaymentsLedger(),
+      // Shared finance cache (TTL) — same entries FinanceTracking reads.
+      await Promise.allSettled([
+        dispatch(fetchFinanceSummary()).unwrap(),
+        dispatch(fetchPaymentsLedger()).unwrap(),
       ]);
-
-      if (sumRes.status === "fulfilled" && sumRes.value?.data) setFinanceSummary(sumRes.value.data);
-      if (payRes.status === "fulfilled" && payRes.value?.data) {
-        const raw = payRes.value.data;
-        setPaymentsLedger(Array.isArray(raw) ? raw : raw.payments || raw.ledger || []);
-      }
     } catch (err) {
       console.error("Error fetching finance data:", err);
     } finally {
       setFinanceLoading(false);
     }
-  }, []);
+  }, [dispatch]);
 
   const fetchRefundsData = useCallback(async () => {
     setRefundsLoading(true);
@@ -355,6 +381,8 @@ export default function BillingPaymentDashboard() {
           status: "success",
         });
         onSendMoneyClose();
+        // Invalidate shared snapshots so TechnicianPayouts refetches too.
+        dispatch(invalidateWallet());
         fetchWalletData();
       }
     } catch (err) {
@@ -384,6 +412,8 @@ export default function BillingPaymentDashboard() {
           status: "success",
         });
         onReviewClose();
+        // Invalidate shared snapshots so TechnicianPayouts refetches too.
+        dispatch(invalidateWallet());
         fetchWalletData();
       }
     } catch (err) {
@@ -566,78 +596,78 @@ export default function BillingPaymentDashboard() {
       </Alert>
 
       {/* Real-time Monitoring Executive Stat Cards */}
-      <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing="20px" mb="24px">
-        <Card bg={cardBg}>
-          <CardBody>
+      <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={{ base: 3, md: 4 }} mb={{ base: 3, md: 4 }}>
+        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(colorMode === "dark", false, BRAND_COLOR)}>
+          <CardBody p={{ base: 3, md: 4 }} display="flex" alignItems="center">
             <Flex align="center" justify="space-between" w="100%">
-              <Stat>
-                <StatLabel fontSize="xs" color="gray.400" fontWeight="bold" textTransform="uppercase">
+              <Stat me="auto">
+                <StatLabel fontSize="xs" color={colorMode === "dark" ? "gray.400" : "gray.600"} fontWeight="bold" textTransform="uppercase">
                   Total Wallet Volume
                 </StatLabel>
-                <StatNumber fontSize="2xl" color={textColor} fontWeight="bold">
-                  ₹{walletSummary?.balance || walletSummary?.totalCollected || 0}
+                <StatNumber fontSize="2xl" color={textColor} fontWeight="extrabold" mt={1}>
+                  ₹{walletSummary?.balance ?? walletSummary?.summary?.balance ?? walletSummary?.totalCollected ?? walletSummary?.summary?.totalCollected ?? 0}
                 </StatNumber>
-                <StatHelpText fontSize="3xs" color="gray.500" mb="0">Available net earnings</StatHelpText>
+                <StatHelpText fontSize="3xs" color={colorMode === "dark" ? "gray.400" : "gray.500"} mb="0">Available net earnings</StatHelpText>
               </Stat>
-              <Flex w="45px" h="45px" bg={`${BRAND_COLOR}15`} borderRadius="12px" align="center" justify="center">
-                <Icon as={FaWallet} color={BRAND_COLOR} w="22px" h="22px" />
+              <Flex w={{ base: "40px", md: "44px" }} h={{ base: "40px", md: "44px" }} flexShrink={0} ml={2} {...getSkeuomorphicIconBoxStyle(BRAND_COLOR)}>
+                <Icon as={FaWallet} color="white" w="22px" h="22px" sx={skeuomorphicIconFilter} />
               </Flex>
             </Flex>
           </CardBody>
         </Card>
 
-        <Card bg={cardBg}>
-          <CardBody>
+        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(colorMode === "dark", false, "green.500")}>
+          <CardBody p={{ base: 3, md: 4 }} display="flex" alignItems="center">
             <Flex align="center" justify="space-between" w="100%">
-              <Stat>
-                <StatLabel fontSize="xs" color="gray.400" fontWeight="bold" textTransform="uppercase">
+              <Stat me="auto">
+                <StatLabel fontSize="xs" color={colorMode === "dark" ? "gray.400" : "gray.600"} fontWeight="bold" textTransform="uppercase">
                   Auto Paid Payouts
                 </StatLabel>
-                <StatNumber fontSize="2xl" color="green.500" fontWeight="bold">
+                <StatNumber fontSize="2xl" color="green.500" fontWeight="extrabold" mt={1}>
                   {withdrawals.filter((w) => w.status === "paid" || w.status === "success").length}
                 </StatNumber>
                 <StatHelpText fontSize="3xs" color="green.600" mb="0">Direct to Bank / UPI</StatHelpText>
               </Stat>
-              <Flex w="45px" h="45px" bg="green.50" borderRadius="12px" align="center" justify="center">
-                <Icon as={FaCheckCircle} color="green.500" w="22px" h="22px" />
+              <Flex w={{ base: "40px", md: "44px" }} h={{ base: "40px", md: "44px" }} flexShrink={0} ml={2} {...getSkeuomorphicIconBoxStyle("green.500")}>
+                <Icon as={FaCheckCircle} color="white" w="22px" h="22px" sx={skeuomorphicIconFilter} />
               </Flex>
             </Flex>
           </CardBody>
         </Card>
 
-        <Card bg={cardBg}>
-          <CardBody>
+        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(colorMode === "dark", false, "blue.500")}>
+          <CardBody p={{ base: 3, md: 4 }} display="flex" alignItems="center">
             <Flex align="center" justify="space-between" w="100%">
-              <Stat>
-                <StatLabel fontSize="xs" color="gray.400" fontWeight="bold" textTransform="uppercase">
+              <Stat me="auto">
+                <StatLabel fontSize="xs" color={colorMode === "dark" ? "gray.400" : "gray.600"} fontWeight="bold" textTransform="uppercase">
                   Auto Processing
                 </StatLabel>
-                <StatNumber fontSize="2xl" color="blue.500" fontWeight="bold">
+                <StatNumber fontSize="2xl" color="blue.500" fontWeight="extrabold" mt={1}>
                   {withdrawals.filter((w) => w.status === "processing" || w.status === "pending").length}
                 </StatNumber>
                 <StatHelpText fontSize="3xs" color="blue.600" mb="0">In RazorpayX Outbox</StatHelpText>
               </Stat>
-              <Flex w="45px" h="45px" bg="blue.50" borderRadius="12px" align="center" justify="center">
-                <Icon as={MdAutorenew} color="blue.500" w="22px" h="22px" />
+              <Flex w={{ base: "40px", md: "44px" }} h={{ base: "40px", md: "44px" }} flexShrink={0} ml={2} {...getSkeuomorphicIconBoxStyle("blue.500")}>
+                <Icon as={MdAutorenew} color="white" w="22px" h="22px" sx={skeuomorphicIconFilter} />
               </Flex>
             </Flex>
           </CardBody>
         </Card>
 
-        <Card bg={cardBg}>
-          <CardBody>
+        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(colorMode === "dark", false, "orange.500")}>
+          <CardBody p={{ base: 3, md: 4 }} display="flex" alignItems="center">
             <Flex align="center" justify="space-between" w="100%">
-              <Stat>
-                <StatLabel fontSize="xs" color="gray.400" fontWeight="bold" textTransform="uppercase">
+              <Stat me="auto">
+                <StatLabel fontSize="xs" color={colorMode === "dark" ? "gray.400" : "gray.600"} fontWeight="bold" textTransform="uppercase">
                   Manual Review
                 </StatLabel>
-                <StatNumber fontSize="2xl" color="orange.500" fontWeight="bold">
+                <StatNumber fontSize="2xl" color="orange.500" fontWeight="extrabold" mt={1}>
                   {withdrawals.filter((w) => w.status === "manual_review" || w.requiresReview).length}
                 </StatNumber>
                 <StatHelpText fontSize="3xs" color="orange.600" mb="0">Ambiguous / Timeouts</StatHelpText>
               </Stat>
-              <Flex w="45px" h="45px" bg="orange.50" borderRadius="12px" align="center" justify="center">
-                <Icon as={FaExclamationTriangle} color="orange.500" w="22px" h="22px" />
+              <Flex w={{ base: "40px", md: "44px" }} h={{ base: "40px", md: "44px" }} flexShrink={0} ml={2} {...getSkeuomorphicIconBoxStyle("orange.500")}>
+                <Icon as={FaExclamationTriangle} color="white" w="22px" h="22px" sx={skeuomorphicIconFilter} />
               </Flex>
             </Flex>
           </CardBody>
@@ -739,7 +769,7 @@ export default function BillingPaymentDashboard() {
                   <Center p="40px"><Text color="gray.500" fontSize="sm">No payout records matching filters.</Text></Center>
                 ) : (
                   <Table variant="simple" size="sm">
-                    <Thead bg={useColorModeValue("gray.50", "gray.900")}>
+                    <Thead bg={tableHeaderBg}>
                       <Tr>
                         <Th>Withdrawal ID</Th>
                         <Th>Technician</Th>
@@ -843,7 +873,7 @@ export default function BillingPaymentDashboard() {
                   <Center p="40px"><Spinner color={BRAND_COLOR} /></Center>
                 ) : (
                   <Table variant="simple" size="sm">
-                    <Thead bg={useColorModeValue("gray.50", "gray.900")}>
+                    <Thead bg={tableHeaderBg}>
                       <Tr>
                         <Th>Transaction Ref</Th>
                         <Th>Order ID</Th>
@@ -905,7 +935,7 @@ export default function BillingPaymentDashboard() {
                   <Center p="40px"><Text color="gray.500" fontSize="sm">No refunds found.</Text></Center>
                 ) : (
                   <Table variant="simple" size="sm">
-                    <Thead bg={useColorModeValue("gray.50", "gray.900")}>
+                    <Thead bg={tableHeaderBg}>
                       <Tr>
                         <Th>Refund ID</Th>
                         <Th>Booking</Th>
@@ -961,7 +991,7 @@ export default function BillingPaymentDashboard() {
                     <Center p="20px"><Text color="gray.500" fontSize="sm">No formal quotations issued yet.</Text></Center>
                   ) : (
                     <Table variant="simple" size="sm">
-                      <Thead bg={useColorModeValue("gray.50", "gray.900")}>
+                      <Thead bg={tableHeaderBg}>
                         <Tr>
                           <Th>Quote ID</Th>
                           <Th>Customer</Th>
@@ -1011,7 +1041,7 @@ export default function BillingPaymentDashboard() {
                   <Center p="40px"><Spinner color={BRAND_COLOR} /></Center>
                 ) : (
                   <Table variant="simple" size="sm">
-                    <Thead bg={useColorModeValue("gray.50", "gray.900")}>
+                    <Thead bg={tableHeaderBg}>
                       <Tr>
                         <Th>Service</Th>
                         <Th>Base Price</Th>

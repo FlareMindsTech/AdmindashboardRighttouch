@@ -3,18 +3,11 @@ import {
   Box,
   Button,
   Flex,
-  FormControl,
-  FormLabel,
-  Grid,
   Icon,
   Input,
   InputGroup,
   InputRightElement,
   Select,
-  SimpleGrid,
-  Stat,
-  StatLabel,
-  StatNumber,
   Table,
   Tbody,
   Td,
@@ -29,97 +22,87 @@ import {
   IconButton,
   Spinner,
   Avatar,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  ModalCloseButton,
-  AlertDialog,
-  AlertDialogBody,
-  AlertDialogContent,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogOverlay,
-  Textarea,
   Skeleton,
   SkeletonCircle,
   HStack,
-  VStack,
   Tooltip,
   Menu,
   MenuButton,
   MenuList,
   MenuItem,
   Divider,
-  Link,
 } from "@chakra-ui/react";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
+import {
+  AdminStatsCards,
+  KYCReviewModal,
+  EditKYCModal,
+  BankDetailsModal,
+  EditBankModal,
+  AdminDetailsModal,
+  DeleteTechnicianDialog,
+} from "components/AdminManagement";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
-  FaUsers,
-  FaEdit,
-  FaArrowLeft,
-  FaChevronLeft,
-  FaChevronRight,
   FaSearch,
   FaEye,
   FaUserSlash,
-  FaExclamationTriangle,
   FaUserGraduate,
   FaTrash,
   FaIdCard,
   FaUniversity,
-  FaUserClock,
   FaCheckCircle,
   FaTimesCircle,
-  FaLock,
-  FaUnlock,
   FaEllipsisV,
   FaCheck,
   FaTimes,
 } from "react-icons/fa";
-import { MdAdminPanelSettings, MdPerson, MdVerified, MdOutlinePending, MdWarning } from "react-icons/md";
-import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
+import DataTable from "components/common/DataTable";
+import { MdVerified, MdOutlinePending } from "react-icons/md";
 import {
-  getAllTechnicians,
-  updateAdmin,
-  createAdmin,
-  deleteTechnician,
-  getTechnicianKYC,
-  getAllKYCRecords,
-  verifyKYC,
-  verifyBankDetails,
-  adminEditKYCDetails,
-  adminEditBankDetails,
   getKYCFullPII,
-  deleteKYC,
-  updateTrainingStatus,
-  updateTechnicianStatus,
   clearAuth,
   getAllDistricts,
 } from "views/utils/axiosInstance";
+import {
+  listOrphanedKyc,
+  deleteOrphanedKyc,
+  cleanupAllOrphanedKyc,
+} from "api/adminKyc";
+import { useAppDispatch } from "store/hooks";
+import {
+  fetchTechnicians,
+  fetchKYCRecords,
+  fetchKYCDetail,
+  setTrainingStatus,
+  setWorkStatus,
+  verifyTechnicianKYC,
+  editTechnicianKYC,
+  verifyTechnicianBank,
+  editTechnicianBank,
+  removeTechnician,
+  removeKYC,
+} from "store/slices/techniciansSlice";
 import { useNavigate } from "react-router-dom";
 
-// Find matching KYC record for a technician safely
-const findKYCRecord = (admin, kycRecords = []) => {
-  if (!admin || !Array.isArray(kycRecords) || kycRecords.length === 0) return null;
-  const adminId = String(admin._id || admin.id || "");
-  const adminUserId = String(
-    admin.userId?._id ||
-    (typeof admin.userId === "string" ? admin.userId : "") ||
-    admin.user?._id ||
-    (typeof admin.user === "string" ? admin.user : "") ||
-    ""
-  );
-  const adminPhone = (admin.mobileNumber || admin.phone || admin.userId?.mobileNumber || admin.userId?.phone || "").toString().replace(/\D/g, "");
-  const adminEmail = (admin.email || admin.userId?.email || "").toLowerCase().trim();
+// High-performance index cache for O(1) KYC record lookups
+const kycIndexCache = new WeakMap();
 
-  return kycRecords.find((k) => {
-    if (!k) return false;
+const getKycIndex = (kycRecords) => {
+  if (!Array.isArray(kycRecords) || kycRecords.length === 0) return null;
+  let index = kycIndexCache.get(kycRecords);
+  if (index) return index;
+
+  const byId = new Map();
+  const byEmail = new Map();
+  const byPhone = new Map();
+
+  for (let i = 0; i < kycRecords.length; i++) {
+    const k = kycRecords[i];
+    if (!k) continue;
+
     const kTechId = String(
       k.technicianId?._id ||
       k.technicianId ||
@@ -127,6 +110,8 @@ const findKYCRecord = (admin, kycRecords = []) => {
       k.technician ||
       ""
     );
+    if (kTechId) byId.set(kTechId, k);
+
     const kUserId = String(
       k.userId?._id ||
       k.userId ||
@@ -134,23 +119,53 @@ const findKYCRecord = (admin, kycRecords = []) => {
       k.user ||
       ""
     );
+    if (kUserId) byId.set(kUserId, k);
+
     const kRecId = String(k._id || k.id || "");
+    if (kRecId) byId.set(kRecId, k);
 
-    if (adminId && (adminId === kTechId || adminId === kUserId || adminId === kRecId)) return true;
-    if (adminUserId && (adminUserId === kTechId || adminUserId === kUserId)) return true;
+    const kEmail = (k.email || k.userId?.email || k.technicianId?.email || "").toLowerCase().trim();
+    if (kEmail) byEmail.set(kEmail, k);
 
-    if (adminEmail && adminEmail !== "") {
-      const kEmail = (k.email || k.userId?.email || k.technicianId?.email || "").toLowerCase().trim();
-      if (kEmail && kEmail === adminEmail) return true;
+    const kPhone = (k.phone || k.mobileNumber || k.mobile || k.personalDetails?.phone || k.technicianId?.mobileNumber || k.userId?.mobileNumber || "").toString().replace(/\D/g, "");
+    if (kPhone && kPhone.length >= 8) {
+      byPhone.set(kPhone.slice(-10), k);
     }
+  }
 
-    if (adminPhone && adminPhone.length >= 8) {
-      const kPhone = (k.phone || k.mobileNumber || k.mobile || k.personalDetails?.phone || k.technicianId?.mobileNumber || k.userId?.mobileNumber || "").toString().replace(/\D/g, "");
-      if (kPhone && (kPhone.includes(adminPhone) || adminPhone.includes(kPhone))) return true;
-    }
+  index = { byId, byEmail, byPhone };
+  kycIndexCache.set(kycRecords, index);
+  return index;
+};
 
-    return false;
-  });
+// Find matching KYC record for a technician safely with O(1) indexed lookup
+const findKYCRecord = (admin, kycRecords = []) => {
+  if (!admin) return null;
+  const index = getKycIndex(kycRecords);
+  if (!index) return null;
+
+  const adminId = String(admin._id || admin.id || "");
+  if (adminId && index.byId.has(adminId)) return index.byId.get(adminId);
+
+  const adminUserId = String(
+    admin.userId?._id ||
+    (typeof admin.userId === "string" ? admin.userId : "") ||
+    admin.user?._id ||
+    (typeof admin.user === "string" ? admin.user : "") ||
+    ""
+  );
+  if (adminUserId && index.byId.has(adminUserId)) return index.byId.get(adminUserId);
+
+  const adminEmail = (admin.email || admin.userId?.email || "").toLowerCase().trim();
+  if (adminEmail && index.byEmail.has(adminEmail)) return index.byEmail.get(adminEmail);
+
+  const adminPhone = (admin.mobileNumber || admin.phone || admin.userId?.mobileNumber || admin.userId?.phone || "").toString().replace(/\D/g, "");
+  if (adminPhone && adminPhone.length >= 8) {
+    const p10 = adminPhone.slice(-10);
+    if (index.byPhone.has(p10)) return index.byPhone.get(p10);
+  }
+
+  return null;
 };
 
 // Helper to resolve technician name safely
@@ -562,26 +577,11 @@ const isActiveTechnician = (admin, kycRecords = []) => {
   return workStatus === "approved" || workStatus === "active" || (admin.trainingCompleted && isKycVer);
 };
 
-// Custom IconBox
-function IconBox({ children, ...rest }) {
-  return (
-    <Box
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      borderRadius="12px"
-      {...rest}
-    >
-      {children}
-    </Box>
-  );
-}
-
 function AdminManagement() {
   const textColor = useColorModeValue("gray.700", "white");
   const customColor = "#008080";
   const customHoverColor = "#006666";
-  const customBorderColor = "#F5B700";
+  const customBorderColor = "gray.200";
 
   const toast = useToast();
   const navigate = useNavigate();
@@ -648,7 +648,56 @@ function AdminManagement() {
   const [adminToDelete, setAdminToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const cancelRef = useRef();
+
+  // Orphaned KYC maintenance (KYC docs with no linked technician)
+  // GET/DELETE /admin/kyc/orphaned/*
+  const [orphanedKyc, setOrphanedKyc] = useState([]);
+  const [orphanedOpen, setOrphanedOpen] = useState(false);
+  const [orphanedLoading, setOrphanedLoading] = useState(false);
+
+  const fetchOrphanedKyc = async () => {
+    setOrphanedLoading(true);
+    try {
+      const { data, error } = await listOrphanedKyc();
+      if (error) throw new Error(error);
+      const list = data?.result ?? data?.data ?? data ?? [];
+      setOrphanedKyc(Array.isArray(list) ? list : list?.records ?? []);
+    } catch (e) {
+      toast({
+        title: "Orphaned KYC Error",
+        description: e.message || "Failed to load orphaned KYC records.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setOrphanedLoading(false);
+    }
+  };
+
+  const handleDeleteOrphanedKyc = async (kycId) => {
+    try {
+      const { error } = await deleteOrphanedKyc(kycId);
+      if (error) throw new Error(error);
+      toast({ title: "Orphaned KYC Deleted", status: "success", duration: 2500, isClosable: true });
+      fetchOrphanedKyc();
+    } catch (e) {
+      toast({ title: "Delete Error", description: e.message, status: "error", duration: 3000, isClosable: true });
+    }
+  };
+
+  const handleCleanupAllOrphanedKyc = async () => {
+    try {
+      const { error } = await cleanupAllOrphanedKyc();
+      if (error) throw new Error(error);
+      toast({ title: "Orphaned KYC Cleaned Up", status: "success", duration: 2500, isClosable: true });
+      fetchOrphanedKyc();
+    } catch (e) {
+      toast({ title: "Cleanup Error", description: e.message, status: "error", duration: 3000, isClosable: true });
+    }
+  };
   const isMountedRef = useRef(true);
+  const dispatch = useAppDispatch();
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -709,15 +758,16 @@ function AdminManagement() {
     }
   }, [toast, navigate]);
 
-  // 2. Fetch Technicians and KYC Data
+  // 2. Fetch Technicians and KYC Data (CRUD page: force fresh reads via
+  // shared thunks; parsing/sorting/guards below are unchanged)
   const fetchData = async () => {
     if (!currentUser) return;
     setLoading(true);
     setTableLoading(true);
     try {
       const [adminsResult, kycResult, distResult] = await Promise.allSettled([
-        getAllTechnicians(),
-        getAllKYCRecords(),
+        dispatch(fetchTechnicians({ force: true })).unwrap().then((r) => r.list),
+        dispatch(fetchKYCRecords({ force: true })).unwrap().then((r) => r.list),
         getAllDistricts(),
       ]);
 
@@ -744,7 +794,7 @@ function AdminManagement() {
         setAllKycRecords(kycRecords);
       }
       if (Array.isArray(admins) && isMountedRef.current) {
-        const sortedAdmins = admins.sort(
+        const sortedAdmins = [...admins].sort(
           (a, b) => new Date(b.createdAt || b._id) - new Date(a.createdAt || a._id)
         );
         setAdminData(sortedAdmins);
@@ -788,41 +838,51 @@ function AdminManagement() {
     }
   }, [currentUser]);
 
-  // Stats calculation
+  // Stats calculation - Single O(N) pass with O(1) indexed KYC lookups
   const totalCount = adminData.length;
-  const newTechCount = useMemo(
-    () => adminData.filter((a) => isNewTechnician(a, allKycRecords)).length,
-    [adminData, allKycRecords]
-  );
-  const newUnverifiedCount = useMemo(
-    () =>
-      adminData.filter(
-        (a) =>
-          isNewTechnician(a, allKycRecords) &&
-          (!isTechnicianKYCVerified(a, allKycRecords) || !isTechnicianBankVerified(a, allKycRecords))
-      ).length,
-    [adminData, allKycRecords]
-  );
-  const activeTechCount = useMemo(
-    () => adminData.filter((a) => isActiveTechnician(a, allKycRecords)).length,
-    [adminData, allKycRecords]
-  );
-  const kycVerifiedCount = useMemo(
-    () => adminData.filter((a) => isTechnicianKYCVerified(a, allKycRecords)).length,
-    [adminData, allKycRecords]
-  );
-  const kycUnverifiedCount = useMemo(
-    () => adminData.filter((a) => !isTechnicianKYCVerified(a, allKycRecords)).length,
-    [adminData, allKycRecords]
-  );
-  const bankVerifiedCount = useMemo(
-    () => adminData.filter((a) => isTechnicianBankVerified(a, allKycRecords)).length,
-    [adminData, allKycRecords]
-  );
-  const bankUnverifiedCount = useMemo(
-    () => adminData.filter((a) => !isTechnicianBankVerified(a, allKycRecords)).length,
-    [adminData, allKycRecords]
-  );
+  const {
+    newTechCount,
+    newUnverifiedCount,
+    activeTechCount,
+    kycVerifiedCount,
+    kycUnverifiedCount,
+    bankVerifiedCount,
+    bankUnverifiedCount,
+  } = useMemo(() => {
+    let newTech = 0;
+    let newUnverified = 0;
+    let activeTech = 0;
+    let kycVerified = 0;
+    let kycUnverified = 0;
+    let bankVerified = 0;
+    let bankUnverified = 0;
+
+    for (let i = 0; i < adminData.length; i++) {
+      const a = adminData[i];
+      const isNew = isNewTechnician(a, allKycRecords);
+      const isKYCVer = isTechnicianKYCVerified(a, allKycRecords);
+      const isBankVer = isTechnicianBankVerified(a, allKycRecords);
+      const isActive = isActiveTechnician(a, allKycRecords);
+
+      if (isNew) {
+        newTech++;
+        if (!isKYCVer || !isBankVer) newUnverified++;
+      }
+      if (isActive) activeTech++;
+      if (isKYCVer) kycVerified++; else kycUnverified++;
+      if (isBankVer) bankVerified++; else bankUnverified++;
+    }
+
+    return {
+      newTechCount: newTech,
+      newUnverifiedCount: newUnverified,
+      activeTechCount: activeTech,
+      kycVerifiedCount: kycVerified,
+      kycUnverifiedCount: kycUnverified,
+      bankVerifiedCount: bankVerified,
+      bankUnverifiedCount: bankUnverified,
+    };
+  }, [adminData, allKycRecords]);
 
   // Available Districts computation (Presets + Master API Districts + Technicians' assigned Districts)
   const availableDistricts = useMemo(() => {
@@ -999,7 +1059,7 @@ function AdminManagement() {
   const handleToggleTraining = async (tech, nextStatus) => {
     try {
       setLoading(true);
-      await updateTrainingStatus(tech._id, nextStatus);
+      await dispatch(setTrainingStatus({ id: tech._id, completed: nextStatus })).unwrap();
       toast({
         title: nextStatus ? "Training Approved" : "Training Incomplete",
         description: `Technician ${getTechnicianName(tech, allKycRecords)} marked as ${nextStatus ? "Training Completed" : "Training Incomplete"}.`,
@@ -1028,11 +1088,11 @@ function AdminManagement() {
   const handleUpdateWorkStatus = async (tech, workStatus) => {
     try {
       setLoading(true);
-      await updateTechnicianStatus({
+      await dispatch(setWorkStatus({
         technicianId: tech._id,
         workStatus: workStatus,
         trainingCompleted: tech.trainingCompleted ?? true,
-      });
+      })).unwrap();
       toast({
         title: "Work Status Updated",
         description: `Technician status set to ${workStatus}.`,
@@ -1064,9 +1124,8 @@ function AdminManagement() {
     setShowRejectionInput(false);
     setRejectionInput("");
     try {
-      const response = await getTechnicianKYC(tech._id);
-      const fetched = response?.result ?? response?.data ?? response;
-      setKYCData(fetched);
+      const { detail } = await dispatch(fetchKYCDetail(tech._id)).unwrap();
+      setKYCData(detail);
     } catch (e) {
       console.error("KYC fetch error:", e);
       toast({
@@ -1129,11 +1188,11 @@ function AdminManagement() {
 
     try {
       setKYcLoading(true);
-      await verifyKYC({
+      await dispatch(verifyTechnicianKYC({
         technicianId: selectedTechForKYC._id,
         status: status,
         rejectionReason: status === "rejected" ? rejectionInput : null,
-      });
+      })).unwrap();
       toast({
         title: status === "approved" ? "KYC Approved" : "KYC Rejected",
         description: `Technician identity verification marked as ${status}.`,
@@ -1169,7 +1228,7 @@ function AdminManagement() {
     if (!selectedTechForKYC) return;
     setSavingKycEdit(true);
     try {
-      await adminEditKYCDetails(selectedTechForKYC._id, kycEditForm);
+      await dispatch(editTechnicianKYC({ id: selectedTechForKYC._id, body: kycEditForm })).unwrap();
       toast({
         title: "KYC Details Saved",
         description: "Technician identity document numbers updated successfully.",
@@ -1225,11 +1284,11 @@ function AdminManagement() {
 
     try {
       setLoading(true);
-      await verifyBankDetails({
+      await dispatch(verifyTechnicianBank({
         technicianId: selectedTechForBank._id,
         verified: verified,
         bankRejectionReason: !verified ? bankRejectionReason : null,
-      });
+      })).unwrap();
       toast({
         title: verified ? "Bank Verified (Payouts Enabled)" : "Bank Rejected",
         description: verified
@@ -1258,7 +1317,7 @@ function AdminManagement() {
     if (!selectedTechForBank) return;
     setSavingBankEdit(true);
     try {
-      await adminEditBankDetails(selectedTechForBank._id, bankEditForm);
+      await dispatch(editTechnicianBank({ id: selectedTechForBank._id, body: bankEditForm })).unwrap();
       toast({
         title: "Bank Details Updated",
         description: "Technician payout bank details updated successfully.",
@@ -1286,7 +1345,7 @@ function AdminManagement() {
     if (!adminToDelete) return;
     setIsDeleting(true);
     try {
-      await deleteTechnician(adminToDelete._id);
+      await dispatch(removeTechnician({ id: adminToDelete._id })).unwrap();
       toast({
         title: "Technician Deleted",
         description: `${getTechnicianName(adminToDelete, allKycRecords)} has been removed.`,
@@ -1368,233 +1427,24 @@ function AdminManagement() {
       }}
     >
       {/* 5 TOP SUMMARY CARDS ONLY */}
-      <Box mb="20px" px={{ base: 2, md: 4 }}>
-        <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 5 }} spacing={{ base: 3, md: 4 }}>
-          {/* 1. Total Technician */}
-          <Card
-            minH="100px"
-            cursor="pointer"
-            onClick={() => handleCardClick("all")}
-            border={activeTab === "all" ? "2px solid" : "1px solid"}
-            borderColor={activeTab === "all" ? customColor : customBorderColor}
-            bg="white"
-            borderRadius="14px"
-            transition="all 0.2s ease-in-out"
-            _hover={{ transform: "translateY(-3px)", shadow: "md", borderColor: customColor }}
-          >
-            <CardBody p={4}>
-              <Flex align="flex-start" justify="space-between">
-                <Box flex="1" mr={2}>
-                  <Text fontSize="xs" color="gray.600" fontWeight="bold" noOfLines={1}>
-                    Total Technician
-                  </Text>
-                  <Text fontSize="2xl" fontWeight="black" color={textColor} mt={1} lineHeight="1.2">
-                    {loading ? <Skeleton height="24px" width="40px" /> : totalCount}
-                  </Text>
-                  <Box mt={1.5} minH="18px">
-                    <Text fontSize="10px" color="gray.400" fontWeight="medium">
-                      All Registered
-                    </Text>
-                  </Box>
-                </Box>
-                <IconBox h="42px" w="42px" bg={customColor} color="white" flexShrink={0}>
-                  <Icon as={FaUsers} boxSize="20px" />
-                </IconBox>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {/* 2. New Technician */}
-          <Card
-            minH="100px"
-            cursor="pointer"
-            onClick={() => handleCardClick("NewTechnician")}
-            border={activeTab === "NewTechnician" ? "2px solid" : "1px solid"}
-            borderColor={activeTab === "NewTechnician" ? customColor : customBorderColor}
-            bg="white"
-            borderRadius="14px"
-            transition="all 0.2s ease-in-out"
-            _hover={{ transform: "translateY(-3px)", shadow: "md", borderColor: customColor }}
-          >
-            <CardBody p={4}>
-              <Flex align="flex-start" justify="space-between">
-                <Box flex="1" mr={2}>
-                  <Text fontSize="xs" color="gray.600" fontWeight="bold" noOfLines={1}>
-                    New Technician
-                  </Text>
-                  <Text fontSize="2xl" fontWeight="black" color="blue.600" mt={1} lineHeight="1.2">
-                    {loading ? <Skeleton height="24px" width="40px" /> : newTechCount}
-                  </Text>
-                  <Box mt={1.5} minH="18px">
-                    {!loading && newUnverifiedCount > 0 ? (
-                      <Badge
-                        colorScheme="red"
-                        variant="subtle"
-                        fontSize="9px"
-                        px={2}
-                        py={0.5}
-                        borderRadius="full"
-                        fontWeight="bold"
-                        textTransform="capitalize"
-                      >
-                        {newUnverifiedCount} unverified
-                      </Badge>
-                    ) : (
-                      <Text fontSize="10px" color="gray.400" fontWeight="medium">
-                        All verified
-                      </Text>
-                    )}
-                  </Box>
-                </Box>
-                <IconBox h="42px" w="42px" bg="blue.500" color="white" flexShrink={0}>
-                  <Icon as={FaUserClock} boxSize="20px" />
-                </IconBox>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {/* 3. Active Technician */}
-          <Card
-            minH="100px"
-            cursor="pointer"
-            onClick={() => handleCardClick("Active")}
-            border={activeTab === "Active" ? "2px solid" : "1px solid"}
-            borderColor={activeTab === "Active" ? customColor : customBorderColor}
-            bg="white"
-            borderRadius="14px"
-            transition="all 0.2s ease-in-out"
-            _hover={{ transform: "translateY(-3px)", shadow: "md", borderColor: customColor }}
-          >
-            <CardBody p={4}>
-              <Flex align="flex-start" justify="space-between">
-                <Box flex="1" mr={2}>
-                  <Text fontSize="xs" color="gray.600" fontWeight="bold" noOfLines={1}>
-                    Active Technician
-                  </Text>
-                  <Text fontSize="2xl" fontWeight="black" color="green.600" mt={1} lineHeight="1.2">
-                    {loading ? <Skeleton height="24px" width="40px" /> : activeTechCount}
-                  </Text>
-                  <Box mt={1.5} minH="18px">
-                    <Badge
-                      colorScheme="green"
-                      variant="subtle"
-                      fontSize="9px"
-                      px={2}
-                      py={0.5}
-                      borderRadius="full"
-                      fontWeight="bold"
-                      textTransform="capitalize"
-                    >
-                      Active & ready
-                    </Badge>
-                  </Box>
-                </Box>
-                <IconBox h="42px" w="42px" bg="green.500" color="white" flexShrink={0}>
-                  <Icon as={FaCheckCircle} boxSize="20px" />
-                </IconBox>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {/* 4. KYC Verification */}
-          <Card
-            minH="100px"
-            cursor="pointer"
-            onClick={() => handleCardClick("KYCVerification")}
-            border={activeTab === "KYCVerification" ? "2px solid" : "1px solid"}
-            borderColor={activeTab === "KYCVerification" ? customColor : customBorderColor}
-            bg="white"
-            borderRadius="14px"
-            transition="all 0.2s ease-in-out"
-            _hover={{ transform: "translateY(-3px)", shadow: "md", borderColor: customColor }}
-          >
-            <CardBody p={4}>
-              <Flex align="flex-start" justify="space-between">
-                <Box flex="1" mr={2}>
-                  <Text fontSize="xs" color="gray.600" fontWeight="bold" noOfLines={1}>
-                    KYC Verification
-                  </Text>
-                  <Text fontSize="2xl" fontWeight="black" color="purple.600" mt={1} lineHeight="1.2">
-                    {loading ? <Skeleton height="24px" width="40px" /> : kycVerifiedCount}
-                  </Text>
-                  <Box mt={1.5} minH="18px">
-                    {!loading && kycUnverifiedCount > 0 ? (
-                      <Badge
-                        colorScheme="purple"
-                        variant="subtle"
-                        fontSize="9px"
-                        px={2}
-                        py={0.5}
-                        borderRadius="full"
-                        fontWeight="bold"
-                        textTransform="capitalize"
-                      >
-                        {kycUnverifiedCount} unverified
-                      </Badge>
-                    ) : (
-                      <Text fontSize="10px" color="gray.400" fontWeight="medium">
-                        All verified
-                      </Text>
-                    )}
-                  </Box>
-                </Box>
-                <IconBox h="42px" w="42px" bg="purple.500" color="white" flexShrink={0}>
-                  <Icon as={FaIdCard} boxSize="20px" />
-                </IconBox>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {/* 5. Bank Verification */}
-          <Card
-            minH="100px"
-            cursor="pointer"
-            onClick={() => handleCardClick("BankVerification")}
-            border={activeTab === "BankVerification" ? "2px solid" : "1px solid"}
-            borderColor={activeTab === "BankVerification" ? customColor : customBorderColor}
-            bg="white"
-            borderRadius="14px"
-            transition="all 0.2s ease-in-out"
-            _hover={{ transform: "translateY(-3px)", shadow: "md", borderColor: customColor }}
-          >
-            <CardBody p={4}>
-              <Flex align="flex-start" justify="space-between">
-                <Box flex="1" mr={2}>
-                  <Text fontSize="xs" color="gray.600" fontWeight="bold" noOfLines={1}>
-                    Bank Verification
-                  </Text>
-                  <Text fontSize="2xl" fontWeight="black" color="orange.600" mt={1} lineHeight="1.2">
-                    {loading ? <Skeleton height="24px" width="40px" /> : bankVerifiedCount}
-                  </Text>
-                  <Box mt={1.5} minH="18px">
-                    {!loading && bankUnverifiedCount > 0 ? (
-                      <Badge
-                        colorScheme="orange"
-                        variant="subtle"
-                        fontSize="9px"
-                        px={2}
-                        py={0.5}
-                        borderRadius="full"
-                        fontWeight="bold"
-                        textTransform="capitalize"
-                      >
-                        {bankUnverifiedCount} unverified
-                      </Badge>
-                    ) : (
-                      <Text fontSize="10px" color="gray.400" fontWeight="medium">
-                        All verified
-                      </Text>
-                    )}
-                  </Box>
-                </Box>
-                <IconBox h="42px" w="42px" bg="orange.500" color="white" flexShrink={0}>
-                  <Icon as={FaUniversity} boxSize="20px" />
-                </IconBox>
-              </Flex>
-            </CardBody>
-          </Card>
-        </SimpleGrid>
-      </Box>
+      <AdminStatsCards
+        activeTab={activeTab}
+        onCardClick={handleCardClick}
+        loading={loading}
+        counts={{
+          totalCount,
+          newTechCount,
+          newUnverifiedCount,
+          activeTechCount,
+          kycVerifiedCount,
+          kycUnverifiedCount,
+          bankVerifiedCount,
+          bankUnverifiedCount,
+        }}
+        customColor={customColor}
+        customBorderColor={customBorderColor}
+        textColor={textColor}
+      />
 
       {/* TABLE SECTION CONTAINER */}
       <Box flex="1" px={{ base: 2, md: 4 }} pb={4} display="flex" flexDirection="column">
@@ -1738,423 +1588,14 @@ function AdminManagement() {
 
           {/* Table Body */}
           <CardBody p={0} flex="1" display="flex" flexDirection="column" overflow="hidden">
-            {tableLoading ? (
-              <Box p={6}>
-                <Table variant="simple" size="sm">
-                  <Thead bg={customColor}>
-                    <Tr verticalAlign="middle">
-                      <Th color="white" py={3.5} minW="190px" verticalAlign="middle">Technician Profile</Th>
-                      <Th color="white" py={3.5} minW="140px" verticalAlign="middle">Skill / Experience</Th>
-                      <Th color="white" py={3.5} minW="140px" verticalAlign="middle">District *</Th>
-                      <Th color="white" py={3.5} minW="100px" verticalAlign="middle">City</Th>
-                      <Th color="white" py={3.5} minW="150px" textAlign="center" verticalAlign="middle">Gate 1: Training</Th>
-                      <Th color="white" py={3.5} minW="140px" textAlign="center" verticalAlign="middle">Gate 2: KYC</Th>
-                      <Th color="white" py={3.5} minW="140px" textAlign="center" verticalAlign="middle">Gate 3: Bank Payout</Th>
-                      <Th color="white" py={3.5} minW="130px" textAlign="center" verticalAlign="middle">Work Status</Th>
-                      <Th color="white" py={3.5} minW="160px" textAlign="center" verticalAlign="middle">Actions</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <Tr key={i} height="60px" verticalAlign="middle">
-                        <Td py={3} verticalAlign="middle">
-                          <Flex align="center">
-                            <SkeletonCircle size="8" mr={3} />
-                            <Box>
-                              <Skeleton height="14px" width="120px" mb={1} />
-                              <Skeleton height="10px" width="80px" />
-                            </Box>
-                          </Flex>
-                        </Td>
-                        <Td py={3} verticalAlign="middle"><Skeleton height="14px" width="100px" /></Td>
-                        <Td py={3} verticalAlign="middle"><Skeleton height="20px" width="90px" borderRadius="md" /></Td>
-                        <Td py={3} verticalAlign="middle"><Skeleton height="14px" width="70px" /></Td>
-                        <Td py={3} verticalAlign="middle" textAlign="center"><Flex justify="center"><Skeleton height="24px" width="90px" borderRadius="full" /></Flex></Td>
-                        <Td py={3} verticalAlign="middle" textAlign="center"><Flex justify="center"><Skeleton height="24px" width="80px" borderRadius="full" /></Flex></Td>
-                        <Td py={3} verticalAlign="middle" textAlign="center"><Flex justify="center"><Skeleton height="24px" width="80px" borderRadius="full" /></Flex></Td>
-                        <Td py={3} verticalAlign="middle" textAlign="center"><Flex justify="center"><Skeleton height="24px" width="75px" borderRadius="full" /></Flex></Td>
-                        <Td py={3} verticalAlign="middle" textAlign="center"><Flex justify="center"><Skeleton height="28px" width="110px" borderRadius="md" /></Flex></Td>
-                      </Tr>
-                    ))}
-                  </Tbody>
-                </Table>
-              </Box>
-            ) : currentItems.length > 0 ? (
-              <Box flex="1" display="flex" flexDirection="column" overflow="hidden">
-                <Box
-                  flex="1"
-                  overflowY="auto"
-                  overflowX="auto"
-                  css={{
-                    "&::-webkit-scrollbar": { width: "6px", height: "6px" },
-                    "&::-webkit-scrollbar-thumb": { background: "#cbd5e1", borderRadius: "3px" },
-                  }}
-                >
-                  <Table variant="simple" size="sm">
-                    <Thead position="sticky" top={0} zIndex={10} bg={customColor}>
-                      <Tr verticalAlign="middle">
-                        <Th color="white" py={3.5} minW="190px" verticalAlign="middle">Technician Profile</Th>
-                        <Th color="white" py={3.5} minW="140px" verticalAlign="middle">Skill / Experience</Th>
-                        <Th color="white" py={3.5} minW="140px" verticalAlign="middle">District *</Th>
-                        <Th color="white" py={3.5} minW="100px" verticalAlign="middle">City</Th>
-                        <Th color="white" py={3.5} minW="150px" textAlign="center" verticalAlign="middle">Gate 1: Training</Th>
-                        <Th color="white" py={3.5} minW="140px" textAlign="center" verticalAlign="middle">Gate 2: KYC</Th>
-                        <Th color="white" py={3.5} minW="140px" textAlign="center" verticalAlign="middle">Gate 3: Bank Payout</Th>
-                        <Th color="white" py={3.5} minW="130px" textAlign="center" verticalAlign="middle">Work Status</Th>
-                        <Th color="white" py={3.5} minW="160px" textAlign="center" verticalAlign="middle">Actions</Th>
-                      </Tr>
-                    </Thead>
-                    <Tbody>
-                      {currentItems.map((tech) => {
-                        const isKycVer = isTechnicianKYCVerified(tech, allKycRecords);
-                        const isBankVer = isTechnicianBankVerified(tech, allKycRecords);
-                        const kycRecord = findKYCRecord(tech, allKycRecords);
-                        const kycStatus =
-                          kycRecord?.status?.toLowerCase() ||
-                          kycRecord?.verificationStatus?.toLowerCase() ||
-                          "pending";
-
-                        return (
-                          <Tr
-                            key={tech._id}
-                            _hover={{ bg: `${customColor}08` }}
-                            transition="background 0.15s"
-                            borderBottom="1px solid"
-                            borderColor="gray.100"
-                            verticalAlign="middle"
-                          >
-                            {/* Profile */}
-                            <Td py={3} verticalAlign="middle">
-                              <Flex
-                                align="center"
-                                cursor="pointer"
-                                onClick={() => {
-                                  setSelectedTechnician(tech);
-                                  setIsDetailsModalOpen(true);
-                                }}
-                              >
-                                <Avatar
-                                  size="sm"
-                                  name={getTechnicianName(tech, allKycRecords)}
-                                  src={getTechnicianImage(tech, allKycRecords)}
-                                  mr={3}
-                                  border="1px solid"
-                                  borderColor={customColor}
-                                />
-                                <Box maxW="150px">
-                                  <Text fontWeight="bold" color="gray.800" fontSize="sm" isTruncated title={getTechnicianName(tech, allKycRecords)}>
-                                    {getTechnicianName(tech, allKycRecords)}
-                                  </Text>
-                                  <Flex align="center" gap={1} mt={0.5}>
-                                    <Text fontSize="xs" color="gray.500" isTruncated maxW="110px">
-                                      {getTechnicianPhone(tech, allKycRecords) || getTechnicianEmail(tech, allKycRecords) || "No contact"}
-                                    </Text>
-                                    {tech.availability?.isOnline && (
-                                      <Badge colorScheme="green" fontSize="9px" px={1} borderRadius="full" flexShrink={0}>
-                                        Online
-                                      </Badge>
-                                    )}
-                                  </Flex>
-                                </Box>
-                              </Flex>
-                            </Td>
-
-                            {/* Skill / Exp */}
-                            <Td py={3} verticalAlign="middle">
-                              <Text fontSize="xs" fontWeight="semibold" color="gray.700" isTruncated maxW="140px">
-                                {getTechnicianSpecialization(tech)}
-                              </Text>
-                              <Text fontSize="xs" color="gray.500">
-                                {tech.experienceYears || tech.profile?.experienceYears || "0"} Years Exp
-                              </Text>
-                            </Td>
-
-                            {/* District (Mandatory) */}
-                            <Td py={3} verticalAlign="middle">
-                              {getTechnicianDistrict(tech) ? (
-                                <Badge colorScheme="teal" px={2.5} py={1} borderRadius="md" textTransform="capitalize" fontWeight="bold" fontSize="2xs">
-                                  📍 {getTechnicianDistrict(tech)}
-                                </Badge>
-                              ) : (
-                                <Badge colorScheme="red" px={2} py={0.5} borderRadius="md" variant="solid" fontSize="2xs">
-                                  ⚠️ District Missing
-                                </Badge>
-                              )}
-                            </Td>
-
-                            {/* City */}
-                            <Td py={3} verticalAlign="middle">
-                              <Text fontSize="xs" color="gray.700" fontWeight="medium" textTransform="capitalize">
-                                {tech.city || tech.profile?.city || tech.locality || "N/A"}
-                              </Text>
-                            </Td>
-
-                            {/* Gate 1: Training Status + Fast Action */}
-                            <Td py={3} verticalAlign="middle" textAlign="center">
-                              <Flex align="center" justify="center" gap={1.5}>
-                                <Badge
-                                  colorScheme={tech.trainingCompleted ? "green" : "orange"}
-                                  borderRadius="full"
-                                  px={2.5}
-                                  h="26px"
-                                  fontSize="2xs"
-                                  display="inline-flex"
-                                  alignItems="center"
-                                  gap={1}
-                                >
-                                  <Icon as={tech.trainingCompleted ? FaCheckCircle : MdOutlinePending} />
-                                  {tech.trainingCompleted ? "Completed" : "Pending"}
-                                </Badge>
-                                <Tooltip
-                                  label={
-                                    tech.trainingCompleted
-                                      ? "Mark training incomplete"
-                                      : "Approve Gate 1 training completion"
-                                  }
-                                >
-                                  <IconButton
-                                    size="xs"
-                                    h="26px"
-                                    w="26px"
-                                    aria-label="Toggle training"
-                                    icon={<FaUserGraduate />}
-                                    colorScheme={tech.trainingCompleted ? "gray" : "teal"}
-                                    variant={tech.trainingCompleted ? "ghost" : "solid"}
-                                    onClick={() => handleToggleTraining(tech, !tech.trainingCompleted)}
-                                  />
-                                </Tooltip>
-                              </Flex>
-                            </Td>
-
-                            {/* Gate 2: KYC */}
-                            <Td py={3} verticalAlign="middle" textAlign="center">
-                              <Flex justify="center" align="center">
-                                <Badge
-                                  colorScheme={
-                                    isKycVer
-                                      ? "green"
-                                      : kycStatus === "rejected"
-                                      ? "red"
-                                      : kycRecord
-                                      ? "purple"
-                                      : "gray"
-                                  }
-                                  borderRadius="full"
-                                  px={2.5}
-                                  h="26px"
-                                  fontSize="2xs"
-                                  display="inline-flex"
-                                  alignItems="center"
-                                  gap={1}
-                                  cursor="pointer"
-                                  onClick={() => handleOpenKYCModal(tech)}
-                                >
-                                  <Icon
-                                    as={
-                                      isKycVer
-                                        ? MdVerified
-                                        : kycStatus === "rejected"
-                                        ? FaTimesCircle
-                                        : FaIdCard
-                                    }
-                                  />
-                                  {isKycVer
-                                    ? "Verified"
-                                    : kycStatus === "rejected"
-                                    ? "Rejected"
-                                    : kycRecord
-                                    ? "Under Review"
-                                    : "Not Uploaded"}
-                                </Badge>
-                              </Flex>
-                            </Td>
-
-                            {/* Gate 3: Bank Payout */}
-                            <Td py={3} verticalAlign="middle" textAlign="center">
-                              <Flex justify="center" align="center">
-                                <Badge
-                                  colorScheme={isBankVer ? "green" : kycRecord?.bankDetails ? "orange" : "gray"}
-                                  borderRadius="full"
-                                  px={2.5}
-                                  h="26px"
-                                  fontSize="2xs"
-                                  display="inline-flex"
-                                  alignItems="center"
-                                  gap={1}
-                                  cursor="pointer"
-                                  onClick={() => handleOpenBankModal(tech)}
-                                >
-                                  <Icon as={isBankVer ? FaCheckCircle : FaUniversity} />
-                                  {isBankVer ? "Verified" : kycRecord?.bankDetails ? "Pending" : "Not Added"}
-                                </Badge>
-                              </Flex>
-                            </Td>
-
-                            {/* Work Status */}
-                            <Td py={3} verticalAlign="middle" textAlign="center">
-                              <Flex justify="center" align="center">
-                                <Badge
-                                  colorScheme={
-                                    tech.workStatus === "approved" || tech.status === "Active"
-                                      ? "green"
-                                      : tech.workStatus === "suspended" || tech.status === "Inactive"
-                                      ? "red"
-                                      : "yellow"
-                                  }
-                                  borderRadius="full"
-                                  px={2.5}
-                                  h="26px"
-                                  fontSize="2xs"
-                                  display="inline-flex"
-                                  alignItems="center"
-                                  textTransform="capitalize"
-                                >
-                                  {tech.workStatus || tech.status || "Pending"}
-                                </Badge>
-                              </Flex>
-                            </Td>
-
-                            {/* Actions Column */}
-                            <Td py={3} verticalAlign="middle" textAlign="center">
-                              <HStack spacing={1.5} justify="center" align="center">
-                                {/* View Full Profile */}
-                                <Tooltip label="View Full Profile & KYC">
-                                  <IconButton
-                                    size="xs"
-                                    h="28px"
-                                    w="28px"
-                                    aria-label="View Details"
-                                    icon={<FaEye />}
-                                    variant="outline"
-                                    colorScheme="teal"
-                                    onClick={() => {
-                                      setSelectedTechnician(tech);
-                                      setIsDetailsModalOpen(true);
-                                    }}
-                                  />
-                                </Tooltip>
-
-                                {/* KYC Review Button */}
-                                <Tooltip label="Review KYC Documents">
-                                  <IconButton
-                                    size="xs"
-                                    h="28px"
-                                    w="28px"
-                                    aria-label="Review KYC"
-                                    icon={<FaIdCard />}
-                                    variant="outline"
-                                    colorScheme="purple"
-                                    onClick={() => handleOpenKYCModal(tech)}
-                                  />
-                                </Tooltip>
-
-                                {/* Bank Review Button */}
-                                <Tooltip label="Review Bank Payouts">
-                                  <IconButton
-                                    size="xs"
-                                    h="28px"
-                                    w="28px"
-                                    aria-label="Review Bank"
-                                    icon={<FaUniversity />}
-                                    variant="outline"
-                                    colorScheme="orange"
-                                    onClick={() => handleOpenBankModal(tech)}
-                                  />
-                                </Tooltip>
-
-                                {/* Work Status Menu */}
-                                <Menu>
-                                  <MenuButton
-                                    as={IconButton}
-                                    size="xs"
-                                    h="28px"
-                                    w="28px"
-                                    aria-label="More Options"
-                                    icon={<FaEllipsisV />}
-                                    variant="ghost"
-                                  />
-                                  <MenuList fontSize="sm">
-                                    <MenuItem
-                                      icon={<FaCheck color="green" />}
-                                      onClick={() => handleUpdateWorkStatus(tech, "approved")}
-                                    >
-                                      Set Status: Approved
-                                    </MenuItem>
-                                    <MenuItem
-                                      icon={<MdOutlinePending color="orange" />}
-                                      onClick={() => handleUpdateWorkStatus(tech, "pending")}
-                                    >
-                                      Set Status: Pending
-                                    </MenuItem>
-                                    <MenuItem
-                                      icon={<FaUserSlash color="red" />}
-                                      onClick={() => handleUpdateWorkStatus(tech, "suspended")}
-                                    >
-                                      Set Status: Suspended
-                                    </MenuItem>
-                                    <Divider />
-                                    <MenuItem
-                                      icon={<FaTrash color="red" />}
-                                      color="red.600"
-                                      onClick={() => {
-                                        setAdminToDelete(tech);
-                                        setIsDeleteDialogOpen(true);
-                                      }}
-                                    >
-                                      Delete Technician
-                                    </MenuItem>
-                                  </MenuList>
-                                </Menu>
-                              </HStack>
-                            </Td>
-                          </Tr>
-                        );
-                      })}
-                    </Tbody>
-                  </Table>
-                </Box>
-
-                {/* Pagination Footer */}
-                <Box p={3} borderTop="1px solid" borderColor="gray.100" bg="gray.50">
-                  <Flex justify="space-between" align="center">
-                    <Text fontSize="xs" color="gray.600">
-                      Showing {indexOfFirstItem + 1} -{" "}
-                      {Math.min(indexOfLastItem, filteredData.length)} of {filteredData.length}{" "}
-                      technicians
-                    </Text>
-                    <HStack spacing={2}>
-                      <Button
-                        size="xs"
-                        leftIcon={<FaChevronLeft />}
-                        isDisabled={currentPage === 1}
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      >
-                        Previous
-                      </Button>
-                      <Text fontSize="xs" fontWeight="bold" color={customColor} px={2}>
-                        {currentPage} / {totalPages}
-                      </Text>
-                      <Button
-                        size="xs"
-                        rightIcon={<FaChevronRight />}
-                        isDisabled={currentPage >= totalPages}
-                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      >
-                        Next
-                      </Button>
-                    </HStack>
-                  </Flex>
-                </Box>
-              </Box>
-            ) : (
-              <Flex height="250px" direction="column" justify="center" align="center" p={6}>
-                <Icon as={FaSearch} boxSize="32px" color="gray.300" mb={3} />
-                <Text fontSize="md" fontWeight="semibold" color="gray.600">
-                  No technicians match the selected filters
-                </Text>
-                <Text fontSize="xs" color="gray.400" mt={1}>
-                  Try clearing the search query or switching to All Technicians.
-                </Text>
+            <DataTable
+              keyExtractor={(tech) => tech._id}
+              rows={currentItems}
+              isLoading={tableLoading}
+              emptyIcon={FaSearch}
+              emptyTitle="No technicians match the selected filters"
+              emptyDescription="Try clearing the search query or switching to All Technicians."
+              emptyAction={
                 <Button
                   size="sm"
                   mt={4}
@@ -2167,1007 +1608,539 @@ function AdminManagement() {
                 >
                   Reset Filters
                 </Button>
-              </Flex>
-            )}
+              }
+              pagination={
+                tableLoading || currentItems.length === 0
+                  ? undefined
+                  : {
+                      page: currentPage,
+                      totalPages: totalPages || 1,
+                      totalRows: filteredData.length,
+                      indexOfFirst: indexOfFirstItem,
+                      indexOfLast: Math.min(indexOfLastItem, filteredData.length),
+                      rowsPerPage: itemsPerPage,
+                      onPageChange: setCurrentPage,
+                      showRowsPerPage: false,
+                      label: "technicians",
+                    }
+              }
+              columns={[
+                {
+                  key: "technicianProfile",
+                  label: "Technician Profile",
+                  minWidth: "190px",
+                  cell: (tech) => (
+                    <Flex
+                      align="center"
+                      cursor="pointer"
+                      onClick={() => {
+                        setSelectedTechnician(tech);
+                        setIsDetailsModalOpen(true);
+                      }}
+                    >
+                      <Avatar
+                        size="sm"
+                        name={getTechnicianName(tech, allKycRecords)}
+                        src={getTechnicianImage(tech, allKycRecords)}
+                        mr={3}
+                        border="1px solid"
+                        borderColor={customColor}
+                      />
+                      <Box maxW="150px">
+                        <Text fontWeight="bold" color="gray.800" fontSize="sm" isTruncated title={getTechnicianName(tech, allKycRecords)}>
+                          {getTechnicianName(tech, allKycRecords)}
+                        </Text>
+                        <Flex align="center" gap={1} mt={0.5}>
+                          <Text fontSize="xs" color="gray.500" isTruncated maxW="110px">
+                            {getTechnicianPhone(tech, allKycRecords) || getTechnicianEmail(tech, allKycRecords) || "No contact"}
+                          </Text>
+                          {tech.availability?.isOnline && (
+                            <Badge colorScheme="green" fontSize="9px" px={1} borderRadius="full" flexShrink={0}>
+                              Online
+                            </Badge>
+                          )}
+                        </Flex>
+                      </Box>
+                    </Flex>
+                  ),
+                },
+                {
+                  key: "skill",
+                  label: "Skill / Experience",
+                  minWidth: "140px",
+                  cell: (tech) => (
+                    <Box>
+                      <Text fontSize="xs" fontWeight="semibold" color="gray.700" isTruncated maxW="140px">
+                        {getTechnicianSpecialization(tech)}
+                      </Text>
+                      <Text fontSize="xs" color="gray.500">
+                        {tech.experienceYears || tech.profile?.experienceYears || "0"} Years Exp
+                      </Text>
+                    </Box>
+                  ),
+                },
+                {
+                  key: "district",
+                  label: "District *",
+                  minWidth: "140px",
+                  cell: (tech) =>
+                    getTechnicianDistrict(tech) ? (
+                      <Badge colorScheme="teal" px={2.5} py={1} borderRadius="md" textTransform="capitalize" fontWeight="bold" fontSize="2xs">
+                        📍 {getTechnicianDistrict(tech)}
+                      </Badge>
+                    ) : (
+                      <Badge colorScheme="red" px={2} py={0.5} borderRadius="md" variant="solid" fontSize="2xs">
+                        ⚠️ District Missing
+                      </Badge>
+                    ),
+                },
+                {
+                  key: "city",
+                  label: "City",
+                  minWidth: "100px",
+                  cell: (tech) => (
+                    <Text fontSize="xs" color="gray.700" fontWeight="medium" textTransform="capitalize">
+                      {tech.city || tech.profile?.city || tech.locality || "N/A"}
+                    </Text>
+                  ),
+                },
+                {
+                  key: "training",
+                  label: "Gate 1: Training",
+                  align: "center",
+                  minWidth: "150px",
+                  cell: (tech) => (
+                    <Flex align="center" justify="center" gap={1.5}>
+                      <Badge
+                        colorScheme={tech.trainingCompleted ? "green" : "orange"}
+                        borderRadius="full"
+                        px={2.5}
+                        h="26px"
+                        fontSize="2xs"
+                        display="inline-flex"
+                        alignItems="center"
+                        gap={1}
+                      >
+                        <Icon as={tech.trainingCompleted ? FaCheckCircle : MdOutlinePending} />
+                        {tech.trainingCompleted ? "Completed" : "Pending"}
+                      </Badge>
+                      <Tooltip
+                        label={
+                          tech.trainingCompleted
+                            ? "Mark training incomplete"
+                            : "Approve Gate 1 training completion"
+                        }
+                      >
+                        <IconButton
+                          size="xs"
+                          h="26px"
+                          w="26px"
+                          aria-label="Toggle training"
+                          icon={<FaUserGraduate />}
+                          colorScheme={tech.trainingCompleted ? "gray" : "teal"}
+                          variant={tech.trainingCompleted ? "ghost" : "solid"}
+                          onClick={() => handleToggleTraining(tech, !tech.trainingCompleted)}
+                        />
+                      </Tooltip>
+                    </Flex>
+                  ),
+                },
+                {
+                  key: "kyc",
+                  label: "Gate 2: KYC",
+                  align: "center",
+                  minWidth: "140px",
+                  cell: (tech) => {
+                    const kycRecord = findKYCRecord(tech, allKycRecords);
+                    const isKycVer = isTechnicianKYCVerified(tech, allKycRecords);
+                    const kycStatus =
+                      kycRecord?.status?.toLowerCase() ||
+                      kycRecord?.verificationStatus?.toLowerCase() ||
+                      "pending";
+                    return (
+                      <Flex justify="center" align="center">
+                        <Badge
+                          colorScheme={
+                            isKycVer
+                              ? "green"
+                              : kycStatus === "rejected"
+                              ? "red"
+                              : kycRecord
+                              ? "purple"
+                              : "gray"
+                          }
+                          borderRadius="full"
+                          px={2.5}
+                          h="26px"
+                          fontSize="2xs"
+                          display="inline-flex"
+                          alignItems="center"
+                          gap={1}
+                          cursor="pointer"
+                          onClick={() => handleOpenKYCModal(tech)}
+                        >
+                          <Icon
+                            as={
+                              isKycVer
+                                ? MdVerified
+                                : kycStatus === "rejected"
+                                ? FaTimesCircle
+                                : FaIdCard
+                            }
+                          />
+                          {isKycVer
+                            ? "Verified"
+                            : kycStatus === "rejected"
+                            ? "Rejected"
+                            : kycRecord
+                            ? "Under Review"
+                            : "Not Uploaded"}
+                        </Badge>
+                      </Flex>
+                    );
+                  },
+                },
+                {
+                  key: "bank",
+                  label: "Gate 3: Bank Payout",
+                  align: "center",
+                  minWidth: "140px",
+                  cell: (tech) => {
+                    const kycRecord = findKYCRecord(tech, allKycRecords);
+                    const isBankVer = isTechnicianBankVerified(tech, allKycRecords);
+                    return (
+                      <Flex justify="center" align="center">
+                        <Badge
+                          colorScheme={isBankVer ? "green" : kycRecord?.bankDetails ? "orange" : "gray"}
+                          borderRadius="full"
+                          px={2.5}
+                          h="26px"
+                          fontSize="2xs"
+                          display="inline-flex"
+                          alignItems="center"
+                          gap={1}
+                          cursor="pointer"
+                          onClick={() => handleOpenBankModal(tech)}
+                        >
+                          <Icon as={isBankVer ? FaCheckCircle : FaUniversity} />
+                          {isBankVer ? "Verified" : kycRecord?.bankDetails ? "Pending" : "Not Added"}
+                        </Badge>
+                      </Flex>
+                    );
+                  },
+                },
+                {
+                  key: "workStatus",
+                  label: "Work Status",
+                  align: "center",
+                  minWidth: "130px",
+                  cell: (tech) => (
+                    <Flex justify="center" align="center">
+                      <Badge
+                        colorScheme={
+                          tech.workStatus === "approved" || tech.status === "Active"
+                            ? "green"
+                            : tech.workStatus === "suspended" || tech.status === "Inactive"
+                            ? "red"
+                            : "yellow"
+                        }
+                        borderRadius="full"
+                        px={2.5}
+                        h="26px"
+                        fontSize="2xs"
+                        display="inline-flex"
+                        alignItems="center"
+                        textTransform="capitalize"
+                      >
+                        {tech.workStatus || tech.status || "Pending"}
+                      </Badge>
+                    </Flex>
+                  ),
+                },
+                {
+                  key: "actions",
+                  label: "Actions",
+                  align: "right",
+                  minWidth: "170px",
+                  thProps: { pr: 6 },
+                  cell: (tech) => (
+                    <HStack spacing={1.5} justify="flex-end" align="center">
+                      <Tooltip label="View Full Profile & KYC">
+                        <IconButton
+                          size="xs"
+                          h="28px"
+                          w="28px"
+                          aria-label="View Details"
+                          icon={<FaEye />}
+                          variant="outline"
+                          colorScheme="teal"
+                          onClick={() => {
+                            setSelectedTechnician(tech);
+                            setIsDetailsModalOpen(true);
+                          }}
+                        />
+                      </Tooltip>
+
+                      <Tooltip label="Review KYC Documents">
+                        <IconButton
+                          size="xs"
+                          h="28px"
+                          w="28px"
+                          aria-label="Review KYC"
+                          icon={<FaIdCard />}
+                          variant="outline"
+                          colorScheme="purple"
+                          onClick={() => handleOpenKYCModal(tech)}
+                        />
+                      </Tooltip>
+
+                      <Tooltip label="Review Bank Payouts">
+                        <IconButton
+                          size="xs"
+                          h="28px"
+                          w="28px"
+                          aria-label="Review Bank"
+                          icon={<FaUniversity />}
+                          variant="outline"
+                          colorScheme="orange"
+                          onClick={() => handleOpenBankModal(tech)}
+                        />
+                      </Tooltip>
+
+                      <Menu>
+                        <MenuButton
+                          as={IconButton}
+                          size="xs"
+                          h="28px"
+                          w="28px"
+                          aria-label="More Options"
+                          icon={<FaEllipsisV />}
+                          variant="ghost"
+                        />
+                        <MenuList fontSize="sm">
+                          <MenuItem
+                            icon={<FaCheck color="green" />}
+                            onClick={() => handleUpdateWorkStatus(tech, "approved")}
+                          >
+                            Set Status: Approved
+                          </MenuItem>
+                          <MenuItem
+                            icon={<MdOutlinePending color="orange" />}
+                            onClick={() => handleUpdateWorkStatus(tech, "pending")}
+                          >
+                            Set Status: Pending
+                          </MenuItem>
+                          <MenuItem
+                            icon={<FaUserSlash color="red" />}
+                            onClick={() => handleUpdateWorkStatus(tech, "suspended")}
+                          >
+                            Set Status: Suspended
+                          </MenuItem>
+                          <Divider />
+                          <MenuItem
+                            icon={<FaTrash color="red" />}
+                            color="red.600"
+                            onClick={() => {
+                              setAdminToDelete(tech);
+                              setIsDeleteDialogOpen(true);
+                            }}
+                          >
+                            Delete Technician
+                          </MenuItem>
+                        </MenuList>
+                      </Menu>
+                    </HStack>
+                  ),
+                },
+              ]}
+            />
           </CardBody>
         </Card>
       </Box>
 
-      {/* KYC IDENTITY REVIEW & EDIT MODAL */}
-      <Modal isOpen={isKYCModalOpen} onClose={() => setIsKYCModalOpen(false)} size="2xl" scrollBehavior="inside">
-        <ModalOverlay />
-        <ModalContent borderRadius="16px">
-          <ModalHeader borderBottom="1px solid" borderColor="gray.100" pb={3}>
-            <Flex justify="space-between" align="center" pr={6}>
+      {/* ORPHANED KYC MAINTENANCE (KYC docs with no linked technician) */}
+      <Box px={{ base: 2, md: 4 }} pb={4}>
+        <Card bg="white" shadow="lg" borderRadius="16px" border="1px solid" borderColor={customBorderColor}>
+          <CardHeader p="16px" pb="8px">
+            <Flex justify="space-between" align="center" wrap="wrap" gap={2}>
               <Box>
-                <Heading size="sm">Gate 2: KYC Identity Verification</Heading>
-                <Text fontSize="xs" color="gray.500" mt={0.5}>
-                  Technician: {getTechnicianName(selectedTechForKYC, allKycRecords)}
+                <Heading size="sm" color="gray.800">
+                  🧹 Orphaned KYC Records
+                </Heading>
+                <Text fontSize="xs" color="gray.500">
+                  Identity documents with no linked technician account.
                 </Text>
               </Box>
               <HStack spacing={2}>
                 <Button
                   size="xs"
                   variant="outline"
-                  leftIcon={isUnmaskedPII ? <FaLock /> : <FaUnlock />}
-                  colorScheme={isUnmaskedPII ? "purple" : "gray"}
-                  onClick={handleToggleUnmaskedPII}
-                  isLoading={kycLoading}
-                >
-                  {isUnmaskedPII ? "Mask PII" : "Unmask Full PII (Audited)"}
-                </Button>
-                {kycData && (
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    colorScheme="teal"
-                    leftIcon={<FaEdit />}
-                    onClick={() => {
-                      const rec = Array.isArray(kycData)
-                        ? kycData.find((d) => (d.technicianId?._id || d.technicianId) === selectedTechForKYC?._id) || kycData[0]
-                        : kycData;
-                      handleOpenEditKYC(rec);
-                    }}
-                  >
-                    Edit Numbers
-                  </Button>
-                )}
-              </HStack>
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton />
-
-          <ModalBody py={4}>
-            {kycLoading ? (
-              <Flex justify="center" align="center" h="200px">
-                <Spinner size="lg" color={customColor} />
-              </Flex>
-            ) : kycData ? (
-              (() => {
-                let rec = Array.isArray(kycData)
-                  ? kycData.find((d) => (d.technicianId?._id || d.technicianId) === selectedTechForKYC?._id) || kycData[0]
-                  : kycData;
-
-                if (!rec) {
-                  return (
-                    <Text textAlign="center" py={8} color="gray.500">
-                      No KYC record found for this technician.
-                    </Text>
-                  );
-                }
-
-                const docs = rec.documents || {};
-                const verificationStatus =
-                  rec.verificationStatus || rec.status || "pending";
-
-                return (
-                  <VStack spacing={4} align="stretch">
-                    {/* Status Banner */}
-                    <Flex
-                      p={3}
-                      borderRadius="8px"
-                      align="center"
-                      justify="space-between"
-                      bg={
-                        verificationStatus === "approved" || isTechnicianKYCVerified(selectedTechForKYC, allKycRecords)
-                          ? "green.50"
-                          : verificationStatus === "rejected"
-                          ? "red.50"
-                          : "yellow.50"
-                      }
-                      border="1px solid"
-                      borderColor={
-                        verificationStatus === "approved" || isTechnicianKYCVerified(selectedTechForKYC, allKycRecords)
-                          ? "green.300"
-                          : verificationStatus === "rejected"
-                          ? "red.200"
-                          : "yellow.200"
-                      }
-                    >
-                      <Box>
-                        <Flex align="center" gap={2}>
-                          <Icon
-                            as={
-                              verificationStatus === "approved" || isTechnicianKYCVerified(selectedTechForKYC, allKycRecords)
-                                ? FaCheckCircle
-                                : verificationStatus === "rejected"
-                                ? FaTimesCircle
-                                : MdOutlinePending
-                            }
-                            color={
-                              verificationStatus === "approved" || isTechnicianKYCVerified(selectedTechForKYC, allKycRecords)
-                                ? "green.600"
-                                : verificationStatus === "rejected"
-                                ? "red.600"
-                                : "yellow.600"
-                            }
-                            boxSize="18px"
-                          />
-                          <Text fontSize="sm" fontWeight="bold" color="gray.800">
-                            {verificationStatus === "approved" || isTechnicianKYCVerified(selectedTechForKYC, allKycRecords)
-                              ? "Already Verified (KYC Approved)"
-                              : verificationStatus === "rejected"
-                              ? "KYC Rejected"
-                              : "KYC Pending Verification"}
-                          </Text>
-                        </Flex>
-                        <Badge
-                          colorScheme={
-                            verificationStatus === "approved" || isTechnicianKYCVerified(selectedTechForKYC, allKycRecords)
-                              ? "green"
-                              : verificationStatus === "rejected"
-                              ? "red"
-                              : "yellow"
-                          }
-                          fontSize="xs"
-                          mt={1}
-                        >
-                          {verificationStatus === "approved" || isTechnicianKYCVerified(selectedTechForKYC, allKycRecords)
-                            ? "ALREADY VERIFIED BY ADMIN"
-                            : verificationStatus.toUpperCase()}
-                        </Badge>
-                      </Box>
-                      {rec.verifiedAt && (
-                        <Text fontSize="xs" color="gray.600" fontWeight="medium">
-                          Verified Date: {new Date(rec.verifiedAt).toLocaleDateString()}
-                        </Text>
-                      )}
-                    </Flex>
-
-                    {rec.rejectionReason && (
-                      <Box p={3} bg="red.50" border="1px solid" borderColor="red.200" borderRadius="8px">
-                        <Text fontSize="xs" fontWeight="bold" color="red.700">
-                          Rejection Reason:
-                        </Text>
-                        <Text fontSize="xs" color="red.600" mt={1}>
-                          {rec.rejectionReason}
-                        </Text>
-                      </Box>
-                    )}
-
-                    {/* Document Cards Grid */}
-                    <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
-                      {/* Aadhaar */}
-                      <Box p={3} border="1px solid" borderColor="gray.200" borderRadius="10px">
-                        <Text fontSize="xs" fontWeight="bold" color="gray.600" mb={2}>
-                          AADHAAR CARD
-                        </Text>
-                        {docs.aadhaarUrl ? (
-                          <Box borderRadius="6px" overflow="hidden" border="1px solid #eee">
-                            <img
-                              src={getImageUrl(docs.aadhaarUrl)}
-                              alt="Aadhaar"
-                              style={{ width: "100%", height: "130px", objectFit: "cover", cursor: "pointer" }}
-                              onClick={() => window.open(getImageUrl(docs.aadhaarUrl), "_blank")}
-                            />
-                            <Button
-                              size="xs"
-                              w="100%"
-                              variant="ghost"
-                              colorScheme="purple"
-                              as="a"
-                              href={getImageUrl(docs.aadhaarUrl)}
-                              target="_blank"
-                            >
-                              View Full Size
-                            </Button>
-                          </Box>
-                        ) : (
-                          <Flex h="130px" bg="gray.50" align="center" justify="center" border="1px dashed #cbd5e1">
-                            <Text fontSize="xs" color="gray.400">Not Uploaded</Text>
-                          </Flex>
-                        )}
-                        <Text fontSize="10px" color="gray.400" mt={2} textTransform="uppercase">
-                          Aadhaar Number
-                        </Text>
-                        <Text fontSize="xs" fontWeight="bold" fontFamily="monospace">
-                          {rec.aadhaarNumber || "N/A"}
-                        </Text>
-                      </Box>
-
-                      {/* PAN Card */}
-                      <Box p={3} border="1px solid" borderColor="gray.200" borderRadius="10px">
-                        <Text fontSize="xs" fontWeight="bold" color="gray.600" mb={2}>
-                          PAN CARD
-                        </Text>
-                        {docs.panUrl ? (
-                          <Box borderRadius="6px" overflow="hidden" border="1px solid #eee">
-                            <img
-                              src={getImageUrl(docs.panUrl)}
-                              alt="PAN"
-                              style={{ width: "100%", height: "130px", objectFit: "cover", cursor: "pointer" }}
-                              onClick={() => window.open(getImageUrl(docs.panUrl), "_blank")}
-                            />
-                            <Button
-                              size="xs"
-                              w="100%"
-                              variant="ghost"
-                              colorScheme="purple"
-                              as="a"
-                              href={getImageUrl(docs.panUrl)}
-                              target="_blank"
-                            >
-                              View Full Size
-                            </Button>
-                          </Box>
-                        ) : (
-                          <Flex h="130px" bg="gray.50" align="center" justify="center" border="1px dashed #cbd5e1">
-                            <Text fontSize="xs" color="gray.400">Not Uploaded</Text>
-                          </Flex>
-                        )}
-                        <Text fontSize="10px" color="gray.400" mt={2} textTransform="uppercase">
-                          PAN Number
-                        </Text>
-                        <Text fontSize="xs" fontWeight="bold" fontFamily="monospace">
-                          {rec.panNumber || "N/A"}
-                        </Text>
-                      </Box>
-
-                      {/* Driving License */}
-                      <Box p={3} border="1px solid" borderColor="gray.200" borderRadius="10px">
-                        <Text fontSize="xs" fontWeight="bold" color="gray.600" mb={2}>
-                          DRIVING LICENSE
-                        </Text>
-                        {docs.dlUrl ? (
-                          <Box borderRadius="6px" overflow="hidden" border="1px solid #eee">
-                            <img
-                              src={getImageUrl(docs.dlUrl)}
-                              alt="Driving License"
-                              style={{ width: "100%", height: "130px", objectFit: "cover", cursor: "pointer" }}
-                              onClick={() => window.open(getImageUrl(docs.dlUrl), "_blank")}
-                            />
-                            <Button
-                              size="xs"
-                              w="100%"
-                              variant="ghost"
-                              colorScheme="purple"
-                              as="a"
-                              href={getImageUrl(docs.dlUrl)}
-                              target="_blank"
-                            >
-                              View Full Size
-                            </Button>
-                          </Box>
-                        ) : (
-                          <Flex h="130px" bg="gray.50" align="center" justify="center" border="1px dashed #cbd5e1">
-                            <Text fontSize="xs" color="gray.400">Not Uploaded</Text>
-                          </Flex>
-                        )}
-                        <Text fontSize="10px" color="gray.400" mt={2} textTransform="uppercase">
-                          DL Number
-                        </Text>
-                        <Text fontSize="xs" fontWeight="bold" fontFamily="monospace">
-                          {rec.drivingLicenseNumber || "N/A"}
-                        </Text>
-                      </Box>
-                    </SimpleGrid>
-
-                    {/* Rejection input area */}
-                    {showRejectionInput && (
-                      <Box p={3} border="1px solid" borderColor="red.300" borderRadius="8px" bg="red.50">
-                        <Text fontSize="xs" fontWeight="bold" color="red.700" mb={1}>
-                          Reason for Rejection (Required):
-                        </Text>
-                        <Textarea
-                          size="sm"
-                          bg="white"
-                          placeholder="State why document/identity was rejected..."
-                          value={rejectionInput}
-                          onChange={(e) => setRejectionInput(e.target.value)}
-                        />
-                      </Box>
-                    )}
-                  </VStack>
-                );
-              })()
-            ) : (
-              <Text textAlign="center" py={10} color="gray.500">
-                No KYC record found.
-              </Text>
-            )}
-          </ModalBody>
-
-          <ModalFooter borderTop="1px solid" borderColor="gray.100" bg="gray.50">
-            <Flex w="100%" justify="space-between" align="center">
-              {kycData && (
-                <Button
-                  size="sm"
-                  colorScheme="red"
-                  variant="ghost"
-                  onClick={async () => {
-                    if (window.confirm("Are you sure you want to delete this KYC record?")) {
-                      await deleteKYC(selectedTechForKYC._id);
-                      setIsKYCModalOpen(false);
-                      await fetchData();
-                    }
+                  colorScheme="teal"
+                  onClick={() => {
+                    setOrphanedOpen((v) => !v);
+                    if (!orphanedOpen) fetchOrphanedKyc();
                   }}
                 >
-                  Delete KYC
+                  {orphanedOpen ? "Hide" : "Review Orphans"}
                 </Button>
-              )}
-
-              <HStack spacing={2}>
-                {!showRejectionInput ? (
-                  <>
-                    <Button
-                      size="sm"
-                      colorScheme="red"
-                      variant="outline"
-                      onClick={() => setShowRejectionInput(true)}
-                    >
-                      Reject KYC
-                    </Button>
-                    {(() => {
-                      const alreadyVerified = isTechnicianKYCVerified(selectedTechForKYC, allKycRecords);
-                      return (
-                        <Button
-                          size="sm"
-                          colorScheme={alreadyVerified ? "teal" : "green"}
-                          leftIcon={<FaCheckCircle />}
-                          onClick={() => handleVerifyKYCAction("approved")}
-                        >
-                          {alreadyVerified ? "Already Verified ✓" : "Approve (Verify Identity)"}
-                        </Button>
-                      );
-                    })()}
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setShowRejectionInput(false);
-                        setRejectionInput("");
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      size="sm"
-                      colorScheme="red"
-                      onClick={() => handleVerifyKYCAction("rejected")}
-                    >
-                      Confirm Rejection
-                    </Button>
-                  </>
+                {orphanedOpen && orphanedKyc.length > 0 && (
+                  <Button size="xs" colorScheme="red" variant="outline" onClick={handleCleanupAllOrphanedKyc}>
+                    Cleanup All
+                  </Button>
                 )}
               </HStack>
             </Flex>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+          </CardHeader>
+          {orphanedOpen && (
+            <CardBody pt={0}>
+              {orphanedLoading ? (
+                <Flex justify="center" py={6}>
+                  <Spinner size="md" color={customColor} />
+                </Flex>
+              ) : orphanedKyc.length === 0 ? (
+                <Text fontSize="sm" color="gray.500" py={4} textAlign="center">
+                  No orphaned KYC records. Storage is clean.
+                </Text>
+              ) : (
+                <Box overflowX="auto">
+                  <Table variant="simple" size="sm">
+                    <Thead>
+                      <Tr>
+                        <Th>KYC ID</Th>
+                        <Th>Name / Identifier</Th>
+                        <Th>Created</Th>
+                        <Th>Actions</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {orphanedKyc.map((k) => (
+                        <Tr key={k._id || k.kycId || k.id}>
+                          <Td fontSize="xs" fontFamily="mono">{k._id || k.kycId || k.id || "—"}</Td>
+                          <Td fontSize="sm">{k.name || k.aadhaarNumber || k.phone || "—"}</Td>
+                          <Td fontSize="xs">{k.createdAt ? new Date(k.createdAt).toLocaleDateString() : "—"}</Td>
+                          <Td>
+                            <Button
+                              size="xs"
+                              colorScheme="red"
+                              variant="outline"
+                              leftIcon={<FaTrash />}
+                              onClick={() => handleDeleteOrphanedKyc(k._id || k.kycId || k.id)}
+                            >
+                              Delete
+                            </Button>
+                          </Td>
+                        </Tr>
+                      ))}
+                    </Tbody>
+                  </Table>
+                </Box>
+              )}
+            </CardBody>
+          )}
+        </Card>
+      </Box>
+
+      {/* KYC IDENTITY REVIEW & EDIT MODAL */}
+      <KYCReviewModal
+        isOpen={isKYCModalOpen}
+        onClose={() => setIsKYCModalOpen(false)}
+        selectedTechForKYC={selectedTechForKYC}
+        allKycRecords={allKycRecords}
+        kycData={kycData}
+        kycLoading={kycLoading}
+        isUnmaskedPII={isUnmaskedPII}
+        onToggleUnmaskedPII={handleToggleUnmaskedPII}
+        onOpenEditKYC={handleOpenEditKYC}
+        onDeleteKYC={async () => {
+          if (window.confirm("Are you sure you want to delete this KYC record?")) {
+            await dispatch(removeKYC({ id: selectedTechForKYC._id })).unwrap();
+            setIsKYCModalOpen(false);
+            await fetchData();
+          }
+        }}
+        showRejectionInput={showRejectionInput}
+        setShowRejectionInput={setShowRejectionInput}
+        rejectionInput={rejectionInput}
+        setRejectionInput={setRejectionInput}
+        onVerifyKYCAction={handleVerifyKYCAction}
+        isTechnicianKYCVerified={isTechnicianKYCVerified}
+        getTechnicianName={getTechnicianName}
+        getImageUrl={getImageUrl}
+        customColor={customColor}
+      />
 
       {/* EDIT KYC NUMBERS MODAL */}
-      <Modal isOpen={isEditKYCOpen} onClose={() => setIsEditKYCOpen(false)} size="md">
-        <ModalOverlay />
-        <ModalContent borderRadius="14px">
-          <ModalHeader borderBottom="1px solid" borderColor="gray.100">
-            Edit Technician KYC Numbers
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody py={4}>
-            <VStack spacing={3}>
-              <FormControl>
-                <FormLabel fontSize="xs">Aadhaar Number (12 digits)</FormLabel>
-                <Input
-                  size="sm"
-                  value={kycEditForm.aadhaarNumber}
-                  onChange={(e) => setKycEditForm({ ...kycEditForm, aadhaarNumber: e.target.value })}
-                  placeholder="123456789012"
-                />
-              </FormControl>
-              <FormControl>
-                <FormLabel fontSize="xs">PAN Card Number</FormLabel>
-                <Input
-                  size="sm"
-                  value={kycEditForm.panNumber}
-                  onChange={(e) => setKycEditForm({ ...kycEditForm, panNumber: e.target.value })}
-                  placeholder="ABCDE1234F"
-                />
-              </FormControl>
-              <FormControl>
-                <FormLabel fontSize="xs">Driving License Number</FormLabel>
-                <Input
-                  size="sm"
-                  value={kycEditForm.drivingLicenseNumber}
-                  onChange={(e) =>
-                    setKycEditForm({ ...kycEditForm, drivingLicenseNumber: e.target.value })
-                  }
-                  placeholder="TN3720230009999"
-                />
-              </FormControl>
-            </VStack>
-          </ModalBody>
-          <ModalFooter bg="gray.50">
-            <Button size="sm" mr={2} variant="ghost" onClick={() => setIsEditKYCOpen(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" colorScheme="teal" onClick={handleSaveKYCEdit} isLoading={savingKycEdit}>
-              Save Changes
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <EditKYCModal
+        isOpen={isEditKYCOpen}
+        onClose={() => setIsEditKYCOpen(false)}
+        kycEditForm={kycEditForm}
+        setKycEditForm={setKycEditForm}
+        onSave={handleSaveKYCEdit}
+        isLoading={savingKycEdit}
+      />
 
       {/* BANK & PAYOUT DETAILS MODAL */}
-      <Modal isOpen={isBankModalOpen} onClose={() => setIsBankModalOpen(false)} size="lg">
-        <ModalOverlay />
-        <ModalContent borderRadius="16px">
-          <ModalHeader borderBottom="1px solid" borderColor="gray.100">
-            <Flex justify="space-between" align="center" pr={6}>
-              <Box>
-                <Heading size="sm">Gate 3: Bank & Payout Verification</Heading>
-                <Text fontSize="xs" color="gray.500" mt={0.5}>
-                  Technician: {getTechnicianName(selectedTechForBank, allKycRecords)}
-                </Text>
-              </Box>
-              <Button
-                size="xs"
-                variant="outline"
-                colorScheme="teal"
-                leftIcon={<FaEdit />}
-                onClick={() => setIsEditBankOpen(true)}
-              >
-                Edit Bank Details
-              </Button>
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton />
-
-          <ModalBody py={4}>
-            {selectedTechForBank && (
-              <VStack spacing={4} align="stretch">
-                {/* Bank status banner */}
-                {(() => {
-                  const isBankVer = isTechnicianBankVerified(selectedTechForBank, allKycRecords);
-                  const kycMatch = findKYCRecord(selectedTechForBank, allKycRecords);
-                  const bankDetails = kycMatch?.bankDetails;
-
-                  return (
-                    <>
-                      <Flex
-                        p={3}
-                        borderRadius="8px"
-                        align="center"
-                        justify="space-between"
-                        bg={isBankVer ? "green.50" : bankDetails ? "orange.50" : "gray.50"}
-                        border="1px solid"
-                        borderColor={isBankVer ? "green.300" : bankDetails ? "orange.200" : "gray.200"}
-                      >
-                        <Box>
-                          <Flex align="center" gap={2}>
-                            <Icon
-                              as={isBankVer ? FaCheckCircle : FaUniversity}
-                              color={isBankVer ? "green.600" : "orange.500"}
-                              boxSize="18px"
-                            />
-                            <Text fontSize="sm" fontWeight="bold" color="gray.800">
-                              {isBankVer
-                                ? "Already Verified (Payouts Enabled)"
-                                : bankDetails
-                                ? "Bank Details Pending Verification"
-                                : "No Bank Details Added"}
-                            </Text>
-                          </Flex>
-                          <Badge colorScheme={isBankVer ? "green" : bankDetails ? "orange" : "gray"} mt={1}>
-                            {isBankVer ? "ALREADY VERIFIED (PAYOUTS ACTIVE)" : bankDetails ? "PENDING REVIEW" : "NO BANK ADDED"}
-                          </Badge>
-                        </Box>
-                      </Flex>
-
-                      {bankDetails ? (
-                        <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3} p={3} border="1px solid #eee" borderRadius="10px">
-                          <Box>
-                            <Text fontSize="10px" color="gray.400" textTransform="uppercase">Account Holder</Text>
-                            <Text fontSize="sm" fontWeight="bold">{bankDetails.accountHolderName || "N/A"}</Text>
-                          </Box>
-                          <Box>
-                            <Text fontSize="10px" color="gray.400" textTransform="uppercase">Bank Name</Text>
-                            <Text fontSize="sm" fontWeight="bold">{bankDetails.bankName || "N/A"}</Text>
-                          </Box>
-                          <Box>
-                            <Text fontSize="10px" color="gray.400" textTransform="uppercase">Account Number</Text>
-                            <Text fontSize="sm" fontWeight="bold" fontFamily="monospace">{bankDetails.accountNumber || "N/A"}</Text>
-                          </Box>
-                          <Box>
-                            <Text fontSize="10px" color="gray.400" textTransform="uppercase">IFSC Code</Text>
-                            <Text fontSize="sm" fontWeight="bold" fontFamily="monospace">{bankDetails.ifscCode || "N/A"}</Text>
-                          </Box>
-                          <Box>
-                            <Text fontSize="10px" color="gray.400" textTransform="uppercase">Branch</Text>
-                            <Text fontSize="sm">{bankDetails.branchName || "N/A"}</Text>
-                          </Box>
-                          <Box>
-                            <Text fontSize="10px" color="gray.400" textTransform="uppercase">UPI ID</Text>
-                            <Text fontSize="sm" fontWeight="semibold" color="teal.600">{bankDetails.upiId || "N/A"}</Text>
-                          </Box>
-                        </SimpleGrid>
-                      ) : (
-                        <Text textAlign="center" py={6} color="gray.400" fontStyle="italic">
-                          No bank details submitted yet by this technician.
-                        </Text>
-                      )}
-
-                      {showBankRejection && (
-                        <Box p={3} border="1px solid" borderColor="red.300" borderRadius="8px" bg="red.50">
-                          <Text fontSize="xs" fontWeight="bold" color="red.700" mb={1}>
-                            Bank Rejection Reason:
-                          </Text>
-                          <Textarea
-                            size="sm"
-                            bg="white"
-                            placeholder="State reason for bank detail rejection..."
-                            value={bankRejectionReason}
-                            onChange={(e) => setBankRejectionReason(e.target.value)}
-                          />
-                        </Box>
-                      )}
-                    </>
-                  );
-                })()}
-              </VStack>
-            )}
-          </ModalBody>
-
-          <ModalFooter borderTop="1px solid" borderColor="gray.100" bg="gray.50">
-            <HStack spacing={2} justify="flex-end" w="100%">
-              {!showBankRejection ? (
-                <>
-                  <Button
-                    size="sm"
-                    colorScheme="red"
-                    variant="outline"
-                    onClick={() => setShowBankRejection(true)}
-                  >
-                    Reject Bank
-                  </Button>
-                  {(() => {
-                    const isBankVer = isTechnicianBankVerified(selectedTechForBank, allKycRecords);
-                    return (
-                      <Button
-                        size="sm"
-                        colorScheme={isBankVer ? "teal" : "green"}
-                        leftIcon={<FaCheckCircle />}
-                        onClick={() => handleVerifyBankAction(true)}
-                        isLoading={loading}
-                      >
-                        {isBankVer ? "Already Verified ✓" : "Verify Bank (Enable Payouts)"}
-                      </Button>
-                    );
-                  })()}
-                </>
-              ) : (
-                <>
-                  <Button size="sm" variant="ghost" onClick={() => setShowBankRejection(false)}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" colorScheme="red" onClick={() => handleVerifyBankAction(false)}>
-                    Confirm Rejection
-                  </Button>
-                </>
-              )}
-            </HStack>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <BankDetailsModal
+        isOpen={isBankModalOpen}
+        onClose={() => setIsBankModalOpen(false)}
+        selectedTechForBank={selectedTechForBank}
+        allKycRecords={allKycRecords}
+        onOpenEditBank={() => setIsEditBankOpen(true)}
+        showBankRejection={showBankRejection}
+        setShowBankRejection={setShowBankRejection}
+        bankRejectionReason={bankRejectionReason}
+        setBankRejectionReason={setBankRejectionReason}
+        onVerifyBankAction={handleVerifyBankAction}
+        loading={loading}
+        isTechnicianBankVerified={isTechnicianBankVerified}
+        findKYCRecord={findKYCRecord}
+        getTechnicianName={getTechnicianName}
+      />
 
       {/* EDIT BANK DETAILS MODAL */}
-      <Modal isOpen={isEditBankOpen} onClose={() => setIsEditBankOpen(false)} size="md">
-        <ModalOverlay />
-        <ModalContent borderRadius="14px">
-          <ModalHeader borderBottom="1px solid" borderColor="gray.100">
-            Edit Technician Bank & Payout Details
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody py={4}>
-            <VStack spacing={3}>
-              <FormControl isRequired>
-                <FormLabel fontSize="xs">Account Holder Name</FormLabel>
-                <Input
-                  size="sm"
-                  value={bankEditForm.accountHolderName}
-                  onChange={(e) => setBankEditForm({ ...bankEditForm, accountHolderName: e.target.value })}
-                />
-              </FormControl>
-              <FormControl isRequired>
-                <FormLabel fontSize="xs">Bank Name</FormLabel>
-                <Input
-                  size="sm"
-                  value={bankEditForm.bankName}
-                  onChange={(e) => setBankEditForm({ ...bankEditForm, bankName: e.target.value })}
-                />
-              </FormControl>
-              <FormControl isRequired>
-                <FormLabel fontSize="xs">Account Number</FormLabel>
-                <Input
-                  size="sm"
-                  value={bankEditForm.accountNumber}
-                  onChange={(e) => setBankEditForm({ ...bankEditForm, accountNumber: e.target.value })}
-                />
-              </FormControl>
-              <FormControl isRequired>
-                <FormLabel fontSize="xs">IFSC Code</FormLabel>
-                <Input
-                  size="sm"
-                  value={bankEditForm.ifscCode}
-                  onChange={(e) => setBankEditForm({ ...bankEditForm, ifscCode: e.target.value })}
-                />
-              </FormControl>
-              <FormControl>
-                <FormLabel fontSize="xs">Branch Name</FormLabel>
-                <Input
-                  size="sm"
-                  value={bankEditForm.branchName}
-                  onChange={(e) => setBankEditForm({ ...bankEditForm, branchName: e.target.value })}
-                />
-              </FormControl>
-              <FormControl>
-                <FormLabel fontSize="xs">UPI ID</FormLabel>
-                <Input
-                  size="sm"
-                  value={bankEditForm.upiId}
-                  onChange={(e) => setBankEditForm({ ...bankEditForm, upiId: e.target.value })}
-                />
-              </FormControl>
-            </VStack>
-          </ModalBody>
-          <ModalFooter bg="gray.50">
-            <Button size="sm" mr={2} variant="ghost" onClick={() => setIsEditBankOpen(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" colorScheme="teal" onClick={handleSaveBankEdit} isLoading={savingBankEdit}>
-              Save Bank Details
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <EditBankModal
+        isOpen={isEditBankOpen}
+        onClose={() => setIsEditBankOpen(false)}
+        bankEditForm={bankEditForm}
+        setBankEditForm={setBankEditForm}
+        onSave={handleSaveBankEdit}
+        isLoading={savingBankEdit}
+      />
 
       {/* TECHNICIAN FULL PROFILE DETAILS MODAL */}
-      <Modal isOpen={isDetailsModalOpen} onClose={() => setIsDetailsModalOpen(false)} size="xl" scrollBehavior="inside">
-        <ModalOverlay />
-        <ModalContent borderRadius="16px">
-          <ModalHeader borderBottom="1px solid" borderColor="gray.100">
-            Technician Complete Profile
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody py={4}>
-            {selectedTechnician && (
-              <VStack spacing={4} align="stretch">
-                {/* Header info */}
-                <Flex align="center" gap={4} p={3.5} bg="gray.50" borderRadius="12px" border="1px solid" borderColor="gray.100">
-                  <Avatar
-                    size="lg"
-                    name={getTechnicianName(selectedTechnician, allKycRecords)}
-                    src={getTechnicianImage(selectedTechnician, allKycRecords)}
-                    border="2px solid"
-                    borderColor={customColor}
-                  />
-                  <Box flex="1">
-                    <Flex align="center" justify="space-between" flexWrap="wrap" gap={2}>
-                      <Heading size="md" color="gray.800">
-                        {getTechnicianName(selectedTechnician, allKycRecords)}
-                      </Heading>
-                      {selectedTechnician.availability?.isOnline !== undefined && (
-                        <Badge
-                          colorScheme={selectedTechnician.availability?.isOnline ? "green" : "gray"}
-                          variant="subtle"
-                          px={2}
-                          py={0.5}
-                          borderRadius="full"
-                          fontSize="xs"
-                        >
-                          ● {selectedTechnician.availability?.isOnline ? "Online" : "Offline"}
-                        </Badge>
-                      )}
-                    </Flex>
-                    <Flex gap={2} mt={1.5} flexWrap="wrap">
-                      <Badge colorScheme={selectedTechnician.workStatus === "approved" ? "green" : "orange"} px={2} py={0.5} borderRadius="md">
-                        Work: {selectedTechnician.workStatus || "pending"}
-                      </Badge>
-                      <Badge colorScheme={selectedTechnician.trainingCompleted ? "green" : "orange"} px={2} py={0.5} borderRadius="md">
-                        Training: {selectedTechnician.trainingCompleted ? "Completed" : "Pending"}
-                      </Badge>
-                      <Badge
-                        colorScheme={
-                          isTechnicianKYCVerified(selectedTechnician, allKycRecords) ? "green" : "purple"
-                        }
-                        px={2}
-                        py={0.5}
-                        borderRadius="md"
-                      >
-                        KYC: {isTechnicianKYCVerified(selectedTechnician, allKycRecords) ? "Verified" : "Pending"}
-                      </Badge>
-                      {isTechnicianBankVerified(selectedTechnician, allKycRecords) && (
-                        <Badge colorScheme="teal" px={2} py={0.5} borderRadius="md">
-                          Bank: Verified
-                        </Badge>
-                      )}
-                    </Flex>
-                  </Box>
-                </Flex>
-
-                {/* Info Cards */}
-                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-                  <Box p={3.5} border="1px solid #e2e8f0" borderRadius="10px" bg="white">
-                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2.5} letterSpacing="wider">
-                      CONTACT & LOCATION
-                    </Text>
-                    <VStack align="stretch" spacing={2} fontSize="xs">
-                      <Flex justify="space-between" align="center">
-                        <Text color="gray.600" fontWeight="medium">Mobile:</Text>
-                        {getTechnicianPhone(selectedTechnician, allKycRecords) ? (
-                          <Link
-                            href={`tel:${getTechnicianPhone(selectedTechnician, allKycRecords)}`}
-                            color="teal.600"
-                            fontWeight="semibold"
-                            _hover={{ textDecoration: "underline" }}
-                          >
-                            {getTechnicianPhone(selectedTechnician, allKycRecords)}
-                          </Link>
-                        ) : (
-                          <Text color="gray.400" fontStyle="italic">Not Provided</Text>
-                        )}
-                      </Flex>
-
-                      <Flex justify="space-between" align="center">
-                        <Text color="gray.600" fontWeight="medium">Email:</Text>
-                        {getTechnicianEmail(selectedTechnician, allKycRecords) ? (
-                          <Link
-                            href={`mailto:${getTechnicianEmail(selectedTechnician, allKycRecords)}`}
-                            color="teal.600"
-                            fontWeight="medium"
-                            isTruncated
-                            maxW="190px"
-                            _hover={{ textDecoration: "underline" }}
-                            title={getTechnicianEmail(selectedTechnician, allKycRecords)}
-                          >
-                            {getTechnicianEmail(selectedTechnician, allKycRecords)}
-                          </Link>
-                        ) : (
-                          <Text color="gray.400" fontStyle="italic">Not Provided</Text>
-                        )}
-                      </Flex>
-
-                      <Flex justify="space-between" align="center">
-                        <Text color="gray.600" fontWeight="medium">District (Mandatory):</Text>
-                        {getTechnicianDistrict(selectedTechnician) ? (
-                          <Badge colorScheme="teal" px={2} py={0.5} borderRadius="md" textTransform="capitalize" fontWeight="bold">
-                            📍 {getTechnicianDistrict(selectedTechnician)}
-                          </Badge>
-                        ) : (
-                          <Badge colorScheme="red" px={2} py={0.5} borderRadius="md">
-                            ⚠️ District Missing
-                          </Badge>
-                        )}
-                      </Flex>
-
-                      <Flex justify="space-between" align="center">
-                        <Text color="gray.600" fontWeight="medium">City / Town:</Text>
-                        <Text fontWeight="semibold" color="gray.800" textTransform="capitalize">
-                          {selectedTechnician.city || selectedTechnician.profile?.city || selectedTechnician.locality || "N/A"}
-                        </Text>
-                      </Flex>
-
-                      <Box pt={1} borderTop="1px dashed" borderColor="gray.100">
-                        <Text color="gray.600" fontWeight="medium" mb={0.5}>Address:</Text>
-                        <Text color="gray.700" lineHeight="short">
-                          {getTechnicianAddress(selectedTechnician, allKycRecords)}
-                        </Text>
-                      </Box>
-                    </VStack>
-                  </Box>
-
-                  <Box p={3.5} border="1px solid #e2e8f0" borderRadius="10px" bg="white">
-                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2.5} letterSpacing="wider">
-                      PROFESSIONAL STATS
-                    </Text>
-                    <VStack align="stretch" spacing={2} fontSize="xs">
-                      <Flex justify="space-between" align="center">
-                        <Text color="gray.600" fontWeight="medium">Specialization:</Text>
-                        <Badge colorScheme="blue" px={2} py={0.5} borderRadius="md">
-                          {getTechnicianSpecialization(selectedTechnician)}
-                        </Badge>
-                      </Flex>
-
-                      <Flex justify="space-between" align="center">
-                        <Text color="gray.600" fontWeight="medium">Experience:</Text>
-                        <Text fontWeight="semibold" color="gray.800">
-                          {selectedTechnician.experienceYears || selectedTechnician.profile?.experienceYears || 0} Years
-                        </Text>
-                      </Flex>
-
-                      <Flex justify="space-between" align="center">
-                        <Text color="gray.600" fontWeight="medium">Total Jobs:</Text>
-                        <Text fontWeight="bold" color="gray.800">
-                          {selectedTechnician.totalJobsCompleted || selectedTechnician.jobStats?.completed || 0}
-                        </Text>
-                      </Flex>
-
-                      <Flex justify="space-between" align="center">
-                        <Text color="gray.600" fontWeight="medium">Rating:</Text>
-                        <Text fontWeight="semibold" color="gray.800">
-                          ⭐ {selectedTechnician.rating?.avg ? Number(selectedTechnician.rating.avg).toFixed(1) : "0.0"} ({selectedTechnician.rating?.count || 0} reviews)
-                        </Text>
-                      </Flex>
-
-                      {selectedTechnician.createdAt && (
-                        <Flex justify="space-between" align="center" pt={1} borderTop="1px dashed" borderColor="gray.100">
-                          <Text color="gray.600" fontWeight="medium">Registered On:</Text>
-                          <Text color="gray.700">
-                            {new Date(selectedTechnician.createdAt).toLocaleDateString("en-IN", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric"
-                            })}
-                          </Text>
-                        </Flex>
-                      )}
-                    </VStack>
-                  </Box>
-                </SimpleGrid>
-
-                {/* KYC Identity Gate 2 Overview if available */}
-                {(() => {
-                  const kycMatch = findKYCRecord(selectedTechnician, allKycRecords);
-                  if (!kycMatch) return null;
-                  return (
-                    <Box p={3.5} border="1px solid #e2e8f0" borderRadius="10px" bg="white">
-                      <Flex justify="space-between" align="center" mb={2}>
-                        <Text fontSize="xs" fontWeight="bold" color="gray.500" letterSpacing="wider">
-                          IDENTITY & KYC OVERVIEW
-                        </Text>
-                        <Badge colorScheme={isTechnicianKYCVerified(selectedTechnician, allKycRecords) ? "green" : "purple"}>
-                          {isTechnicianKYCVerified(selectedTechnician, allKycRecords) ? "KYC Approved" : "KYC Pending"}
-                        </Badge>
-                      </Flex>
-                      <SimpleGrid columns={{ base: 1, sm: 3 }} spacing={2.5} fontSize="xs">
-                        <Box>
-                          <Text color="gray.500">Aadhaar</Text>
-                          <Text fontWeight="semibold" fontFamily="monospace">
-                            {kycMatch.aadhaarNumber ? (
-                              isTechnicianKYCVerified(selectedTechnician, allKycRecords)
-                                ? kycMatch.aadhaarNumber
-                                : `•••• •••• ${String(kycMatch.aadhaarNumber).slice(-4)}`
-                            ) : (
-                              <Text as="span" color="gray.400" fontStyle="italic">Not Uploaded</Text>
-                            )}
-                          </Text>
-                        </Box>
-                        <Box>
-                          <Text color="gray.500">PAN Card</Text>
-                          <Text fontWeight="semibold" fontFamily="monospace">
-                            {kycMatch.panNumber || <Text as="span" color="gray.400" fontStyle="italic">Not Uploaded</Text>}
-                          </Text>
-                        </Box>
-                        <Box>
-                          <Text color="gray.500">Driving License</Text>
-                          <Text fontWeight="semibold" fontFamily="monospace">
-                            {kycMatch.drivingLicenseNumber || <Text as="span" color="gray.400" fontStyle="italic">Not Uploaded</Text>}
-                          </Text>
-                        </Box>
-                      </SimpleGrid>
-                    </Box>
-                  );
-                })()}
-
-                {/* Bank Details Summary */}
-                {(() => {
-                  const kycMatch = findKYCRecord(selectedTechnician, allKycRecords);
-                  const b = kycMatch?.bankDetails || selectedTechnician.bankDetails || selectedTechnician.profile?.bankDetails || selectedTechnician.bankAccount;
-                  return (
-                    <Box p={3.5} border="1px solid #e2e8f0" borderRadius="10px" bg="white">
-                      <Flex justify="space-between" align="center" mb={2.5}>
-                        <Text fontSize="xs" fontWeight="bold" color="gray.500" letterSpacing="wider">
-                          PAYOUT BANK ACCOUNT
-                        </Text>
-                        <Badge colorScheme={isTechnicianBankVerified(selectedTechnician, allKycRecords) ? "green" : "orange"}>
-                          {isTechnicianBankVerified(selectedTechnician, allKycRecords) ? "Payouts Enabled" : "Pending Verification"}
-                        </Badge>
-                      </Flex>
-                      {b && (b.accountHolderName || b.accountNumber || b.bankName || b.upiId) ? (
-                        <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={2.5} fontSize="xs">
-                          <Box>
-                            <Text color="gray.500">Account Holder</Text>
-                            <Text fontWeight="semibold" color="gray.800">{b.accountHolderName || "N/A"}</Text>
-                          </Box>
-                          <Box>
-                            <Text color="gray.500">Bank Name</Text>
-                            <Text fontWeight="semibold" color="gray.800">{b.bankName || "N/A"}</Text>
-                          </Box>
-                          <Box>
-                            <Text color="gray.500">Account Number</Text>
-                            <Text fontWeight="semibold" fontFamily="monospace" color="gray.800">{b.accountNumber || "N/A"}</Text>
-                          </Box>
-                          <Box>
-                            <Text color="gray.500">IFSC Code</Text>
-                            <Text fontWeight="semibold" fontFamily="monospace" color="gray.800">{b.ifscCode || "N/A"}</Text>
-                          </Box>
-                          <Box gridColumn={{ base: "span 1", sm: "span 2" }}>
-                            <Text color="gray.500">UPI ID</Text>
-                            <Text fontWeight="semibold" color="gray.800" wordBreak="break-all">{b.upiId || "N/A"}</Text>
-                          </Box>
-                        </SimpleGrid>
-                      ) : (
-                        <Text fontSize="xs" color="gray.400" fontStyle="italic">No bank details added</Text>
-                      )}
-                    </Box>
-                  );
-                })()}
-              </VStack>
-            )}
-          </ModalBody>
-          <ModalFooter bg="gray.50" borderTop="1px solid" borderColor="gray.100">
-            {selectedTechnician && (
-              <Flex w="100%" justify="space-between" align="center">
-                <Button
-                  size="sm"
-                  colorScheme={selectedTechnician.trainingCompleted ? "orange" : "teal"}
-                  leftIcon={<FaUserGraduate />}
-                  onClick={() => handleToggleTraining(selectedTechnician, !selectedTechnician.trainingCompleted)}
-                  isLoading={loading}
-                >
-                  {selectedTechnician.trainingCompleted ? "Mark Training Incomplete" : "Approve Gate 1 Training"}
-                </Button>
-
-                <HStack spacing={2}>
-                  <Button
-                    size="sm"
-                    colorScheme="purple"
-                    leftIcon={<FaIdCard />}
-                    onClick={() => {
-                      setIsDetailsModalOpen(false);
-                      handleOpenKYCModal(selectedTechnician);
-                    }}
-                  >
-                    Review KYC
-                  </Button>
-                  <Button
-                    size="sm"
-                    colorScheme="orange"
-                    leftIcon={<FaUniversity />}
-                    onClick={() => {
-                      setIsDetailsModalOpen(false);
-                      handleOpenBankModal(selectedTechnician);
-                    }}
-                  >
-                    Review Bank
-                  </Button>
-                </HStack>
-              </Flex>
-            )}
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <AdminDetailsModal
+        isOpen={isDetailsModalOpen}
+        onClose={() => setIsDetailsModalOpen(false)}
+        selectedTechnician={selectedTechnician}
+        allKycRecords={allKycRecords}
+        onToggleTraining={handleToggleTraining}
+        onOpenKYCModal={handleOpenKYCModal}
+        onOpenBankModal={handleOpenBankModal}
+        loading={loading}
+        customColor={customColor}
+        getTechnicianName={getTechnicianName}
+        getTechnicianImage={getTechnicianImage}
+        isTechnicianKYCVerified={isTechnicianKYCVerified}
+        isTechnicianBankVerified={isTechnicianBankVerified}
+        findKYCRecord={findKYCRecord}
+        getTechnicianPhone={getTechnicianPhone}
+        getTechnicianEmail={getTechnicianEmail}
+        getTechnicianDistrict={getTechnicianDistrict}
+        getTechnicianAddress={getTechnicianAddress}
+        getTechnicianSpecialization={getTechnicianSpecialization}
+      />
 
       {/* DELETE CONFIRMATION ALERT */}
-      <AlertDialog isOpen={isDeleteDialogOpen} leastDestructiveRef={cancelRef} onClose={() => setIsDeleteDialogOpen(false)}>
-        <AlertDialogOverlay>
-          <AlertDialogContent borderRadius="14px">
-            <AlertDialogHeader fontSize="lg" fontWeight="bold">
-              Delete Technician
-            </AlertDialogHeader>
-            <AlertDialogBody>
-              Are you sure you want to delete{" "}
-              <strong>{getTechnicianName(adminToDelete, allKycRecords)}</strong>? This action cannot be undone.
-            </AlertDialogBody>
-            <AlertDialogFooter>
-              <Button ref={cancelRef} onClick={() => setIsDeleteDialogOpen(false)} size="sm">
-                Cancel
-              </Button>
-              <Button
-                colorScheme="red"
-                onClick={handleDeleteConfirm}
-                ml={3}
-                size="sm"
-                isLoading={isDeleting}
-              >
-                Confirm Delete
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialogOverlay>
-      </AlertDialog>
+      <DeleteTechnicianDialog
+        isOpen={isDeleteDialogOpen}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        cancelRef={cancelRef}
+        adminToDelete={adminToDelete}
+        allKycRecords={allKycRecords}
+        getTechnicianName={getTechnicianName}
+        onConfirmDelete={handleDeleteConfirm}
+        isDeleting={isDeleting}
+      />
     </Flex>
   );
 }

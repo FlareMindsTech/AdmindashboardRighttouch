@@ -36,3 +36,33 @@ export const getDistrictTechnicians = (id) =>
 // Delete district
 export const deleteDistrict = (id) =>
   handle(apiClient.delete(`/admin/districts/${id}`));
+
+// ---- Legacy double-prefix aliases (/admin/admin/districts/*) ----
+// The collection lists these alongside /admin/districts/* (same handlers in
+// Routes/operationalCityRoutes.js). Kept as thin aliases so both prefixes work.
+export const listAdminDistricts = (params = {}) =>
+  handle(apiClient.get("/admin/admin/districts", { params }));
+
+export const getAdminDistrictById = (id) =>
+  handle(apiClient.get(`/admin/admin/districts/${id}`));
+
+export const createAdminDistrict = (body) =>
+  handle(apiClient.post("/admin/admin/districts", body));
+
+export const updateAdminDistrict = (id, body) =>
+  handle(apiClient.put(`/admin/admin/districts/${id}`, body));
+
+export const deleteAdminDistrict = (id) =>
+  handle(apiClient.delete(`/admin/admin/districts/${id}`));
+
+export const toggleAdminDistrictStatus = (id, body) =>
+  handle(apiClient.patch(`/admin/admin/districts/${id}/status`, body));
+
+export const toggleAdminDistrictRegistration = (id, body) =>
+  handle(apiClient.patch(`/admin/admin/districts/${id}/registration`, body));
+
+export const toggleAdminDistrictJobs = (id, body) =>
+  handle(apiClient.patch(`/admin/admin/districts/${id}/jobs`, body));
+
+export const getAdminDistrictTechnicians = (id) =>
+  handle(apiClient.get(`/admin/admin/districts/${id}/technicians`));

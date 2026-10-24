@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Box,
   Button,
@@ -6,9 +6,6 @@ import {
   Icon,
   Input,
   SimpleGrid,
-  Stat,
-  StatLabel,
-  StatNumber,
   Table,
   Tbody,
   Td,
@@ -45,6 +42,8 @@ import {
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
+import SharedStatCard from "components/common/StatCard";
+import { MobileCard } from "components/common/MobileCard";
 
 import {
   FaChevronLeft,
@@ -61,13 +60,21 @@ import {
   MdAccountBalanceWallet,
 } from "react-icons/md";
 
+import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
-  getFinanceSummary,
-  getFinanceBreakdown,
-  getPaymentsLedger,
-  getTechnicianFinanceDetail,
-  getAllTechnicians,
-} from "../utils/axiosInstance";
+  fetchTechnicians as fetchTechniciansShared,
+  selectTechnicians,
+} from "store/slices/techniciansSlice";
+import {
+  fetchFinanceSummary,
+  fetchFinanceBreakdown,
+  fetchPaymentsLedger,
+  fetchTechnicianFinance,
+  selectFinanceSummary,
+  selectFinanceBreakdown,
+  selectPaymentsLedger,
+  selectTechnicianFinance,
+} from "store/slices/financeSlice";
 
 const formatCurrency = (value) => {
   const num = parseFloat(value || 0);
@@ -83,18 +90,15 @@ const formatDate = (value) => {
 export default function FinanceTracking() {
   const textColor = useColorModeValue("gray.700", "white");
   const toast = useToast();
+  const dispatch = useAppDispatch();
   const customColor = "#008080";
   const goldColor = "#F5B700";
 
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
 
-  const [summary, setSummary] = useState(null);
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
 
-  const [breakdown, setBreakdown] = useState([]);
-  const [breakdownTotal, setBreakdownTotal] = useState(0);
-  const [breakdownPages, setBreakdownPages] = useState(1);
   const [isLoadingBreakdown, setIsLoadingBreakdown] = useState(false);
   const [breakdownPage, setBreakdownPage] = useState(1);
   const [breakdownFilters, setBreakdownFilters] = useState({
@@ -105,9 +109,6 @@ export default function FinanceTracking() {
     to: "",
   });
 
-  const [payments, setPayments] = useState([]);
-  const [paymentsTotal, setPaymentsTotal] = useState(0);
-  const [paymentsPages, setPaymentsPages] = useState(1);
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [paymentsFilters, setPaymentsFilters] = useState({
@@ -116,12 +117,45 @@ export default function FinanceTracking() {
     to: "",
   });
 
-  const [technicians, setTechnicians] = useState([]);
-  const [selectedTechDetail, setSelectedTechDetail] = useState(null);
+  const [selectedTech, setSelectedTech] = useState(null);
+  const [selectedTechId, setSelectedTechId] = useState(null);
   const [isTechDetailOpen, setIsTechDetailOpen] = useState(false);
   const [techLoadingId, setTechLoadingId] = useState(null);
 
   const itemsPerPage = 10;
+
+  // Reactive shared reads: the same cache Billing and other screens use.
+  // Filters/pagination stay local; only the server snapshots come from Redux.
+  const summary = useAppSelector(selectFinanceSummary());
+  const breakdownParams = useMemo(
+    () => ({ ...breakdownFilters, page: breakdownPage, limit: itemsPerPage }),
+    [breakdownFilters, breakdownPage]
+  );
+  const breakdownData = useAppSelector(selectFinanceBreakdown(breakdownParams));
+  const breakdown = breakdownData?.list || [];
+  const breakdownTotal = breakdownData?.meta?.total || breakdown.length;
+  const breakdownPages =
+    breakdownData?.meta?.totalPages ||
+    Math.ceil((breakdownData?.meta?.total || breakdown.length) / itemsPerPage) ||
+    1;
+  const paymentsParams = useMemo(
+    () => ({ ...paymentsFilters, page: paymentsPage, limit: itemsPerPage }),
+    [paymentsFilters, paymentsPage]
+  );
+  const paymentsData = useAppSelector(selectPaymentsLedger(paymentsParams));
+  const payments = paymentsData?.list || [];
+  const paymentsTotal = paymentsData?.meta?.total || payments.length;
+  const paymentsPages =
+    paymentsData?.meta?.totalPages ||
+    Math.ceil((paymentsData?.meta?.total || payments.length) / itemsPerPage) ||
+    1;
+  const technicians = useAppSelector(selectTechnicians);
+  const selectedTechData = useAppSelector(
+    selectTechnicianFinance(selectedTechId || "")
+  );
+  const selectedTechDetail = selectedTech
+    ? { technician: selectedTech, data: selectedTechData }
+    : null;
 
   const globalScrollbarStyles = {
     "&::-webkit-scrollbar": { width: "6px", height: "6px" },
@@ -154,93 +188,79 @@ export default function FinanceTracking() {
   const fetchSummary = useCallback(async () => {
     try {
       setIsLoadingSummary(true);
-      const response = await getFinanceSummary();
-      const data = response.result || response.data || response.summary || response;
-      setSummary(data);
+      // Shared summary cache (TTL, keyed by params — here: default).
+      // Result flows to the selector above; last-good data stays on failure.
+      await dispatch(fetchFinanceSummary()).unwrap();
     } catch (err) {
       console.error("Error fetching finance summary:", err);
       toast({
         title: "Fetch Error",
-        description: err.message || "Failed to load finance summary.",
+        description: err.message || err || "Failed to load finance summary.",
         status: "error",
         duration: 3000,
         isClosable: true,
       });
-      setSummary(null);
     } finally {
       setIsLoadingSummary(false);
     }
-  }, [toast]);
+  }, [dispatch, toast]);
 
   const fetchBreakdown = useCallback(async () => {
     try {
       setIsLoadingBreakdown(true);
-      const response = await getFinanceBreakdown({
+      const params = {
         ...breakdownFilters,
         page: breakdownPage,
         limit: itemsPerPage,
-      });
-      const data = response.result || response.data || response;
-      const list = Array.isArray(data) ? data : data.payments || data.breakdown || data.items || [];
-      setBreakdown(list);
-      const meta = response.meta || (typeof data === "object" && data.meta) || {};
-      setBreakdownTotal(meta.total || list.length);
-      setBreakdownPages(meta.totalPages || Math.ceil((meta.total || list.length) / itemsPerPage) || 1);
+      };
+      // Shared breakdown cache keyed by exact filters+page.
+      await dispatch(fetchFinanceBreakdown(params)).unwrap();
     } catch (err) {
       console.error("Error fetching finance breakdown:", err);
       toast({
         title: "Fetch Error",
-        description: err.message || "Failed to load finance breakdown.",
+        description: err.message || err || "Failed to load finance breakdown.",
         status: "error",
         duration: 3000,
         isClosable: true,
       });
-      setBreakdown([]);
     } finally {
       setIsLoadingBreakdown(false);
     }
-  }, [breakdownFilters, breakdownPage, toast]);
+  }, [breakdownFilters, breakdownPage, dispatch, toast]);
 
   const fetchPayments = useCallback(async () => {
     try {
       setIsLoadingPayments(true);
-      const response = await getPaymentsLedger({
+      const params = {
         ...paymentsFilters,
         page: paymentsPage,
         limit: itemsPerPage,
-      });
-      const data = response.result || response.data || response;
-      const list = Array.isArray(data) ? data : data.payments || data.items || [];
-      setPayments(list);
-      const meta = response.meta || (typeof data === "object" && data.meta) || {};
-      setPaymentsTotal(meta.total || list.length);
-      setPaymentsPages(meta.totalPages || Math.ceil((meta.total || list.length) / itemsPerPage) || 1);
+      };
+      // Shared ledger cache keyed by exact filters+page.
+      await dispatch(fetchPaymentsLedger(params)).unwrap();
     } catch (err) {
       console.error("Error fetching payments ledger:", err);
       toast({
         title: "Fetch Error",
-        description: err.message || "Failed to load payments ledger.",
+        description: err.message || err || "Failed to load payments ledger.",
         status: "error",
         duration: 3000,
         isClosable: true,
       });
-      setPayments([]);
     } finally {
       setIsLoadingPayments(false);
     }
-  }, [paymentsFilters, paymentsPage, toast]);
+  }, [paymentsFilters, paymentsPage, dispatch, toast]);
 
   const fetchTechnicians = useCallback(async () => {
     try {
-      const response = await getAllTechnicians();
-      const data = response.result || response.data || response.technicians || response || [];
-      const list = Array.isArray(data) ? data : data.technicians || [];
-      setTechnicians(list);
+      // Shared technicians cache (TTL); rows flow to the selector above.
+      await dispatch(fetchTechniciansShared()).unwrap();
     } catch (err) {
       console.error("Error fetching technicians:", err);
-      setTechnicians([]);
     }
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     if (currentUser) {
@@ -276,17 +296,16 @@ export default function FinanceTracking() {
     if (!techId) return;
     try {
       setTechLoadingId(techId);
-      const response = await getTechnicianFinanceDetail(techId);
-      const data = response.result || response.data || response.detail || response;
-      setSelectedTechDetail({
-        technician,
-        data,
-      });
+      // Shared per-technician finance cache (TTL); detail flows to the
+      // selector above. Modal opens only after server confirmation.
+      await dispatch(fetchTechnicianFinance(techId)).unwrap();
+      setSelectedTech(technician);
+      setSelectedTechId(String(techId));
       setIsTechDetailOpen(true);
     } catch (err) {
       toast({
         title: "Fetch Error",
-        description: err.message || "Failed to load technician finance detail.",
+        description: err.message || err || "Failed to load technician finance detail.",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -307,49 +326,17 @@ export default function FinanceTracking() {
     return tech.mobileNumber || "Technician";
   };
 
-  const StatCard = ({ label, value, icon, bg }) => (
-    <Card
-      minH={{ base: "60px", md: "70px" }}
-      border="1px solid"
-      borderColor={`${customColor}30`}
-      transition="all 0.2s ease-in-out"
-      bg="white"
-      position="relative"
-      overflow="hidden"
-      _before={{
-        content: '""',
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-      }}
-    >
-      <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
-        <Flex flexDirection="row" align="center" justify="space-between" w="100%">
-          <Stat me="auto">
-            <StatLabel fontSize={{ base: "2xs", md: "xs" }} color="gray.600" fontWeight="bold" pb="1px">
-              {label}
-            </StatLabel>
-            <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor}>
-              {isLoadingSummary ? <Spinner size="xs" /> : value}
-            </StatNumber>
-          </Stat>
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            borderRadius="12px"
-            h={{ base: "32px", md: "36px" }}
-            w={{ base: "32px", md: "36px" }}
-            bg={bg}
-          >
-            <Icon as={icon} h={{ base: "16px", md: "20px" }} w={{ base: "16px", md: "20px" }} color="white" />
-          </Box>
-        </Flex>
-      </CardBody>
-    </Card>
+  // Shared via components/common/StatCard (variant="mini") — static (no hover lift)
+  const StatCard = (props) => (
+    <SharedStatCard
+      variant="mini"
+      accent={customColor}
+      textColor={textColor}
+      loading={isLoadingSummary}
+      interactive={false}
+      numberSize="md"
+      {...props}
+    />
   );
 
   const PaymentMobileCard = ({ payment, idx, type }) => {
@@ -363,15 +350,7 @@ export default function FinanceTracking() {
       : (payment.totalAmount || payment.amount || 0);
 
     return (
-      <Box
-        p={3}
-        bg="white"
-        borderWidth="1px"
-        borderColor={`${customColor}20`}
-        borderRadius="md"
-        shadow="sm"
-        mb={3}
-      >
+      <MobileCard>
         <Flex justify="space-between" align="center" mb={2}>
           <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
             #{idx + 1} {serviceName}
@@ -407,7 +386,7 @@ export default function FinanceTracking() {
             {formatDate(payment.createdAt)}
           </Text>
         </Flex>
-      </Box>
+      </MobileCard>
     );
   };
 
@@ -421,10 +400,10 @@ export default function FinanceTracking() {
     >
       {/* Summary Stats */}
       <Box flexShrink={0} p={{ base: 1, md: 4 }} pb={0}>
-        <Grid
-          templateColumns={{ base: "1fr 1fr", md: "1fr 1fr 1fr 1fr" }}
-          gap={{ base: "6px", md: "8px" }}
-          mb={{ base: "6px", md: "8px" }}
+        <SimpleGrid
+          columns={{ base: 1, sm: 2, md: 4 }}
+          spacing={{ base: 3, md: 4 }}
+          mb={{ base: 3, md: 4 }}
         >
           <StatCard
             label={`Paid Services${summary?.services?.paid?.count ? ` (${summary.services.paid.count})` : ""}`}
@@ -498,7 +477,7 @@ export default function FinanceTracking() {
             icon={MdHistory}
             bg="red.500"
           />
-        </Grid>
+        </SimpleGrid>
       </Box>
 
       {/* Main Card with Tabs */}

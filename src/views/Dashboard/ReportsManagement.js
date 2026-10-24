@@ -21,10 +21,6 @@ import {
   Skeleton,
   SkeletonText,
   SimpleGrid,
-  Stat,
-  StatLabel,
-  StatNumber,
-  StatHelpText,
   AlertDialog,
   AlertDialogBody,
   AlertDialogFooter,
@@ -59,6 +55,9 @@ import {
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
+import SharedStatCard from "components/common/StatCard";
+import { MobileCard, MobileCardActions } from "components/common/MobileCard";
+import StatusBadge from "components/common/StatusBadge";
 
 import {
   MdStar,
@@ -109,15 +108,23 @@ import {
   rejectComplaint,
   getReportCategories,
 } from "../utils/axiosInstance";
+import { rebuildRatingAggregate } from "api/bookingsReports";
+import { useAppDispatch, useAppSelector } from "store/hooks";
+import { selectUser, selectIsOwner } from "store/slices/authSlice";
+import { fetchServiceBookings, selectServiceBookings } from "store/slices/bookingsSlice";
 
 export default function ReportsManagement() {
   const textColor = useColorModeValue("gray.700", "white");
   const toast = useToast();
+  const dispatch = useAppDispatch();
+  const reduxUser = useAppSelector(selectUser);
+  const isOwner = useAppSelector(selectIsOwner);
+  const cachedBookings = useAppSelector(selectServiceBookings);
 
   const customColor = "#008080";
   const goldColor = "#F5B700";
 
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(reduxUser || null);
   const [activeTab, setActiveTab] = useState("reports");
 
   const [reports, setReports] = useState([]);
@@ -255,16 +262,10 @@ export default function ReportsManagement() {
     return meta[key] || { label: cat ? cat.replace(/_/g, " ").toUpperCase() : "General Issue", color: "gray" };
   };
 
-  const renderStatusBadge = (status) => {
-    const st = (status || "").toLowerCase();
-    if (st === "resolved_refunded") return <Badge colorScheme="green" px={2} py={0.5} borderRadius="full" fontSize="2xs">Resolved (Refunded)</Badge>;
-    if (st === "resolved_no_refund") return <Badge colorScheme="gray" px={2} py={0.5} borderRadius="full" fontSize="2xs">Resolved (No Refund)</Badge>;
-    if (st === "resolved") return <Badge colorScheme="green" px={2} py={0.5} borderRadius="full" fontSize="2xs">Resolved</Badge>;
-    if (st === "under_review") return <Badge colorScheme="blue" px={2} py={0.5} borderRadius="full" fontSize="2xs">Under Review</Badge>;
-    if (st === "withdrawn") return <Badge colorScheme="purple" px={2} py={0.5} borderRadius="full" fontSize="2xs">Withdrawn</Badge>;
-    if (st === "expired") return <Badge colorScheme="red" px={2} py={0.5} borderRadius="full" fontSize="2xs">Expired</Badge>;
-    return <Badge colorScheme="yellow" px={2} py={0.5} borderRadius="full" fontSize="2xs">Open</Badge>;
-  };
+  // Shared via components/common/StatusBadge (preset="report") — mapping preserved
+  const renderStatusBadge = (status) => (
+    <StatusBadge preset="report" status={status} />
+  );
 
   const formatCleanComplaintText = (text) => {
     if (!text) return "No detailed complaint statement provided.";
@@ -439,24 +440,15 @@ export default function ReportsManagement() {
   const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
 
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem("user"));
-    const role = storedUser?.role?.toLowerCase();
-
-    if (
-      !storedUser ||
-      (role !== "admin" && role !== "super admin" && role !== "owner")
-    ) {
-      toast({
-        title: "Access Denied",
-        description: "Only admin, super admin, or owner can access this page.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+    if (reduxUser) {
+      setCurrentUser(reduxUser);
       return;
     }
-    setCurrentUser(storedUser);
-  }, [toast]);
+    const storedUser = JSON.parse(localStorage.getItem("user") || "null");
+    if (storedUser) {
+      setCurrentUser(storedUser);
+    }
+  }, [reduxUser]);
 
   const extractReportsList = (res) => {
     if (!res) return [];
@@ -930,6 +922,34 @@ export default function ReportsManagement() {
     setIsDeleteDialogOpen(true);
   };
 
+  // Rebuild the denormalized rating aggregate for a rating's target
+  // POST /user/admin/ratings/rebuild/:targetType/:targetId
+  const handleRebuildAggregate = async (item) => {
+    const target = item?.technicianId || item?.technician || null;
+    const service = item?.serviceId || item?.service || null;
+    const targetType = target ? "technician" : "service";
+    const rawTarget = target || service || item?.targetId || item?._id;
+    const targetId =
+      typeof rawTarget === "object" && rawTarget !== null
+        ? rawTarget._id || rawTarget.id
+        : rawTarget;
+    if (!targetId) {
+      toast({ title: "Cannot rebuild", description: "No aggregate target found on this rating.", status: "warning", duration: 3000, isClosable: true });
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const { error } = await rebuildRatingAggregate(targetType, targetId);
+      if (error) throw new Error(error);
+      toast({ title: "Aggregate Rebuilt", description: `${targetType} ratings recalculated.`, status: "success", duration: 3000, isClosable: true });
+      await fetchData();
+    } catch (err) {
+      toast({ title: "Rebuild failed", description: err.message, status: "error", duration: 3000, isClosable: true });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleConfirmDelete = async () => {
     if (!itemToDelete) return;
     setActionLoading(true);
@@ -972,67 +992,17 @@ export default function ReportsManagement() {
     );
   };
 
-  const StatCard = ({ label, value, icon, bg }) => (
-    <Card
-      minH={{ base: "60px", md: "70px" }}
-      border="1px solid"
-      borderColor={`${customColor}30`}
-      transition="all 0.2s ease-in-out"
-      bg="white"
-      position="relative"
-      overflow="hidden"
-      _before={{
-        content: '""',
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: `linear-gradient(135deg, ${customColor}15, transparent)`,
-        opacity: 0,
-        transition: "opacity 0.2s ease-in-out",
-      }}
-      _hover={{
-        transform: { base: "none", md: "translateY(-2px)" },
-        shadow: { base: "none", md: "lg" },
-        _before: { opacity: 1 },
-        borderColor: customColor,
-      }}
-    >
-      <CardBody position="relative" zIndex={1} p={{ base: 2, md: 3 }}>
-        <Flex flexDirection="row" align="center" justify="space-between" w="100%">
-          <Stat me="auto">
-            <StatLabel
-              fontSize={{ base: "2xs", md: "xs" }}
-              color="gray.600"
-              fontWeight="bold"
-              pb="1px"
-            >
-              {label}
-            </StatLabel>
-            <StatNumber fontSize={{ base: "sm", md: "lg" }} color={textColor}>
-              {isLoading ? <Spinner size="xs" /> : value}
-            </StatNumber>
-          </Stat>
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            borderRadius="12px"
-            h={{ base: "32px", md: "36px" }}
-            w={{ base: "32px", md: "36px" }}
-            bg={bg}
-          >
-            <Icon
-              as={icon}
-              h={{ base: "16px", md: "20px" }}
-              w={{ base: "16px", md: "20px" }}
-              color="white"
-            />
-          </Box>
-        </Flex>
-      </CardBody>
-    </Card>
+  // Shared via components/common/StatCard (variant="mini") — Reports hover-lift preserved
+  const StatCard = (props) => (
+    <SharedStatCard
+      variant="mini"
+      accent={customColor}
+      textColor={textColor}
+      loading={isLoading}
+      interactive
+      numberSize="lg"
+      {...props}
+    />
   );
 
   const ReportMobileCard = ({ item, idx }) => {
@@ -1046,17 +1016,7 @@ export default function ReportsManagement() {
     const relatedItem = item.serviceId?.serviceName || item.productId?.productName || "Service Order";
 
     return (
-      <Box
-        p={3}
-        bg="white"
-        borderWidth="1px"
-        borderColor={`${customColor}20`}
-        borderRadius="md"
-        shadow="sm"
-        mb={3}
-        transition="all 0.2s"
-        _active={{ transform: "scale(0.98)" }}
-      >
+      <MobileCard>
         <Flex justify="space-between" align="center" mb={2}>
           <HStack spacing={2}>
             <Text fontWeight="bold" color={customColor} fontSize="sm">
@@ -1101,22 +1061,12 @@ export default function ReportsManagement() {
             Review & Resolve
           </Button>
         </Flex>
-      </Box>
+      </MobileCard>
     );
   };
 
   const RatingMobileCard = ({ item, idx }) => (
-    <Box
-      p={3}
-      bg="white"
-      borderWidth="1px"
-      borderColor={`${customColor}20`}
-      borderRadius="md"
-      shadow="sm"
-      mb={3}
-      transition="all 0.2s"
-      _active={{ transform: "scale(0.98)" }}
-    >
+    <MobileCard>
       <Flex justify="space-between" align="center" mb={2}>
         <HStack spacing={2}>
           <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
@@ -1137,33 +1087,15 @@ export default function ReportsManagement() {
         </Text>
       )}
 
-      <Flex gap={2} justify="flex-end">
-        <IconButton
-          aria-label="View details"
-          icon={<FaEye />}
-          size="xs"
-          colorScheme="blue"
-          variant="ghost"
-          onClick={() => handleViewDetails(item)}
-        />
-        <IconButton
-          aria-label="Edit rating"
-          icon={<FaEdit />}
-          size="xs"
-          colorScheme="orange"
-          variant="ghost"
-          onClick={() => handleEditRating(item)}
-        />
-        <IconButton
-          aria-label="Delete rating"
-          icon={<FaTrash />}
-          size="xs"
-          colorScheme="red"
-          variant="ghost"
-          onClick={() => handleDeleteClick(item)}
-        />
-      </Flex>
-    </Box>
+      <MobileCardActions
+        actions={[
+          { label: "View details", icon: <FaEye />, colorScheme: "blue", onClick: () => handleViewDetails(item) },
+          { label: "Edit rating", icon: <FaEdit />, colorScheme: "orange", onClick: () => handleEditRating(item) },
+          { label: "Rebuild aggregate", icon: <FaHistory />, colorScheme: "purple", onClick: () => handleRebuildAggregate(item) },
+          { label: "Delete rating", icon: <FaTrash />, colorScheme: "red", onClick: () => handleDeleteClick(item) },
+        ]}
+      />
+    </MobileCard>
   );
 
   if (!currentUser) return null;
@@ -1183,9 +1115,9 @@ export default function ReportsManagement() {
       {/* Fixed Statistics Cards */}
       <Box flexShrink={0} p={{ base: 1, md: 4 }} pb={0}>
         <SimpleGrid
-          columns={{ base: 2, md: 4 }}
-          spacing={{ base: "6px", md: "8px" }}
-          mb={{ base: "6px", md: "8px" }}
+          columns={{ base: 1, sm: 2, md: 4 }}
+          spacing={{ base: 3, md: 4 }}
+          mb={{ base: 3, md: 4 }}
         >
           <StatCard
             label="Total Reports"
@@ -2003,6 +1935,20 @@ export default function ReportsManagement() {
                                       }}
                                       size="xs"
                                       onClick={() => handleDeleteClick(item)}
+                                    />
+                                    <IconButton
+                                      aria-label="Rebuild aggregate"
+                                      icon={<FaHistory />}
+                                      bg="white"
+                                      color="purple.500"
+                                      border="1px"
+                                      borderColor="purple.500"
+                                      _hover={{
+                                        bg: "purple.500",
+                                        color: "white",
+                                      }}
+                                      size="xs"
+                                      onClick={() => handleRebuildAggregate(item)}
                                     />
                                   </Flex>
                                 </Td>
@@ -2842,6 +2788,18 @@ export default function ReportsManagement() {
                         </Text>
                       </Box>
                     )}
+
+                    <Button
+                      leftIcon={<FaHistory />}
+                      colorScheme="purple"
+                      variant="outline"
+                      size="sm"
+                      w="100%"
+                      onClick={() => handleRebuildAggregate(selectedItem)}
+                      isLoading={actionLoading}
+                    >
+                      Rebuild Rating Aggregate
+                    </Button>
                   </>
                 )}
               </VStack>

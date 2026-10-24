@@ -30,6 +30,13 @@ import * as audit from "./audit";
 import * as settings from "./settings";
 import * as addresses from "./addresses";
 import * as quotations from "./quotations";
+import * as adminKyc from "./adminKyc";
+import * as skillRequests from "./skillRequests";
+import * as productDashboard from "./productDashboard";
+import * as adminPayments from "./adminPayments";
+import * as dispatch from "./dispatch";
+import * as rewards from "./rewards";
+import * as permissions from "./permissions";
 
 export {
   auth,
@@ -56,6 +63,13 @@ export {
   settings,
   addresses,
   quotations,
+  adminKyc,
+  skillRequests,
+  productDashboard,
+  adminPayments,
+  dispatch,
+  rewards,
+  permissions,
 };
 
 export default {
@@ -83,4 +97,11 @@ export default {
   settings,
   addresses,
   quotations,
+  adminKyc,
+  skillRequests,
+  productDashboard,
+  adminPayments,
+  dispatch,
+  rewards,
+  permissions,
 };

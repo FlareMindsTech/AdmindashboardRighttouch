@@ -1,6 +1,7 @@
 import { extendTheme } from "@chakra-ui/react";
 import { globalStyles } from "./styles";
 import { breakpoints } from "./foundations/breakpoints";
+import { radii } from "./foundations/radii";
 import { buttonStyles } from "./components/button";
 import { badgeStyles } from "./components/badge";
 import { linkStyles } from "./components/link";
@@ -11,7 +12,7 @@ import { PanelContentComponent } from "./additions/layout/PanelContent";
 import { PanelContainerComponent } from "./additions/layout/PanelContainer";
 // import { mode } from "@chakra-ui/theme-tools";
 export default extendTheme(
-  { breakpoints }, // Breakpoints
+  { breakpoints, radii }, // Breakpoints & Radii tokens
   globalStyles,
   buttonStyles, // Button styles
   badgeStyles, // Badge styles

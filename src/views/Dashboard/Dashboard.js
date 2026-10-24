@@ -14,26 +14,29 @@ import {
   Tr,
   Th,
   Td,
-  Badge,
-  Spinner,
   useColorModeValue,
+  useColorMode,
   HStack,
   VStack,
   Progress,
-  Container,
-  Divider
 } from "@chakra-ui/react";
 import {
   FaCalendarCheck,
   FaCheckCircle,
   FaRupeeSign,
   FaLayerGroup,
-  FaChartBar,
-  FaExclamationCircle,
   FaHistory
 } from "react-icons/fa";
-import ReactApexChart from "react-apexcharts";
-import { getAllServiceBooking, getAllCategories } from "../utils/axiosInstance";
+import { useAppDispatch, useAppSelector } from "store/hooks";
+import { fetchCategories, selectServiceCategories } from "store/slices/referenceSlice";
+import { fetchServiceBookings, selectServiceBookings } from "store/slices/bookingsSlice";
+import StatCard from "components/common/StatCard";
+import StatusBadge from "components/common/StatusBadge";
+import SectionCard from "components/common/SectionCard";
+import LoadingState from "components/common/LoadingState";
+import EmptyState from "components/common/EmptyState";
+import ServiceCategoryPerformance from "components/Dashboard/ServiceCategoryPerformance";
+import { getClaymorphicItemStyle, getClaymorphicIconBoxStyle } from "components/common/skeuomorphicStyles";
 
 // --- Helper Functions ---
 const formatCurrency = (amount) => {
@@ -53,85 +56,50 @@ const formatDate = (dateString) => {
   });
 };
 
-const getStatusColor = (status) => {
-  const s = (status || "").toLowerCase();
-  if (s === 'success' || s === 'paid' || s === 'completed' || s === 'approved') return 'green';
-  if (s === 'pending' || s === 'requested') return 'yellow';
-  if (s === 'failed' || s === 'rejected' || s === 'cancelled') return 'red';
-  return 'gray';
-};
 
-// --- Helper Error Boundary Component ---
-class ChartErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false };
-  }
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error, errorInfo) {
-    console.error("Chart Render Error:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <Flex h="300px" justify="center" align="center" direction="column" color="gray.400">
-          <Icon as={FaExclamationCircle} boxSize={8} mb={2} />
-          <Text>Unable to render analytics chart</Text>
-        </Flex>
-      );
-    }
-    return this.props.children;
-  }
-}
+const KPICard = React.memo(({ title, value, icon, color, subValue, textColor, subTextColor }) => (
+  <StatCard
+    variant="kpi"
+    textColor={textColor}
+    subTextColor={subTextColor}
+    title={title}
+    value={value}
+    icon={icon}
+    color={color}
+    subValue={subValue}
+  />
+));
 
 export default function Dashboard() {
-  // --- State ---
-  const [serviceBookings, setServiceBookings] = useState([]);
-  const [categories, setCategories] = useState([]);
+  // --- State (shared via Redux; derived KPIs/charts stay local) ---
+  const dispatch = useAppDispatch();
+  const serviceBookings = useAppSelector(selectServiceBookings);
+  const categories = useAppSelector(selectServiceCategories);
   const [loading, setLoading] = useState(true);
 
   // --- Theme ---
-  const cardBg = useColorModeValue("white", "gray.800");
+  const { colorMode } = useColorMode();
+  const isDark = colorMode === "dark";
   const textColor = useColorModeValue("gray.700", "gray.200");
   const subTextColor = useColorModeValue("gray.500", "gray.400");
-  const borderColor = useColorModeValue("gray.100", "gray.700");
 
-  // --- Fetch Data ---
+  // --- Fetch Data (TTL-cached shared collections; per-leg failure
+  // keeps last-good store data instead of blanking, warnings preserved) ---
   useEffect(() => {
     let isMounted = true;
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Parallel Fetch
-        const [bookingsRes, categoriesRes] = await Promise.all([
-          getAllServiceBooking().catch(err => {
+        // Parallel ensure-fetch (cache hits resolve without a request)
+        await Promise.all([
+          dispatch(fetchServiceBookings()).unwrap().catch(err => {
             console.warn("Bookings fetch warning:", err);
-            return [];
           }),
-          getAllCategories("service").catch(err => {
+          dispatch(fetchCategories({ categoryType: "service" })).unwrap().catch(err => {
             console.warn("Categories fetch warning:", err);
-            return [];
           })
         ]);
-
-        if (!isMounted) return;
-
-        // Process Bookings
-        const bookingsRaw = bookingsRes?.result || bookingsRes?.data || bookingsRes?.bookings || bookingsRes?.serviceBookings || bookingsRes || [];
-        const bookingsData = Array.isArray(bookingsRaw) ? bookingsRaw : (bookingsRaw?.result || bookingsRaw?.data || []);
-
-        // Process Categories
-        const categoriesRaw = categoriesRes?.result || categoriesRes?.data || categoriesRes?.categories || categoriesRes || [];
-        const categoriesData = Array.isArray(categoriesRaw) ? categoriesRaw : (categoriesRaw?.categories || categoriesRaw?.result || categoriesRaw?.data || []);
-
-        setServiceBookings(Array.isArray(bookingsData) ? bookingsData : []);
-        setCategories(Array.isArray(categoriesData) ? categoriesData : []);
-
       } catch (error) {
         console.error("Dashboard Data Fetch Error:", error);
       } finally {
@@ -141,7 +109,7 @@ export default function Dashboard() {
 
     fetchData();
     return () => { isMounted = false; };
-  }, []);
+  }, [dispatch]);
 
   // --- Derived Metrics ---
   const kpiData = useMemo(() => {
@@ -230,10 +198,12 @@ export default function Dashboard() {
         }
       }
 
-      if (catName === "Uncategorized" || (typeof catName === 'string' && catName.length > 20)) {
+      const isObjectId = (val) => typeof val === 'string' && /^[0-9a-fA-F]{24}$/.test(val);
+
+      if (catName === "Uncategorized" || isObjectId(catName)) {
         const sName = (b?.serviceId?.serviceName || b?.serviceName || "").toLowerCase();
         if (sName) {
-          for (const [id, name] of Object.entries(catMap)) {
+          for (const name of Object.values(catMap)) {
             if (sName.includes(name.toLowerCase())) {
               catName = name;
               break;
@@ -242,7 +212,7 @@ export default function Dashboard() {
         }
       }
 
-      if (typeof catName === 'string' && catName.length > 20) {
+      if (isObjectId(catName)) {
         catName = "Uncategorized";
       }
 
@@ -262,59 +232,7 @@ export default function Dashboard() {
     return Object.values(perfMap).sort((a, b) => b.revenue - a.revenue);
   }, [serviceBookings, categories]);
 
-  // --- Chart Data ---
-  const chartData = useMemo(() => {
-    const labels = categoryPerformance.map(c => c.name);
-    const revenues = categoryPerformance.map(c => c.revenue);
-    const bookings = categoryPerformance.map(c => c.totalBookings);
 
-    return {
-      series: [
-        { name: 'Revenue (₹)', data: revenues },
-        { name: 'Bookings', data: bookings }
-      ],
-      options: {
-        chart: {
-          type: 'bar',
-          toolbar: { show: false }
-        },
-        plotOptions: {
-          bar: {
-            horizontal: false,
-            columnWidth: '55%',
-            borderRadius: 4
-          },
-        },
-        dataLabels: { enabled: false },
-        stroke: { show: true, width: 2, colors: ['transparent'] },
-        xaxis: {
-          categories: labels,
-          labels: { style: { colors: '#718096', fontSize: '12px' } }
-        },
-        yaxis: [
-          {
-            title: { text: 'Revenue (₹)', style: { color: '#008FFB' } },
-            labels: { style: { colors: '#718096' } }
-          },
-          {
-            opposite: true,
-            title: { text: 'Bookings', style: { color: '#00E396' } },
-            labels: { style: { colors: '#718096' } }
-          }
-        ],
-        fill: { opacity: 1 },
-        tooltip: {
-          y: {
-            formatter: function (val, opts) {
-              const seriesIndex = opts?.seriesIndex ?? 0;
-              return seriesIndex === 0 ? formatCurrency(val) : (val || 0);
-            }
-          }
-        },
-        colors: ['#008FFB', '#00E396']
-      }
-    };
-  }, [categoryPerformance]);
 
   // --- Recent Bookings ---
   const recentBookings = useMemo(() => {
@@ -328,57 +246,8 @@ export default function Dashboard() {
       .slice(0, 5);
   }, [serviceBookings]);
 
-  // --- UI Components ---
-  const KPICard = ({ title, value, icon, color, subValue }) => (
-    <Box
-      bg={cardBg}
-      borderRadius="xl"
-      shadow="sm"
-      border="1px solid"
-      borderColor={borderColor}
-      h="140px"
-      display="flex"
-      flexDirection="column"
-    >
-      <Box p={5} flex="1" display="flex" flexDirection="column" justifyContent="space-between">
-        <Flex align="center" justify="space-between">
-          <Box>
-            <Text fontSize="xs" fontWeight="bold" color={subTextColor} textTransform="uppercase" letterSpacing="wider">
-              {title}
-            </Text>
-            <Heading size="lg" mt={1} color={textColor}>
-              {value}
-            </Heading>
-          </Box>
-          <Flex
-            w={12} h={12}
-            align="center" justify="center"
-            bg={`${color}.50`} color={`${color}.500`}
-            borderRadius="xl"
-          >
-            <Icon as={icon} boxSize={5} />
-          </Flex>
-        </Flex>
-        <Box mt={2} minH="20px">
-          {subValue ? (
-            <Text fontSize="xs" color={subTextColor} fontWeight="medium">
-              {subValue}
-            </Text>
-          ) : (
-            <Box h="1px" />
-          )}
-        </Box>
-      </Box>
-    </Box>
-  );
-
   if (loading) {
-    return (
-      <Flex h="80vh" w="100%" justify="center" align="center">
-        <Spinner size="xl" thickness="4px" speed="0.65s" emptyColor="gray.200" color="blue.500" />
-        <Text ml={4} fontWeight="medium" color="gray.500">Loading Dashboard...</Text>
-      </Flex>
-    );
+    return <LoadingState label="Loading Dashboard..." />;
   }
 
   return (
@@ -392,13 +261,15 @@ export default function Dashboard() {
       overflow="hidden"
     >
       {/* 1. TOP KPI CARDS - Fixed Header */}
-      <Box mb={6}>
-        <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={6}>
+      <Box mb={{ base: 3, md: 4 }}>
+        <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={{ base: 3, md: 4 }}>
           <KPICard
             title="Total Bookings"
             value={kpiData.totalBookings}
             icon={FaCalendarCheck}
             color="blue"
+            textColor={textColor}
+            subTextColor={subTextColor}
           />
           <KPICard
             title="Successful Payments"
@@ -406,18 +277,24 @@ export default function Dashboard() {
             icon={FaCheckCircle}
             color="green"
             subValue={`${((kpiData.successPaymentsCount / (kpiData.totalBookings || 1)) * 100).toFixed(1)}% Conversion`}
+            textColor={textColor}
+            subTextColor={subTextColor}
           />
           <KPICard
             title="Total Revenue"
             value={formatCurrency(kpiData.totalRevenue)}
             icon={FaRupeeSign}
             color="purple"
+            textColor={textColor}
+            subTextColor={subTextColor}
           />
           <KPICard
             title="Active Categories"
             value={kpiData.activeCategoriesCount}
             icon={FaLayerGroup}
             color="orange"
+            textColor={textColor}
+            subTextColor={subTextColor}
           />
         </SimpleGrid>
       </Box>
@@ -446,45 +323,31 @@ export default function Dashboard() {
           {/* 2. ANALYTICS SECTION */}
           <SimpleGrid columns={{ base: 1, xl: 3 }} spacing={8}>
 
-            {/* 2a. Chart */}
-            <Box gridColumn={{ xl: "span 2" }} bg={cardBg} borderRadius="xl" shadow="sm" border="1px solid" borderColor={borderColor}>
-              <Box p={5}>
-                <Flex align="center" justify="space-between" mb={6}>
-                  <HStack>
-                    <Icon as={FaChartBar} color="blue.500" />
-                    <Heading size="md" color={textColor}>Service Category Performance</Heading>
-                  </HStack>
-                </Flex>
-
-                {categoryPerformance.length > 0 ? (
-                  <Box h="350px">
-                    <ChartErrorBoundary>
-                      <ReactApexChart
-                        options={chartData.options}
-                        series={chartData.series}
-                        type="bar"
-                        height="100%"
-                      />
-                    </ChartErrorBoundary>
-                  </Box>
-                ) : (
-                  <Flex h="300px" justify="center" align="center" direction="column" color="gray.400">
-                    <Icon as={FaExclamationCircle} boxSize={8} mb={2} />
-                    <Text>No Analytics Data Available</Text>
-                  </Flex>
-                )}
-              </Box>
-            </Box>
+            {/* 2a. Redesigned Service Category Performance Analytics Card */}
+            <ServiceCategoryPerformance
+              gridColumn={{ xl: "span 2" }}
+              serviceBookings={serviceBookings}
+              categories={categories}
+              loading={loading}
+            />
 
             {/* 2b. Recent Bookings List (Right Panel) */}
-            <Box bg={cardBg} borderRadius="xl" shadow="sm" border="1px solid" borderColor={borderColor}>
-              <Box p={5}>
-                <HStack mb={4}>
-                  <Icon as={FaHistory} color="gray.500" />
+            <SectionCard>
+                <HStack mb={4} spacing={3}>
+                  <Flex
+                    w="38px"
+                    h="38px"
+                    align="center"
+                    justify="center"
+                    flexShrink={0}
+                    {...getClaymorphicIconBoxStyle("purple.500")}
+                  >
+                    <Icon as={FaHistory} color="white" boxSize="18px" />
+                  </Flex>
                   <Heading size="md" color={textColor}>Recent Bookings</Heading>
                 </HStack>
 
-                <VStack spacing={4} align="stretch" divider={<Divider />}>
+                <VStack spacing={3} align="stretch">
                   {recentBookings.length > 0 ? (
                     recentBookings.map((booking, idx) => {
                       const serviceName = booking?.serviceId?.serviceName || "Unknown Service";
@@ -495,7 +358,13 @@ export default function Dashboard() {
                       const status = booking?.paymentStatus || 'Pending';
 
                       return (
-                        <Flex key={idx} justify="space-between" align="center">
+                        <Flex
+                          key={idx}
+                          justify="space-between"
+                          align="center"
+                          p={3.5}
+                          {...getClaymorphicItemStyle(isDark)}
+                        >
                           <Box>
                             <Text fontWeight="bold" fontSize="sm" color={textColor} noOfLines={1}>
                               {serviceName}
@@ -507,34 +376,40 @@ export default function Dashboard() {
                               {formatDate(booking?.createdAt || booking?.scheduledAt)}
                             </Text>
                           </Box>
-                          <VStack align="end" spacing={0}>
+                          <VStack align="end" spacing={1}>
                             <Text fontWeight="bold" fontSize="sm" color={textColor}>
                               {formatCurrency(amount)}
                             </Text>
-                            <Badge
-                              size="sm"
-                              mt={1}
-                              colorScheme={getStatusColor(status)}
-                              fontSize="10px"
-                            >
-                              {status}
-                            </Badge>
+                            <StatusBadge preset="payment" status={status} />
                           </VStack>
                         </Flex>
                       );
                     })
                   ) : (
-                    <Text color="gray.400" textAlign="center" py={4}>No recent bookings</Text>
+                    <EmptyState variant="text" message="No recent bookings" />
                   )}
                 </VStack>
-              </Box>
-            </Box>
+            </SectionCard>
           </SimpleGrid>
 
           {/* 3. Detailed Category Table */}
-          <Box bg={cardBg} borderRadius="xl" shadow="sm" border="1px solid" borderColor={borderColor}>
-            <Box p={5} overflowX="auto">
-              <Heading size="md" mb={4} color={textColor}>Category Breakdown</Heading>
+          <SectionCard
+            bodyProps={{ overflowX: "auto" }}
+          >
+              <HStack mb={4} spacing={3}>
+                <Flex
+                  w="38px"
+                  h="38px"
+                  align="center"
+                  justify="center"
+                  flexShrink={0}
+                  {...getClaymorphicIconBoxStyle("teal.500")}
+                >
+                  <Icon as={FaLayerGroup} color="white" boxSize="18px" />
+                </Flex>
+                <Heading size="md" color={textColor}>Category Breakdown</Heading>
+              </HStack>
+
               <Table variant="simple" size="sm">
                 <Thead>
                   <Tr>
@@ -552,11 +427,11 @@ export default function Dashboard() {
                       const percent = (cat.revenue / maxRev) * 100;
 
                       return (
-                        <Tr key={idx} _hover={{ bg: "gray.50" }}>
+                        <Tr key={idx}>
                           <Td fontWeight="medium">{cat.name}</Td>
                           <Td isNumeric>{cat.totalBookings}</Td>
                           <Td isNumeric>{cat.successCount}</Td>
-                          <Td isNumeric fontWeight="bold" color="gray.700">
+                          <Td isNumeric fontWeight="bold" color={textColor}>
                             {formatCurrency(cat.revenue)}
                           </Td>
                           <Td>
@@ -579,8 +454,7 @@ export default function Dashboard() {
                   )}
                 </Tbody>
               </Table>
-            </Box>
-          </Box>
+          </SectionCard>
         </Stack>
       </Box>
     </Box>

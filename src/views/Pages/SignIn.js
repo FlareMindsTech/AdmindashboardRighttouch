@@ -18,26 +18,31 @@ import {
   keyframes,
 } from "@chakra-ui/react";
 import { MdAdminPanelSettings, MdLightbulb } from "react-icons/md";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { setAuth, getToken, getUser, clearAuth } from "../utils/axiosInstance";
+import { useAppDispatch, useAppSelector } from "store/hooks";
+import {
+  loginOwner,
+  logout,
+  selectIsOwner,
+  selectIsAuthenticated,
+} from "store/slices/authSlice";
 
 function AdminLogin() {
   const bgForm = useColorModeValue("white", "gray.800");
   const toast = useToast();
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
+  const isOwner = useAppSelector(selectIsOwner);
+  const isAuthenticated = useAppSelector(selectIsAuthenticated);
 
   // If valid owner token is present, bypass login screen
   useEffect(() => {
-    const token = getToken();
-    const user = getUser();
-    const isOwner = token && user?.role?.toLowerCase() === "owner";
     if (isOwner) {
       navigate("/owner/dashboard", { replace: true });
-    } else if (token && !isOwner) {
-      clearAuth();
+    } else if (isAuthenticated && !isOwner) {
+      dispatch(logout());
     }
-  }, [navigate]);
+  }, [navigate, isOwner, isAuthenticated, dispatch]);
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -95,27 +100,14 @@ function AdminLogin() {
     setLoading(true);
 
     try {
-      const res = await axios.post(
-        `${process.env.REACT_APP_API_BASE_URL || "https://righttouchservernew-727889857503.asia-south1.run.app"}/api/user/login/owner`,
-        {
-          identifier: identifier,
-          password: password,
-          role: "Owner"
-        },
-        { headers: { "Content-Type": "application/json" } }
-      );
+      // Phase 2: canonical login path (same URL/payload/response handling as
+      // before — the thunk preserves the legacy request contract and writes
+      // storage via setAuth on success).
+      const result = await dispatch(
+        loginOwner({ identifier, password })
+      ).unwrap();
 
-      if (!res.data?.result) {
-        throw new Error("Invalid server response");
-      }
-
-      const { token, role, id } = res.data.result;
-
-      setAuth(token, {
-        identifier: identifier,
-        role: role,
-        id,
-      });
+      const role = result?.role || result?.user?.role || "Owner";
 
       toast({
         title: "Login Successful",
@@ -133,8 +125,8 @@ function AdminLogin() {
     } catch (err) {
       console.error("Login error:", err);
       toast({
-        title: err.response?.status === 429 ? "Too Many Attempts" : "Login Failed",
-        description: err.response?.data?.message || (typeof err.response?.data === 'string' ? err.response.data : null) || err.message || "Server error",
+        title: err?.status === 429 ? "Too Many Attempts" : "Login Failed",
+        description: err?.detail || err?.message || "Server error",
         status: "error",
         duration: 5000,
         isClosable: true,

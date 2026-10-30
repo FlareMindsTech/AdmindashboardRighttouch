@@ -81,10 +81,11 @@ export default function FinancialBreakdown({
   return (
     <Box
       p={4}
-      borderRadius="14px"
-      bg={isDark ? "gray.800" : "gray.50"}
+      borderRadius="16px"
+      bg={isDark ? "gray.800" : "white"}
       border="1px solid"
       borderColor={isDark ? "gray.700" : "gray.200"}
+      boxShadow="sm"
     >
       <VStack spacing={2.5} align="stretch">
         <HStack justify="space-between" align="center">
@@ -148,22 +149,33 @@ export default function FinancialBreakdown({
           </HStack>
         )}
 
-        <Divider borderColor={isDark ? "gray.700" : "gray.300"} />
+        <Divider borderColor={isDark ? "gray.700" : "gray.200"} />
 
-        <HStack justify="space-between" align="center" pt={1}>
-          <HStack spacing={1.5}>
+        <HStack
+          justify="space-between"
+          align="center"
+          p={3}
+          borderRadius="12px"
+          bg={isDark ? "teal.900" : "teal.50"}
+          border="1px solid"
+          borderColor={isDark ? "teal.700" : "teal.200"}
+        >
+          <HStack spacing={2}>
             <Icon as={FaEquals} color="teal.500" boxSize={3.5} />
-            <Text fontSize="sm" fontWeight="700" color="teal.700">
+            <Text fontSize="xs" fontWeight="800" color={isDark ? "teal.200" : "teal.900"} textTransform="uppercase" letterSpacing="0.04em">
               Net Bank Transfer Payable
             </Text>
           </HStack>
           <Badge
             colorScheme="teal"
+            variant="solid"
+            bg="teal.600"
             fontSize="sm"
             px={3}
             py={1}
-            borderRadius="md"
-            fontWeight="800"
+            borderRadius="8px"
+            fontWeight="900"
+            boxShadow="0 2px 6px rgba(0, 128, 128, 0.25)"
           >
             {netStr}
           </Badge>

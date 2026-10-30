@@ -34,7 +34,7 @@ import {
   selectInboxLoading,
 } from "store/slices/notificationsSlice";
 
-export default function HeaderLinks(props) {
+const HeaderLinks = React.memo(function HeaderLinks(props) {
   const { fixed, scrolled, secondary } = props;
   const toast = useToast();
   const dispatch = useAppDispatch();
@@ -105,6 +105,7 @@ export default function HeaderLinks(props) {
               variant="ghost"
               size="sm"
               _hover={{ bg: "rgba(255,255,255,0.15)" }}
+              _active={{ bg: "rgba(255,255,255,0.25)" }}
             />
             {unreadCount > 0 && (
               <Badge
@@ -189,12 +190,15 @@ export default function HeaderLinks(props) {
         px="0px"
         me={{ sm: "2px", md: "16px" }}
         color={navbarIcon}
-        variant="no-effects"
+        variant="ghost"
         rightIcon={<ProfileIcon color={navbarIcon} w="22px" h="22px" />}
         _hover={{ bg: "rgba(255,255,255,0.1)" }}
+        _active={{ bg: "rgba(255,255,255,0.2)" }}
       >
         <Text display={{ sm: "none", md: "flex" }}>Profile</Text>
       </Button>
     </Flex>
   );
-}
+});
+
+export default HeaderLinks;

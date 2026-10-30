@@ -39,12 +39,9 @@ export default function WithdrawalDetailsDrawer({
   isOpen,
   onClose,
   withdrawalId,
-  currentUser,
   onOpenRecordTransfer,
   onOpenApprove,
   onOpenReject,
-  onOpenRevert,
-  onOpenFreeze,
   onViewReceipt,
 }) {
   const { colorMode } = useColorMode();
@@ -53,8 +50,6 @@ export default function WithdrawalDetailsDrawer({
   const [loading, setLoading] = useState(false);
   const [details, setDetails] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
-
-  const isOwner = currentUser?.role?.toLowerCase() === "owner";
 
   useEffect(() => {
     if (isOpen && withdrawalId) {
@@ -430,37 +425,6 @@ export default function WithdrawalDetailsDrawer({
                 }}
               >
                 Reject
-              </Button>
-            )}
-
-            {/* Quick Action: Revert (Owner only, if paid) */}
-            {status === "paid" && isOwner && (
-              <Button
-                size="sm"
-                colorScheme="red"
-                fontWeight="700"
-                onClick={() => {
-                  onClose();
-                  onOpenRevert && onOpenRevert(details);
-                }}
-              >
-                Revert Payment
-              </Button>
-            )}
-
-            {/* Freeze/Unfreeze Technician */}
-            {tech._id && (
-              <Button
-                size="sm"
-                variant="ghost"
-                colorScheme={tech.payoutBlocked ? "green" : "red"}
-                fontSize="xs"
-                onClick={() => {
-                  onClose();
-                  onOpenFreeze && onOpenFreeze(tech);
-                }}
-              >
-                {tech.payoutBlocked ? "Unfreeze Tech" : "Freeze Tech"}
               </Button>
             )}
 

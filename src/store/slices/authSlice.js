@@ -27,42 +27,90 @@ export const loginOwner = createAsyncThunk(
   "auth/loginOwner",
   async ({ identifier, password }, { rejectWithValue }) => {
     try {
+      const cleanIdentifier = (identifier || "").toString().trim();
       const res = await axios.post(
         `${API_BASE_URL}/api/user/login/owner`,
-        { identifier, password, role: "Owner" },
+        { identifier: cleanIdentifier, password, role: "Owner" },
         { headers: { "Content-Type": "application/json" } }
       );
       if (!res.data?.result) {
-        throw new Error("Invalid server response");
+        throw new Error("Invalid server response structure");
       }
-      const { token, role, id } = res.data.result;
-      const user = { identifier, role, id };
+      const { token, role } = res.data.result;
+      const userId = res.data.result.userId || res.data.result.id || res.data.result._id || "";
+      const user = { identifier: cleanIdentifier, role: role || "Owner", id: userId, userId };
       // Single canonical write path — legacy helper keeps storage compatible.
       setAuth(token, user);
-      return { token, user, role: role || "" };
+      return { token, user, role: role || "Owner" };
     } catch (err) {
-      const status = err.response?.status;
+      const status = err.response?.status || 0;
+      const data = err.response?.data;
+      const code =
+        data?.code ||
+        (err.code === "ERR_NETWORK"
+          ? "NETWORK_ERROR"
+          : status === 429
+          ? "TOO_MANY_ATTEMPTS"
+          : status === 401
+          ? "INVALID_CREDENTIALS"
+          : status === 403
+          ? "FORBIDDEN"
+          : status === 404
+          ? "USER_NOT_FOUND"
+          : "SERVER_ERROR");
+
       const serverMessage =
-        err.response?.data?.message ||
-        (typeof err.response?.data === "string" ? err.response.data : null);
+        data?.message ||
+        data?.error ||
+        (typeof data === "string" ? data : null);
+
+      let friendlyMessage = serverMessage;
+      if (!err.response) {
+        friendlyMessage =
+          "Cannot connect to the server. Please check your internet connection or server status.";
+      } else if (status === 429) {
+        friendlyMessage =
+          serverMessage || "Too many login attempts. Please wait 15 minutes before trying again.";
+      } else if (!friendlyMessage) {
+        friendlyMessage = err.message || "An unexpected error occurred during login.";
+      }
+
       return rejectWithValue({
-        status: status || null,
-        message:
-          status === 429
-            ? "Too Many Attempts"
-            : serverMessage || err.message || "Server error",
-        detail: serverMessage || err.message || "Server error",
+        status,
+        code,
+        message: friendlyMessage,
+        detail: data?.details ? JSON.stringify(data.details) : serverMessage || err.message || "",
       });
     }
   }
 );
+
+const isJwtExpired = (token) => {
+  if (typeof token !== "string") return false;
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    const payload = JSON.parse(atob(padded));
+    return typeof payload.exp === "number" && payload.exp * 1000 <= Date.now();
+  } catch (e) {
+    return false;
+  }
+};
 
 const readStoredSession = () => {
   try {
     const token = getToken();
     const user = getUser();
     if (!token || !user) return { token: null, user: null, role: "" };
-    return { token, user, role: user?.role?.toLowerCase() || "" };
+    if (isJwtExpired(token)) {
+      clearAuth();
+      return { token: null, user: null, role: "" };
+    }
+    const rawRole = user?.role || user?.roleName || (token ? "Owner" : "");
+    const role = (rawRole || "").toString().toLowerCase();
+    return { token, user, role };
   } catch (e) {
     return { token: null, user: null, role: "" };
   }

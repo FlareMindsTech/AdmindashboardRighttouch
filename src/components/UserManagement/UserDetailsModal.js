@@ -24,7 +24,7 @@ import {
   getUserDisplayPhone,
 } from "views/Dashboard/UserManagement";
 
-export default function UserDetailsModal({
+const UserDetailsModal = React.memo(function UserDetailsModal({
   isOpen,
   onClose,
   selectedUser,
@@ -203,4 +203,6 @@ export default function UserDetailsModal({
       </ModalContent>
     </Modal>
   );
-}
+});
+
+export default UserDetailsModal;

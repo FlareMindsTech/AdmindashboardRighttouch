@@ -20,7 +20,7 @@ export function SearchBar(props) {
           <IconButton
             bg='inherit'
             borderRadius='inherit'
-            _hover='none'
+            _hover={{ bg: "transparent" }}
             _active={{
               bg: "inherit",
               transform: "none",

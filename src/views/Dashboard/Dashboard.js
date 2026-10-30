@@ -1,250 +1,271 @@
-
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
-  SimpleGrid,
   Flex,
-  Text,
   Heading,
+  SimpleGrid,
   Stack,
-  Icon,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  useColorModeValue,
+  Text,
   useColorMode,
-  HStack,
-  VStack,
-  Progress,
 } from "@chakra-ui/react";
 import {
+  FaBoxOpen,
   FaCalendarCheck,
   FaCheckCircle,
   FaRupeeSign,
-  FaLayerGroup,
-  FaHistory
+  FaTools,
 } from "react-icons/fa";
 import { useAppDispatch, useAppSelector } from "store/hooks";
-import { fetchCategories, selectServiceCategories } from "store/slices/referenceSlice";
-import { fetchServiceBookings, selectServiceBookings } from "store/slices/bookingsSlice";
-import StatCard from "components/common/StatCard";
-import StatusBadge from "components/common/StatusBadge";
-import SectionCard from "components/common/SectionCard";
+import {
+  fetchCategories,
+  fetchProducts,
+  selectServiceCategories,
+  selectProductCategories,
+  selectProducts,
+} from "store/slices/referenceSlice";
+import {
+  fetchServiceBookings,
+  fetchProductBookings,
+  selectServiceBookings,
+  selectProductBookings,
+} from "store/slices/bookingsSlice";
 import LoadingState from "components/common/LoadingState";
-import EmptyState from "components/common/EmptyState";
-import ServiceCategoryPerformance from "components/Dashboard/ServiceCategoryPerformance";
-import { getClaymorphicItemStyle, getClaymorphicIconBoxStyle } from "components/common/skeuomorphicStyles";
+import KpiTile from "components/Dashboard/KpiTile";
+import RevenueTrendCard from "components/Dashboard/RevenueTrendCard";
+import RevenueMixCard from "components/Dashboard/RevenueMixCard";
+import CategoryPerformancePanel from "components/Dashboard/CategoryPerformancePanel";
+import RecentBookingsCard from "components/Dashboard/RecentBookingsCard";
+import {
+  buildDomainAnalytics,
+  buildMonthlyTrend,
+  formatCompactCurrency,
+  formatCurrency,
+  isActiveCatalogItem,
+  percentChange,
+} from "components/Dashboard/dashboardUtils";
+import {
+  fetchDashboardInsights,
+  normalizeMonthlySeries,
+} from "components/Dashboard/dashboardInsights";
 
-// --- Helper Functions ---
-const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0
-  }).format(amount || 0);
-};
-
-const formatDate = (dateString) => {
-  if (!dateString) return "N/A";
-  return new Date(dateString).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric'
-  });
-};
-
-
-
-const KPICard = React.memo(({ title, value, icon, color, subValue, textColor, subTextColor }) => (
-  <StatCard
-    variant="kpi"
-    textColor={textColor}
-    subTextColor={subTextColor}
-    title={title}
-    value={value}
-    icon={icon}
-    color={color}
-    subValue={subValue}
-  />
-));
 
 export default function Dashboard() {
-  // --- State (shared via Redux; derived KPIs/charts stay local) ---
   const dispatch = useAppDispatch();
   const serviceBookings = useAppSelector(selectServiceBookings);
-  const categories = useAppSelector(selectServiceCategories);
-  const [loading, setLoading] = useState(true);
+  const productBookings = useAppSelector(selectProductBookings);
+  const serviceCategories = useAppSelector(selectServiceCategories);
+  const productCategories = useAppSelector(selectProductCategories);
+  const products = useAppSelector(selectProducts);
 
-  // --- Theme ---
+  const hasExistingData =
+    (serviceBookings && serviceBookings.length > 0) ||
+    (productBookings && productBookings.length > 0);
+  const [loading, setLoading] = useState(!hasExistingData);
+  const [insights, setInsights] = useState(null);
+
   const { colorMode } = useColorMode();
   const isDark = colorMode === "dark";
-  const textColor = useColorModeValue("gray.700", "gray.200");
-  const subTextColor = useColorModeValue("gray.500", "gray.400");
+  const textColor = isDark ? "gray.50" : "gray.800";
+  const subTextColor = isDark ? "gray.400" : "gray.500";
 
-  // --- Fetch Data (TTL-cached shared collections; per-leg failure
-  // keeps last-good store data instead of blanking, warnings preserved) ---
+  const dispatchDashboardData = useCallback(
+    (force = false) =>
+      Promise.all([
+        dispatch(fetchServiceBookings({ force }))
+          .unwrap()
+          .catch((error) => {
+            console.warn("Service bookings fetch warning:", error);
+          }),
+        dispatch(fetchProductBookings({ force }))
+          .unwrap()
+          .catch((error) => {
+            console.warn("Product bookings fetch warning:", error);
+          }),
+        dispatch(fetchCategories({ categoryType: "service", force }))
+          .unwrap()
+          .catch((error) => {
+            console.warn("Service categories fetch warning:", error);
+          }),
+        dispatch(fetchCategories({ categoryType: "product", force }))
+          .unwrap()
+          .catch((error) => {
+            console.warn("Product categories fetch warning:", error);
+          }),
+        dispatch(fetchProducts({ force }))
+          .unwrap()
+          .catch((error) => {
+            console.warn("Products fetch warning:", error);
+          }),
+      ]),
+    [dispatch]
+  );
+
   useEffect(() => {
     let isMounted = true;
-    const fetchData = async () => {
-      try {
+
+    const load = async () => {
+      if (!hasExistingData) {
         setLoading(true);
-        // Parallel ensure-fetch (cache hits resolve without a request)
-        await Promise.all([
-          dispatch(fetchServiceBookings()).unwrap().catch(err => {
-            console.warn("Bookings fetch warning:", err);
-          }),
-          dispatch(fetchCategories({ categoryType: "service" })).unwrap().catch(err => {
-            console.warn("Categories fetch warning:", err);
-          })
+      }
+      try {
+        const [, insightData] = await Promise.all([
+          dispatchDashboardData(false),
+          fetchDashboardInsights(false),
         ]);
-      } catch (error) {
-        console.error("Dashboard Data Fetch Error:", error);
+        if (isMounted) {
+          setInsights(insightData);
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
     };
 
-    fetchData();
-    return () => { isMounted = false; };
-  }, [dispatch]);
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, [dispatchDashboardData, hasExistingData]);
 
-  // --- Derived Metrics ---
+  const serviceAnalytics = useMemo(
+    () => buildDomainAnalytics(serviceBookings, serviceCategories, "service"),
+    [serviceBookings, serviceCategories]
+  );
+
+  const productAnalytics = useMemo(
+    () => buildDomainAnalytics(productBookings, productCategories, "product"),
+    [productBookings, productCategories]
+  );
+
+  const catalog = useMemo(() => {
+    const list = Array.isArray(products) ? products : [];
+    return {
+      total: list.length,
+      active: list.filter(isActiveCatalogItem).length,
+    };
+  }, [products]);
+
+  const monthlyTrend = useMemo(() => {
+    const base = buildMonthlyTrend(serviceBookings, productBookings, 6);
+    if (!insights) return base;
+
+    const serviceSeries = normalizeMonthlySeries(
+      insights.serviceEarnings,
+      base
+    );
+    const productSeries = normalizeMonthlySeries(insights.salesRows, base);
+
+    return base.map((month, index) => {
+      const apiService = serviceSeries?.[index];
+      const apiProduct = productSeries?.[index];
+      const serviceRevenue = apiService?.revenue ?? month.serviceRevenue;
+      const productRevenue = apiProduct?.revenue ?? month.productRevenue;
+      const serviceBookingsForMonth =
+        month.serviceBookings || apiService?.bookings || 0;
+      const productBookingsForMonth =
+        month.productBookings || apiProduct?.bookings || 0;
+
+      return {
+        ...month,
+        serviceRevenue,
+        productRevenue,
+        serviceBookings: serviceBookingsForMonth,
+        productBookings: productBookingsForMonth,
+        totalRevenue: serviceRevenue + productRevenue,
+        totalBookings: serviceBookingsForMonth + productBookingsForMonth,
+      };
+    });
+  }, [serviceBookings, productBookings, insights]);
+
   const kpiData = useMemo(() => {
-    const bookingsList = Array.isArray(serviceBookings) ? serviceBookings : [];
-    const categoriesList = Array.isArray(categories) ? categories : [];
+    const apiServiceRevenue = insights?.finance?.revenue || 0;
+    const apiProductRevenue = insights?.product?.revenue || 0;
+    const serviceRevenue =
+      apiServiceRevenue > 0 ? apiServiceRevenue : serviceAnalytics.revenue;
+    const productRevenue =
+      apiProductRevenue > 0 ? apiProductRevenue : productAnalytics.revenue;
 
-    const totalBookings = bookingsList.length;
+    const apiServiceBookings = insights?.finance?.bookings || 0;
+    const apiProductBookings = insights?.product?.bookings || 0;
+    const serviceBookingsCount =
+      apiServiceBookings > 0
+        ? apiServiceBookings
+        : serviceAnalytics.totalBookings;
+    const productBookingsCount =
+      apiProductBookings > 0
+        ? apiProductBookings
+        : productAnalytics.totalBookings;
 
-    // Filter for successful payments
-    const successBookings = bookingsList.filter(b => {
-      const status = b?.paymentStatus?.toLowerCase();
-      return status === 'success' || status === 'paid';
-    });
+    const apiServicePaid = insights?.finance?.paidCount || 0;
+    const apiProductPaid = insights?.product?.paidCount || 0;
+    const servicePaid =
+      apiServicePaid > 0
+        ? apiServicePaid
+        : serviceAnalytics.successPayments;
+    const productPaid =
+      apiProductPaid > 0
+        ? apiProductPaid
+        : productAnalytics.successPayments;
 
-    const successPaymentsCount = successBookings.length;
+    const totalBookings = serviceBookingsCount + productBookingsCount;
+    const successPayments = servicePaid + productPaid;
+    const totalRevenue = serviceRevenue + productRevenue;
+    const successRate =
+      totalBookings > 0 ? (successPayments / totalBookings) * 100 : 0;
 
-    // Revenue Calculation (Strictly from SUCCESS bookings)
-    const totalRevenue = successBookings.reduce((acc, curr) => {
-      return acc + (Number(curr?.baseAmount) || Number(curr?.amount) || 0);
-    }, 0);
-
-    const uniqueActiveCategories = new Set();
-    const catMap = {};
-    categoriesList.forEach(c => {
-      if (!c) return;
-      const name = c.category || c.name;
-      if (c._id && name) catMap[c._id] = name;
-    });
-
-    bookingsList.forEach(b => {
-      if (!b) return;
-      const catRef = b?.categoryId || b?.category || b?.serviceId?.categoryId || b?.serviceId?.category || b?.serviceCategory;
-      if (catRef) {
-        let name;
-        if (typeof catRef === 'object' && catRef !== null) {
-          name = catRef.category || catRef.name || catRef.title;
-        } else {
-          name = catMap[catRef] || catRef;
-        }
-        if (name && name !== "Uncategorized") uniqueActiveCategories.add(name);
-      }
-    });
+    const currentMonth = monthlyTrend[monthlyTrend.length - 1] || {};
+    const previousMonth = monthlyTrend[monthlyTrend.length - 2] || {};
 
     return {
       totalBookings,
-      successPaymentsCount,
+      successPayments,
       totalRevenue,
-      activeCategoriesCount: uniqueActiveCategories.size || categoriesList.length
+      successRate,
+      serviceBookings: serviceBookingsCount,
+      productBookings: productBookingsCount,
+      serviceRevenue,
+      productRevenue,
+      serviceCategories: serviceAnalytics.categoryCount,
+      activeProducts:
+        insights?.product?.products > 0
+          ? insights.product.products
+          : catalog.active,
+      revenueTrend: percentChange(
+        currentMonth.totalRevenue,
+        previousMonth.totalRevenue
+      ),
+      bookingsTrend: percentChange(
+        currentMonth.totalBookings,
+        previousMonth.totalBookings
+      ),
+      successTrend: percentChange(
+        currentMonth.totalSuccess,
+        previousMonth.totalSuccess
+      ),
     };
-  }, [serviceBookings, categories]);
+  }, [serviceAnalytics, productAnalytics, monthlyTrend, insights, catalog]);
 
-  // --- Category Performance Data ---
-  const categoryPerformance = useMemo(() => {
-    const bookingsList = Array.isArray(serviceBookings) ? serviceBookings : [];
-    const categoriesList = Array.isArray(categories) ? categories : [];
+  const recentActivity = useMemo(() => {
+    const combined = [
+      ...(Array.isArray(serviceBookings)
+        ? serviceBookings.map((booking) => ({ booking, kind: "service" }))
+        : []),
+      ...(Array.isArray(productBookings)
+        ? productBookings.map((booking) => ({ booking, kind: "product" }))
+        : []),
+    ];
 
-    const catMap = {};
-    categoriesList.forEach(c => {
-      if (!c) return;
-      const name = c.category || c.name;
-      if (c._id && name) catMap[c._id] = name;
-    });
-
-    const perfMap = {};
-
-    // Initialize with all categories
-    categoriesList.forEach(c => {
-      if (!c) return;
-      const name = c.category || c.name || "Unknown";
-      if (!perfMap[name]) {
-        perfMap[name] = { name, totalBookings: 0, revenue: 0, successCount: 0 };
-      }
-    });
-
-    // Aggregate data
-    bookingsList.forEach(b => {
-      if (!b) return;
-      let catName = "Uncategorized";
-      const catRef = b?.categoryId || b?.category || b?.serviceId?.categoryId || b?.serviceId?.category || b?.serviceCategory;
-
-      if (catRef) {
-        if (typeof catRef === 'string') {
-          catName = catMap[catRef] || catRef;
-        } else if (typeof catRef === 'object' && catRef !== null) {
-          catName = catRef.category || catRef.name || catRef.title || "Uncategorized";
-        }
-      }
-
-      const isObjectId = (val) => typeof val === 'string' && /^[0-9a-fA-F]{24}$/.test(val);
-
-      if (catName === "Uncategorized" || isObjectId(catName)) {
-        const sName = (b?.serviceId?.serviceName || b?.serviceName || "").toLowerCase();
-        if (sName) {
-          for (const name of Object.values(catMap)) {
-            if (sName.includes(name.toLowerCase())) {
-              catName = name;
-              break;
-            }
-          }
-        }
-      }
-
-      if (isObjectId(catName)) {
-        catName = "Uncategorized";
-      }
-
-      if (!perfMap[catName]) {
-        perfMap[catName] = { name: catName, totalBookings: 0, revenue: 0, successCount: 0 };
-      }
-
-      perfMap[catName].totalBookings += 1;
-
-      const status = b?.paymentStatus?.toLowerCase();
-      if (status === 'success' || status === 'paid') {
-        perfMap[catName].successCount += 1;
-        perfMap[catName].revenue += (Number(b?.baseAmount) || Number(b?.amount) || 0);
-      }
-    });
-
-    return Object.values(perfMap).sort((a, b) => b.revenue - a.revenue);
-  }, [serviceBookings, categories]);
-
-
-
-  // --- Recent Bookings ---
-  const recentBookings = useMemo(() => {
-    const bookingsList = Array.isArray(serviceBookings) ? serviceBookings : [];
-    return [...bookingsList]
+    return combined
       .sort((a, b) => {
-        const dateA = new Date(a?.createdAt || a?.scheduledAt || 0);
-        const dateB = new Date(b?.createdAt || b?.scheduledAt || 0);
-        return dateB - dateA;
+        const dateA = new Date(
+          a.booking?.createdAt || a.booking?.scheduledAt || 0
+        ).getTime();
+        const dateB = new Date(
+          b.booking?.createdAt || b.booking?.scheduledAt || 0
+        ).getTime();
+        return (dateB || 0) - (dateA || 0);
       })
-      .slice(0, 5);
-  }, [serviceBookings]);
+      .slice(0, 8);
+  }, [serviceBookings, productBookings]);
 
   if (loading) {
     return <LoadingState label="Loading Dashboard..." />;
@@ -252,211 +273,129 @@ export default function Dashboard() {
 
   return (
     <Box
-      h="100vh"
-      display="flex"
-      flexDirection="column"
-      pt={{ base: "100px", md: "60px" }}
-      pb={{ base: 4, md: 8 }}
-      px={{ base: 4, md: 8 }}
-      overflow="hidden"
+      pt={{ base: "120px", md: "75px" }}
+      pb={{ base: 6, md: 8 }}
+      px={{ base: 2, md: 4, lg: 6 }}
     >
-      {/* 1. TOP KPI CARDS - Fixed Header */}
-      <Box mb={{ base: 3, md: 4 }}>
-        <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={{ base: 3, md: 4 }}>
-          <KPICard
-            title="Total Bookings"
-            value={kpiData.totalBookings}
-            icon={FaCalendarCheck}
-            color="blue"
-            textColor={textColor}
-            subTextColor={subTextColor}
-          />
-          <KPICard
-            title="Successful Payments"
-            value={kpiData.successPaymentsCount}
-            icon={FaCheckCircle}
-            color="green"
-            subValue={`${((kpiData.successPaymentsCount / (kpiData.totalBookings || 1)) * 100).toFixed(1)}% Conversion`}
-            textColor={textColor}
-            subTextColor={subTextColor}
-          />
-          <KPICard
-            title="Total Revenue"
+      <Stack spacing={{ base: 5, md: 6 }} maxW="1600px" mx="auto">
+        <SimpleGrid
+          columns={{ base: 1, sm: 2, lg: 3, xl: 5 }}
+          spacing={{ base: 3, md: 4 }}
+        >
+          <KpiTile
+            label="Total Revenue"
             value={formatCurrency(kpiData.totalRevenue)}
             icon={FaRupeeSign}
-            color="purple"
-            textColor={textColor}
-            subTextColor={subTextColor}
+            subValue={`Svc ${formatCompactCurrency(
+              kpiData.serviceRevenue
+            )} · Prod ${formatCompactCurrency(kpiData.productRevenue)}`}
+            trend={kpiData.revenueTrend}
           />
-          <KPICard
-            title="Active Categories"
-            value={kpiData.activeCategoriesCount}
-            icon={FaLayerGroup}
-            color="orange"
-            textColor={textColor}
-            subTextColor={subTextColor}
+          <KpiTile
+            label="Total Bookings"
+            value={kpiData.totalBookings.toLocaleString("en-IN")}
+            icon={FaCalendarCheck}
+            subValue={`${kpiData.serviceBookings} services · ${kpiData.productBookings} products`}
+            trend={kpiData.bookingsTrend}
+          />
+          <KpiTile
+            label="Paid Bookings"
+            value={kpiData.successPayments.toLocaleString("en-IN")}
+            icon={FaCheckCircle}
+            subValue={`${kpiData.successRate.toFixed(1)}% success rate`}
+            trend={kpiData.successTrend}
+          />
+          <KpiTile
+            label="Service Categories"
+            value={kpiData.serviceCategories.toLocaleString("en-IN")}
+            icon={FaTools}
+            subValue={`${kpiData.serviceBookings} service bookings`}
+          />
+          <KpiTile
+            label="Active Products"
+            value={kpiData.activeProducts.toLocaleString("en-IN")}
+            icon={FaBoxOpen}
+            subValue={`${catalog.total} total in catalogue`}
           />
         </SimpleGrid>
-      </Box>
 
-      {/* 2. SCROLLABLE CONTENT AREA */}
-      <Box
-        flex="1"
-        overflowY="auto"
-        css={{
-          '&::-webkit-scrollbar': {
-            width: '4px',
-          },
-          '&::-webkit-scrollbar-track': {
-            width: '6px',
-          },
-          '&::-webkit-scrollbar-thumb': {
-            background: 'transparent',
-            borderRadius: '24px',
-          },
-          '&:hover::-webkit-scrollbar-thumb': {
-            background: 'var(--chakra-colors-gray-400)',
-          },
-        }}
-      >
-        <Stack spacing={8} pb={6} pr={2}>
-          {/* 2. ANALYTICS SECTION */}
-          <SimpleGrid columns={{ base: 1, xl: 3 }} spacing={8}>
+        <SimpleGrid
+          columns={{ base: 1, xl: 3 }}
+          spacing={{ base: 4, md: 5 }}
+          alignItems="stretch"
+        >
+          <RevenueTrendCard
+            months={monthlyTrend}
+            gridColumn={{ xl: "span 2" }}
+          />
+          <RevenueMixCard
+            serviceRevenue={kpiData.serviceRevenue}
+            productRevenue={kpiData.productRevenue}
+          />
+        </SimpleGrid>
 
-            {/* 2a. Redesigned Service Category Performance Analytics Card */}
-            <ServiceCategoryPerformance
-              gridColumn={{ xl: "span 2" }}
-              serviceBookings={serviceBookings}
-              categories={categories}
-              loading={loading}
-            />
-
-            {/* 2b. Recent Bookings List (Right Panel) */}
-            <SectionCard>
-                <HStack mb={4} spacing={3}>
-                  <Flex
-                    w="38px"
-                    h="38px"
-                    align="center"
-                    justify="center"
-                    flexShrink={0}
-                    {...getClaymorphicIconBoxStyle("purple.500")}
-                  >
-                    <Icon as={FaHistory} color="white" boxSize="18px" />
-                  </Flex>
-                  <Heading size="md" color={textColor}>Recent Bookings</Heading>
-                </HStack>
-
-                <VStack spacing={3} align="stretch">
-                  {recentBookings.length > 0 ? (
-                    recentBookings.map((booking, idx) => {
-                      const serviceName = booking?.serviceId?.serviceName || "Unknown Service";
-                      const customerName = booking?.customerId?.fname
-                        ? `${booking.customerId.fname} ${booking.customerId.lname || ''}`
-                        : (booking?.addressSnapshot?.name || "Unknown Customer");
-                      const amount = booking?.baseAmount || 0;
-                      const status = booking?.paymentStatus || 'Pending';
-
-                      return (
-                        <Flex
-                          key={idx}
-                          justify="space-between"
-                          align="center"
-                          p={3.5}
-                          {...getClaymorphicItemStyle(isDark)}
-                        >
-                          <Box>
-                            <Text fontWeight="bold" fontSize="sm" color={textColor} noOfLines={1}>
-                              {serviceName}
-                            </Text>
-                            <Text fontSize="xs" color={subTextColor}>
-                              {customerName}
-                            </Text>
-                            <Text fontSize="xs" color="gray.400" mt="1px">
-                              {formatDate(booking?.createdAt || booking?.scheduledAt)}
-                            </Text>
-                          </Box>
-                          <VStack align="end" spacing={1}>
-                            <Text fontWeight="bold" fontSize="sm" color={textColor}>
-                              {formatCurrency(amount)}
-                            </Text>
-                            <StatusBadge preset="payment" status={status} />
-                          </VStack>
-                        </Flex>
-                      );
-                    })
-                  ) : (
-                    <EmptyState variant="text" message="No recent bookings" />
-                  )}
-                </VStack>
-            </SectionCard>
-          </SimpleGrid>
-
-          {/* 3. Detailed Category Table */}
-          <SectionCard
-            bodyProps={{ overflowX: "auto" }}
+        <Box>
+          <Flex
+            justify="space-between"
+            align={{ base: "flex-start", sm: "center" }}
+            direction={{ base: "column", sm: "row" }}
+            gap={2}
+            mb={3}
           >
-              <HStack mb={4} spacing={3}>
-                <Flex
-                  w="38px"
-                  h="38px"
-                  align="center"
-                  justify="center"
-                  flexShrink={0}
-                  {...getClaymorphicIconBoxStyle("teal.500")}
-                >
-                  <Icon as={FaLayerGroup} color="white" boxSize="18px" />
-                </Flex>
-                <Heading size="md" color={textColor}>Category Breakdown</Heading>
-              </HStack>
+            <Box>
+              <Heading
+                size="sm"
+                fontSize={{ base: "md", md: "lg" }}
+                fontWeight="800"
+                color={textColor}
+                letterSpacing="-0.02em"
+              >
+                Category Performance
+              </Heading>
+              <Text fontSize="xs" color={subTextColor}>
+                Compare service and product categories side by side
+              </Text>
+            </Box>
+            <Text
+              fontSize="2xs"
+              fontWeight="800"
+              letterSpacing="0.08em"
+              textTransform="uppercase"
+              color={subTextColor}
+            >
+              All time
+            </Text>
+          </Flex>
 
-              <Table variant="simple" size="sm">
-                <Thead>
-                  <Tr>
-                    <Th>Category Name</Th>
-                    <Th isNumeric>Total Bookings</Th>
-                    <Th isNumeric>Success. Payments</Th>
-                    <Th isNumeric>Revenue</Th>
-                    <Th width="200px">Performance</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {categoryPerformance.length > 0 ? (
-                    categoryPerformance.map((cat, idx) => {
-                      const maxRev = categoryPerformance[0]?.revenue || 1;
-                      const percent = (cat.revenue / maxRev) * 100;
+          <SimpleGrid
+            columns={{ base: 1, xl: 2 }}
+            spacing={{ base: 4, md: 5 }}
+            alignItems="stretch"
+          >
+            <CategoryPerformancePanel
+              kind="service"
+              title="Service Performance"
+              subtitle="Service catalogue and booking revenue"
+              icon={FaTools}
+              analytics={serviceAnalytics}
+              revenue={kpiData.serviceRevenue}
+              totalRevenue={kpiData.totalRevenue}
+            />
+            <CategoryPerformancePanel
+              kind="product"
+              title="Product Performance"
+              subtitle="Product catalogue and order revenue"
+              icon={FaBoxOpen}
+              analytics={productAnalytics}
+              revenue={kpiData.productRevenue}
+              totalRevenue={kpiData.totalRevenue}
+              catalog={catalog}
+            />
+          </SimpleGrid>
+        </Box>
 
-                      return (
-                        <Tr key={idx}>
-                          <Td fontWeight="medium">{cat.name}</Td>
-                          <Td isNumeric>{cat.totalBookings}</Td>
-                          <Td isNumeric>{cat.successCount}</Td>
-                          <Td isNumeric fontWeight="bold" color={textColor}>
-                            {formatCurrency(cat.revenue)}
-                          </Td>
-                          <Td>
-                            <Progress
-                              value={percent}
-                              size="xs"
-                              colorScheme="blue"
-                              borderRadius="full"
-                            />
-                          </Td>
-                        </Tr>
-                      );
-                    })
-                  ) : (
-                    <Tr>
-                      <Td colSpan={5} textAlign="center" py={6} color="gray.500">
-                        No stats available
-                      </Td>
-                    </Tr>
-                  )}
-                </Tbody>
-              </Table>
-          </SectionCard>
-        </Stack>
-      </Box>
+        <RecentBookingsCard items={recentActivity} />
+      </Stack>
     </Box>
   );
 }

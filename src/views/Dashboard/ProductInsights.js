@@ -137,7 +137,7 @@ export default function ProductInsights() {
               <Heading size="md">Product Insights & Audit Ledger</Heading>
               <Text fontSize="sm" color="gray.500">Sales metrics, conversion analytics, and catalog audit history</Text>
             </Box>
-            <Button size="sm" bg={BRAND} color="white" onClick={() => { loadSummary(); loadTab(); }}>
+            <Button size="sm" variant="brand" onClick={() => { loadSummary(); loadTab(); }}>
               Refresh Data
             </Button>
           </Flex>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Box,
   Button,
@@ -193,7 +193,6 @@ export default function UserManagement() {
   // State hooks
   const [currentUser, setCurrentUser] = useState(null);
   const [userData, setUserData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -232,20 +231,27 @@ export default function UserManagement() {
     },
   };
 
-  // Calculate user statistics
-  const calculateUserStats = useCallback(() => {
+  // Calculate user statistics (memoized single pass)
+  const stats = useMemo(() => {
     const totalUsers = userData.length;
-    const activeUsers = userData.filter(user => user.status?.toLowerCase() === "active").length;
-    const usersWithBookings = userData.filter(user => (user.bookingCount || 0) > 0).length;
+    let activeUsers = 0;
+    let usersWithBookings = 0;
+    let totalRevenue = 0;
 
-    const totalRevenue = userData.reduce((sum, user) => {
-      const userTotal = user.bookings
-        ? user.bookings
-          .filter(b => b.paymentStatus === 'paid' || b.paymentStatus === 'success')
-          .reduce((s, b) => s + (parseFloat(b.paidAmount) || 0), 0)
-        : 0;
-      return sum + userTotal;
-    }, 0);
+    for (let i = 0; i < userData.length; i++) {
+      const user = userData[i];
+      if (user.status?.toLowerCase() === "active") activeUsers++;
+      if ((user.bookingCount || 0) > 0) usersWithBookings++;
+
+      if (user.bookings && user.bookings.length > 0) {
+        for (let j = 0; j < user.bookings.length; j++) {
+          const b = user.bookings[j];
+          if (b.paymentStatus === 'paid' || b.paymentStatus === 'success') {
+            totalRevenue += (parseFloat(b.paidAmount) || 0);
+          }
+        }
+      }
+    }
 
     return {
       totalUsers,
@@ -255,7 +261,39 @@ export default function UserManagement() {
     };
   }, [userData]);
 
-  const stats = calculateUserStats();
+  // Memoized filtered data: combines active filter and search term efficiently
+  const filteredData = useMemo(() => {
+    let list = userData;
+
+    if (activeFilter === "active") {
+      list = list.filter((user) => user.status?.toLowerCase() === "active");
+    } else if (activeFilter === "withBookings") {
+      list = list.filter((user) => (user.bookingCount || 0) > 0);
+    } else if (activeFilter === "withTechnician") {
+      list = list.filter((user) => user.allocatedTechnician !== "None");
+    } else if (activeFilter === "paidUsers") {
+      list = list.filter((user) => {
+        if (!user.bookings) return false;
+        return user.bookings.some(
+          (b) => b.paymentStatus === "paid" || b.paymentStatus === "success"
+        );
+      });
+    }
+
+    if (!searchTerm.trim()) return list;
+
+    const term = searchTerm.toLowerCase().trim();
+    return list.filter((user) => {
+      const userName = getUserDisplayName(user).toLowerCase();
+      const userEmail = getUserDisplayEmail(user).toLowerCase();
+      const userPhone = getUserDisplayPhone(user).toLowerCase();
+      return (
+        userName.includes(term) ||
+        userEmail.includes(term) ||
+        userPhone.includes(term)
+      );
+    });
+  }, [userData, activeFilter, searchTerm]);
 
   // Pagination
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -323,22 +361,42 @@ export default function UserManagement() {
         return nameA.localeCompare(nameB);
       });
 
-      // Enrich users with data
-      const usersWithDetails = sortedUsers.map(user => {
-        const userBookings = bookings.filter(booking => {
-          const customerId = booking.customerId?._id || booking.customerId;
-          return customerId === user._id;
-        });
+      // Pre-index bookings by customerId: O(B)
+      const bookingsByCustomerId = new Map();
+      bookings.forEach((booking) => {
+        const customerId = booking.customerId?._id || booking.customerId;
+        if (customerId) {
+          const list = bookingsByCustomerId.get(customerId) || [];
+          list.push(booking);
+          bookingsByCustomerId.set(customerId, list);
+        }
+      });
 
-        const userJob = techJobs.find(job => {
-          const jobCustId = job.customer?._id || job.customer;
-          return jobCustId === user._id;
-        });
+      // Pre-index current technician jobs by customerId: O(J)
+      const jobByCustomerId = new Map();
+      techJobs.forEach((job) => {
+        const jobCustId = job.customer?._id || job.customer;
+        if (jobCustId && !jobByCustomerId.has(jobCustId)) {
+          jobByCustomerId.set(jobCustId, job);
+        }
+      });
+
+      // Pre-index technicians by _id and userId: O(T)
+      const techById = new Map();
+      techList.forEach((tech) => {
+        if (tech._id) techById.set(tech._id, tech);
+        if (tech.userId) techById.set(tech.userId, tech);
+      });
+
+      // Enrich users with O(1) indexed lookups: O(U)
+      const usersWithDetails = sortedUsers.map((user) => {
+        const userBookings = bookingsByCustomerId.get(user._id) || [];
+        const userJob = jobByCustomerId.get(user._id);
 
         let technicianName = "None";
         if (userJob) {
           const techId = typeof userJob.technician === 'object' ? userJob.technician?._id : userJob.technician;
-          const matchedTech = techList.find(t => t._id === techId || t.userId === techId);
+          const matchedTech = techById.get(techId);
           technicianName = matchedTech?.name ||
             (matchedTech?.firstName ? `${matchedTech.firstName} ${matchedTech.lastName || ''}`.trim() : null) ||
             userJob.technicianName ||
@@ -354,7 +412,6 @@ export default function UserManagement() {
       });
 
       setUserData(usersWithDetails);
-      setFilteredData(usersWithDetails);
     } catch (err) {
       if (!isMountedRef.current) return;
       console.error("Fetch error:", err);
@@ -378,59 +435,20 @@ export default function UserManagement() {
     }
   }, [currentUser, fetchData]);
 
-  // Handle search
+  // Handle search (updates searchTerm and resets page; filteredData updates via useMemo)
   const handleSearchChange = (e) => {
-    const value = e.target.value;
-    setSearchTerm(value);
-
-    const filtered = userData.filter(user => {
-      const userName = getUserDisplayName(user).toLowerCase();
-      const userEmail = getUserDisplayEmail(user).toLowerCase();
-      const userPhone = getUserDisplayPhone(user).toLowerCase();
-
-      return (
-        userName.includes(value.toLowerCase()) ||
-        userEmail.includes(value.toLowerCase()) ||
-        userPhone.includes(value.toLowerCase())
-      );
-    });
-
-    setFilteredData(filtered);
+    setSearchTerm(e.target.value);
     setCurrentPage(1);
   };
 
   const handleClearSearch = () => {
     setSearchTerm("");
-    setFilteredData(userData);
     setCurrentPage(1);
   };
 
-  // Filter handlers
+  // Filter handlers (updates activeFilter and resets page; filteredData updates via useMemo)
   const handleFilterClick = (filterType) => {
     setActiveFilter(filterType);
-    let filtered = userData;
-
-    switch (filterType) {
-      case "active":
-        filtered = userData.filter(user => user.status?.toLowerCase() === "active");
-        break;
-      case "withBookings":
-        filtered = userData.filter(user => (user.bookingCount || 0) > 0);
-        break;
-      case "withTechnician":
-        filtered = userData.filter(user => user.allocatedTechnician !== "None");
-        break;
-      case "paidUsers":
-        filtered = userData.filter(user => {
-          if (!user.bookings) return false;
-          return user.bookings.some(b => b.paymentStatus === 'paid' || b.paymentStatus === 'success');
-        });
-        break;
-      default:
-        filtered = userData;
-    }
-
-    setFilteredData(filtered);
     setCurrentPage(1);
   };
 
@@ -609,6 +627,7 @@ export default function UserManagement() {
                     border="1px"
                     borderColor={customColor}
                     _hover={{ bg: customColor, color: "white" }}
+                    _active={{ bg: "#004d4d", color: "white" }}
                     fontSize="xs"
                     px={2}
                   >
@@ -713,6 +732,7 @@ export default function UserManagement() {
                               border="1px"
                               borderColor="blue.500"
                               _hover={{ bg: "blue.500", color: "white" }}
+                              _active={{ bg: "blue.600", color: "white" }}
                               size="xs"
                               onClick={() => handleViewDetails(user)}
                             />
@@ -724,6 +744,7 @@ export default function UserManagement() {
                               border="1px"
                               borderColor="green.500"
                               _hover={{ bg: "green.500", color: "white" }}
+                              _active={{ bg: "green.600", color: "white" }}
                               size="xs"
                               onClick={() => handleViewTechnicianAllocation(user)}
                             />
@@ -735,6 +756,7 @@ export default function UserManagement() {
                               border="1px"
                               borderColor="orange.500"
                               _hover={{ bg: "orange.500", color: "white" }}
+                              _active={{ bg: "orange.600", color: "white" }}
                               size="xs"
                               onClick={() => handleViewPaymentDetails(user)}
                             />
@@ -746,6 +768,7 @@ export default function UserManagement() {
                               border="1px"
                               borderColor="red.500"
                               _hover={{ bg: "red.500", color: "white" }}
+                              _active={{ bg: "red.600", color: "white" }}
                               size="xs"
                               onClick={() => handleDeleteClick(user)}
                             />

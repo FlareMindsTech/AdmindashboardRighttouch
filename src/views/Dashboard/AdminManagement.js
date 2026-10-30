@@ -1571,6 +1571,7 @@ function AdminManagement() {
                     color={customColor}
                     borderColor={customColor}
                     _hover={{ bg: customColor, color: "white" }}
+                    _active={{ bg: "#004d4d", color: "white" }}
                     onClick={() => {
                       setActiveTab("all");
                       setSubFilter("all");

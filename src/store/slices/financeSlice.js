@@ -275,30 +275,57 @@ const defaultSummarySelector = (state) => state.finance.summary[keyOf({})]?.data
 const defaultLedgerSelector = (state) => state.finance.ledger[keyOf({})]?.data ?? null;
 const defaultBreakdownSelector = (state) => state.finance.breakdown[keyOf({})]?.data ?? null;
 
-// Selectors keyed exactly like the thunks' arguments, with stable references for default params.
+// Selectors keyed exactly like the thunks' arguments, with stable references for all params.
+const summarySelectors = new Map();
 export const selectFinanceSummary = (params) => {
   if (!params || Object.keys(params).length === 0) return defaultSummarySelector;
   if ("finance" in params) return defaultSummarySelector(params);
   const key = keyOf(params);
-  return (state) => state.finance.summary[key]?.data ?? null;
+  let sel = summarySelectors.get(key);
+  if (!sel) {
+    sel = (state) => state.finance.summary[key]?.data ?? null;
+    summarySelectors.set(key, sel);
+  }
+  return sel;
 };
 export const selectFinanceSummaryStatus = (params = {}) => (state) =>
   state.finance.summary[keyOf(params)]?.status || "idle";
 
+const breakdownSelectors = new Map();
 export const selectFinanceBreakdown = (params) => {
   if (!params || Object.keys(params).length === 0) return defaultBreakdownSelector;
   if ("finance" in params) return defaultBreakdownSelector(params);
   const key = keyOf(params);
-  return (state) => state.finance.breakdown[key]?.data ?? null;
+  let sel = breakdownSelectors.get(key);
+  if (!sel) {
+    sel = (state) => state.finance.breakdown[key]?.data ?? null;
+    breakdownSelectors.set(key, sel);
+  }
+  return sel;
 };
 
+const ledgerSelectors = new Map();
 export const selectPaymentsLedger = (params) => {
   if (!params || Object.keys(params).length === 0) return defaultLedgerSelector;
   if ("finance" in params) return defaultLedgerSelector(params);
   const key = keyOf(params);
-  return (state) => state.finance.ledger[key]?.data ?? null;
+  let sel = ledgerSelectors.get(key);
+  if (!sel) {
+    sel = (state) => state.finance.ledger[key]?.data ?? null;
+    ledgerSelectors.set(key, sel);
+  }
+  return sel;
 };
-export const selectTechnicianFinance = (technicianId) => (state) =>
-  state.finance.techFinance[String(technicianId)]?.data ?? null;
+
+const techFinanceSelectors = new Map();
+export const selectTechnicianFinance = (technicianId) => {
+  const idStr = String(technicianId || "");
+  let sel = techFinanceSelectors.get(idStr);
+  if (!sel) {
+    sel = (state) => state.finance.techFinance[idStr]?.data ?? null;
+    techFinanceSelectors.set(idStr, sel);
+  }
+  return sel;
+};
 
 export default financeSlice.reducer;

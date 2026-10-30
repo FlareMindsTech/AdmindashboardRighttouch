@@ -1370,6 +1370,7 @@ export default function ServiceManagement() {
                 mr={4}
                 color={customColor}
                 _hover={{ bg: `${customColor}10` }}
+                _active={{ bg: `${customColor}20` }}
                 size="sm"
               >
                 Back
@@ -1528,6 +1529,7 @@ export default function ServiceManagement() {
                       px={8}
                       borderRadius="lg"
                       _hover={{ bg: "gray.50", borderColor: "gray.400" }}
+                      _active={{ bg: "gray.100", borderColor: "gray.500" }}
                     >
                       Reset
                     </Button>
@@ -1764,9 +1766,7 @@ export default function ServiceManagement() {
                           size="sm"
                           onClick={handleAddWhatIncluded}
                           leftIcon={<FaPlus />}
-                          bg={customColor}
-                          _hover={{ bg: customHoverColor }}
-                          color="white"
+                          variant="brand"
                         >
                           Add
                         </Button>
@@ -1807,9 +1807,7 @@ export default function ServiceManagement() {
                           size="sm"
                           onClick={handleAddWhatNotIncluded}
                           leftIcon={<FaPlus />}
-                          bg={customColor}
-                          _hover={{ bg: customHoverColor }}
-                          color="white"
+                          variant="brand"
                         >
                           Add
                         </Button>
@@ -1850,9 +1848,7 @@ export default function ServiceManagement() {
                           size="sm"
                           onClick={handleAddServiceHighlights}
                           leftIcon={<FaPlus />}
-                          bg={customColor}
-                          _hover={{ bg: customHoverColor }}
-                          color="white"
+                          variant="brand"
                         >
                           Add
                         </Button>
@@ -1895,9 +1891,7 @@ export default function ServiceManagement() {
                           size="sm"
                           onClick={() => handleAddArrayItem('frequentlyAskedQuestions', faqInput, setFaqInput)}
                           leftIcon={<FaPlus />}
-                          bg={customColor}
-                          _hover={{ bg: customHoverColor }}
-                          color="white"
+                          variant="brand"
                         >
                           Add
                         </Button>
@@ -1938,9 +1932,7 @@ export default function ServiceManagement() {
                           size="sm"
                           onClick={() => handleAddArrayItem('supportedBrands', brandsInput, setBrandsInput)}
                           leftIcon={<FaPlus />}
-                          bg={customColor}
-                          _hover={{ bg: customHoverColor }}
-                          color="white"
+                          variant="brand"
                         >
                           Add
                         </Button>
@@ -1981,9 +1973,7 @@ export default function ServiceManagement() {
                           size="sm"
                           onClick={() => handleAddArrayItem('serviceChecklist', checklistInput, setChecklistInput)}
                           leftIcon={<FaPlus />}
-                          bg={customColor}
-                          _hover={{ bg: customHoverColor }}
-                          color="white"
+                          variant="brand"
                         >
                           Add
                         </Button>
@@ -2024,9 +2014,7 @@ export default function ServiceManagement() {
                           size="sm"
                           onClick={() => handleAddArrayItem('rectifyMethod', rectifyInput, setRectifyInput)}
                           leftIcon={<FaPlus />}
-                          bg={customColor}
-                          _hover={{ bg: customHoverColor }}
-                          color="white"
+                          variant="brand"
                         >
                           Add
                         </Button>
@@ -2067,9 +2055,7 @@ export default function ServiceManagement() {
                           size="sm"
                           onClick={() => handleAddArrayItem('faultReasons', faultInput, setFaultInput)}
                           leftIcon={<FaPlus />}
-                          bg={customColor}
-                          _hover={{ bg: customHoverColor }}
-                          color="white"
+                          variant="brand"
                         >
                           Add
                         </Button>
@@ -2110,9 +2096,7 @@ export default function ServiceManagement() {
                           size="sm"
                           onClick={() => handleAddArrayItem('toolsEquipments', toolsInput, setToolsInput)}
                           leftIcon={<FaPlus />}
-                          bg={customColor}
-                          _hover={{ bg: customHoverColor }}
-                          color="white"
+                          variant="brand"
                         >
                           Add
                         </Button>
@@ -2317,15 +2301,13 @@ export default function ServiceManagement() {
                       px={8}
                       borderRadius="lg"
                       _hover={{ bg: "gray.50", borderColor: "gray.400" }}
+                      _active={{ bg: "gray.100", borderColor: "gray.500" }}
                     >
                       Reset
                     </Button>
 
                     <Button
-                      bg={customColor}
-                      _hover={{ bg: "#006666" }}
-                      _active={{ bg: "#004d4d" }}
-                      color="white"
+                      variant="brand"
                       onClick={handleSubmitService}
                       isLoading={isSubmitting}
                       size="md"
@@ -2554,6 +2536,7 @@ export default function ServiceManagement() {
                       border="1px"
                       borderColor={customColor}
                       _hover={{ bg: customColor, color: "white" }}
+                      _active={{ bg: "#004d4d", color: "white" }}
                       fontSize="xs"
                       px={2}
                     >
@@ -2568,6 +2551,7 @@ export default function ServiceManagement() {
                 <Button
                   bg={customColor}
                   _hover={{ bg: customHoverColor }}
+                  _active={{ bg: "#004d4d" }}
                   color="white"
                   onClick={() => {
                     if (currentView === "categories") {
@@ -2695,6 +2679,7 @@ export default function ServiceManagement() {
                                     border="1px"
                                     borderColor="blue.500"
                                     _hover={{ bg: "blue.500", color: "white" }}
+                                    _active={{ bg: "blue.600", color: "white" }}
                                     size="xs"
                                     onClick={() => handleViewCategory(cat)}
                                   />
@@ -2706,6 +2691,7 @@ export default function ServiceManagement() {
                                     border="1px"
                                     borderColor={customColor}
                                     _hover={{ bg: customColor, color: "white" }}
+                                    _active={{ bg: "#004d4d", color: "white" }}
                                     size="xs"
                                     onClick={() => handleEditCategory(cat)}
                                   />
@@ -2717,6 +2703,7 @@ export default function ServiceManagement() {
                                     border="1px"
                                     borderColor="red.500"
                                     _hover={{ bg: "red.500", color: "white" }}
+                                    _active={{ bg: "red.600", color: "white" }}
                                     size="xs"
                                     onClick={() => handleDeleteCategory(cat)}
                                   />
@@ -2898,6 +2885,7 @@ export default function ServiceManagement() {
                                     border="1px"
                                     borderColor="blue.300"
                                     _hover={{ bg: "blue.500", color: "white", borderColor: "blue.500" }}
+                                    _active={{ bg: "blue.600", color: "white", borderColor: "blue.600" }}
                                     size="xs"
                                     h="28px"
                                     w="28px"
@@ -2912,6 +2900,7 @@ export default function ServiceManagement() {
                                     border="1px"
                                     borderColor={`${customColor}50`}
                                     _hover={{ bg: customColor, color: "white", borderColor: customColor }}
+                                    _active={{ bg: "#004d4d", color: "white", borderColor: "#004d4d" }}
                                     size="xs"
                                     h="28px"
                                     w="28px"
@@ -2926,6 +2915,7 @@ export default function ServiceManagement() {
                                     border="1px"
                                     borderColor="red.300"
                                     _hover={{ bg: "red.500", color: "white", borderColor: "red.500" }}
+                                    _active={{ bg: "red.600", color: "white", borderColor: "red.600" }}
                                     size="xs"
                                     h="28px"
                                     w="28px"
@@ -3817,6 +3807,7 @@ export default function ServiceManagement() {
                         borderColor="red.400"
                         color="red.500"
                         _hover={{ bg: "red.500", color: "white" }}
+                        _active={{ bg: "red.600", color: "white" }}
                         onClick={handleRemoveServicePolygon}
                         isLoading={polygonSubmitting}
                       >
@@ -3825,9 +3816,7 @@ export default function ServiceManagement() {
                     )}
                     <Button
                       size="xs"
-                      bg={customColor}
-                      color="white"
-                      _hover={{ bg: "#006666" }}
+                      variant="brand"
                       onClick={handleSetServicePolygon}
                       isLoading={polygonSubmitting}
                     >
@@ -3895,6 +3884,7 @@ export default function ServiceManagement() {
             <Button
               bg="red.500"
               _hover={{ bg: "red.600" }}
+              _active={{ bg: "red.700" }}
               color="white"
               onClick={handleConfirmDelete}
               isLoading={isDeleting}

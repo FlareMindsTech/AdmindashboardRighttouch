@@ -264,9 +264,7 @@ export default function PermissionsManagement() {
                 />
               </FormControl>
               <Button
-                bg={BRAND}
-                _hover={{ bg: "#006666" }}
-                color="white"
+                variant="brand"
                 isLoading={loading}
                 leftIcon={<Icon as={FaSearch} boxSize="13px" />}
                 onClick={() => lookupUser(userId, selectedUserName)}
@@ -384,8 +382,7 @@ export default function PermissionsManagement() {
                   <Button
                     size="sm"
                     mt={2}
-                    bg={BRAND}
-                    color="white"
+                    variant="brand"
                     onClick={() => {
                       setUserId(currentUser.id);
                       setSelectedUserName(currentUser.identifier || "Owner");

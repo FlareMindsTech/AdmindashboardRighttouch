@@ -27,7 +27,11 @@ import {
   FaWrench,
   FaExclamationCircle,
 } from "react-icons/fa";
-import { MdGridView, MdHomeRepairService } from "react-icons/md";
+import {
+  MdGridView,
+  MdHomeRepairService,
+  MdInventory2,
+} from "react-icons/md";
 import { FiChevronDown, FiTrendingUp, FiTrendingDown } from "react-icons/fi";
 import { HiOutlineCalendar } from "react-icons/hi";
 import ReactApexChart from "react-apexcharts";
@@ -41,8 +45,29 @@ const formatCurrency = (amount) => {
   }).format(amount || 0);
 };
 
+// Booking amount resolver (supports service + product booking payloads)
+const getBookingAmount = (booking) => {
+  if (!booking) return 0;
+  const totalPaise = booking?.financialSnapshot?.totalAmountPaise;
+  const candidates = [
+    totalPaise !== undefined && totalPaise !== null ? Number(totalPaise) / 100 : null,
+    booking?.baseAmount,
+    booking?.amount,
+    booking?.finalAmount,
+    booking?.totalAmount,
+    booking?.grandTotal,
+    booking?.pricing?.totalAmount,
+    booking?.pricing?.finalAmount,
+  ];
+  for (const value of candidates) {
+    const amount = Number(value);
+    if (Number.isFinite(amount) && amount > 0) return amount;
+  }
+  return 0;
+};
+
 // Category Icon & Color mapping based on name
-const getCategoryIconMeta = (categoryName = "") => {
+const getCategoryIconMeta = (categoryName = "", categoryKind = "service") => {
   const lower = categoryName.toLowerCase();
   if (lower.includes("solar") || lower.includes("sun") || lower.includes("energy")) {
     return {
@@ -97,11 +122,17 @@ const getCategoryIconMeta = (categoryName = "") => {
     };
   }
   // Default fallback
-  return {
-    icon: MdHomeRepairService,
-    bg: "#F1F5F9",
-    color: "#475569",
-  };
+  return categoryKind === "product"
+    ? {
+        icon: MdInventory2,
+        bg: "#F0FDFA",
+        color: "#0F766E",
+      }
+    : {
+        icon: MdHomeRepairService,
+        bg: "#F1F5F9",
+        color: "#475569",
+      };
 };
 
 const DATE_FILTER_LABELS = {
@@ -113,19 +144,24 @@ const DATE_FILTER_LABELS = {
 
 export default function ServiceCategoryPerformance({
   serviceBookings = [],
+  bookings,
   categories = [],
   loading = false,
   gridColumn,
+  categoryKind = "service",
+  title = "Service Category Performance",
+  subtitle = "Compare revenue and total bookings across service categories",
 }) {
   const { colorMode } = useColorMode();
   const isDark = colorMode === "dark";
+  const sourceBookings = Array.isArray(bookings) ? bookings : serviceBookings;
 
   // Date range filter state
   const [dateFilter, setDateFilter] = useState("thisMonth");
 
   // Filter bookings based on selected date range
   const filteredBookings = useMemo(() => {
-    const list = Array.isArray(serviceBookings) ? serviceBookings : [];
+    const list = Array.isArray(sourceBookings) ? sourceBookings : [];
     if (dateFilter === "allTime") return list;
 
     const now = new Date();
@@ -148,7 +184,7 @@ export default function ServiceCategoryPerformance({
       }
       return true;
     });
-  }, [serviceBookings, dateFilter]);
+  }, [sourceBookings, dateFilter]);
 
   // Aggregate Category Performance from filtered bookings
   const { categoryPerformance, totalRevenue, totalBookings } = useMemo(() => {
@@ -182,11 +218,19 @@ export default function ServiceCategoryPerformance({
       bCount += 1;
       let catName = "Uncategorized";
       const catRef =
-        b?.categoryId ||
-        b?.category ||
-        b?.serviceId?.categoryId ||
-        b?.serviceId?.category ||
-        b?.serviceCategory;
+        categoryKind === "product"
+          ? b?.categoryId ||
+            b?.category ||
+            b?.productId?.categoryId ||
+            b?.productId?.category ||
+            b?.productSnapshot?.categoryId ||
+            b?.productSnapshot?.category ||
+            b?.productSnapshot?.categoryName
+          : b?.categoryId ||
+            b?.category ||
+            b?.serviceId?.categoryId ||
+            b?.serviceId?.category ||
+            b?.serviceCategory;
 
       if (catRef) {
         if (typeof catRef === "string") {
@@ -200,11 +244,15 @@ export default function ServiceCategoryPerformance({
         typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val);
 
       if (catName === "Uncategorized" || isObjectId(catName)) {
-        const sName = (
-          b?.serviceId?.serviceName ||
-          b?.serviceName ||
-          ""
-        ).toLowerCase();
+        const itemName = (
+          categoryKind === "product"
+            ? b?.productSnapshot?.productName ||
+              b?.productId?.productName ||
+              b?.productId?.name ||
+              b?.productName
+            : b?.serviceId?.serviceName || b?.serviceName
+        ) || "";
+        const sName = itemName.toLowerCase();
         if (sName) {
           for (const name of Object.values(catMap)) {
             if (sName.includes(name.toLowerCase())) {
@@ -228,7 +276,7 @@ export default function ServiceCategoryPerformance({
       const status = b?.paymentStatus?.toLowerCase();
       if (status === "success" || status === "paid") {
         perfMap[catName].successCount += 1;
-        const amt = Number(b?.baseAmount) || Number(b?.amount) || 0;
+        const amt = getBookingAmount(b);
         perfMap[catName].revenue += amt;
         revSum += amt;
       }
@@ -240,11 +288,11 @@ export default function ServiceCategoryPerformance({
       totalRevenue: revSum,
       totalBookings: bCount,
     };
-  }, [filteredBookings, categories]);
+  }, [filteredBookings, categories, categoryKind]);
 
   // Actual Month-over-Month comparison calculated strictly from real dates
   const momData = useMemo(() => {
-    const list = Array.isArray(serviceBookings) ? serviceBookings : [];
+    const list = Array.isArray(sourceBookings) ? sourceBookings : [];
     const now = new Date();
 
     const thisMonthBookings = list.filter((b) => {
@@ -269,14 +317,14 @@ export default function ServiceCategoryPerformance({
     const thisMonthRev = thisMonthBookings.reduce((sum, b) => {
       const s = b?.paymentStatus?.toLowerCase();
       return s === "success" || s === "paid"
-        ? sum + (Number(b?.baseAmount) || Number(b?.amount) || 0)
+        ? sum + getBookingAmount(b)
         : sum;
     }, 0);
 
     const lastMonthRev = lastMonthBookings.reduce((sum, b) => {
       const s = b?.paymentStatus?.toLowerCase();
       return s === "success" || s === "paid"
-        ? sum + (Number(b?.baseAmount) || Number(b?.amount) || 0)
+        ? sum + getBookingAmount(b)
         : sum;
     }, 0);
 
@@ -301,7 +349,7 @@ export default function ServiceCategoryPerformance({
       revMoM,
       bookingsMoM,
     };
-  }, [serviceBookings]);
+  }, [sourceBookings]);
 
   // Chart configuration
   const chartConfig = useMemo(() => {
@@ -512,7 +560,7 @@ export default function ServiceCategoryPerformance({
               color={isDark ? "#F8FAFC" : "#0F172A"}
               letterSpacing="-0.02em"
             >
-              Service Category Performance
+              {title}
             </Heading>
             <Text
               fontSize="13px"
@@ -520,7 +568,7 @@ export default function ServiceCategoryPerformance({
               fontWeight="500"
               mt="2px"
             >
-              Compare revenue and total bookings across service categories
+              {subtitle}
             </Text>
           </Box>
         </HStack>
@@ -816,7 +864,7 @@ export default function ServiceCategoryPerformance({
               alignItems="flex-start"
             >
               {categoryPerformance.map((cat, idx) => {
-                const meta = getCategoryIconMeta(cat.name);
+                const meta = getCategoryIconMeta(cat.name, categoryKind);
                 return (
                   <Flex
                     key={idx}

@@ -203,7 +203,7 @@ export default function AdminPayments() {
               <Text fontSize="sm" color="gray.500">Product payments, offline audit, and booking verification</Text>
             </Box>
             <HStack>
-              <Button size="sm" bg={BRAND} color="white" onClick={() => setOfflineOpen(true)}>
+              <Button size="sm" variant="brand" onClick={() => setOfflineOpen(true)}>
                 Record Offline Payment
               </Button>
             </HStack>
@@ -302,7 +302,7 @@ export default function AdminPayments() {
                         onChange={(e) => setLookupBookingId(e.target.value)}
                         placeholder="Enter Booking ID (e.g. 507f1f77bcf86cd799439077)"
                       />
-                      <Button bg={BRAND} color="white" isLoading={lookupLoading} onClick={searchBookingPayment}>
+                      <Button variant="brand" isLoading={lookupLoading} onClick={searchBookingPayment}>
                         Lookup
                       </Button>
                     </HStack>
@@ -427,7 +427,7 @@ export default function AdminPayments() {
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={() => setOfflineOpen(false)}>Cancel</Button>
-            <Button bg={BRAND} color="white" isLoading={saving} onClick={submitOffline}>
+            <Button variant="brand" isLoading={saving} onClick={submitOffline}>
               Record Payment
             </Button>
           </ModalFooter>

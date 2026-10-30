@@ -113,6 +113,7 @@ const centerIcon = (title) =>
 
 export default function ZoneMap({
   cityName = "",
+  cityOptions = null,
   districtName = "",
   polygonCoordinates = "",
   onPolygonChange,
@@ -158,6 +159,13 @@ export default function ZoneMap({
     () => (Array.isArray(zones) && zones.length ? zones : Array.isArray(allZones) ? allZones : []),
     [zones, allZones]
   );
+  const presetCities = useMemo(
+    () =>
+      Array.isArray(cityOptions) && cityOptions.length
+        ? cityOptions
+        : TAMIL_NADU_CITIES,
+    [cityOptions]
+  );
   const cappedZones = useMemo(() => effectiveZones.slice(0, 300), [effectiveZones]);
   const zoneOverflow = effectiveZones.length - cappedZones.length;
   const selectZone = onSelectZone || onZoneSelect;
@@ -194,12 +202,18 @@ export default function ZoneMap({
   useEffect(() => {
     if (!cityName) return;
     const key = String(cityName).split("(")[0].trim().toLowerCase();
-    const hit = CITY_LOOKUP[key];
+    const matchedCity = presetCities.find((city) => {
+      const name = String(city.name || "").toLowerCase().trim();
+      return name && (key === name || key.includes(name) || name.includes(key));
+    });
+    const hit = matchedCity
+      ? [matchedCity.lat, matchedCity.lng]
+      : CITY_LOOKUP[key];
     if (hit && leafletMap.current) {
       setCenter(hit);
       leafletMap.current.setView(hit, 11, { animate: true });
     }
-  }, [cityName]);
+  }, [cityName, presetCities]);
 
   // Center on loaded polygon centroid (only when polygon identity changes, not on every keystroke)
   const polyKey = useMemo(() => {
@@ -254,6 +268,8 @@ export default function ZoneMap({
       clearTimeout(t1);
       clearTimeout(t2);
       ro.disconnect();
+      map._animatingZoom = false;
+      if (typeof map.stop === "function") map.stop();
       map.remove();
       leafletMap.current = null;
     };
@@ -461,7 +477,7 @@ export default function ZoneMap({
     const query = String(q || "").trim();
     if (!query) return;
     // preset first (offline-safe)
-    const preset = TAMIL_NADU_CITIES.find((c) => c.name.toLowerCase().includes(query.toLowerCase()));
+    const preset = presetCities.find((c) => c.name.toLowerCase().includes(query.toLowerCase()));
     if (preset) {
       setCenter([preset.lat, preset.lng]);
       leafletMap.current?.setView([preset.lat, preset.lng], 12, { animate: true });
@@ -508,9 +524,9 @@ export default function ZoneMap({
             <HStack spacing={1} flex={{ base: "1 1 100%", md: "0 1 auto" }}>
               <Icon as={MdSearch} color="teal.700" boxSize={4} />
               <Input size="xs" maxW="200px" bg="white" borderRadius="6px" placeholder="Search place / city…" value={searchText} onChange={(e) => debouncedSearch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") runSearch(searchText); }} />
-              <Select size="xs" maxW="170px" bg="white" borderRadius="6px" placeholder="— TN preset —" onChange={(e) => { const c = TAMIL_NADU_CITIES.find((x) => x.name === e.target.value); if (c) { setCenter([c.lat, c.lng]); leafletMap.current?.setView([c.lat, c.lng], 11, { animate: true }); if (onCitySelect) onCitySelect(c); if (editable && !drawMode) handleRadiusAt(c.lat, c.lng, radius); } }}>
-                {TAMIL_NADU_CITIES.map((c) => (
-                  <option key={c.name} value={c.name}>{c.name} ({c.code})</option>
+              <Select size="xs" maxW="170px" bg="white" borderRadius="6px" placeholder="— TN preset —" onChange={(e) => { const c = presetCities.find((x) => String(x.name) === e.target.value); if (c) { setCenter([c.lat, c.lng]); leafletMap.current?.setView([c.lat, c.lng], 11, { animate: true }); if (onCitySelect) onCitySelect(c); if (editable && !drawMode) handleRadiusAt(c.lat, c.lng, radius); } }}>
+                {presetCities.map((c) => (
+                  <option key={`${c.district || ""}-${c.name}`} value={c.name}>{c.name} ({c.code})</option>
                 ))}
               </Select>
             </HStack>
@@ -519,14 +535,14 @@ export default function ZoneMap({
             <HStack spacing={1} flexWrap="wrap">
               {showDrawTools && (
                 <ButtonGroup size="xs" isAttached variant="outline" colorScheme="teal">
-                  <Button bg={!drawMode ? "teal.600" : "white"} color={!drawMode ? "white" : "teal.800"} onClick={() => { setDrawMode(false); setDraftPoints([]); }}>⭕ Radius</Button>
-                  <Button bg={drawMode ? "teal.600" : "white"} color={drawMode ? "white" : "teal.800"} onClick={() => setDrawMode(true)}>✏️ Draw</Button>
+                  <Button variant={!drawMode ? "brand" : "brand-outline"} onClick={() => { setDrawMode(false); setDraftPoints([]); }}>⭕ Radius</Button>
+                  <Button variant={drawMode ? "brand" : "brand-outline"} onClick={() => setDrawMode(true)}>✏️ Draw</Button>
                 </ButtonGroup>
               )}
               {!drawMode && allowRadiusSelect && (
                 <ButtonGroup size="xs" isAttached variant="outline" colorScheme="teal">
                   {[5, 10, 15, 25].map((km) => (
-                    <Button key={km} bg={radius === km ? "teal.600" : "white"} color={radius === km ? "white" : "teal.800"} onClick={() => applyRadius(km)}>{km}KM</Button>
+                    <Button key={km} variant={radius === km ? "brand" : "brand-outline"} onClick={() => applyRadius(km)}>{km}KM</Button>
                   ))}
                 </ButtonGroup>
               )}

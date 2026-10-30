@@ -25,7 +25,13 @@ import {
   Badge,
   useToast,
   Divider,
+  SimpleGrid,
+  Flex,
+  IconButton,
+  Tooltip,
+  Icon,
 } from "@chakra-ui/react";
+import { FaCopy, FaUniversity } from "react-icons/fa";
 import { markWithdrawalPaid } from "api/wallet";
 import FinancialBreakdown from "./FinancialBreakdown";
 
@@ -152,12 +158,34 @@ export default function RecordBankTransferModal({
     }
   };
 
+  const copyToClipboard = (text, label) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    toast({
+      title: `${label} copied to clipboard`,
+      status: "info",
+      duration: 2000,
+      isClosable: true,
+    });
+  };
+
   const techName =
     withdrawal?.technician?.name ||
     withdrawal?.technicianName ||
     withdrawal?.technicianId?.userId?.fname
       ? `${withdrawal?.technicianId?.userId?.fname} ${withdrawal?.technicianId?.userId?.lname || ""}`.trim()
       : "Technician";
+
+  const bank =
+    withdrawal?.bankDetails ||
+    withdrawal?.technician?.bankDetails ||
+    withdrawal?.technicianId?.bankDetails ||
+    {};
+  const beneficiaryName = bank.accountHolderName || techName;
+  const accountNumber = bank.accountNumber || withdrawal?.payoutDestination || "";
+  const ifscCode = bank.ifscCode || "";
+  const bankName = bank.bankName || "";
+  const upiId = bank.upiId || "";
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg" isCentered closeOnOverlayClick={!isSubmitting}>
@@ -188,10 +216,155 @@ export default function RecordBankTransferModal({
               <Box>
                 <AlertTitle fontWeight="700">Bank Portal Transfer Required First</AlertTitle>
                 <AlertDescription>
-                  This action records an offline bank transfer that you have <strong>already executed</strong> in your bank portal. Do not submit this form if the bank transfer has not yet cleared.
+                  Transfer funds in your banking portal using the beneficiary details below, then record the bank reference (UTR) here.
                 </AlertDescription>
               </Box>
             </Alert>
+
+            {/* Quick-Copy Beneficiary Bank Details Card */}
+            <Box
+              p={4}
+              borderRadius="14px"
+              bg="blue.50"
+              border="1.5px solid"
+              borderColor="blue.200"
+            >
+              <HStack justify="space-between" mb={3}>
+                <HStack spacing={2}>
+                  <Icon as={FaUniversity} color="blue.600" boxSize={4} />
+                  <Text fontSize="xs" fontWeight="800" color="blue.900" textTransform="uppercase" letterSpacing="0.05em">
+                    Beneficiary Bank Details (Copy to Bank Portal)
+                  </Text>
+                </HStack>
+                {bank.bankVerified && (
+                  <Badge colorScheme="green" fontSize="2xs" px={2} py={0.5} borderRadius="full">
+                    KYC Verified
+                  </Badge>
+                )}
+              </HStack>
+
+              <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={2.5} fontSize="xs">
+                <Box bg="white" p={2.5} borderRadius="8px" border="1px solid" borderColor="blue.100">
+                  <Text fontSize="2xs" color="gray.500" fontWeight="600">Beneficiary Name</Text>
+                  <HStack justify="space-between" mt={0.5}>
+                    <Text fontWeight="700" color="gray.800" noOfLines={1}>{beneficiaryName}</Text>
+                    <Tooltip label="Copy Name" hasArrow>
+                      <IconButton
+                        size="2xs"
+                        icon={<FaCopy />}
+                        variant="ghost"
+                        colorScheme="blue"
+                        aria-label="Copy Name"
+                        onClick={() => copyToClipboard(beneficiaryName, "Beneficiary Name")}
+                      />
+                    </Tooltip>
+                  </HStack>
+                </Box>
+
+                <Box bg="white" p={2.5} borderRadius="8px" border="1px solid" borderColor="blue.100">
+                  <Text fontSize="2xs" color="gray.500" fontWeight="600">Bank Name</Text>
+                  <HStack justify="space-between" mt={0.5}>
+                    <Text fontWeight="700" color="gray.800" noOfLines={1}>{bankName || "Bank"}</Text>
+                    {bankName && (
+                      <Tooltip label="Copy Bank Name" hasArrow>
+                        <IconButton
+                          size="2xs"
+                          icon={<FaCopy />}
+                          variant="ghost"
+                          colorScheme="blue"
+                          aria-label="Copy Bank Name"
+                          onClick={() => copyToClipboard(bankName, "Bank Name")}
+                        />
+                      </Tooltip>
+                    )}
+                  </HStack>
+                </Box>
+
+                <Box bg="white" p={2.5} borderRadius="8px" border="1px solid" borderColor="blue.100">
+                  <Text fontSize="2xs" color="gray.500" fontWeight="600">Account Number</Text>
+                  <HStack justify="space-between" mt={0.5}>
+                    <Text fontWeight="800" fontFamily="mono" color="blue.700" fontSize="sm">
+                      {accountNumber || "N/A"}
+                    </Text>
+                    {accountNumber && (
+                      <Tooltip label="Copy Account Number" hasArrow>
+                        <IconButton
+                          size="2xs"
+                          icon={<FaCopy />}
+                          colorScheme="blue"
+                          variant="solid"
+                          aria-label="Copy Account Number"
+                          onClick={() => copyToClipboard(accountNumber, "Account Number")}
+                        />
+                      </Tooltip>
+                    )}
+                  </HStack>
+                </Box>
+
+                <Box bg="white" p={2.5} borderRadius="8px" border="1px solid" borderColor="blue.100">
+                  <Text fontSize="2xs" color="gray.500" fontWeight="600">IFSC Code</Text>
+                  <HStack justify="space-between" mt={0.5}>
+                    <Text fontWeight="800" fontFamily="mono" color="gray.800">
+                      {ifscCode || "N/A"}
+                    </Text>
+                    {ifscCode && (
+                      <Tooltip label="Copy IFSC Code" hasArrow>
+                        <IconButton
+                          size="2xs"
+                          icon={<FaCopy />}
+                          colorScheme="blue"
+                          variant="solid"
+                          aria-label="Copy IFSC Code"
+                          onClick={() => copyToClipboard(ifscCode, "IFSC Code")}
+                        />
+                      </Tooltip>
+                    )}
+                  </HStack>
+                </Box>
+
+                {upiId && (
+                  <Box bg="white" p={2.5} borderRadius="8px" border="1px solid" borderColor="blue.100" gridColumn={{ sm: "span 2" }}>
+                    <Text fontSize="2xs" color="gray.500" fontWeight="600">UPI ID / VPA</Text>
+                    <HStack justify="space-between" mt={0.5}>
+                      <Text fontWeight="700" fontFamily="mono" color="purple.700">{upiId}</Text>
+                      <Tooltip label="Copy UPI ID" hasArrow>
+                        <IconButton
+                          size="2xs"
+                          icon={<FaCopy />}
+                          colorScheme="purple"
+                          variant="solid"
+                          aria-label="Copy UPI ID"
+                          onClick={() => copyToClipboard(upiId, "UPI ID")}
+                        />
+                      </Tooltip>
+                    </HStack>
+                  </Box>
+                )}
+              </SimpleGrid>
+
+              {/* Exact Net Payable Highlight with Copy Amount */}
+              <Flex mt={3} p={3} bg="teal.700" color="white" borderRadius="10px" justify="space-between" align="center" flexWrap="wrap" gap={2}>
+                <Box>
+                  <Text fontSize="2xs" textTransform="uppercase" fontWeight="700" letterSpacing="0.05em" opacity={0.9}>
+                    Exact Transfer Amount (Net Payable)
+                  </Text>
+                  <Text fontSize="xl" fontWeight="900" lineHeight="1.2">
+                    ₹{netRupees}
+                  </Text>
+                </Box>
+                <Button
+                  size="sm"
+                  bg="white"
+                  color="teal.800"
+                  _hover={{ bg: "teal.50" }}
+                  leftIcon={<FaCopy />}
+                  fontWeight="bold"
+                  onClick={() => copyToClipboard(netRupees, "Net Payable Amount")}
+                >
+                  Copy ₹{netRupees}
+                </Button>
+              </Flex>
+            </Box>
 
             {errorMsg && (
               <Alert status="error" borderRadius="12px" fontSize="xs">

@@ -698,18 +698,18 @@ export default function BillingPaymentDashboard() {
           {/* Quick Actions per Tab */}
           {tabIndex === 0 && (
             <HStack spacing="10px">
-              <Button leftIcon={<MdSend />} bg={BRAND_COLOR} color="white" _hover={{ bg: "#006666" }} size="sm" onClick={handleOpenSendMoneyModal}>
+              <Button leftIcon={<MdSend />} variant="brand" size="sm" onClick={handleOpenSendMoneyModal}>
                 Flow B: Admin Send Money
               </Button>
             </HStack>
           )}
           {tabIndex === 2 && (
-            <Button leftIcon={<FaPlus />} bg={BRAND_COLOR} color="white" _hover={{ bg: "#006666" }} size="sm" onClick={onRefundOpen}>
+            <Button leftIcon={<FaPlus />} variant="brand" size="sm" onClick={onRefundOpen}>
               Issue Refund
             </Button>
           )}
           {tabIndex === 3 && (
-            <Button leftIcon={<FaPlus />} bg={BRAND_COLOR} color="white" _hover={{ bg: "#006666" }} size="sm" onClick={onQuoteModalOpen}>
+            <Button leftIcon={<FaPlus />} variant="brand" size="sm" onClick={onQuoteModalOpen}>
               New Quotation
             </Button>
           )}

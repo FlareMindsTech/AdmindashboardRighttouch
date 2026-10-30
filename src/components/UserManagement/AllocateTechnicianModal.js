@@ -17,7 +17,7 @@ import {
 } from "@chakra-ui/react";
 import { FaUserCog, FaUsers } from "react-icons/fa";
 
-export default function AllocateTechnicianModal({
+const AllocateTechnicianModal = React.memo(function AllocateTechnicianModal({
   isOpen,
   onClose,
   selectedUserForTech,
@@ -212,4 +212,6 @@ export default function AllocateTechnicianModal({
       </ModalContent>
     </Modal>
   );
-}
+});
+
+export default AllocateTechnicianModal;

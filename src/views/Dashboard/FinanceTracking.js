@@ -516,6 +516,7 @@ export default function FinanceTracking() {
                 border="1px"
                 borderColor={customColor}
                 _hover={{ bg: customColor, color: "white" }}
+                _active={{ bg: "#004d4d", color: "white" }}
               >
                 Refresh
               </Button>
@@ -787,6 +788,7 @@ export default function FinanceTracking() {
                                 border="1px"
                                 borderColor={customColor}
                                 _hover={{ bg: customColor, color: "white" }}
+                                _active={{ bg: "#004d4d", color: "white" }}
                                 _disabled={{
                                   opacity: 0.5,
                                   cursor: "not-allowed",
@@ -812,6 +814,7 @@ export default function FinanceTracking() {
                                 border="1px"
                                 borderColor={customColor}
                                 _hover={{ bg: customColor, color: "white" }}
+                                _active={{ bg: "#004d4d", color: "white" }}
                                 _disabled={{
                                   opacity: 0.5,
                                   cursor: "not-allowed",
@@ -992,6 +995,7 @@ export default function FinanceTracking() {
                                 border="1px"
                                 borderColor={customColor}
                                 _hover={{ bg: customColor, color: "white" }}
+                                _active={{ bg: "#004d4d", color: "white" }}
                                 _disabled={{
                                   opacity: 0.5,
                                   cursor: "not-allowed",
@@ -1017,6 +1021,7 @@ export default function FinanceTracking() {
                                 border="1px"
                                 borderColor={customColor}
                                 _hover={{ bg: customColor, color: "white" }}
+                                _active={{ bg: "#004d4d", color: "white" }}
                                 _disabled={{
                                   opacity: 0.5,
                                   cursor: "not-allowed",
@@ -1108,6 +1113,7 @@ export default function FinanceTracking() {
                                     border="1px"
                                     borderColor="blue.500"
                                     _hover={{ bg: "blue.500", color: "white" }}
+                                    _active={{ bg: "blue.600", color: "white" }}
                                     size="xs"
                                     isLoading={techLoadingId === (tech._id || tech.userId)}
                                     onClick={() => handleViewTechnicianDetail(tech)}

@@ -251,6 +251,7 @@ const CategoryMobileCard = ({ cat, idx, indexOfFirstItem, onView, onEdit, onDele
           border="1px"
           borderColor="#008080"
           _hover={{ bg: "#008080", color: "white" }}
+          _active={{ bg: "#004d4d", color: "white" }}
           size="xs"
           onClick={() => onAddProduct(cat)}
         >
@@ -2823,6 +2824,7 @@ export default function ProductManagement() {
                 mr={4}
                 color={customColor}
                 _hover={{ bg: `${customColor}10` }}
+                _active={{ bg: `${customColor}20` }}
                 size="sm"
               >
                 Back
@@ -2971,6 +2973,7 @@ export default function ProductManagement() {
                       px={8}
                       borderRadius="lg"
                       _hover={{ bg: "gray.50", borderColor: "gray.400" }}
+                      _active={{ bg: "gray.100", borderColor: "gray.500" }}
                     >
                       Reset
                     </Button>
@@ -3451,6 +3454,7 @@ export default function ProductManagement() {
                       px={8}
                       borderRadius="lg"
                       _hover={{ bg: "gray.50", borderColor: "gray.400" }}
+                      _active={{ bg: "gray.100", borderColor: "gray.500" }}
                     >
                       Reset
                     </Button>
@@ -3762,6 +3766,7 @@ export default function ProductManagement() {
                   borderColor={`${customColor}50`}
                   color={customColor}
                   _hover={{ bg: `${customColor}10`, borderColor: customColor }}
+                  _active={{ bg: `${customColor}20`, borderColor: customColor }}
                   isLoading={isRefreshingData}
                   onClick={handleRefreshAllData}
                 />
@@ -3817,6 +3822,7 @@ export default function ProductManagement() {
                     border="1px"
                     borderColor={customColor}
                     _hover={{ bg: customColor, color: "white" }}
+                    _active={{ bg: "#004d4d", color: "white" }}
                     fontSize="xs"
                     px={2}
                   >
@@ -3827,7 +3833,6 @@ export default function ProductManagement() {
 
               <Button
                 bg={customColor}
-                _hover={{ bg: customHoverColor }}
                 color="white"
                 onClick={() => {
                   if (currentView === "categories") {
@@ -3862,7 +3867,8 @@ export default function ProductManagement() {
                 size="sm"
                 px={4}
                 shadow="sm"
-                _hover={{ bg: customColor, filter: "brightness(0.9)", shadow: "md" }}
+                _hover={{ bg: customHoverColor, shadow: "md" }}
+                _active={{ bg: "#004d4d", shadow: "none" }}
               >
                 {currentView === "categories" ? "Add Category" : currentView === "quotations" ? "Create Quotation" : "Add Product"}
               </Button>
@@ -4030,6 +4036,7 @@ export default function ProductManagement() {
                                   border="1px"
                                   borderColor="#008080"
                                   _hover={{ bg: "#008080", color: "white" }}
+                                  _active={{ bg: "#004d4d", color: "white" }}
                                   size="xs"
                                   onClick={() => handleAddProductToCategory(cat)}
                                 >
@@ -4046,6 +4053,7 @@ export default function ProductManagement() {
                                     border="1px"
                                     borderColor="blue.500"
                                     _hover={{ bg: "blue.500", color: "white" }}
+                                    _active={{ bg: "blue.600", color: "white" }}
                                     size="xs"
                                     onClick={() => handleViewCategory(cat)}
                                   />
@@ -4057,6 +4065,7 @@ export default function ProductManagement() {
                                     border="1px"
                                     borderColor={customColor}
                                     _hover={{ bg: customColor, color: "white" }}
+                                    _active={{ bg: "#004d4d", color: "white" }}
                                     size="xs"
                                     onClick={() => handleEditCategory(cat)}
                                   />
@@ -4068,6 +4077,7 @@ export default function ProductManagement() {
                                     border="1px"
                                     borderColor="red.500"
                                     _hover={{ bg: "red.500", color: "white" }}
+                                    _active={{ bg: "red.600", color: "white" }}
                                     size="xs"
                                     onClick={() => handleDeleteCategory(cat)}
                                   />
@@ -4124,7 +4134,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={quotationStatusFilter === "all" ? "teal" : "gray"}
+                                colorScheme={quotationStatusFilter === "all" ? "brand" : "gray"}
                                 variant={quotationStatusFilter === "all" ? "solid" : "outline"}
                                 bg={quotationStatusFilter === "all" ? customColor : "transparent"}
                                 onClick={() => setQuotationStatusFilter("all")}
@@ -4134,7 +4144,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={quotationStatusFilter === "draft" ? "teal" : "gray"}
+                                colorScheme={quotationStatusFilter === "draft" ? "brand" : "gray"}
                                 variant={quotationStatusFilter === "draft" ? "solid" : "outline"}
                                 bg={quotationStatusFilter === "draft" ? customColor : "transparent"}
                                 onClick={() => setQuotationStatusFilter("draft")}
@@ -4144,7 +4154,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={quotationStatusFilter === "waiting" ? "teal" : "gray"}
+                                colorScheme={quotationStatusFilter === "waiting" ? "brand" : "gray"}
                                 variant={quotationStatusFilter === "waiting" ? "solid" : "outline"}
                                 bg={quotationStatusFilter === "waiting" ? customColor : "transparent"}
                                 onClick={() => setQuotationStatusFilter("waiting")}
@@ -4154,7 +4164,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={quotationStatusFilter === "accepted" ? "teal" : "gray"}
+                                colorScheme={quotationStatusFilter === "accepted" ? "brand" : "gray"}
                                 variant={quotationStatusFilter === "accepted" ? "solid" : "outline"}
                                 bg={quotationStatusFilter === "accepted" ? customColor : "transparent"}
                                 onClick={() => setQuotationStatusFilter("accepted")}
@@ -4164,7 +4174,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={quotationStatusFilter === "cancelled" ? "teal" : "gray"}
+                                colorScheme={quotationStatusFilter === "cancelled" ? "brand" : "gray"}
                                 variant={quotationStatusFilter === "cancelled" ? "solid" : "outline"}
                                 bg={quotationStatusFilter === "cancelled" ? customColor : "transparent"}
                                 onClick={() => setQuotationStatusFilter("cancelled")}
@@ -4554,6 +4564,7 @@ export default function ProductManagement() {
                                                   colorScheme="teal"
                                                   bg={customColor}
                                                   _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+                                                  _active={{ bg: "#004d4d" }}
                                                   leftIcon={<FaPaperPlane />}
                                                   borderRadius="md"
                                                   px={2.5}
@@ -4634,7 +4645,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={requestStatusFilter === "active" ? "teal" : "gray"}
+                                colorScheme={requestStatusFilter === "active" ? "brand" : "gray"}
                                 variant={requestStatusFilter === "active" ? "solid" : "outline"}
                                 bg={requestStatusFilter === "active" ? customColor : "transparent"}
                                 onClick={() => setRequestStatusFilter("active")}
@@ -4644,7 +4655,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={requestStatusFilter === "accepted" ? "teal" : "gray"}
+                                colorScheme={requestStatusFilter === "accepted" ? "brand" : "gray"}
                                 variant={requestStatusFilter === "accepted" ? "solid" : "outline"}
                                 bg={requestStatusFilter === "accepted" ? customColor : "transparent"}
                                 onClick={() => setRequestStatusFilter("accepted")}
@@ -4654,7 +4665,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={requestStatusFilter === "cancelled" ? "teal" : "gray"}
+                                colorScheme={requestStatusFilter === "cancelled" ? "brand" : "gray"}
                                 variant={requestStatusFilter === "cancelled" ? "solid" : "outline"}
                                 bg={requestStatusFilter === "cancelled" ? customColor : "transparent"}
                                 onClick={() => setRequestStatusFilter("cancelled")}
@@ -4664,7 +4675,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={requestStatusFilter === "all" ? "teal" : "gray"}
+                                colorScheme={requestStatusFilter === "all" ? "brand" : "gray"}
                                 variant={requestStatusFilter === "all" ? "solid" : "outline"}
                                 bg={requestStatusFilter === "all" ? customColor : "transparent"}
                                 onClick={() => setRequestStatusFilter("all")}
@@ -4820,6 +4831,7 @@ export default function ProductManagement() {
                                                   colorScheme="teal"
                                                   bg={customColor}
                                                   _hover={{ bg: customColor, filter: "brightness(0.9)", shadow: "sm" }}
+                                                  _active={{ bg: "#004d4d", shadow: "none" }}
                                                   leftIcon={<FaFileContract />}
                                                   borderRadius="lg"
                                                   px={3}
@@ -5082,6 +5094,7 @@ export default function ProductManagement() {
                                       border="1px"
                                       borderColor="blue.500"
                                       _hover={{ bg: "blue.500", color: "white" }}
+                                      _active={{ bg: "blue.600", color: "white" }}
                                       size="xs"
                                       onClick={() => handleViewProduct(prod)}
                                     />
@@ -5093,6 +5106,7 @@ export default function ProductManagement() {
                                       border="1px"
                                       borderColor={customColor}
                                       _hover={{ bg: customColor, color: "white" }}
+                                      _active={{ bg: "#004d4d", color: "white" }}
                                       size="xs"
                                       onClick={() => handleEditProduct(prod)}
                                     />
@@ -5104,6 +5118,7 @@ export default function ProductManagement() {
                                       border="1px"
                                       borderColor="red.500"
                                       _hover={{ bg: "red.500", color: "white" }}
+                                      _active={{ bg: "red.600", color: "white" }}
                                       size="xs"
                                       onClick={() => handleDeleteProduct(prod)}
                                     />
@@ -5133,7 +5148,7 @@ export default function ProductManagement() {
                         <Button
                           size="xs"
                           borderRadius="full"
-                          colorScheme={bookingStatusFilter === "all" ? "teal" : "gray"}
+                          colorScheme={bookingStatusFilter === "all" ? "brand" : "gray"}
                           variant={bookingStatusFilter === "all" ? "solid" : "outline"}
                           bg={bookingStatusFilter === "all" ? customColor : "transparent"}
                           onClick={() => setBookingStatusFilter("all")}
@@ -5143,7 +5158,7 @@ export default function ProductManagement() {
                         <Button
                           size="xs"
                           borderRadius="full"
-                          colorScheme={bookingStatusFilter === "active" ? "teal" : "gray"}
+                          colorScheme={bookingStatusFilter === "active" ? "brand" : "gray"}
                           variant={bookingStatusFilter === "active" ? "solid" : "outline"}
                           bg={bookingStatusFilter === "active" ? customColor : "transparent"}
                           onClick={() => setBookingStatusFilter("active")}
@@ -5153,7 +5168,7 @@ export default function ProductManagement() {
                         <Button
                           size="xs"
                           borderRadius="full"
-                          colorScheme={bookingStatusFilter === "completed" ? "teal" : "gray"}
+                          colorScheme={bookingStatusFilter === "completed" ? "brand" : "gray"}
                           variant={bookingStatusFilter === "completed" ? "solid" : "outline"}
                           bg={bookingStatusFilter === "completed" ? customColor : "transparent"}
                           onClick={() => setBookingStatusFilter("completed")}
@@ -5163,7 +5178,7 @@ export default function ProductManagement() {
                         <Button
                           size="xs"
                           borderRadius="full"
-                          colorScheme={bookingStatusFilter === "paid" ? "teal" : "gray"}
+                          colorScheme={bookingStatusFilter === "paid" ? "brand" : "gray"}
                           variant={bookingStatusFilter === "paid" ? "solid" : "outline"}
                           bg={bookingStatusFilter === "paid" ? customColor : "transparent"}
                           onClick={() => setBookingStatusFilter("paid")}
@@ -5173,7 +5188,7 @@ export default function ProductManagement() {
                         <Button
                           size="xs"
                           borderRadius="full"
-                          colorScheme={bookingStatusFilter === "unpaid" ? "teal" : "gray"}
+                          colorScheme={bookingStatusFilter === "unpaid" ? "brand" : "gray"}
                           variant={bookingStatusFilter === "unpaid" ? "solid" : "outline"}
                           bg={bookingStatusFilter === "unpaid" ? customColor : "transparent"}
                           onClick={() => setBookingStatusFilter("unpaid")}
@@ -5183,7 +5198,7 @@ export default function ProductManagement() {
                         <Button
                           size="xs"
                           borderRadius="full"
-                          colorScheme={bookingStatusFilter === "cancelled" ? "teal" : "gray"}
+                          colorScheme={bookingStatusFilter === "cancelled" ? "brand" : "gray"}
                           variant={bookingStatusFilter === "cancelled" ? "solid" : "outline"}
                           bg={bookingStatusFilter === "cancelled" ? customColor : "transparent"}
                           onClick={() => setBookingStatusFilter("cancelled")}
@@ -5467,7 +5482,7 @@ export default function ProductManagement() {
                         <Button
                           size="xs"
                           borderRadius="full"
-                          colorScheme={!lowStockFilter && !outOfStockFilter ? "teal" : "gray"}
+                          colorScheme={!lowStockFilter && !outOfStockFilter ? "brand" : "gray"}
                           variant={!lowStockFilter && !outOfStockFilter ? "solid" : "outline"}
                           bg={!lowStockFilter && !outOfStockFilter ? customColor : "transparent"}
                           onClick={() => { setLowStockFilter(false); setOutOfStockFilter(false); }}
@@ -5546,7 +5561,7 @@ export default function ProductManagement() {
                                       </Td>
                                       <Td textAlign="right">
                                         <HStack justify="flex-end" spacing={1.5}>
-                                          <Button size="xs" colorScheme="teal" bg={customColor} variant="solid" onClick={() => handleOpenStockAdjustModal(item)}>
+                                          <Button size="xs" variant="brand" onClick={() => handleOpenStockAdjustModal(item)}>
                                             Update Stock
                                           </Button>
                                           <Button size="xs" variant="outline" colorScheme="blue" onClick={() => handleOpenStockHistoryModal(item)}>
@@ -5572,7 +5587,7 @@ export default function ProductManagement() {
                             key={st}
                             size="xs"
                             borderRadius="full"
-                            colorScheme={paymentStatusFilter === st ? "teal" : "gray"}
+                            colorScheme={paymentStatusFilter === st ? "brand" : "gray"}
                             variant={paymentStatusFilter === st ? "solid" : "outline"}
                             bg={paymentStatusFilter === st ? customColor : "transparent"}
                             textTransform="capitalize"
@@ -5679,7 +5694,7 @@ export default function ProductManagement() {
                                       <Td fontSize="xs" fontWeight="bold">₹{unm.amount || 0}</Td>
                                       <Td fontSize="xs" color="orange.600">{unm.reason || "Unmatched ledger record"}</Td>
                                       <Td textAlign="right">
-                                        <Button size="xs" colorScheme="teal" bg={customColor} onClick={() => handleOpenReconcileModal(unm)}>
+                                        <Button size="xs" variant="brand" onClick={() => handleOpenReconcileModal(unm)}>
                                           Reconcile
                                         </Button>
                                       </Td>
@@ -5725,7 +5740,7 @@ export default function ProductManagement() {
                             View Audit Logs
                           </Button>
                         </HStack>
-                        <Button size="sm" colorScheme="teal" bg={customColor} leftIcon={<FaFileDownload />} isLoading={isExportingCSV} onClick={handleExportCSV}>
+                        <Button size="sm" variant="brand" leftIcon={<FaFileDownload />} isLoading={isExportingCSV} onClick={handleExportCSV}>
                           Export Sales CSV
                         </Button>
                       </Flex>
@@ -5926,6 +5941,7 @@ export default function ProductManagement() {
                                                   colorScheme="teal"
                                                   bg={customColor}
                                                   _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+                                                  _active={{ bg: "#004d4d" }}
                                                   leftIcon={<FaPaperPlane />}
                                                   borderRadius="md"
                                                   px={3}
@@ -5994,7 +6010,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={requestStatusFilter === "active" ? "teal" : "gray"}
+                                colorScheme={requestStatusFilter === "active" ? "brand" : "gray"}
                                 variant={requestStatusFilter === "active" ? "solid" : "outline"}
                                 bg={requestStatusFilter === "active" ? customColor : "transparent"}
                                 onClick={() => setRequestStatusFilter("active")}
@@ -6004,7 +6020,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={requestStatusFilter === "accepted" ? "teal" : "gray"}
+                                colorScheme={requestStatusFilter === "accepted" ? "brand" : "gray"}
                                 variant={requestStatusFilter === "accepted" ? "solid" : "outline"}
                                 bg={requestStatusFilter === "accepted" ? customColor : "transparent"}
                                 onClick={() => setRequestStatusFilter("accepted")}
@@ -6014,7 +6030,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={requestStatusFilter === "cancelled" ? "teal" : "gray"}
+                                colorScheme={requestStatusFilter === "cancelled" ? "brand" : "gray"}
                                 variant={requestStatusFilter === "cancelled" ? "solid" : "outline"}
                                 bg={requestStatusFilter === "cancelled" ? customColor : "transparent"}
                                 onClick={() => setRequestStatusFilter("cancelled")}
@@ -6024,7 +6040,7 @@ export default function ProductManagement() {
                               <Button
                                 size="xs"
                                 borderRadius="full"
-                                colorScheme={requestStatusFilter === "all" ? "teal" : "gray"}
+                                colorScheme={requestStatusFilter === "all" ? "brand" : "gray"}
                                 variant={requestStatusFilter === "all" ? "solid" : "outline"}
                                 bg={requestStatusFilter === "all" ? customColor : "transparent"}
                                 onClick={() => setRequestStatusFilter("all")}
@@ -6181,6 +6197,7 @@ export default function ProductManagement() {
                                                   colorScheme="teal"
                                                   bg={customColor}
                                                   _hover={{ bg: customColor, filter: "brightness(0.9)", shadow: "sm" }}
+                                                  _active={{ bg: "#004d4d", shadow: "none" }}
                                                   leftIcon={<FaFileContract />}
                                                   borderRadius="lg"
                                                   px={3}
@@ -6352,7 +6369,7 @@ export default function ProductManagement() {
                             <Text fontWeight="semibold" color="gray.800">₹{item.price || item.estimatedPriceFrom || 0}</Text>
                           </Flex>
                           <HStack justify="flex-end" spacing={2}>
-                            <Button size="xs" colorScheme="teal" bg={customColor} onClick={() => handleOpenStockAdjustModal(item)}>Adjust Stock</Button>
+                            <Button size="xs" variant="brand" onClick={() => handleOpenStockAdjustModal(item)}>Adjust Stock</Button>
                             <Button size="xs" variant="outline" onClick={() => handleOpenStockHistoryModal(item)}>History</Button>
                           </HStack>
                         </Card>
@@ -6386,7 +6403,7 @@ export default function ProductManagement() {
                           <Text fontSize="xs" fontFamily="mono" fontWeight="bold" color="teal.800">Unmatched: {unm.razorpayPaymentId || unm._id}</Text>
                           <Text fontSize="xs" fontWeight="extrabold" color="teal.700" mt={1}>Amount: ₹{unm.amount || 0}</Text>
                           <Text fontSize="2xs" color="orange.600" mt={1}>{unm.reason || "Unmatched payment ledger item"}</Text>
-                          <Button size="xs" mt={2} colorScheme="teal" bg={customColor} onClick={() => handleOpenReconcileModal(unm)}>Reconcile</Button>
+                          <Button size="xs" mt={2} variant="brand" onClick={() => handleOpenReconcileModal(unm)}>Reconcile</Button>
                         </Card>
                       ))}
                     </VStack>
@@ -6398,7 +6415,7 @@ export default function ProductManagement() {
                         <Text fontSize="xs" color="gray.600">Total Turnover</Text>
                         <Text fontSize="lg" fontWeight="extrabold" color="teal.800">₹{Number(dashboardSummary?.totalSalesTurnover || 0).toLocaleString("en-IN")}</Text>
                       </Card>
-                      <Button size="sm" colorScheme="teal" bg={customColor} leftIcon={<FaFileDownload />} isLoading={isExportingCSV} onClick={handleExportCSV}>
+                      <Button size="sm" variant="brand" leftIcon={<FaFileDownload />} isLoading={isExportingCSV} onClick={handleExportCSV}>
                         Export Sales CSV
                       </Button>
                     </VStack>
@@ -6441,6 +6458,7 @@ export default function ProductManagement() {
                           border="1px"
                           borderColor={customColor}
                           _hover={{ bg: customColor, color: "white" }}
+                          _active={{ bg: "#004d4d", color: "white" }}
                           _disabled={{
                             opacity: 0.5,
                             cursor: "not-allowed",
@@ -6487,6 +6505,7 @@ export default function ProductManagement() {
                           border="1px"
                           borderColor={customColor}
                           _hover={{ bg: customColor, color: "white" }}
+                          _active={{ bg: "#004d4d", color: "white" }}
                           _disabled={{
                             opacity: 0.5,
                             cursor: "not-allowed",
@@ -6785,6 +6804,7 @@ export default function ProductManagement() {
             <Button
               bg="red.500"
               _hover={{ bg: "red.600" }}
+              _active={{ bg: "red.700" }}
               color="white"
               onClick={handleConfirmDelete}
               isLoading={isDeleting}
@@ -7093,6 +7113,7 @@ export default function ProductManagement() {
               colorScheme="teal"
               bg={customColor}
               _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+              _active={{ bg: "#004d4d" }}
               leftIcon={<FaFileContract />}
               onClick={() => {
                 setIsReqDetailModalOpen(false);
@@ -7379,6 +7400,7 @@ export default function ProductManagement() {
                       colorScheme="teal"
                       bg={customColor}
                       _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+                      _active={{ bg: "#004d4d" }}
                       leftIcon={<FaPaperPlane />}
                       onClick={() => {
                         setIsQuotationDetailModalOpen(false);
@@ -7499,7 +7521,7 @@ export default function ProductManagement() {
           </ModalBody>
           <ModalFooter borderTop="1px solid" borderColor="gray.100">
             <Button size="sm" mr={3} onClick={() => setIsPreviewModalOpen(false)}>Close</Button>
-            <Button size="sm" colorScheme="teal" bg={customColor} leftIcon={<FaPaperPlane />} onClick={() => {
+            <Button size="sm" variant="brand" leftIcon={<FaPaperPlane />} onClick={() => {
               setIsPreviewModalOpen(false);
               if (previewQuotation) handleSendQuotation(previewQuotation._id || previewQuotation.id);
             }}>
@@ -7695,7 +7717,7 @@ export default function ProductManagement() {
                           height="22px"
                           fontSize="3xs"
                           borderRadius="6px"
-                          colorScheme={quotationForm.discountType === "percent" ? "teal" : "gray"}
+                          colorScheme={quotationForm.discountType === "percent" ? "brand" : "gray"}
                           variant={quotationForm.discountType === "percent" ? "solid" : "outline"}
                           onClick={() => {
                             setQuotationForm({ ...quotationForm, discountType: "percent" });
@@ -7709,7 +7731,7 @@ export default function ProductManagement() {
                           height="22px"
                           fontSize="3xs"
                           borderRadius="6px"
-                          colorScheme={quotationForm.discountType === "flat" ? "teal" : "gray"}
+                          colorScheme={quotationForm.discountType === "flat" ? "brand" : "gray"}
                           variant={quotationForm.discountType === "flat" ? "solid" : "outline"}
                           onClick={() => {
                             setQuotationForm({ ...quotationForm, discountType: "flat" });
@@ -7741,7 +7763,7 @@ export default function ProductManagement() {
                             height="24px"
                             fontSize="3xs"
                             borderRadius="6px"
-                            colorScheme={quotationForm.discountPercent === pct ? "teal" : "gray"}
+                            colorScheme={quotationForm.discountPercent === pct ? "brand" : "gray"}
                             variant={quotationForm.discountPercent === pct ? "solid" : "outline"}
                             onClick={() => recalculateQuotationForm({ discountPercent: pct, customDiscountInput: "" })}
                           >
@@ -7786,7 +7808,7 @@ export default function ProductManagement() {
                           height="24px"
                           fontSize="3xs"
                           borderRadius="6px"
-                          colorScheme={quotationForm.gstPercent === gst ? "teal" : "gray"}
+                          colorScheme={quotationForm.gstPercent === gst ? "brand" : "gray"}
                           variant={quotationForm.gstPercent === gst ? "solid" : "outline"}
                           onClick={() => recalculateQuotationForm({ gstPercent: gst, customGstInput: "" })}
                         >
@@ -7888,7 +7910,7 @@ export default function ProductManagement() {
                         px={3}
                         fontSize="2xs"
                         borderRadius="8px"
-                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "teal" : "gray"}
+                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "brand" : "gray"}
                         variant={quotationForm.validUntil === new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "solid" : "outline"}
                         onClick={() => {
                           const d = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -7903,7 +7925,7 @@ export default function ProductManagement() {
                         px={3}
                         fontSize="2xs"
                         borderRadius="8px"
-                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().split('T')[0] ? "teal" : "gray"}
+                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().split('T')[0] ? "brand" : "gray"}
                         variant={quotationForm.validUntil === new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().split('T')[0] ? "solid" : "outline"}
                         onClick={() => {
                           const d = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -7918,7 +7940,7 @@ export default function ProductManagement() {
                         px={3}
                         fontSize="2xs"
                         borderRadius="8px"
-                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "teal" : "gray"}
+                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "brand" : "gray"}
                         variant={quotationForm.validUntil === new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "solid" : "outline"}
                         onClick={() => {
                           const d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -7980,6 +8002,7 @@ export default function ProductManagement() {
                       colorScheme="teal"
                       bg={customColor}
                       _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+                      _active={{ bg: "#004d4d" }}
                       size="sm"
                       borderRadius="8px"
                       onClick={handleAddTerm}
@@ -8011,6 +8034,7 @@ export default function ProductManagement() {
               colorScheme="teal"
               bg={customColor}
               _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+              _active={{ bg: "#004d4d" }}
               leftIcon={<FaPaperPlane />}
               isLoading={isSubmittingQuotation}
               onClick={handleSaveAndSendQuotation}
@@ -8159,7 +8183,7 @@ export default function ProductManagement() {
                           height="22px"
                           fontSize="3xs"
                           borderRadius="2px"
-                          colorScheme={quotationForm.discountMode === "percent" ? "teal" : "gray"}
+                          colorScheme={quotationForm.discountMode === "percent" ? "brand" : "gray"}
                           variant={quotationForm.discountMode === "percent" ? "solid" : "outline"}
                           onClick={() => recalculateQuotationForm({ discountMode: "percent" })}
                         >
@@ -8170,7 +8194,7 @@ export default function ProductManagement() {
                           height="22px"
                           fontSize="3xs"
                           borderRadius="2px"
-                          colorScheme={quotationForm.discountMode === "amount" ? "teal" : "gray"}
+                          colorScheme={quotationForm.discountMode === "amount" ? "brand" : "gray"}
                           variant={quotationForm.discountMode === "amount" ? "solid" : "outline"}
                           onClick={() => recalculateQuotationForm({ discountMode: "amount" })}
                         >
@@ -8230,7 +8254,7 @@ export default function ProductManagement() {
                             height="20px"
                             fontSize="3xs"
                             borderRadius="2px"
-                            colorScheme={quotationForm.gstPercent === pct && !quotationForm.isCustomGst ? "teal" : "gray"}
+                            colorScheme={quotationForm.gstPercent === pct && !quotationForm.isCustomGst ? "brand" : "gray"}
                             onClick={() => recalculateQuotationForm({ gstPercent: pct, isCustomGst: false, customGstInput: String(pct) })}
                           >
                             {pct}%
@@ -8358,7 +8382,7 @@ export default function ProductManagement() {
                         px={3}
                         fontSize="2xs"
                         borderRadius="8px"
-                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "teal" : "gray"}
+                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "brand" : "gray"}
                         variant={quotationForm.validUntil === new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "solid" : "outline"}
                         onClick={() => {
                           const d = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -8373,7 +8397,7 @@ export default function ProductManagement() {
                         px={3}
                         fontSize="2xs"
                         borderRadius="8px"
-                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().split('T')[0] ? "teal" : "gray"}
+                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().split('T')[0] ? "brand" : "gray"}
                         variant={quotationForm.validUntil === new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().split('T')[0] ? "solid" : "outline"}
                         onClick={() => {
                           const d = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -8388,7 +8412,7 @@ export default function ProductManagement() {
                         px={3}
                         fontSize="2xs"
                         borderRadius="8px"
-                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "teal" : "gray"}
+                        colorScheme={quotationForm.validUntil === new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "brand" : "gray"}
                         variant={quotationForm.validUntil === new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] ? "solid" : "outline"}
                         onClick={() => {
                           const d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -8449,6 +8473,7 @@ export default function ProductManagement() {
                       colorScheme="teal"
                       bg={customColor}
                       _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+                      _active={{ bg: "#004d4d" }}
                       size="sm"
                       borderRadius="2px"
                       onClick={handleAddTerm}
@@ -8469,6 +8494,7 @@ export default function ProductManagement() {
               colorScheme="teal"
               bg={customColor}
               _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+              _active={{ bg: "#004d4d" }}
               leftIcon={<FaPaperPlane />}
               isLoading={isSubmittingRevise}
               onClick={handleConfirmRevise}
@@ -8529,7 +8555,7 @@ export default function ProductManagement() {
           </ModalBody>
           <ModalFooter bg="gray.50" py={3} borderBottomRadius="xl">
             <Button size="sm" variant="ghost" mr={2} onClick={() => setStockModalOpen(false)}>Cancel</Button>
-            <Button size="sm" colorScheme="teal" bg={customColor} isLoading={isSubmittingStock} onClick={handleSaveStockAdjustment}>
+            <Button size="sm" variant="brand" isLoading={isSubmittingStock} onClick={handleSaveStockAdjustment}>
               Save Adjustment
             </Button>
           </ModalFooter>

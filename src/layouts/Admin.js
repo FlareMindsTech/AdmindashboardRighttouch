@@ -158,8 +158,8 @@ export default function Dashboard(props) {
     );
   };
 
-  // Get active route for navbar
-  const getActiveRoute = () => {
+  // Get active route for navbar (memoized by pathname)
+  const brandText = useMemo(() => {
     const currentPath = location.pathname;
 
     const findRoute = (routesArray) => {
@@ -181,14 +181,50 @@ export default function Dashboard(props) {
     };
 
     return findRoute(routes);
-  };
+  }, [location.pathname]);
 
-  // Redirect non-owners check is handled in the render phase
+  const mobileLogo = useMemo(
+    () => (
+      <Stack direction="row" spacing="12px" align="center" justify="center">
+        <Image
+          src={FlareLogo}
+          alt="Flare Logo"
+          w={{ base: "80px", sm: "90px", md: "100px" }}
+          h="auto"
+        />
+        <Box w="1px" h="20px" />
+      </Stack>
+    ),
+    []
+  );
+
+  const desktopLogo = useMemo(
+    () => (
+      <Stack direction="row" spacing="12px" align="center" justify="center">
+        <Image
+          src={FlareLogo}
+          alt="Flare Logo"
+          w={{ base: "120px", sm: "90px", md: "100px", lg: "100px", xl: "100px" }}
+          h="8vh"
+        />
+        <Box w="1px" h="20px" />
+      </Stack>
+    ),
+    []
+  );
+
+  // Redirect non-owners safely inside useEffect (NEVER dispatch during render phase)
   useEffect(() => {
-    // Legacy redirect logic removed in favor of strict render-time redirection
-  }, [isLoading, userRole, location.pathname]);
+    if (authInitialized && userRole !== "owner") {
+      try {
+        dispatch(logout());
+      } catch (e) {
+        clearAuth();
+      }
+    }
+  }, [authInitialized, userRole, dispatch]);
 
-  // Show loading state
+  // Show loading state while auth is restoring
   if (isLoading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" h="100vh">
@@ -199,11 +235,6 @@ export default function Dashboard(props) {
 
   // 🔐 STRICT ACCESS CONTROL: ONLY OWNER
   if (userRole !== "owner") {
-    try {
-      dispatch(logout());
-    } catch (e) {
-      clearAuth();
-    }
     return <Navigate to="/auth/signin" replace />;
   }
 
@@ -227,18 +258,8 @@ export default function Dashboard(props) {
 
       {/* Mobile Sidebar - ONLY OWNER ROUTES */}
       <SidebarResponsive
-        logo={
-          <Stack direction="row" spacing="12px" align="center" justify="center">
-            <Image
-              src={FlareLogo}
-              alt="Flare Logo"
-              w={{ base: "80px", sm: "90px", md: "100px" }}
-              h="auto"
-            />
-            <Box w="1px" h="20px" />
-          </Stack>
-        }
-        routes={filteredRoutes.filter(r => r.layout !== "/auth")}
+        logo={mobileLogo}
+        routes={filteredRoutes}
         hamburgerColor="white"
         isOpen={isSidebarOpen}
         onOpen={onSidebarOpen}
@@ -247,22 +268,13 @@ export default function Dashboard(props) {
 
       {/* Desktop Sidebar - ONLY OWNER ROUTES */}
       <Sidebar
-        routes={filteredRoutes.filter(r => r.layout !== "/auth")}
-        logo={
-          <Stack direction="row" spacing="12px" align="center" justify="center">
-            <Image
-              src={FlareLogo}
-              alt="Flare Logo"
-              w={{ base: "120px", sm: "90px", md: "100px", lg: "100px", xl: "100px" }}
-              h="8vh"
-            />
-            <Box w="1px" h="20px" />
-          </Stack>
-        }
+        routes={filteredRoutes}
+        logo={desktopLogo}
         {...rest}
       />
 
       <MainPanel
+        id="main-panel"
         maxH="100vh"
         minH="100vh"
         overflowX="hidden"
@@ -281,7 +293,7 @@ export default function Dashboard(props) {
         <Portal>
           <AdminNavbar
             onOpen={onSidebarOpen}
-            brandText={getActiveRoute()}
+            brandText={brandText}
             secondary={false}
             fixed={fixed}
             {...rest}

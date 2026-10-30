@@ -32,7 +32,7 @@ import { formatInr } from "./FinancialBreakdown";
 import PayoutStatusBadge from "./PayoutStatusBadge";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
-import { getSkeuomorphicCardStyle } from "components/common/skeuomorphicStyles";
+
 
 export default function TechnicianWalletDetailsCard({
   technicians = [],
@@ -88,7 +88,16 @@ export default function TechnicianWalletDetailsCard({
     onSelectTechnician && onSelectTechnician(val);
   };
 
-  const cardStyle = getSkeuomorphicCardStyle(isDark, false);
+  const cardStyle = {
+    bg: isDark ? "gray.850" : "white",
+    borderRadius: "20px",
+    border: "1px solid",
+    borderColor: isDark ? "gray.750" : "gray.100",
+    boxShadow: isDark
+      ? "0 8px 30px -4px rgba(0, 0, 0, 0.5)"
+      : "0 4px 24px -2px rgba(0, 0, 0, 0.05), 0 2px 8px -1px rgba(0, 0, 0, 0.02)",
+    overflow: "hidden",
+  };
 
   const wallet = overview?.wallet || {};
   const eligibility = overview?.eligibility || {};

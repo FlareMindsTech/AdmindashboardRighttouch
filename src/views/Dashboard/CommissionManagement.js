@@ -836,10 +836,8 @@ export default function CommissionManagement() {
                 <Button
                   leftIcon={<MdAdd />}
                   size="sm"
-                  bg={BRAND}
-                  color="white"
+                  variant="brand"
                   borderRadius="8px"
-                  _hover={{ bg: BRAND_DARK }}
                   onClick={handleOpenCreateRule}
                 >
                   Set Commission Rule
@@ -896,6 +894,7 @@ export default function CommissionManagement() {
                 borderColor={activeTab === idx ? BRAND : "gray.200"}
                 leftIcon={<Icon as={t.icon} boxSize={4} />}
                 _hover={{ bg: activeTab === idx ? BRAND_DARK : "gray.100" }}
+                _active={{ bg: activeTab === idx ? "#004d4d" : "gray.200" }}
                 flexShrink={0}
               >
                 {t.label}
@@ -1773,6 +1772,7 @@ export default function CommissionManagement() {
             <Button
               bg={isSchedulingMode ? "purple.600" : BRAND}
               _hover={{ bg: isSchedulingMode ? "purple.700" : BRAND_DARK }}
+              _active={{ bg: isSchedulingMode ? "purple.800" : "#004d4d" }}
               color="white"
               size="sm"
               borderRadius="8px"
@@ -2030,6 +2030,7 @@ export default function CommissionManagement() {
             <Button
               bg="purple.600"
               _hover={{ bg: "purple.700" }}
+              _active={{ bg: "purple.800" }}
               color="white"
               size="sm"
               borderRadius="8px"

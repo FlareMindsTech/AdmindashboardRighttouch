@@ -365,7 +365,7 @@ export default function RewardsManagement() {
                     </SimpleGrid>
                     <Flex justify="flex-end" gap={3}>
                       <Button variant="outline" onClick={loadOverview}>Reset</Button>
-                      <Button bg={BRAND} color="white" isLoading={savingPolicy} onClick={savePolicy}>
+                      <Button variant="brand" isLoading={savingPolicy} onClick={savePolicy}>
                         Save Reward Policy
                       </Button>
                     </Flex>
@@ -395,7 +395,7 @@ export default function RewardsManagement() {
                       <option value="500">≥ 500 Coins (₹5)</option>
                       <option value="1000">≥ 1,000 Coins (₹10)</option>
                     </Select>
-                    <Button size="sm" bg={BRAND} color="white" onClick={loadWallets}>
+                    <Button size="sm" variant="brand" onClick={loadWallets}>
                       Apply Filters
                     </Button>
                   </HStack>
@@ -470,7 +470,7 @@ export default function RewardsManagement() {
                       <option value="CLAWBACK">CLAWBACK</option>
                       <option value="ADJUST">ADJUST</option>
                     </Select>
-                    <Button size="sm" bg={BRAND} color="white" onClick={loadTransactions}>
+                    <Button size="sm" variant="brand" onClick={loadTransactions}>
                       Filter Ledger
                     </Button>
                   </HStack>
@@ -538,7 +538,7 @@ export default function RewardsManagement() {
                       <option value="consumed">Consumed</option>
                       <option value="released">Released</option>
                     </Select>
-                    <Button size="sm" bg={BRAND} color="white" onClick={loadRedemptions}>
+                    <Button size="sm" variant="brand" onClick={loadRedemptions}>
                       Filter Redemptions
                     </Button>
                   </HStack>

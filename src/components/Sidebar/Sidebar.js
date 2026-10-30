@@ -45,7 +45,7 @@ import { useAdminNotificationCounts } from "hooks/useAdminNotificationCounts";
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import { logout, selectToken } from "store/slices/authSlice";
 
-function Sidebar(props) {
+const Sidebar = React.memo(function Sidebar(props) {
   const { sidebarVariant, logo, routes } = props;
   const mainPanel = React.useRef();
   const variantChange = "0.2s linear";
@@ -619,10 +619,10 @@ function Sidebar(props) {
       </AlertDialog>
     </Box>
   );
-}
+});
 
 // ✅ Responsive Sidebar - FIXED VERSION
-export function SidebarResponsive(props) {
+export const SidebarResponsive = React.memo(function SidebarResponsive(props) {
   const { logo, routes, hamburgerColor, isOpen, onOpen, onClose } = props;
   const mainPanel = React.useRef();
   const dispatchResp = useAppDispatch();
@@ -1200,6 +1200,6 @@ export function SidebarResponsive(props) {
       </Drawer>
     </Flex>
   );
-}
+});
 
 export default Sidebar;

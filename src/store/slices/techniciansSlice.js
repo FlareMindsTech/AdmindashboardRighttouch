@@ -327,9 +327,26 @@ export const selectTechniciansStatus = (state) =>
 export const selectKYCRecords = (state) => state.technicians.kycRecords.data;
 export const selectKYCRecordsStatus = (state) =>
   state.technicians.kycRecords.status;
-export const selectKYCDetail = (technicianId) => (state) =>
-  state.technicians.kycDetail[technicianId]?.data ?? null;
-export const selectKYCDetailStatus = (technicianId) => (state) =>
-  state.technicians.kycDetail[technicianId]?.status || "idle";
+const kycDetailSelectors = new Map();
+export const selectKYCDetail = (technicianId) => {
+  const idStr = String(technicianId || "");
+  let sel = kycDetailSelectors.get(idStr);
+  if (!sel) {
+    sel = (state) => state.technicians.kycDetail[idStr]?.data ?? null;
+    kycDetailSelectors.set(idStr, sel);
+  }
+  return sel;
+};
+
+const kycDetailStatusSelectors = new Map();
+export const selectKYCDetailStatus = (technicianId) => {
+  const idStr = String(technicianId || "");
+  let sel = kycDetailStatusSelectors.get(idStr);
+  if (!sel) {
+    sel = (state) => state.technicians.kycDetail[idStr]?.status || "idle";
+    kycDetailStatusSelectors.set(idStr, sel);
+  }
+  return sel;
+};
 
 export default techniciansSlice.reducer;

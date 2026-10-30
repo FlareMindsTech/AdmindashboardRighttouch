@@ -174,7 +174,7 @@ export default function DispatchOps() {
                               <Td><Badge colorScheme={t === 0 ? "yellow" : "red"}>{r.status || (t === 0 ? "pending" : "failed")}</Badge></Td>
                               <Td>{r.attempts ?? r.retryCount ?? "—"}</Td>
                               <Td>
-                                <Button size="xs" bg={BRAND} color="white" isLoading={acting} onClick={() => doRetryOne(r)}>Retry</Button>
+                                <Button size="xs" variant="brand" isLoading={acting} onClick={() => doRetryOne(r)}>Retry</Button>
                               </Td>
                             </Tr>
                           ))}

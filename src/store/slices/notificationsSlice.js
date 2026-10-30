@@ -252,9 +252,6 @@ const notificationsSlice = createSlice({
         state.counts = { ...DEFAULT_MODULE_COUNTS, ...action.payload.counts };
         persistCounts(state.counts);
         state.countsError = null;
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new Event("admin_unread_counts_updated"));
-        }
       })
       .addCase(markModuleRead.rejected, (state, action) => {
         if (state.markReadRequestId !== action.meta.requestId) return;

@@ -11,7 +11,7 @@ import React, { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import AdminNavbarLinks from "./AdminNavbarLinks";
 
-export default function AdminNavbar(props) {
+const AdminNavbar = React.memo(function AdminNavbar(props) {
   const [scrolled, setScrolled] = useState(false);
   const { fixed, secondary, onOpen } = props;
 
@@ -91,6 +91,7 @@ export default function AdminNavbar(props) {
           color="white"
           bg="transparent"
           _hover={{ bg: "rgba(255,255,255,0.2)" }}
+          _active={{ bg: "rgba(255,255,255,0.3)" }}
           onClick={onOpen}
         />
 
@@ -121,4 +122,6 @@ export default function AdminNavbar(props) {
       <Box height={{ base: "70px", md: "100px", lg: "110px", xl: "125px" }} />
     </>
   );
-}
+});
+
+export default AdminNavbar;

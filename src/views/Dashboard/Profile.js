@@ -223,7 +223,13 @@ const EditOwnerModal = ({ isOpen, onClose, owner, onSave }) => {
           <Button colorScheme="gray" mr={3} onClick={onClose}>
             Cancel
           </Button>
-          <Button colorScheme="purple" bg={'#5a189a'} onClick={handleSave}>
+          <Button
+            colorScheme="purple"
+            bg="#5a189a"
+            _hover={{ bg: "#4a147f" }}
+            _active={{ bg: "#3b0f66" }}
+            onClick={handleSave}
+          >
             Save Changes
           </Button>
         </ModalFooter>
@@ -619,9 +625,9 @@ export default function OwnerProfile() {
                   }
                   onClick={() => handleActionClick(action)}
                   colorScheme={
-                    currentView === "users" && action.label === "Manage Users" ? "#5a189a" :
-                      currentView === "services_view" && action.label === "Manage Services" ? "#5a189a" :
-                        currentView === "analytics" && action.label === "Service Overview" ? "#5a189a" :
+                    currentView === "users" && action.label === "Manage Users" ? "purple" :
+                      currentView === "services_view" && action.label === "Manage Services" ? "purple" :
+                        currentView === "analytics" && action.label === "Service Overview" ? "purple" :
                           "gray"
                   }
                 >
@@ -727,6 +733,7 @@ export default function OwnerProfile() {
                           onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
                           isDisabled={currentPage === 1}
                           _hover={{ bg: "gray.50" }}
+                          _active={{ bg: "gray.200" }}
                         >
                           Previous
                         </Button>
@@ -742,6 +749,7 @@ export default function OwnerProfile() {
                           onClick={() => setCurrentPage(p => Math.min(p + 1, totalTechnicianPages))}
                           isDisabled={currentPage === totalTechnicianPages || totalTechnicianPages === 0}
                           _hover={{ bg: "gray.50" }}
+                          _active={{ bg: "gray.200" }}
                         >
                           Next
                         </Button>
@@ -816,6 +824,7 @@ export default function OwnerProfile() {
                           onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
                           isDisabled={currentPage === 1}
                           _hover={{ bg: "gray.50" }}
+                          _active={{ bg: "gray.200" }}
                         >
                           Previous
                         </Button>
@@ -831,6 +840,7 @@ export default function OwnerProfile() {
                           onClick={() => setCurrentPage(p => Math.min(p + 1, totalServicePages))}
                           isDisabled={currentPage === totalServicePages || totalServicePages === 0}
                           _hover={{ bg: "gray.50" }}
+                          _active={{ bg: "gray.200" }}
                         >
                           Next
                         </Button>

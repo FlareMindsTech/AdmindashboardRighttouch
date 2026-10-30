@@ -133,7 +133,7 @@ export default function SkillRequests() {
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
               </Select>
-              <Button size="sm" onClick={fetchList} bg={BRAND} color="white">Refresh</Button>
+              <Button size="sm" onClick={fetchList} variant="brand">Refresh</Button>
             </HStack>
           </Flex>
         </CardHeader>
@@ -163,7 +163,7 @@ export default function SkillRequests() {
                         <Td>{skillOf(r)}</Td>
                         <Td><Badge colorScheme={statusColor(r.status)}>{r.status || "pending"}</Badge></Td>
                         <Td>
-                          <Button size="xs" bg={BRAND} color="white" onClick={() => openReview(r)}>Review</Button>
+                          <Button size="xs" variant="brand" onClick={() => openReview(r)}>Review</Button>
                         </Td>
                       </Tr>
                     ))}
@@ -214,7 +214,7 @@ export default function SkillRequests() {
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={() => setReviewTarget(null)}>Cancel</Button>
-            <Button bg={BRAND} color="white" isLoading={submitting} onClick={submitReview}>Submit</Button>
+            <Button variant="brand" isLoading={submitting} onClick={submitReview}>Submit</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>

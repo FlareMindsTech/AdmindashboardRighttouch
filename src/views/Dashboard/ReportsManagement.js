@@ -1160,6 +1160,9 @@ export default function ReportsManagement() {
             _hover={{
               bg: activeTab === "reports" ? customColor : `${customColor}10`,
             }}
+            _active={{
+              bg: activeTab === "reports" ? "#004d4d" : "brand.100",
+            }}
             borderRadius="md"
             fontWeight="bold"
             fontSize="xs"
@@ -1176,6 +1179,9 @@ export default function ReportsManagement() {
             borderColor={customColor}
             _hover={{
               bg: activeTab === "ratings" ? customColor : `${customColor}10`,
+            }}
+            _active={{
+              bg: activeTab === "ratings" ? "#004d4d" : "brand.100",
             }}
             borderRadius="md"
             fontWeight="bold"
@@ -1843,6 +1849,10 @@ export default function ReportsManagement() {
                                         bg: "blue.500",
                                         color: "white",
                                       }}
+                                      _active={{
+                                        bg: "blue.600",
+                                        color: "white",
+                                      }}
                                       size="xs"
                                       borderRadius="full"
                                       px={3}
@@ -1905,6 +1915,10 @@ export default function ReportsManagement() {
                                         bg: "blue.500",
                                         color: "white",
                                       }}
+                                      _active={{
+                                        bg: "blue.600",
+                                        color: "white",
+                                      }}
                                       size="xs"
                                       onClick={() => handleViewDetails(item)}
                                     />
@@ -1917,6 +1931,10 @@ export default function ReportsManagement() {
                                       borderColor="orange.500"
                                       _hover={{
                                         bg: "orange.500",
+                                        color: "white",
+                                      }}
+                                      _active={{
+                                        bg: "orange.600",
                                         color: "white",
                                       }}
                                       size="xs"
@@ -1933,6 +1951,10 @@ export default function ReportsManagement() {
                                         bg: "red.500",
                                         color: "white",
                                       }}
+                                      _active={{
+                                        bg: "red.600",
+                                        color: "white",
+                                      }}
                                       size="xs"
                                       onClick={() => handleDeleteClick(item)}
                                     />
@@ -1945,6 +1967,10 @@ export default function ReportsManagement() {
                                       borderColor="purple.500"
                                       _hover={{
                                         bg: "purple.500",
+                                        color: "white",
+                                      }}
+                                      _active={{
+                                        bg: "purple.600",
                                         color: "white",
                                       }}
                                       size="xs"
@@ -2045,6 +2071,7 @@ export default function ReportsManagement() {
                           border="1px"
                           borderColor={customColor}
                           _hover={{ bg: customColor, color: "white" }}
+                          _active={{ bg: "#004d4d", color: "white" }}
                           _disabled={{
                             opacity: 0.5,
                             cursor: "not-allowed",
@@ -2097,6 +2124,7 @@ export default function ReportsManagement() {
                           border="1px"
                           borderColor={customColor}
                           _hover={{ bg: customColor, color: "white" }}
+                          _active={{ bg: "#004d4d", color: "white" }}
                           _disabled={{
                             opacity: 0.5,
                             cursor: "not-allowed",
@@ -2688,6 +2716,9 @@ export default function ReportsManagement() {
                             _hover={{
                               bg: selectedStatusAction === "resolved_no_refund" ? "red.700" : selectedStatusAction === "under_review" ? "blue.700" : "#006666",
                             }}
+                            _active={{
+                              bg: selectedStatusAction === "resolved_no_refund" ? "red.800" : selectedStatusAction === "under_review" ? "blue.800" : "#004d4d",
+                            }}
                             onClick={() => triggerConfirmation("execute")}
                             isLoading={actionLoading}
                             size="md"
@@ -2834,6 +2865,7 @@ export default function ReportsManagement() {
                       color={star <= editRates ? goldColor : "gray.300"}
                       bg="transparent"
                       _hover={{ bg: "transparent", transform: "scale(1.1)" }}
+                      _active={{ bg: "transparent", transform: "scale(0.95)" }}
                       onClick={() => setEditRates(star)}
                     />
                   ))}
@@ -2872,6 +2904,7 @@ export default function ReportsManagement() {
               bg={customColor}
               color="white"
               _hover={{ bg: `${customColor}dd` }}
+              _active={{ bg: "#004d4d" }}
               onClick={handleUpdateRating}
               isLoading={actionLoading}
               size="sm"

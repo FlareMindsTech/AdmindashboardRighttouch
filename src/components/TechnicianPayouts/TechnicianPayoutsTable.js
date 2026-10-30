@@ -16,7 +16,6 @@ import {
   MenuButton,
   MenuList,
   MenuItem,
-  MenuDivider,
   Button,
   Skeleton,
   Center,
@@ -26,6 +25,7 @@ import {
   useColorMode,
   Flex,
   Select,
+  Avatar,
 } from "@chakra-ui/react";
 import {
   FaEllipsisV,
@@ -33,11 +33,11 @@ import {
   FaTimes,
   FaMoneyCheckAlt,
   FaEye,
-  FaUndo,
   FaFileInvoice,
-  FaLock,
   FaCopy,
   FaExclamationCircle,
+  FaUniversity,
+  FaMobileAlt,
 } from "react-icons/fa";
 import PayoutStatusBadge from "./PayoutStatusBadge";
 import { formatInr } from "./FinancialBreakdown";
@@ -45,7 +45,6 @@ import { formatInr } from "./FinancialBreakdown";
 export default function TechnicianPayoutsTable({
   withdrawals = [],
   loading = false,
-  currentUser,
   page = 1,
   totalPages = 1,
   total = 0,
@@ -57,18 +56,14 @@ export default function TechnicianPayoutsTable({
   onRecordTransfer,
   onApprove,
   onReject,
-  onRevert,
-  onResolveReview,
-  onFreezeTechnician,
   onRetry,
 }) {
   const toast = useToast();
   const { colorMode } = useColorMode();
   const isDark = colorMode === "dark";
 
-  const isOwner = currentUser?.role?.toLowerCase() === "owner";
-
   const copyToClipboard = (text, label) => {
+    if (!text) return;
     navigator.clipboard.writeText(text);
     toast({
       title: `${label} copied`,
@@ -111,40 +106,43 @@ export default function TechnicianPayoutsTable({
     return "";
   };
 
+  const getBankDetails = (item) => {
+    return (
+      item?.bankDetails ||
+      item?.technician?.bankDetails ||
+      item?.technicianId?.bankDetails ||
+      {}
+    );
+  };
+
   return (
-    <Box overflowX="auto" borderRadius="16px" border="1px solid" borderColor={isDark ? "gray.700" : "gray.200"}>
+    <Box
+      overflowX="auto"
+      borderRadius="16px"
+      border="1px solid"
+      borderColor={isDark ? "gray.700" : "gray.200"}
+      boxShadow="sm"
+    >
       <Table variant="simple" size="sm" bg={isDark ? "gray.850" : "white"}>
         <Thead bg={isDark ? "gray.800" : "gray.50"}>
           <Tr>
-            <Th py={3.5} fontSize="3xs" textTransform="uppercase" letterSpacing="0.05em">
-              Withdrawal ID
+            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em">
+              Withdrawal Info
             </Th>
-            <Th py={3.5} fontSize="3xs" textTransform="uppercase" letterSpacing="0.05em">
+            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em">
               Technician
             </Th>
-            <Th py={3.5} fontSize="3xs" textTransform="uppercase" letterSpacing="0.05em">
-              Requested Date
+            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em">
+              Net Payable
             </Th>
-            <Th py={3.5} fontSize="3xs" textTransform="uppercase" letterSpacing="0.05em" isNumeric>
-              Gross (₹)
+            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em">
+              Beneficiary Bank / Account
             </Th>
-            <Th py={3.5} fontSize="3xs" textTransform="uppercase" letterSpacing="0.05em" isNumeric>
-              Deductions (₹)
+            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em">
+              Status & UTR
             </Th>
-            <Th py={3.5} fontSize="3xs" textTransform="uppercase" letterSpacing="0.05em" isNumeric>
-              Net Payable (₹)
-            </Th>
-            <Th py={3.5} fontSize="3xs" textTransform="uppercase" letterSpacing="0.05em">
-              Mode
-            </Th>
-            <Th py={3.5} fontSize="3xs" textTransform="uppercase" letterSpacing="0.05em">
-              Status
-            </Th>
-            <Th py={3.5} fontSize="3xs" textTransform="uppercase" letterSpacing="0.05em">
-              Bank Ref / UTR
-            </Th>
-            <Th py={3.5} fontSize="3xs" textTransform="uppercase" letterSpacing="0.05em" textAlign="center">
-              Actions
+            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em" textAlign="center">
+              Quick Actions
             </Th>
           </Tr>
         </Thead>
@@ -153,22 +151,22 @@ export default function TechnicianPayoutsTable({
           {loading ? (
             Array.from({ length: 5 }).map((_, i) => (
               <Tr key={i}>
-                <Td colSpan={10} py={4}>
-                  <Skeleton height="24px" borderRadius="6px" />
+                <Td colSpan={6} py={4}>
+                  <Skeleton height="36px" borderRadius="8px" />
                 </Td>
               </Tr>
             ))
           ) : withdrawals.length === 0 ? (
             <Tr>
-              <Td colSpan={10} py={12} textAlign="center">
+              <Td colSpan={6} py={14} textAlign="center">
                 <Center>
-                  <VStack spacing={2}>
-                    <Icon as={FaExclamationCircle} boxSize={8} color="gray.400" />
-                    <Text fontSize="sm" fontWeight="600" color="gray.600">
-                      No withdrawal requests found for this filter.
+                  <VStack spacing={3}>
+                    <Icon as={FaExclamationCircle} boxSize={10} color="gray.300" />
+                    <Text fontSize="md" fontWeight="700" color="gray.600">
+                      No withdrawal requests found
                     </Text>
-                    <Text fontSize="2xs" color="gray.400">
-                      Adjust your search or filter settings to view records.
+                    <Text fontSize="xs" color="gray.400" maxW="360px">
+                      No records match the current tab and filter criteria. Try clearing search filters or selecting another tab.
                     </Text>
                   </VStack>
                 </Center>
@@ -187,232 +185,343 @@ export default function TechnicianPayoutsTable({
               const techName = getTechName(item);
               const techPhone = getTechPhone(item);
               const techObj = item.technicianId || item.technician || {};
+              const bank = getBankDetails(item);
+              const rawAcc = String(bank?.accountNumber || item?.payoutDestination || "").replace(/\s/g, "");
+              const maskedAcc = rawAcc.length >= 4 ? `••••${rawAcc.slice(-4)}` : rawAcc || "—";
+              const bankName = bank?.bankName || "Bank Account";
+              const ifscCode = bank?.ifscCode || "";
+              const upiId = bank?.upiId || "";
 
               return (
                 <Tr
                   key={id}
-                  _hover={{ bg: isDark ? "gray.750" : "gray.50" }}
+                  _hover={{ bg: isDark ? "gray.750" : "teal.50", transition: "background 0.15s ease" }}
                   transition="background 0.15s ease"
                 >
-                  {/* Withdrawal ID */}
-                  <Td fontWeight="600" fontFamily="mono" fontSize="xs">
-                    <HStack spacing={1}>
-                      <Text
-                        as="span"
-                        color="teal.600"
-                        cursor="pointer"
-                        _hover={{ textDecoration: "underline" }}
-                        onClick={() => onViewDetails && onViewDetails(item)}
-                      >
-                        #{id.length > 8 ? `${id.slice(0, 8)}...` : id}
-                      </Text>
-                      <Tooltip label="Copy ID" hasArrow placement="top">
-                        <IconButton
-                          aria-label="Copy ID"
-                          icon={<FaCopy />}
-                          size="2xs"
-                          variant="ghost"
-                          onClick={() => copyToClipboard(id, "Withdrawal ID")}
-                        />
-                      </Tooltip>
-                    </HStack>
-                    {item.origin === "admin_direct" && (
-                      <Badge colorScheme="purple" fontSize="3xs" mt={0.5}>
-                        ADMIN DIRECT
-                      </Badge>
-                    )}
-                  </Td>
-
-                  {/* Technician */}
-                  <Td>
-                    <Text fontSize="xs" fontWeight="700">
-                      {techName}
-                    </Text>
-                    {techPhone && (
-                      <Text fontSize="3xs" color="gray.500">
-                        {techPhone}
-                      </Text>
-                    )}
-                    {techObj.payoutBlocked && (
-                      <Badge colorScheme="red" fontSize="3xs">
-                        FROZEN
-                      </Badge>
-                    )}
-                  </Td>
-
-                  {/* Requested Date */}
-                  <Td fontSize="xs" color="gray.600" whiteSpace="nowrap">
-                    {item.createdAt ? new Date(item.createdAt).toLocaleDateString("en-IN", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    }) : "N/A"}
-                  </Td>
-
-                  {/* Gross Amount */}
-                  <Td fontSize="xs" fontWeight="600" isNumeric>
-                    {formatInr(grossPaise)}
-                  </Td>
-
-                  {/* Deductions */}
-                  <Td fontSize="xs" color={totalDeductionsPaise > 0 ? "red.500" : "gray.400"} isNumeric>
-                    {totalDeductionsPaise > 0 ? `-${formatInr(totalDeductionsPaise)}` : "—"}
-                  </Td>
-
-                  {/* Net Payable */}
-                  <Td fontSize="xs" fontWeight="800" color="teal.700" isNumeric>
-                    <Badge colorScheme="teal" variant="subtle" fontSize="xs" px={2} py={0.5} borderRadius="md">
-                      {formatInr(netPaise)}
-                    </Badge>
-                  </Td>
-
-                  {/* Payout Mode */}
-                  <Td fontSize="2xs">
-                    <Badge variant="outline" colorScheme="gray" fontSize="3xs">
-                      {item.payoutMode || "NEFT"}
-                    </Badge>
-                  </Td>
-
-                  {/* Status Badge */}
-                  <Td>
-                    <PayoutStatusBadge status={status} size="sm" />
-                  </Td>
-
-                  {/* Bank Ref / UTR */}
-                  <Td fontSize="xs" fontFamily="mono">
-                    {item.utr ? (
+                  {/* Withdrawal Info */}
+                  <Td py={3}>
+                    <VStack align="flex-start" spacing={1}>
                       <HStack spacing={1}>
-                        <Text color="green.700" fontWeight="700">
-                          {item.utr.length > 12 ? `${item.utr.slice(0, 12)}...` : item.utr}
+                        <Text
+                          fontSize="xs"
+                          fontWeight="700"
+                          fontFamily="mono"
+                          color="teal.600"
+                          cursor="pointer"
+                          _hover={{ textDecoration: "underline", color: "teal.800" }}
+                          onClick={() => onViewDetails && onViewDetails(item)}
+                        >
+                          #{id.length > 8 ? id.slice(-8) : id}
                         </Text>
-                        <Tooltip label="Copy UTR" hasArrow placement="top">
+                        <Tooltip label="Copy Withdrawal ID" hasArrow placement="top">
                           <IconButton
-                            aria-label="Copy UTR"
+                            aria-label="Copy ID"
                             icon={<FaCopy />}
                             size="2xs"
                             variant="ghost"
-                            onClick={() => copyToClipboard(item.utr, "UTR")}
+                            color="gray.400"
+                            _hover={{ color: "teal.600" }}
+                            onClick={() => copyToClipboard(id, "Withdrawal ID")}
                           />
                         </Tooltip>
                       </HStack>
-                    ) : status === "approved" ? (
-                      <Text fontSize="3xs" color="blue.600" fontWeight="600">
-                        Awaiting transfer
-                      </Text>
-                    ) : (
-                      <Text fontSize="3xs" color="gray.400">
-                        —
-                      </Text>
-                    )}
+
+                      <HStack spacing={1.5}>
+                        <Badge
+                          fontSize="3xs"
+                          px={1.5}
+                          py={0.5}
+                          borderRadius="4px"
+                          colorScheme={item.origin === "admin_direct" ? "purple" : "gray"}
+                        >
+                          {item.origin === "admin_direct" ? "DIRECT DISPATCH" : "REQUESTED"}
+                        </Badge>
+                        <Text fontSize="3xs" color="gray.500" whiteSpace="nowrap">
+                          {item.createdAt
+                            ? new Date(item.createdAt).toLocaleDateString("en-IN", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              })
+                            : "N/A"}
+                        </Text>
+                      </HStack>
+                    </VStack>
                   </Td>
 
-                  {/* Actions Menu */}
-                  <Td textAlign="center">
-                    <Menu placement="bottom-end">
-                      <MenuButton
-                        as={IconButton}
-                        icon={<FaEllipsisV />}
-                        variant="ghost"
-                        size="xs"
-                        aria-label="Actions"
+                  {/* Technician */}
+                  <Td py={3}>
+                    <HStack spacing={2.5}>
+                      <Avatar
+                        size="sm"
+                        name={techName}
+                        bg="teal.600"
+                        color="white"
+                        fontWeight="700"
+                        fontSize="xs"
                       />
-                      <MenuList fontSize="xs" shadow="lg" borderRadius="10px" py={1}>
-                        <MenuItem icon={<FaEye />} onClick={() => onViewDetails && onViewDetails(item)}>
-                          View Details Drawer
-                        </MenuItem>
-                        {status === "paid" && (
-                          <MenuItem
-                            icon={<FaFileInvoice color="teal" />}
-                            onClick={() => onViewReceipt && onViewReceipt(item)}
-                          >
-                            View Official Receipt
-                          </MenuItem>
+                      <Box>
+                        <HStack spacing={1.5}>
+                          <Text fontSize="xs" fontWeight="700" color={isDark ? "white" : "gray.800"} noOfLines={1}>
+                            {techName}
+                          </Text>
+                          {techObj.payoutBlocked && (
+                            <Badge colorScheme="red" fontSize="3xs" px={1} borderRadius="3px">
+                              FROZEN
+                            </Badge>
+                          )}
+                        </HStack>
+                        {techPhone && (
+                          <HStack spacing={1} color="gray.500" fontSize="3xs">
+                            <Icon as={FaMobileAlt} boxSize={2.5} />
+                            <Text>{techPhone}</Text>
+                            <Tooltip label="Copy Phone Number" hasArrow>
+                              <IconButton
+                                size="2xs"
+                                icon={<FaCopy />}
+                                variant="ghost"
+                                boxSize="14px"
+                                minW="14px"
+                                onClick={() => copyToClipboard(techPhone, "Mobile Number")}
+                              />
+                            </Tooltip>
+                          </HStack>
                         )}
-                        {status === "approved" && (
-                          <MenuItem
-                            icon={<FaFileInvoice color="blue" />}
-                            onClick={() => onViewReceipt && onViewReceipt(item)}
-                          >
-                            View Approval Summary
-                          </MenuItem>
-                        )}
+                      </Box>
+                    </HStack>
+                  </Td>
 
-                        {/* Approved -> Record Bank Transfer */}
-                        {status === "approved" && (
-                          <MenuItem
-                            icon={<FaMoneyCheckAlt color="teal" />}
-                            color="teal.700"
-                            fontWeight="700"
-                            onClick={() => onRecordTransfer && onRecordTransfer(item)}
-                          >
-                            Record Bank Transfer (Mark Paid)
-                          </MenuItem>
+                  {/* Net Payable */}
+                  <Td py={3}>
+                    <VStack align="flex-start" spacing={0.5}>
+                      <Badge
+                        colorScheme="teal"
+                        variant="solid"
+                        bg="teal.600"
+                        fontSize="xs"
+                        fontWeight="800"
+                        px={2.5}
+                        py={0.5}
+                        borderRadius="6px"
+                        boxShadow="0 1px 3px rgba(0, 128, 128, 0.25)"
+                      >
+                        {formatInr(netPaise)}
+                      </Badge>
+                      <HStack spacing={1.5} fontSize="3xs" color="gray.500">
+                        <Text>Gross: {formatInr(grossPaise)}</Text>
+                        {totalDeductionsPaise > 0 && (
+                          <Text color="red.500" fontWeight="600">
+                            • Ded: -{formatInr(totalDeductionsPaise)}
+                          </Text>
                         )}
+                      </HStack>
+                    </VStack>
+                  </Td>
 
-                        {/* Pending / Requested -> Approve */}
-                        {(status === "pending" || status === "requested") && (
-                          <MenuItem
-                            icon={<FaCheck color="green" />}
-                            color="green.700"
-                            fontWeight="600"
+                  {/* Beneficiary Bank / Account */}
+                  <Td py={3}>
+                    <VStack align="flex-start" spacing={0.5}>
+                      <HStack spacing={1.5}>
+                        <Icon as={FaUniversity} boxSize={3} color="blue.500" />
+                        <Text fontSize="xs" fontWeight="700" color={isDark ? "gray.200" : "gray.800"} noOfLines={1}>
+                          {bankName}
+                        </Text>
+                        <Badge variant="outline" colorScheme="blue" fontSize="3xs" px={1} py={0} borderRadius="3px">
+                          {item.payoutMode || "NEFT"}
+                        </Badge>
+                      </HStack>
+
+                      <HStack spacing={1.5} fontSize="3xs">
+                        <Text fontFamily="mono" color="gray.600" fontWeight="600">
+                          {maskedAcc}
+                        </Text>
+                        {ifscCode && (
+                          <Text fontFamily="mono" color="gray.400">
+                            ({ifscCode})
+                          </Text>
+                        )}
+                        {rawAcc && (
+                          <Tooltip label="Copy Account Number" hasArrow>
+                            <IconButton
+                              size="2xs"
+                              icon={<FaCopy />}
+                              variant="ghost"
+                              boxSize="14px"
+                              minW="14px"
+                              onClick={() => copyToClipboard(rawAcc, "Account Number")}
+                            />
+                          </Tooltip>
+                        )}
+                      </HStack>
+
+                      {upiId && (
+                        <Text fontSize="3xs" color="purple.600" fontFamily="mono" noOfLines={1}>
+                          UPI: {upiId}
+                        </Text>
+                      )}
+                    </VStack>
+                  </Td>
+
+                  {/* Status & UTR */}
+                  <Td py={3}>
+                    <VStack align="flex-start" spacing={1}>
+                      <PayoutStatusBadge status={status} size="sm" />
+                      {item.utr ? (
+                        <HStack spacing={1}>
+                          <Text fontSize="3xs" fontFamily="mono" color="green.700" fontWeight="700">
+                            UTR: {item.utr.length > 14 ? `${item.utr.slice(0, 14)}...` : item.utr}
+                          </Text>
+                          <Tooltip label="Copy Bank UTR" hasArrow placement="top">
+                            <IconButton
+                              aria-label="Copy UTR"
+                              icon={<FaCopy />}
+                              size="2xs"
+                              variant="ghost"
+                              boxSize="14px"
+                              minW="14px"
+                              color="green.600"
+                              onClick={() => copyToClipboard(item.utr, "Bank UTR")}
+                            />
+                          </Tooltip>
+                        </HStack>
+                      ) : status === "approved" ? (
+                        <Badge colorScheme="blue" variant="subtle" fontSize="3xs" px={1.5} py={0.5} borderRadius="4px">
+                          Ready for Bank Transfer
+                        </Badge>
+                      ) : null}
+                    </VStack>
+                  </Td>
+
+                  {/* Quick Action Buttons */}
+                  <Td py={3} textAlign="center">
+                    <HStack spacing={1.5} justify="center">
+                      {/* Approved -> Direct Pay / Transfer Button */}
+                      {status === "approved" && (
+                        <Button
+                          size="xs"
+                          colorScheme="teal"
+                          bg="teal.600"
+                          _hover={{ bg: "teal.700", transform: "translateY(-1px)" }}
+                          _active={{ bg: "teal.800" }}
+                          leftIcon={<FaMoneyCheckAlt />}
+                          fontWeight="bold"
+                          borderRadius="8px"
+                          boxShadow="0 2px 6px rgba(0, 128, 128, 0.3)"
+                          onClick={() => onRecordTransfer && onRecordTransfer(item)}
+                        >
+                          Pay / Transfer
+                        </Button>
+                      )}
+
+                      {/* Requested or Pending -> Direct Approve Button & Reject */}
+                      {(status === "pending" || status === "requested") && (
+                        <>
+                          <Button
+                            size="xs"
+                            colorScheme="green"
+                            bg="green.600"
+                            _hover={{ bg: "green.700", transform: "translateY(-1px)" }}
+                            _active={{ bg: "green.800" }}
+                            leftIcon={<FaCheck />}
+                            fontWeight="bold"
+                            borderRadius="8px"
+                            boxShadow="0 2px 6px rgba(16, 185, 129, 0.3)"
                             onClick={() => onApprove && onApprove(item)}
                           >
-                            Approve Withdrawal
-                          </MenuItem>
-                        )}
+                            Approve
+                          </Button>
+                          <Tooltip label="Reject Request" hasArrow>
+                            <IconButton
+                              size="xs"
+                              colorScheme="red"
+                              variant="outline"
+                              borderColor="red.200"
+                              _hover={{ bg: "red.50" }}
+                              icon={<FaTimes />}
+                              aria-label="Reject Request"
+                              borderRadius="8px"
+                              onClick={() => onReject && onReject(item)}
+                            />
+                          </Tooltip>
+                        </>
+                      )}
 
-                        {/* Pending / Requested / Approved -> Reject */}
-                        {(status === "pending" || status === "requested" || status === "approved") && (
-                          <MenuItem
-                            icon={<FaTimes color="red" />}
-                            color="red.600"
-                            onClick={() => onReject && onReject(item)}
-                          >
-                            Reject Withdrawal
-                          </MenuItem>
-                        )}
+                      {/* Paid -> Quick Receipt Button */}
+                      {status === "paid" && (
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          colorScheme="teal"
+                          borderColor="teal.300"
+                          _hover={{ bg: "teal.50" }}
+                          leftIcon={<FaFileInvoice />}
+                          fontWeight="600"
+                          borderRadius="8px"
+                          onClick={() => onViewReceipt && onViewReceipt(item)}
+                        >
+                          Receipt
+                        </Button>
+                      )}
 
-                        {/* Manual Review -> Resolve */}
-                        {status === "manual_review" && (
-                          <MenuItem
-                            icon={<FaExclamationCircle color="purple" />}
-                            color="purple.700"
-                            fontWeight="600"
-                            onClick={() => onResolveReview && onResolveReview(item)}
-                          >
-                            Resolve Manual Review
+                      {/* Secondary Options Menu */}
+                      <Menu placement="bottom-end">
+                        <Tooltip label="More Options" hasArrow>
+                          <MenuButton
+                            as={IconButton}
+                            icon={<FaEllipsisV />}
+                            variant="ghost"
+                            size="xs"
+                            borderRadius="8px"
+                            aria-label="More Options"
+                          />
+                        </Tooltip>
+                        <MenuList fontSize="xs" shadow="xl" borderRadius="12px" py={1} minW="180px">
+                          <MenuItem icon={<FaEye />} onClick={() => onViewDetails && onViewDetails(item)}>
+                            View Full Details Drawer
                           </MenuItem>
-                        )}
-
-                        {/* Paid -> Revert (Owner only) */}
-                        {status === "paid" && isOwner && (
-                          <>
-                            <MenuDivider />
+                          {status === "paid" && (
                             <MenuItem
-                              icon={<FaUndo color="red" />}
-                              color="red.700"
+                              icon={<FaFileInvoice color="teal" />}
+                              onClick={() => onViewReceipt && onViewReceipt(item)}
+                            >
+                              View Official Receipt
+                            </MenuItem>
+                          )}
+                          {status === "approved" && (
+                            <MenuItem
+                              icon={<FaMoneyCheckAlt color="teal" />}
+                              color="teal.700"
                               fontWeight="700"
-                              onClick={() => onRevert && onRevert(item)}
+                              onClick={() => onRecordTransfer && onRecordTransfer(item)}
                             >
-                              Revert Recorded Payment (Owner)
+                              Record Bank Transfer (Mark Paid)
                             </MenuItem>
-                          </>
-                        )}
-
-                        {/* Freeze/Unfreeze Technician Payouts */}
-                        {techObj._id && (
-                          <>
-                            <MenuDivider />
+                          )}
+                          {(status === "pending" || status === "requested") && (
                             <MenuItem
-                              icon={<FaLock color={techObj.payoutBlocked ? "green" : "red"} />}
-                              onClick={() => onFreezeTechnician && onFreezeTechnician(techObj)}
+                              icon={<FaCheck color="green" />}
+                              color="green.700"
+                              fontWeight="600"
+                              onClick={() => onApprove && onApprove(item)}
                             >
-                              {techObj.payoutBlocked ? "Unfreeze Technician Payouts" : "Freeze Technician Payouts"}
+                              Approve Request
                             </MenuItem>
-                          </>
-                        )}
-                      </MenuList>
-                    </Menu>
+                          )}
+                          {(status === "pending" || status === "requested") && (
+                            <MenuItem
+                              icon={<FaTimes color="red" />}
+                              color="red.600"
+                              onClick={() => onReject && onReject(item)}
+                            >
+                              Reject Request
+                            </MenuItem>
+                          )}
+                          <MenuItem icon={<FaCopy />} onClick={() => copyToClipboard(id, "Withdrawal ID")}>
+                            Copy Withdrawal ID
+                          </MenuItem>
+                        </MenuList>
+                      </Menu>
+                    </HStack>
                   </Td>
                 </Tr>
               );
@@ -421,11 +530,11 @@ export default function TechnicianPayoutsTable({
         </Tbody>
       </Table>
 
-      {/* Pagination Footer */}
-      {!loading && withdrawals.length > 0 && (
+      {/* Pagination Bar */}
+      {total > 0 && (
         <Flex
-          px={6}
-          py={3}
+          px={5}
+          py={3.5}
           align="center"
           justify="space-between"
           borderTop="1px solid"
@@ -436,14 +545,14 @@ export default function TechnicianPayoutsTable({
         >
           <HStack spacing={2} fontSize="xs" color="gray.500">
             <Text>
-              Showing {withdrawals.length} of {total.toLocaleString()} total withdrawals
+              Showing <strong>{withdrawals.length}</strong> of <strong>{total.toLocaleString()}</strong> total withdrawals
             </Text>
             <Text>•</Text>
             <HStack spacing={1}>
               <Text>Rows per page:</Text>
               <Select
                 size="xs"
-                w="65px"
+                w="68px"
                 borderRadius="6px"
                 value={limit}
                 onChange={(e) => onLimitChange && onLimitChange(Number(e.target.value))}
@@ -465,7 +574,7 @@ export default function TechnicianPayoutsTable({
             >
               Previous
             </Button>
-            <Text fontSize="xs" fontWeight="600" px={2}>
+            <Text fontSize="xs" fontWeight="700" px={2} color={isDark ? "white" : "gray.700"}>
               Page {page} of {totalPages || 1}
             </Text>
             <Button

@@ -21,28 +21,30 @@ import {
   syncCountsFromStorage,
   COUNTS_STORAGE_KEY,
 } from "store/slices/notificationsSlice";
-import { selectIsAuthenticated } from "store/slices/authSlice";
+import { selectAuthInitialized, selectIsOwner } from "store/slices/authSlice";
 
-const COUNTS_TICK_MS = 10 * 1000;
-const INBOX_COUNT_EVERY_N_TICKS = 3;
+const COUNTS_TICK_MS = 30 * 1000;
+const INBOX_COUNT_EVERY_N_TICKS = 2;
 
 export const useNotificationCoordinator = () => {
   const dispatch = useAppDispatch();
-  const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const authInitialized = useAppSelector(selectAuthInitialized);
+  const isOwner = useAppSelector(selectIsOwner);
+  const canPoll = authInitialized && isOwner;
   const tickRef = useRef(0);
 
   const refreshCounts = useCallback(() => {
-    if (!isAuthenticated) return;
+    if (!canPoll) return;
     dispatch(fetchModuleCounts());
-  }, [dispatch, isAuthenticated]);
+  }, [dispatch, canPoll]);
 
   const refreshInboxCount = useCallback(() => {
-    if (!isAuthenticated) return;
+    if (!canPoll) return;
     dispatch(fetchInboxUnreadCount());
-  }, [dispatch, isAuthenticated]);
+  }, [dispatch, canPoll]);
 
   useEffect(() => {
-    if (!isAuthenticated) return undefined;
+    if (!canPoll) return undefined;
 
     // Immediate refresh on session start (both hooks fetched on mount).
     tickRef.current = 0;
@@ -74,7 +76,9 @@ export const useNotificationCoordinator = () => {
 
     // In-tab legacy event (dispatched after mark-read): refresh from server.
     const handleCustomEvent = () => {
-      refreshCounts();
+      setTimeout(() => {
+        refreshCounts();
+      }, 0);
     };
 
     // Window refocus & tab visibility refresh
@@ -106,7 +110,7 @@ export const useNotificationCoordinator = () => {
         document.removeEventListener("visibilitychange", handleVisibilityChange);
       }
     };
-  }, [dispatch, isAuthenticated, refreshCounts, refreshInboxCount]);
+  }, [dispatch, canPoll, refreshCounts, refreshInboxCount]);
 
   return { refreshCounts, refreshInboxCount };
 };

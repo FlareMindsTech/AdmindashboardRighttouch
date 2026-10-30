@@ -62,8 +62,21 @@ import {
   getSkeuomorphicIconBoxStyle,
   skeuomorphicIconFilter,
 } from "components/common/skeuomorphicStyles";
-import DistrictMap, { TAMIL_NADU_CITIES, generateCircularGeoJSON } from "components/Map/DistrictMap.js";
+import { generateCircularGeoJSON } from "components/Map/DistrictMap.js";
 import ZoneMap from "components/Map/ZoneMap.js";
+import LocationCombobox from "components/common/LocationCombobox";
+import DistrictPickerCard, {
+  QuickPickChips,
+} from "components/common/DistrictPickerCard";
+import {
+  TAMIL_NADU_CITIES,
+  TAMIL_NADU_DISTRICTS,
+  findTnDistrict,
+  findTnCity,
+  findTnDistrictForRecord,
+  getDistrictCities,
+  getDistrictForCity,
+} from "data/tamilNaduLocations";
 import {
   isPolygonDraftDirty,
   confirmIfDirty,
@@ -84,23 +97,17 @@ import {
     MdLink,
     MdRefresh,
     MdLocationOn,
-    MdPlace,
     MdCheckCircle,
     MdPersonAdd,
     MdApartment,
     MdClear,
     MdSearch,
     MdFilterList,
-    MdCheckCircleOutline,
     MdErrorOutline,
     MdSecurity,
     MdSpeed,
     MdRadar,
     MdVerified,
-    MdRule,
-    MdLayers,
-    MdReportProblem,
-    MdHistory,
     MdAccountTree,
     MdAnalytics,
     MdGpsFixed,
@@ -253,6 +260,24 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const [isDistrictModalOpen, setIsDistrictModalOpen] = useState(false);
     const [isEditingDistrict, setIsEditingDistrict] = useState(false);
     const [selectedDistrict, setSelectedDistrict] = useState(null);
+    const [districtTnName, setDistrictTnName] = useState("");
+    const [isLocatingHub, setIsLocatingHub] = useState(false);
+    const districtHubCities = useMemo(
+      () => (districtTnName ? getDistrictCities(districtTnName) : []),
+      [districtTnName]
+    );
+    const districtHubOptions = useMemo(
+      () =>
+        districtHubCities.map((city) => ({
+          value: city.name,
+          label: city.name,
+          description: city.district,
+          badge: city.code,
+          keywords: `${city.name} ${city.district} ${city.code}`,
+          city,
+        })),
+      [districtHubCities]
+    );
     const initialDistrictForm = {
       name: "",
       city: "",
@@ -294,6 +319,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const [selectedZone, setSelectedZone] = useState(null);
     const initialForm = {
       operationalCityId: "",
+      city: "",
       name: "",
       zoneCode: "",
       description: "",
@@ -301,6 +327,46 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       polygonCoordinates: "",
     };
     const [formData, setFormData] = useState(initialForm);
+    const [zoneCityFilterMode, setZoneCityFilterMode] = useState("district");
+    const [isLocatingZoneCity, setIsLocatingZoneCity] = useState(false);
+    const zoneCityComboRef = useRef(null);
+    const zoneParentDistrict = useMemo(
+      () =>
+        districts.find(
+          (district) =>
+            String(district._id) === String(formData.operationalCityId)
+        ) || null,
+      [districts, formData.operationalCityId]
+    );
+    const zoneParentTnDistrict = useMemo(
+      () => findTnDistrictForRecord(zoneParentDistrict),
+      [zoneParentDistrict]
+    );
+    const zoneDistrictCities = useMemo(
+      () =>
+        zoneParentDistrict
+          ? getDistrictCities(
+              zoneParentTnDistrict?.name ||
+                zoneParentDistrict.city ||
+                zoneParentDistrict.name
+            )
+          : [],
+      [zoneParentDistrict, zoneParentTnDistrict]
+    );
+    const zoneCityOptions = useMemo(
+      () =>
+        zoneCityFilterMode === "district" && zoneParentDistrict
+          ? zoneDistrictCities
+          : TAMIL_NADU_CITIES,
+      [zoneCityFilterMode, zoneDistrictCities, zoneParentDistrict]
+    );
+    const isZoneCityScoped =
+      zoneCityFilterMode === "district" && Boolean(zoneParentDistrict);
+    const zoneCityScopeName =
+      zoneParentTnDistrict?.name ||
+      zoneParentDistrict?.city ||
+      zoneParentDistrict?.name ||
+      "";
     // F-02D: same polygon-draft guard for the micro-zone modal.
     const zoneFormSnapshot = useRef("");
     const zoneModalDirty =
@@ -310,6 +376,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const handleCloseZoneModal = () => {
       if (!confirmIfDirty(zoneModalDirty, "You have unsaved zone boundary changes. Close without saving?")) return;
       zoneFormSnapshot.current = "";
+      setZoneCityFilterMode("district");
       setIsModalOpen(false);
     };
 
@@ -493,6 +560,65 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       "&:hover::-webkit-scrollbar-thumb": { background: "#94a3b8" },
     };
 
+    const modalContentProps = {
+      bg: "white",
+      borderRadius: "16px",
+      maxH: "90vh",
+      overflow: "hidden",
+      boxShadow: "2xl",
+      zIndex: 1401,
+    };
+
+    const modalHeaderProps = {
+      bg: "white",
+      color: BRAND,
+      pl: 6,
+      pr: 12,
+      pt: 4,
+      pb: 3,
+      borderBottom: "1px solid",
+      borderColor: "gray.100",
+    };
+
+    const modalBodyProps = {
+      bg: "gray.50",
+      px: 6,
+      py: 4,
+      overflowY: "auto",
+      css: globalScrollbarStyles,
+    };
+
+    const modalFooterProps = {
+      bg: "white",
+      borderTop: "1px solid",
+      borderColor: "gray.100",
+      px: 6,
+      py: 3,
+    };
+
+    const getTechPermissionDistricts = (tech) => {
+      const seen = new Set();
+      return [...(tech?.enabledDistrictIds || []), ...(tech?.allowedCityIds || [])].filter((d) => {
+        const id = String(d?._id || d?.districtId || d?.id || d || "");
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+    };
+
+    const activeServiceCountByZone = useMemo(() => {
+      const counts = new Map();
+      (mappings || []).forEach((mapping) => {
+        if (mapping?.active !== true) return;
+        const rawZone = mapping.zoneId ?? mapping.cityZoneId;
+        const zoneId = rawZone && typeof rawZone === "object" ? rawZone._id || rawZone.id : rawZone;
+        if (!zoneId) return;
+        const key = String(zoneId);
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      return counts;
+    }, [mappings]);
+
     const stats = {
       totalDistricts: districts.length,
       activeDistricts: districts.filter((d) => d.active !== false && d.isActive !== false).length,
@@ -656,6 +782,12 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
     const isDistrictServiceActive = (dist) => {
       if (!dist) return false;
+      // A district with sub-zones is active when at least one sub-zone is
+      // active. isDistrictEnabled is the district-default fallback and must
+      // not mask zone-level overrides returned by the detail endpoint.
+      if (Array.isArray(dist.zones) && dist.zones.length > 0) {
+        return dist.zones.some((z) => isZoneServiceActive(z));
+      }
       if (dist.isDistrictEnabled === false) return false;
       if (dist.isDistrictEnabled === true) return true;
       if (dist.status === "DISABLED") return false;
@@ -668,14 +800,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       if (dist.isServiceEnabled === true) return true;
       if (dist.isAvailable === false) return false;
       if (dist.isAvailable === true) return true;
-      if (Array.isArray(dist.zones) && dist.zones.length > 0) {
-        return dist.zones.some((z) => isZoneServiceActive(z));
-      }
       if (typeof dist.activeZonesCount === "number" && dist.activeZonesCount > 0) {
         return true;
-      }
-      if (typeof dist.activeZonesCount === "number" && dist.activeZonesCount === 0 && Array.isArray(dist.zones) && dist.zones.length > 0) {
-        return false;
       }
       return dist.isDistrictEnabled !== false && dist.status !== "DISABLED" && dist.enabled !== false;
     };
@@ -1000,7 +1126,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setConfirmConfig({
         type: "CLEAR_ALL",
         title: "Clear All Service Mappings?",
-        description: `This will disable ALL service zone mappings for ${selectedServiceDetail?.service?.serviceName} in ${districtObj?.name}. Customers across all zones in this district will no longer receive this service.`,
+        description: `This will disable ALL service mappings and zone overrides for ${selectedServiceDetail?.service?.serviceName} in ${districtObj?.name}. Customers across all zones in this district will no longer receive this service. This is not a reset — re-enable zones explicitly afterward.`,
         payload: {
           serviceId: resolveServiceId(selectedServiceDetail?.service),
           districtId: resolveDetailDistrictId(districtObj),
@@ -1114,7 +1240,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     return zones.filter((zone) => {
       const name = (zone.name || "").toLowerCase();
       const code = (zone.zoneCode || "").toLowerCase();
-      const matchesSearch = name.includes(search) || code.includes(search);
+      const city = (zone.city || "").toLowerCase();
+      const matchesSearch = name.includes(search) || code.includes(search) || city.includes(search);
 
       if (selectedDistrictFilter !== "all") {
         const ref = zone.operationalCityId ?? zone.districtId ?? null;
@@ -1133,19 +1260,19 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         const city = (t.city || t.primaryCityId?.name || "").toLowerCase();
         const matchesSearch = name.includes(search) || phone.includes(search) || city.includes(search);
 
-        // District filter: check primary district and additional permitted districts
+        // District filter uses explicit permission cache only. Registration
+        // primary district is display metadata and must not imply coverage.
         let matchesDistrict = true;
+        const allowedDistIds = getTechPermissionDistricts(t).map((d) =>
+          String(d?._id || d?.districtId || d?.id || d)
+        );
         if (selectedDistrictFilter !== "all") {
-          const primaryId = String(t.primaryCityId?._id || t.primaryCityId || "");
-          const allowedDistIds = (t.allowedDistricts || t.permittedDistricts || t.districtPermissions || t.secondaryDistricts || []).map((d) =>
-            String(d._id || d.districtId || d.id || d)
-          );
-          matchesDistrict = primaryId === selectedDistrictFilter || allowedDistIds.includes(selectedDistrictFilter);
+          matchesDistrict = allowedDistIds.includes(String(selectedDistrictFilter));
         }
 
         // Permission type filter
         let matchesPermType = true;
-        const permCount = (t.allowedDistricts || t.permittedDistricts || t.districtPermissions || t.secondaryDistricts || []).length;
+        const permCount = allowedDistIds.length;
         if (permissionFilter === "multi_district") {
           matchesPermType = permCount > 0;
         } else if (permissionFilter === "single_district") {
@@ -1215,28 +1342,141 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       return `${cityName} Range ${counter}`;
     };
 
+    const isTnDistrictConfigured = (tnDistrict, ignoreId = null) =>
+      !tnDistrict
+        ? false
+        : (districts || []).some((district) => {
+            if (ignoreId != null && String(district._id) === String(ignoreId)) {
+              return false;
+            }
+            return findTnDistrictForRecord(district)?.name === tnDistrict.name;
+          });
+
+    const applyHubCity = (city) => {
+      if (!city) return;
+      const polygon = generateCircularGeoJSON(city.lat, city.lng, 10);
+      setDistrictModalError("");
+      setDistrictFormData((prev) => ({
+        ...prev,
+        city: city.name,
+        code: prev.code || city.code,
+        polygonCoordinates: JSON.stringify(polygon, null, 2),
+      }));
+    };
+
+    const geocodeHub = async (value) => {
+      const query = String(value || "").trim();
+      if (!query) return;
+      const localCity =
+        findTnCity(query, districtTnName) || findTnCity(query);
+      if (localCity) {
+        applyHubCity(localCity);
+        return;
+      }
+
+      setIsLocatingHub(true);
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=en&q=${encodeURIComponent(
+            `${query}, Tamil Nadu, India`
+          )}`
+        );
+        const data = await response.json();
+        const result = Array.isArray(data) ? data[0] : null;
+        if (!result) {
+          toast({
+            title: "Location not found",
+            description: `Could not locate "${query}" in Tamil Nadu.`,
+            status: "warning",
+            duration: 3500,
+            isClosable: true,
+          });
+          return;
+        }
+        const lat = Number(result.lat);
+        const lng = Number(result.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        const polygon = generateCircularGeoJSON(lat, lng, 10);
+        setDistrictModalError("");
+        setDistrictFormData((prev) => ({
+          ...prev,
+          city: query,
+          polygonCoordinates: JSON.stringify(polygon, null, 2),
+        }));
+      } catch (error) {
+        toast({
+          title: "Location lookup failed",
+          description: "OpenStreetMap could not be reached. Try a preset city.",
+          status: "error",
+          duration: 4000,
+          isClosable: true,
+        });
+      } finally {
+        setIsLocatingHub(false);
+      }
+    };
+
+    const handlePickTnDistrict = (districtName) => {
+      const tnDistrict = findTnDistrict(districtName);
+      if (!tnDistrict) return;
+      const polygon = generateCircularGeoJSON(tnDistrict.lat, tnDistrict.lng, 10);
+      const isSameDistrict =
+        isEditingDistrict && districtTnName === tnDistrict.name;
+      const otherDistricts =
+        isEditingDistrict && selectedDistrict
+          ? (districts || []).filter(
+              (district) =>
+                String(district._id) !== String(selectedDistrict._id)
+            )
+          : districts;
+      setDistrictModalError("");
+      setDistrictTnName(tnDistrict.name);
+      setDistrictFormData((prev) => ({
+        ...prev,
+        name: isSameDistrict
+          ? prev.name
+          : getAvailableDistrictName(tnDistrict.name, otherDistricts),
+        city: tnDistrict.name,
+        state: "Tamil Nadu",
+        country: "India",
+        code: tnDistrict.code,
+        polygonCoordinates: JSON.stringify(polygon, null, 2),
+      }));
+    };
+
     // District Handlers
     const handleOpenCreateDistrict = () => {
       setIsEditingDistrict(false);
       setSelectedDistrict(null);
       setDistrictModalError("");
+      setIsLocatingHub(false);
 
-      // Find first city not already in existing districts to prevent duplicate errors
-      const existingNames = new Set((districts || []).map((d) => (d.city || d.name || "").toLowerCase().trim()));
-      const defaultCity = TAMIL_NADU_CITIES.find((c) => !existingNames.has(c.name.toLowerCase().trim())) || TAMIL_NADU_CITIES[0];
-      const defaultPoly = defaultCity ? generateCircularGeoJSON(defaultCity.lat, defaultCity.lng, 10) : null;
-      const generatedName = defaultCity ? getAvailableDistrictName(defaultCity.name, districts) : "";
+      const defaultDistrict =
+        TAMIL_NADU_DISTRICTS.find(
+          (district) => !isTnDistrictConfigured(district)
+        ) || TAMIL_NADU_DISTRICTS[0];
+      const defaultPoly = defaultDistrict
+        ? generateCircularGeoJSON(defaultDistrict.lat, defaultDistrict.lng, 10)
+        : null;
+      const generatedName = defaultDistrict
+        ? getAvailableDistrictName(defaultDistrict.name, districts)
+        : "";
 
+      setDistrictTnName(defaultDistrict ? defaultDistrict.name : "");
       setDistrictFormData({
         ...initialDistrictForm,
         name: generatedName,
-        city: defaultCity ? defaultCity.name : "",
+        city: defaultDistrict ? defaultDistrict.name : "",
         state: "Tamil Nadu",
         country: "India",
-        code: defaultCity ? defaultCity.code : "",
-        polygonCoordinates: defaultPoly ? JSON.stringify(defaultPoly, null, 2) : "",
+        code: defaultDistrict ? defaultDistrict.code : "",
+        polygonCoordinates: defaultPoly
+          ? JSON.stringify(defaultPoly, null, 2)
+          : "",
       });
-      districtFormSnapshot.current = defaultPoly ? JSON.stringify(defaultPoly, null, 2) : "";
+      districtFormSnapshot.current = defaultPoly
+        ? JSON.stringify(defaultPoly, null, 2)
+        : "";
       setIsDistrictModalOpen(true);
     };
 
@@ -1244,6 +1484,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setIsEditingDistrict(true);
       setSelectedDistrict(dist);
       setDistrictModalError("");
+      setIsLocatingHub(false);
+      const matchedTnDistrict = findTnDistrictForRecord(dist);
+      setDistrictTnName(matchedTnDistrict?.name || "");
       let polyStr = "";
       if (dist.polygon && typeof dist.polygon === "object") {
         polyStr = JSON.stringify(dist.polygon, null, 2);
@@ -1251,7 +1494,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setDistrictFormData({
         name: dist.name || "",
         city: dist.city || "",
-        state: dist.state || "",
+        state: dist.state || "Tamil Nadu",
         country: dist.country || "India",
         code: dist.code || "",
         active: dist.active !== false && dist.isActive !== false,
@@ -1441,16 +1684,21 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       if (techPermissions?.primaryDistrict && typeof techPermissions.primaryDistrict === "object") {
         return techPermissions.primaryDistrict;
       }
-      const pId =
-        (typeof techPermissions?.primaryDistrict === "string" ? techPermissions.primaryDistrict : null) ||
-        selectedTechForPermission?.primaryCityId?._id ||
-        selectedTechForPermission?.primaryCityId;
-      if (pId) {
-        const match = districts.find((d) => String(d._id) === String(pId));
+      const primaryRef =
+        techPermissions?.primaryDistrict ||
+        selectedTechForPermission?.primaryDistrictId ||
+        selectedTechForPermission?.primaryCityId ||
+        null;
+      const primaryRefId =
+        typeof primaryRef === "string" ? primaryRef : primaryRef?._id || primaryRef?.id || null;
+      if (primaryRefId) {
+        const match = districts.find((d) => String(d._id) === String(primaryRefId));
         if (match) return match;
+        if (typeof primaryRef === "object") return primaryRef;
       }
       const cityName =
         selectedTechForPermission?.city ||
+        selectedTechForPermission?.primaryDistrictId?.name ||
         selectedTechForPermission?.primaryCityId?.name ||
         techPermissions?.primaryDistrict?.name ||
         techPermissions?.primaryDistrict?.city;
@@ -1462,19 +1710,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           return dCity === cleanCity || dName === cleanCity || dName.includes(cleanCity);
         });
         if (match) return match;
-      }
-      if (techZonePermissions?.groupedZonesByDistrict) {
-        const permittedGroups = Object.values(techZonePermissions.groupedZonesByDistrict).filter((g) => g.hasDistrictPermission);
-        if (permittedGroups.length > 0) {
-          const groupDistId = permittedGroups[0].districtId;
-          const match = districts.find((d) => String(d._id) === String(groupDistId));
-          if (match) return match;
-          return {
-            _id: groupDistId,
-            name: permittedGroups[0].districtName || "Operational Range",
-            city: permittedGroups[0].districtName?.replace(/Operational Range/i, "").trim() || "Base Hub",
-          };
-        }
       }
       return null;
     };
@@ -1494,7 +1729,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           : (Array.isArray(rawRes?.permissions)
             ? rawRes.permissions
             : (Array.isArray(rawRes) ? rawRes : []));
-        const primary = rawRes?.primaryDistrict || tech?.primaryCityId || null;
+        const primary = rawRes?.primaryDistrict || tech?.primaryDistrictId || tech?.primaryCityId || null;
         const allowedIds = Array.isArray(rawRes?.allowedDistrictIds) ? rawRes.allowedDistrictIds : [];
 
         setTechPermissions({
@@ -1525,7 +1760,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         : (Array.isArray(rawRes?.permissions)
           ? rawRes.permissions
           : (Array.isArray(rawRes) ? rawRes : []));
-      const primary = rawRes?.primaryDistrict || selectedTechForPermission?.primaryCityId || null;
+      const primary = rawRes?.primaryDistrict || selectedTechForPermission?.primaryDistrictId || selectedTechForPermission?.primaryCityId || null;
       const allowedIds = Array.isArray(rawRes?.allowedDistrictIds) ? rawRes.allowedDistrictIds : [];
 
       setTechPermissions({
@@ -1538,36 +1773,18 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setTechZonePermissions(zoneRes || null);
     };
 
-    const handleGrantDistrictPermission = async () => {
-      if (!selectedDistrictToGrant || !selectedTechForPermission) return;
-
-      const resolvedPrimary = getResolvedPrimaryDistrict();
-      const primaryId = resolvedPrimary?._id ? String(resolvedPrimary._id) : "";
-      const primaryCity = (resolvedPrimary?.city || resolvedPrimary?.name || "").toLowerCase().trim();
+    const handleGrantDistrictPermission = async (districtIdOverride) => {
+      const districtId = typeof districtIdOverride === "string" ? districtIdOverride : selectedDistrictToGrant;
+      if (!districtId || !selectedTechForPermission) return;
 
       const currentAdditional = techPermissions?.permissions || techPermissions?.additionalPermissions || [];
       const existingPermDistIds = currentAdditional.map((p) =>
         String(p.districtId?._id || p.districtId?.id || p.districtId || "")
       );
 
-      const targetDist = districts.find((d) => String(d._id) === String(selectedDistrictToGrant));
-      const targetCity = (targetDist?.city || targetDist?.name || "").toLowerCase().trim();
+      const targetDist = districts.find((d) => String(d._id) === String(districtId));
 
-      if (
-        (primaryId && String(selectedDistrictToGrant) === primaryId) ||
-        (primaryCity && targetCity && primaryCity === targetCity)
-      ) {
-        toast({
-          title: "Primary Base District",
-          description: `"${targetDist?.name || 'This district'}" is already the technician's primary registered base hub. It is always enabled by default.`,
-          status: "info",
-          duration: 4000,
-          isClosable: true,
-        });
-        return;
-      }
-
-      if (existingPermDistIds.includes(String(selectedDistrictToGrant))) {
+      if (existingPermDistIds.includes(String(districtId))) {
         toast({
           title: "Permission Already Exists",
           description: `District permission for "${targetDist?.name || 'this district'}" is already granted to this technician.`,
@@ -1603,10 +1820,10 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
       try {
         setIsSubmitting(true);
-        await addTechnicianDistrictPermission(selectedTechForPermission._id, selectedDistrictToGrant);
+        await addTechnicianDistrictPermission(selectedTechForPermission._id, districtId);
         toast({
           title: "Permission Granted",
-          description: `Additional district access granted for "${targetDist?.name || 'district'}".`,
+          description: `District access granted for "${targetDist?.name || 'district'}".`,
           status: "success",
           duration: 3000,
           isClosable: true
@@ -1617,8 +1834,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       } catch (err) {
         if (
           err.message?.includes("already granted") ||
-          err.message?.includes("already exists") ||
-          err.message?.includes("already technician's primary")
+          err.message?.includes("already exists")
         ) {
           toast({
             title: "Permission Already Active",
@@ -1777,26 +1993,126 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       return { polygon: { type: "Polygon", coordinates: closed }, error: "" };
     };
 
+    const applyZoneCity = (city) => {
+      if (!city) return;
+      setZoneModalError("");
+      const targetTnDistrict =
+        findTnDistrict(city.district) || getDistrictForCity(city.name);
+      const matchingDistrict = targetTnDistrict
+        ? (districts || []).find(
+            (district) =>
+              findTnDistrictForRecord(district)?.name === targetTnDistrict.name
+          )
+        : null;
+      if (matchingDistrict) {
+        setZoneCityFilterMode("district");
+      } else if (targetTnDistrict) {
+        toast({
+          title: "District not configured",
+          description: `${targetTnDistrict.name} is not an operational district yet. Add that district before creating this zone.`,
+          status: "warning",
+          duration: 4500,
+          isClosable: true,
+        });
+      }
+      setFormData((prev) => ({
+        ...prev,
+        operationalCityId: matchingDistrict?._id || "",
+        city: city.name,
+        name: city.name,
+        zoneCode: city.code || prev.zoneCode,
+        polygonCoordinates: JSON.stringify(
+          generateCircularGeoJSON(city.lat, city.lng, 5),
+          null,
+          2
+        ),
+      }));
+    };
+
+    const locateZoneCity = async (value) => {
+      const query = String(value || "").trim();
+      if (!query) return;
+      const localCity = findTnCity(query, zoneParentTnDistrict?.name) || findTnCity(query);
+      if (localCity) {
+        applyZoneCity(localCity);
+        return;
+      }
+
+      setIsLocatingZoneCity(true);
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=en&q=${encodeURIComponent(
+            `${query}, Tamil Nadu, India`
+          )}`
+        );
+        const data = await response.json();
+        const result = Array.isArray(data) ? data[0] : null;
+        if (!result) {
+          toast({
+            title: "Location not found",
+            description: `Could not locate "${query}" in Tamil Nadu.`,
+            status: "warning",
+            duration: 3500,
+            isClosable: true,
+          });
+          return;
+        }
+        const lat = Number(result.lat);
+        const lng = Number(result.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        setZoneModalError("");
+        setFormData((prev) => ({
+          ...prev,
+          city: query,
+          name: prev.name || query,
+          polygonCoordinates: JSON.stringify(
+            generateCircularGeoJSON(lat, lng, 5),
+            null,
+            2
+          ),
+        }));
+      } catch (error) {
+        toast({
+          title: "Location lookup failed",
+          description: "OpenStreetMap could not be reached. Try a preset city.",
+          status: "error",
+          duration: 4000,
+          isClosable: true,
+        });
+      } finally {
+        setIsLocatingZoneCity(false);
+      }
+    };
+
     // Zone Handlers
     const handleOpenCreateZone = (presetDistrictId) => {
       setIsEditing(false);
       setSelectedZone(null);
       setZoneModalError("");
+      const presetId =
+        typeof presetDistrictId === "string" ? presetDistrictId : "";
       const districtId =
-        presetDistrictId ||
+        presetId ||
         (selectedDistrictFilter !== "all" ? selectedDistrictFilter : "") ||
         "";
       // Pre-generate a sensible default boundary from the parent district city
       // so "Create" never goes out with an empty polygon by accident.
       let defaultPolyStr = "";
+      let defaultTown = null;
+      let parentCity = "";
       if (districtId) {
         const parent = districts.find((d) => String(d._id) === String(districtId));
-        const cityName = parent?.city || parent?.name || "";
-        const preset = TAMIL_NADU_CITIES.find(
-          (c) => c.name.toLowerCase().trim() === String(cityName).toLowerCase().trim()
-        );
-        if (preset) {
-          defaultPolyStr = JSON.stringify(generateCircularGeoJSON(preset.lat, preset.lng, 5), null, 2);
+        const parentTnDistrict = findTnDistrictForRecord(parent);
+        parentCity = parent?.city || parent?.name || "";
+        const districtTowns = parent
+          ? getDistrictCities(parentTnDistrict?.name || parentCity)
+          : [];
+        defaultTown =
+          districtTowns[0] ||
+          findTnCity(parentCity, parentTnDistrict?.name) ||
+          (parentCity ? findTnCity(parentCity) : null);
+        if (defaultTown) {
+          defaultPolyStr = JSON.stringify(generateCircularGeoJSON(defaultTown.lat, defaultTown.lng, 5), null, 2);
         } else if (parent?.polygon?.coordinates) {
           try {
             defaultPolyStr = JSON.stringify(parent.polygon, null, 2);
@@ -1805,8 +2121,16 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           }
         }
       }
-      setFormData({ ...initialForm, operationalCityId: districtId, polygonCoordinates: defaultPolyStr });
+      setFormData({
+        ...initialForm,
+        operationalCityId: districtId,
+        city: defaultTown ? defaultTown.name : parentCity,
+        name: defaultTown ? defaultTown.name : (parentCity ? `${parentCity} Central Zone` : ""),
+        zoneCode: defaultTown?.code || "",
+        polygonCoordinates: defaultPolyStr,
+      });
       zoneFormSnapshot.current = defaultPolyStr;
+      setZoneCityFilterMode("district");
       setIsModalOpen(true);
     };
 
@@ -1815,8 +2139,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setSelectedZone(zone);
       setZoneModalError("");
 
+      const distId = resolveZoneDistrictId(zone);
+      const parent = districts.find((d) => String(d._id) === String(distId));
       setFormData({
-        operationalCityId: resolveZoneDistrictId(zone),
+        operationalCityId: distId,
+        city: zone.city || parent?.city || "",
         name: zone.name || "",
         zoneCode: zone.zoneCode || zone.code || "",
         description: zone.description || "",
@@ -1824,6 +2151,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         polygonCoordinates: stringifyZonePolygon(zone),
       });
       zoneFormSnapshot.current = stringifyZonePolygon(zone);
+      setZoneCityFilterMode("district");
       setIsModalOpen(true);
     };
 
@@ -1831,6 +2159,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setZoneModalError("");
 
       const name = String(formData.name || "").trim();
+      const city = String(formData.city || "").trim();
       const zoneCode = String(formData.zoneCode || "").trim().toUpperCase();
       const operationalCityId = String(formData.operationalCityId || "").trim();
       const description = String(formData.description || "").trim();
@@ -1867,6 +2196,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         const payload = {
           operationalCityId,
           districtId: operationalCityId,
+          city: city || name,
           name,
           zoneCode,
           description,
@@ -1880,8 +2210,17 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           await updateZone(zid, payload);
           toast({ title: "Zone Updated", description: `"${name}" updated successfully.`, status: "success", duration: 3000, isClosable: true });
         } else {
-          await createZone(payload);
-          toast({ title: "Zone Created", description: `"${name}" created successfully.`, status: "success", duration: 3000, isClosable: true });
+          const created = await createZone(payload);
+          const seededCount = created?.result?.seededEnabledServices ?? created?.seededEnabledServices;
+          toast({
+            title: "Zone Created",
+            description: Number.isFinite(seededCount)
+              ? `"${name}" created with ${seededCount} active service${seededCount === 1 ? "" : "s"} enabled by default.`
+              : `"${name}" created successfully. All active services are enabled by default.`,
+            status: "success",
+            duration: 4000,
+            isClosable: true,
+          });
         }
 
         await fetchData();
@@ -2311,17 +2650,19 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       if (selectedMatrixServiceIds.length === 0) return;
       try {
         setIsBatchMatrixLoading(true);
-        let successCount = 0;
-        await Promise.allSettled(
-          selectedMatrixServiceIds.map(async (sid) => {
-            await toggleServiceStatus({ serviceId: sid, isActive: targetActive });
-            successCount++;
-          })
+        const results = await Promise.allSettled(
+          selectedMatrixServiceIds.map((sid) =>
+            toggleServiceStatus({ serviceId: sid, isActive: targetActive })
+          )
         );
+        const successCount = results.filter((r) => r.status === "fulfilled").length;
+        const failedCount = results.length - successCount;
         toast({
           title: `Batch Services ${targetActive ? "Activated" : "Deactivated"}`,
-          description: `Updated global status for ${successCount} service(s).`,
-          status: "success",
+          description: failedCount
+            ? `Updated ${successCount} service(s); ${failedCount} failed. Check the service list and retry.`
+            : `Updated global status for ${successCount} service(s).`,
+          status: failedCount ? "warning" : "success",
           duration: 3500,
           isClosable: true,
         });
@@ -2345,34 +2686,35 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
       try {
         setIsBatchMatrixLoading(true);
-        let count = 0;
-        await Promise.allSettled(
-          selectedMatrixServiceIds.map(async (sid) => {
+        const results = await Promise.allSettled(
+          selectedMatrixServiceIds.map((sid) => {
             if (zoneIds.length > 0) {
-              await bulkToggleZoneAvailability({
+              return bulkToggleZoneAvailability({
                 serviceId: sid,
                 districtId,
                 zoneIds,
                 cityZoneIds: zoneIds,
                 enabled,
-                status: enabled ? "ACTIVE" : "INACTIVE",
-              });
-            } else {
-              await toggleZoneAvailability({
-                serviceId: sid,
-                districtId,
-                enabled,
-                status: enabled ? "ACTIVE" : "INACTIVE",
+                status: enabled ? "ENABLED" : "DISABLED",
               });
             }
-            count++;
+            return toggleZoneAvailability({
+              serviceId: sid,
+              districtId,
+              enabled,
+              status: enabled ? "ENABLED" : "DISABLED",
+            });
           })
         );
+        const count = results.filter((r) => r.status === "fulfilled").length;
+        const failedCount = results.length - count;
 
         toast({
           title: `District Availability ${enabled ? "Enabled" : "Disabled"}`,
-          description: `${count} service(s) set to ${enabled ? "ACTIVE" : "INACTIVE"} in ${distName}.`,
-          status: "success",
+          description: failedCount
+            ? `${count} service(s) updated in ${distName}; ${failedCount} failed.`
+            : `${count} service(s) set to ${enabled ? "ACTIVE" : "INACTIVE"} in ${distName}.`,
+          status: failedCount ? "warning" : "success",
           duration: 3500,
           isClosable: true,
         });
@@ -2393,33 +2735,36 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       try {
         setIsServiceDetailLoading(true);
         const dists = selectedServiceDetail.districts;
-        await Promise.allSettled(
-          dists.map(async (dist) => {
+        const results = await Promise.allSettled(
+          dists.map((dist) => {
             const districtId = dist.districtId || dist._id;
             const zoneIds = (dist.zones || []).map((z) => z.zoneId || z._id || z.id).filter(Boolean);
             if (zoneIds.length > 0) {
-              await bulkToggleZoneAvailability({
+              return bulkToggleZoneAvailability({
                 serviceId: sid,
                 districtId,
                 zoneIds,
                 cityZoneIds: zoneIds,
                 enabled: targetActive,
-                status: targetActive ? "ACTIVE" : "INACTIVE",
-              });
-            } else {
-              await toggleZoneAvailability({
-                serviceId: sid,
-                districtId,
-                enabled: targetActive,
-                status: targetActive ? "ACTIVE" : "INACTIVE",
+                status: targetActive ? "ENABLED" : "DISABLED",
               });
             }
+            return toggleZoneAvailability({
+              serviceId: sid,
+              districtId,
+              enabled: targetActive,
+              status: targetActive ? "ENABLED" : "DISABLED",
+            });
           })
         );
+        const successCount = results.filter((r) => r.status === "fulfilled").length;
+        const failedCount = results.length - successCount;
         toast({
           title: `All Districts ${targetActive ? "Enabled" : "Disabled"}`,
-          description: `Updated availability across all operational hubs.`,
-          status: "success",
+          description: failedCount
+            ? `Updated ${successCount} district(s); ${failedCount} failed. Retry the failed districts.`
+            : `Updated availability across all operational hubs.`,
+          status: failedCount ? "warning" : "success",
           duration: 3000,
         });
         await reloadServiceDetail(sid);
@@ -2446,7 +2791,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           zoneIds,
           cityZoneIds: zoneIds,
           enabled: targetActive,
-          status: targetActive ? "ACTIVE" : "INACTIVE",
+          status: targetActive ? "ENABLED" : "DISABLED",
         });
         toast({
           title: `Sub-Zones ${targetActive ? "Turned ON" : "Turned OFF"}`,
@@ -2471,8 +2816,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         setTogglingDistrictId(districtId);
         await clearDistrictZoneAvailability({ serviceId: sid, districtId });
         toast({
-          title: "District Mappings Reset",
-          description: `Cleared custom sub-zone overrides for ${dist.name}.`,
+          title: "District Services Cleared",
+          description: `Disabled all service mappings and overrides for ${dist.name}. Re-enable zones or services explicitly to restore availability.`,
           status: "info",
           duration: 2500,
         });
@@ -2863,12 +3208,12 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     <Button
                       leftIcon={<MdAdd />}
                       size="sm"
-                      bg={BRAND}
-                      color="white"
+                      variant="brand"
                       borderRadius="8px"
                       fontWeight="600"
                       boxShadow="sm"
-                      _hover={{ bg: BRAND_DARK, transform: "translateY(-1px)" }}
+                      _hover={{ transform: "translateY(-1px)" }}
+                      _active={{ transform: "translateY(0)" }}
                       onClick={handleOpenCreateDistrict}
                     >
                       Add District
@@ -2884,7 +3229,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       fontWeight="600"
                       boxShadow="sm"
                       _hover={{ bg: "purple.700", transform: "translateY(-1px)" }}
-                      onClick={handleOpenCreateZone}
+                      _active={{ bg: "purple.800", transform: "translateY(0)" }}
+                      onClick={() => handleOpenCreateZone()}
                     >
                       Add City Zone
                     </Button>
@@ -2911,7 +3257,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
               {/* Tabs Bar — 5 Core Operational Modules */}
               <HStack spacing={2} overflowX="auto" pb={2} pt={1} css={globalScrollbarStyles}>
                 {[
-                  { icon: MdApartment, label: "1. District Master", count: districts.length },
+                  { icon: MdApartment, label: "1. District Master", count: `${districts.length} / 38` },
                   { icon: MdMap, label: "2. City Micro-Zones", count: zones.length },
                   { icon: MdLink, label: "3. Service-Zone Matrix", count: matrixData.length || services.length },
                   { icon: FaUserGear, label: "4. Technician Permissions", count: technicians.length },
@@ -2932,6 +3278,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     boxShadow={activeTab === idx ? "sm" : "none"}
                     leftIcon={<Icon as={t.icon} boxSize={4} />}
                     _hover={{ bg: activeTab === idx ? BRAND_DARK : "gray.100" }}
+                    _active={{ bg: activeTab === idx ? "#004d4d" : "gray.200" }}
                     flexShrink={0}
                   >
                     {t.label}
@@ -2994,10 +3341,14 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       borderColor="gray.300"
                       value={selectedDistrictFilter}
                       onChange={(e) => { setSelectedDistrictFilter(e.target.value); setCurrentPage(1); }}
+                      _hover={{ borderColor: "gray.400" }}
+                      _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                     >
                       <option value="all">All Operational Districts</option>
                       {districts.map((d) => (
-                        <option key={d._id} value={d._id}>{d.name} ({d.city})</option>
+                        <option key={d._id} value={d._id}>
+                          {d.city ? `${d.city} — ${d.name}` : d.name}
+                        </option>
                       ))}
                     </Select>
                   )}
@@ -3012,10 +3363,12 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       borderColor="gray.300"
                       value={permissionFilter}
                       onChange={(e) => { setPermissionFilter(e.target.value); setCurrentPage(1); }}
+                      _hover={{ borderColor: "gray.400" }}
+                      _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                     >
                       <option value="all">All Permissions</option>
-                      <option value="multi_district">Multi-District Granted</option>
-                      <option value="single_district">Primary District Only</option>
+                      <option value="multi_district">Has District Coverage</option>
+                      <option value="single_district">No District Coverage</option>
                     </Select>
                   )}
 
@@ -3058,6 +3411,37 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 <TabPanels flex="1" minH="0" display="flex" flexDirection="column" overflow="hidden">
                   {/* TAB 0: OPERATIONAL CITIES & DISTRICT MASTER (1.1) */}
                   <TabPanel p={0} display="flex" flexDirection="column" flex="1" minH="0" overflow="hidden">
+                    {/* Tamil Nadu 38 Revenue District Coverage Tracker */}
+                    <Box px={5} py={2.5} bg="teal.50" borderBottom="1px solid" borderColor="teal.100">
+                      <Flex justify="space-between" align="center" flexWrap="wrap" gap={3}>
+                        <HStack spacing={2.5}>
+                          <Icon as={MdApartment} color="teal.700" boxSize={4} />
+                          <Text fontSize="xs" fontWeight="700" color="teal.900">
+                            Tamil Nadu Revenue District Master:
+                          </Text>
+                          <Badge colorScheme={districts.length >= 38 ? "green" : "teal"} fontSize="11px" borderRadius="full" px={2.5} py={0.5} fontWeight="700">
+                            {districts.length} / 38 Districts Configured
+                          </Badge>
+                          <Text fontSize="11px" color="teal.700">
+                            ({Math.max(0, 38 - districts.length)} remaining)
+                          </Text>
+                        </HStack>
+                        <HStack spacing={3} w={{ base: "100%", md: "240px" }}>
+                          <Progress
+                            value={Math.min(100, Math.round((districts.length / 38) * 100))}
+                            colorScheme="teal"
+                            size="xs"
+                            borderRadius="full"
+                            bg="white"
+                            flex="1"
+                          />
+                          <Text fontSize="11px" fontWeight="700" color="teal.800" minW="32px" textAlign="right">
+                            {Math.min(100, Math.round((districts.length / 38) * 100))}%
+                          </Text>
+                        </HStack>
+                      </Flex>
+                    </Box>
+
                     <Box
                       overflowY="auto"
                       overflowX="auto"
@@ -3188,6 +3572,14 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
                   {/* TAB 1: CITY MICRO-ZONES / SUB-ZONES (1.2) */}
                   <TabPanel p={0} display="flex" flexDirection="column" flex="1" minH="0" overflow="hidden">
+                    <Box mx={4} mt={3} mb={1} px={3} py={2} bg="teal.50" border="1px solid" borderColor="teal.200" borderRadius="8px">
+                      <HStack spacing={2} align="flex-start">
+                        <Icon as={MdInfoOutline} color="teal.600" boxSize={4} mt="1px" />
+                        <Text fontSize="11px" color="teal.800">
+                          New zones start with <strong>all active services enabled</strong>. Inactive services stay off. Use the service matrix to disable individual services later.
+                        </Text>
+                      </HStack>
+                    </Box>
                     <Box
                       overflowY="auto"
                       overflowX="auto"
@@ -3201,21 +3593,31 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">#</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">MICRO-ZONE NAME</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">ZONE CODE</Th>
-                            <Th bg="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">PARENT DISTRICT</Th>
-                            <Th bg="gray.500" py={3} fontSize="10px" textAlign="center" whiteSpace="nowrap">ZONE STATUS</Th>
-                            <Th bg="gray.500" py={3} fontSize="10px" textAlign="center" whiteSpace="nowrap">ALL SERVICES IN ZONE</Th>
-                            <Th bg="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">POLYGON</Th>
-                            <Th bg="gray.500" py={3} fontSize="10px" textAlign="right" whiteSpace="nowrap">ACTIONS</Th>
+                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">CITY / TOWN</Th>
+                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">PARENT DISTRICT</Th>
+                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="center" whiteSpace="nowrap">ZONE STATUS</Th>
+                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="center" whiteSpace="nowrap">ALL SERVICES IN ZONE</Th>
+                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">POLYGON</Th>
+                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="right" whiteSpace="nowrap">ACTIONS</Th>
                           </Tr>
                         </Thead>
                         <Tbody>
                           {currentZones.length === 0 ? (
-                            <Tr><Td colSpan={8} textAlign="center" py={10} color="gray.500">No city micro-zones found. Click "Add City Zone" to create one.</Td></Tr>
+                            <Tr><Td colSpan={9} textAlign="center" py={10} color="gray.500">No city micro-zones found. Click "Add City Zone" to create one.</Td></Tr>
                           ) : (
                             currentZones.map((zone, idx) => {
                               const isZoneActive = zone.active !== false;
-                              const parentDist = districts.find((d) => d._id === (zone.operationalCityId?._id || zone.operationalCityId));
-                              const parentName = parentDist ? `${parentDist.name} (${parentDist.city})` : (zone.operationalCityId?.name || "N/A");
+                              const enabledServiceCount = activeServiceCountByZone.get(String(zone._id)) || 0;
+                              const parentDistId = resolveZoneDistrictId(zone);
+                              const parentDist = districts.find((d) => String(d._id) === String(parentDistId));
+                              const parentName = parentDist
+                                ? (parentDist.city && parentDist.city !== parentDist.name ? `${parentDist.city} (${parentDist.name})` : parentDist.name)
+                                : (zone.operationalCityId?.name || "N/A");
+                              const zoneCity =
+                                zone.city ||
+                                (zone.name ? zone.name.replace(/\s+(Zone|Central Zone|North Zone|South Zone|East Zone|West Zone|Hub|Range)$/i, "").trim() : "") ||
+                                parentDist?.city ||
+                                "Tamil Nadu";
 
                               return (
                                 <Tr key={zone._id} _hover={{ bg: "purple.50" }} transition="background 0.15s">
@@ -3230,6 +3632,17 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                     <Tag size="sm" colorScheme="purple" borderRadius="6px" fontWeight="700">
                                       {zone.zoneCode || "ZONE"}
                                     </Tag>
+                                  </Td>
+                                  <Td py={3}>
+                                    <HStack spacing={1.5}>
+                                      <Icon as={MdLocationCity} color="purple.600" boxSize={3.5} />
+                                      <Text fontSize="xs" fontWeight="700" color="gray.800">
+                                        {zoneCity}
+                                      </Text>
+                                      <Badge colorScheme="purple" variant="subtle" fontSize="9px" borderRadius="full" px={1.5}>
+                                        TN
+                                      </Badge>
+                                    </HStack>
                                   </Td>
                                   <Td py={3}>
                                     <HStack spacing={1.5}>
@@ -3274,6 +3687,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                         Disable All
                                       </Button>
                                     </HStack>
+                                    <Text fontSize="10px" color="gray.500" mt={1}>
+                                      {enabledServiceCount} of {services.length} services enabled
+                                    </Text>
                                   </Td>
                                   <Td py={3}>
                                     <Badge colorScheme={zone.polygon ? "teal" : "gray"} borderRadius="full" px={2.5} fontWeight="500">
@@ -3333,6 +3749,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             value={matrixCategoryFilter}
                             onChange={(e) => { setMatrixCategoryFilter(e.target.value); setCurrentPage(1); }}
                             borderRadius="8px"
+                            bg="white"
+                            border="1px solid"
+                            borderColor="gray.300"
+                            _hover={{ borderColor: "gray.400" }}
+                            _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                           >
                             <option value="ALL">All Categories</option>
                             {categoriesList.map((c) => (
@@ -3346,6 +3767,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             value={matrixDistrictFilter}
                             onChange={(e) => { setMatrixDistrictFilter(e.target.value); setCurrentPage(1); }}
                             borderRadius="8px"
+                            bg="white"
+                            border="1px solid"
+                            borderColor="gray.300"
+                            _hover={{ borderColor: "gray.400" }}
+                            _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                           >
                             <option value="ALL">All Districts</option>
                             {districts.map((d) => (
@@ -3359,6 +3785,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             value={matrixZoneStatusFilter}
                             onChange={(e) => { setMatrixZoneStatusFilter(e.target.value); setCurrentPage(1); }}
                             borderRadius="8px"
+                            bg="white"
+                            border="1px solid"
+                            borderColor="gray.300"
+                            _hover={{ borderColor: "gray.400" }}
+                            _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                           >
                             <option value="ALL">Zone Status: All</option>
                             <option value="ACTIVE">Active Zones</option>
@@ -3371,6 +3802,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             value={matrixServiceStatusFilter}
                             onChange={(e) => { setMatrixServiceStatusFilter(e.target.value); setCurrentPage(1); }}
                             borderRadius="8px"
+                            bg="white"
+                            border="1px solid"
+                            borderColor="gray.300"
+                            _hover={{ borderColor: "gray.400" }}
+                            _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                           >
                             <option value="ALL">Service Status: All</option>
                             <option value="ACTIVE">Active Services</option>
@@ -3438,6 +3874,10 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             placeholder="Select District..."
                             value={batchMatrixDistrictId}
                             onChange={(e) => setBatchMatrixDistrictId(e.target.value)}
+                            border="1px solid"
+                            borderColor="gray.300"
+                            _hover={{ borderColor: "gray.400" }}
+                            _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                           >
                             {districts.map((d) => (
                               <option key={d._id} value={d._id}>{d.name} ({d.city})</option>
@@ -3445,7 +3885,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           </Select>
                           <Button
                             size="xs"
-                            colorScheme="teal"
+                            variant="brand"
                             isDisabled={!batchMatrixDistrictId}
                             onClick={() => handleBulkEnableServicesForDistrict(batchMatrixDistrictId, true)}
                             isLoading={isBatchMatrixLoading}
@@ -3554,7 +3994,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                 <Td py={3} textAlign="right">
                                   <Button
                                     size="xs"
-                                    colorScheme="teal"
+                                    variant="brand"
                                     borderRadius="6px"
                                     leftIcon={<MdEdit />}
                                     onClick={() => handleOpenManageServiceModal(item.serviceId)}
@@ -3610,6 +4050,10 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             placeholder="Grant District Hub..."
                             value={batchTechDistrictId}
                             onChange={(e) => setBatchTechDistrictId(e.target.value)}
+                            border="1px solid"
+                            borderColor="gray.300"
+                            _hover={{ borderColor: "gray.400" }}
+                            _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                           >
                             {districts.map((d) => (
                               <option key={d._id} value={d._id}>{d.name} ({d.city})</option>
@@ -3686,7 +4130,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">TECHNICIAN</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">PHONE</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">PRIMARY DISTRICT</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">PERMISSIONED DISTRICTS</Th>
+                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">DISTRICT COVERAGE</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">SERVICE RADIUS</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">GEOFENCE STATUS</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="right" whiteSpace="nowrap">ACTIONS</Th>
@@ -3702,10 +4146,10 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                 : (tech.userId?.fname || tech.userId?.lname ? `${tech.userId?.fname || ""} ${tech.userId?.lname || ""}`.trim() : (tech.name || "Technician"));
 
                               const techPhone = tech.mobileNumber || tech.phone || tech.userId?.mobileNumber || tech.userId?.phone || tech.userId?.identifier || "N/A";
-                              const primaryCityName = tech.primaryCityId?.name || tech.city || null;
+                              const primaryCityName = tech.primaryDistrictId?.name || tech.primaryCityId?.name || tech.city || null;
                               const primaryDistName = primaryCityName || "Not Assigned";
                               const isVerified = tech.isLocationVerified !== false;
-                              const permissions = tech.allowedDistricts || tech.permittedDistricts || tech.districtPermissions || tech.secondaryDistricts || [];
+                              const permissions = getTechPermissionDistricts(tech);
 
                               return (
                                 <Tr key={tech._id}>
@@ -3728,13 +4172,13 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                   </Td>
                                   <Td py={3}>
                                     {permissions.length === 0 ? (
-                                      <Badge colorScheme="gray" variant="subtle" fontSize="10px" px={2} py={0.5} borderRadius="full">
-                                        Primary Only
+                                      <Badge colorScheme="red" variant="subtle" fontSize="10px" px={2} py={0.5} borderRadius="full">
+                                        No Coverage
                                       </Badge>
                                     ) : (
                                       <HStack spacing={1} flexWrap="wrap">
                                         <Badge colorScheme="purple" fontSize="10px" px={2} py={0.5} borderRadius="full" fontWeight="bold">
-                                          +{permissions.length} Additional
+                                          {permissions.length} District{permissions.length === 1 ? "" : "s"}
                                         </Badge>
                                         {permissions.slice(0, 2).map((p, pIdx) => {
                                           const name = p.name || p.districtName || getDistrictNameById(p._id || p.districtId || p);
@@ -3761,7 +4205,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                     <HStack spacing={2} justify="flex-end">
                                       <Button
                                         size="xs"
-                                        colorScheme="teal"
+                                        variant="brand"
                                         borderRadius="6px"
                                         leftIcon={<MdPersonAdd />}
                                         onClick={() => handleOpenTechPermissions(tech)}
@@ -3830,7 +4274,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           </Box>
                           <Button
                             size="xs"
-                            colorScheme="teal"
+                            variant="brand"
                             leftIcon={<MdRefresh />}
                             onClick={handleFetchSpatialHierarchy}
                             isLoading={isLoadingSpatialTree}
@@ -3900,6 +4344,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               placeholder="Select District..."
                               value={selectedDashboardDistrictId}
                               onChange={(e) => handleFetchDistrictDashboard(e.target.value)}
+                              bg="white"
+                              border="1px solid"
+                              borderColor="gray.300"
+                              _hover={{ borderColor: "gray.400" }}
+                              _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                             >
                               {districts.map((d) => (
                                 <option key={d._id} value={d._id}>{d.name} ({d.city})</option>
@@ -4064,7 +4513,13 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           <VStack spacing={3} align="stretch">
                             <FormControl isRequired>
                               <FormLabel fontSize="xs" fontWeight="600">Technician</FormLabel>
-                              <Select size="sm" borderRadius="8px" value={diagTechId} onChange={(e) => setDiagTechId(e.target.value)}>
+                              <Select size="sm" borderRadius="8px" value={diagTechId} onChange={(e) => setDiagTechId(e.target.value)}
+                                bg="white"
+                                border="1px solid"
+                                borderColor="gray.300"
+                                _hover={{ borderColor: "gray.400" }}
+                                _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
+                              >
                                 <option value="">Select Technician...</option>
                                 {technicians.map((t) => (
                                   <option key={t._id} value={t._id}>
@@ -4083,7 +4538,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                 <Input size="sm" borderRadius="8px" value={diagJobLng} onChange={(e) => setDiagJobLng(e.target.value)} />
                               </FormControl>
                             </Grid>
-                            <Button size="sm" bg={BRAND} color="white" _hover={{ bg: BRAND_DARK }} onClick={handleRunEligibilityDiagnostics} isLoading={isDiagnosing}>
+                            <Button size="sm" variant="brand" onClick={handleRunEligibilityDiagnostics} isLoading={isDiagnosing}>
                               Run 12-Step Audit
                             </Button>
                           </VStack>
@@ -4172,8 +4627,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             <HStack spacing={2}>
                               <Button
                                 size="xs"
-                                variant="outline"
-                                colorScheme="teal"
+                                variant="brand-outline"
                                 onClick={() => { setCustomerTestLat("11.0168"); setCustomerTestLng("76.9558"); }}
                               >
                                 Preset: Coimbatore (CBE)
@@ -4197,6 +4651,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                 borderRadius="8px"
                                 value={customerTestServiceId}
                                 onChange={(e) => setCustomerTestServiceId(e.target.value)}
+                                bg="white"
+                                border="1px solid"
+                                borderColor="gray.300"
+                                _hover={{ borderColor: "gray.400" }}
+                                _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                               >
                                 <option value="">Select Service...</option>
                                 {services.map((s) => (
@@ -4231,9 +4690,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
                             <Button
                               size="sm"
-                              bg={BRAND}
-                              color="white"
-                              _hover={{ bg: BRAND_DARK }}
+                              variant="brand"
                               onClick={handleTestCustomerLocationServiceability}
                               isLoading={isTestingCustomerService}
                               px={5}
@@ -4323,7 +4780,13 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             <VStack spacing={3} align="stretch">
                               <FormControl isRequired>
                                 <FormLabel fontSize="xs" fontWeight="600">Technician</FormLabel>
-                                <Select size="sm" borderRadius="8px" value={debugTechId} onChange={(e) => setDebugTechId(e.target.value)}>
+                                <Select size="sm" borderRadius="8px" value={debugTechId} onChange={(e) => setDebugTechId(e.target.value)}
+                                  bg="white"
+                                  border="1px solid"
+                                  borderColor="gray.300"
+                                  _hover={{ borderColor: "gray.400" }}
+                                  _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
+                                >
                                   <option value="">Select Technician...</option>
                                   {technicians.map((t) => (
                                     <option key={t._id} value={t._id}>
@@ -4334,7 +4797,13 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               </FormControl>
                               <FormControl>
                                 <FormLabel fontSize="xs" fontWeight="600">District (Optional)</FormLabel>
-                                <Select size="sm" borderRadius="8px" value={debugDistrictId} onChange={(e) => setDebugDistrictId(e.target.value)}>
+                                <Select size="sm" borderRadius="8px" value={debugDistrictId} onChange={(e) => setDebugDistrictId(e.target.value)}
+                                  bg="white"
+                                  border="1px solid"
+                                  borderColor="gray.300"
+                                  _hover={{ borderColor: "gray.400" }}
+                                  _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
+                                >
                                   <option value="">All Districts...</option>
                                   {districts.map((d) => (
                                     <option key={d._id} value={d._id}>{d.name}</option>
@@ -4343,14 +4812,20 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               </FormControl>
                               <FormControl>
                                 <FormLabel fontSize="xs" fontWeight="600">Service (Optional)</FormLabel>
-                                <Select size="sm" borderRadius="8px" value={debugServiceId} onChange={(e) => setDebugServiceId(e.target.value)}>
+                                <Select size="sm" borderRadius="8px" value={debugServiceId} onChange={(e) => setDebugServiceId(e.target.value)}
+                                  bg="white"
+                                  border="1px solid"
+                                  borderColor="gray.300"
+                                  _hover={{ borderColor: "gray.400" }}
+                                  _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
+                                >
                                   <option value="">All Services in District</option>
                                   {services.map((s) => (
                                     <option key={s._id} value={s._id}>{s.serviceName || s.name}</option>
                                   ))}
                                 </Select>
                               </FormControl>
-                              <Button size="sm" bg={BRAND} color="white" _hover={{ bg: BRAND_DARK }} onClick={handleRunDispatchDebug} isLoading={isLoadingDispatchDebug}>
+                              <Button size="sm" variant="brand" onClick={handleRunDispatchDebug} isLoading={isLoadingDispatchDebug}>
                                 Run Dispatch Diagnostics
                               </Button>
                             </VStack>
@@ -4386,14 +4861,26 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             <VStack spacing={3} align="stretch">
                               <FormControl isRequired>
                                 <FormLabel fontSize="xs" fontWeight="600">Entity Type</FormLabel>
-                                <Select size="sm" borderRadius="8px" value={rollbackEntityType} onChange={(e) => { setRollbackEntityType(e.target.value); setRollbackEntityId(""); }}>
+                                <Select size="sm" borderRadius="8px" value={rollbackEntityType} onChange={(e) => { setRollbackEntityType(e.target.value); setRollbackEntityId(""); }}
+                                  bg="white"
+                                  border="1px solid"
+                                  borderColor="gray.300"
+                                  _hover={{ borderColor: "gray.400" }}
+                                  _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
+                                >
                                   <option value="DISTRICT">District</option>
                                   <option value="CITY_ZONE">Micro-Zone</option>
                                 </Select>
                               </FormControl>
                               <FormControl isRequired>
                                 <FormLabel fontSize="xs" fontWeight="600">Target {rollbackEntityType === "CITY_ZONE" ? "Micro-Zone" : "District"}</FormLabel>
-                                <Select size="sm" borderRadius="8px" value={rollbackEntityId} onChange={(e) => setRollbackEntityId(e.target.value)}>
+                                <Select size="sm" borderRadius="8px" value={rollbackEntityId} onChange={(e) => setRollbackEntityId(e.target.value)}
+                                  bg="white"
+                                  border="1px solid"
+                                  borderColor="gray.300"
+                                  _hover={{ borderColor: "gray.400" }}
+                                  _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
+                                >
                                   <option value="">Select {rollbackEntityType === "CITY_ZONE" ? "Micro-Zone" : "District"} to Rollback...</option>
                                   {(rollbackEntityType === "CITY_ZONE" ? zones : districts).map((d) => (
                                     <option key={d._id} value={d._id}>{d.name || d.zoneCode}</option>
@@ -4436,8 +4923,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           <HStack spacing={2} flexWrap="wrap">
                             <Button
                               size="xs"
-                              variant="outline"
-                              colorScheme="teal"
+                              variant="brand-outline"
                               onClick={() => {
                                 const c = TAMIL_NADU_CITIES[0];
                                 const poly = generateCircularGeoJSON(c.lat, c.lng, 10);
@@ -4494,6 +4980,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                     replaceGeoToolDraft(typeof d.polygon === "string" ? d.polygon : JSON.stringify(d.polygon, null, 2), `the ${d.name || "district"} boundary`);
                                   }
                                 }}
+                                bg="white"
+                                border="1px solid"
+                                borderColor="gray.300"
+                                _hover={{ borderColor: "gray.400" }}
+                                _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                               >
                                 {districts.map((d) => (
                                   <option key={d._id} value={d._id}>
@@ -4531,7 +5022,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
                             <Button
                               size="sm"
-                              colorScheme="teal"
+                              variant="brand"
                               leftIcon={<MdOutlineFactCheck />}
                               onClick={handleValidateGeoJSONTool}
                               isLoading={isValidatingGeo}
@@ -4636,6 +5127,10 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                         bg="white"
                         value={itemsPerPage}
                         onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                        border="1px solid"
+                        borderColor="gray.300"
+                        _hover={{ borderColor: "gray.400" }}
+                        _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
                       >
                         <option value={10}>10</option>
                         <option value={15}>15</option>
@@ -4660,8 +5155,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         {/* CREATE / EDIT DISTRICT MODAL WITH REAL-TIME LEAFLET MAP */}
         <Modal isOpen={isDistrictModalOpen} onClose={handleCloseDistrictModal} size="5xl">
           <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
-          <ModalContent bg="white" borderRadius="16px" maxH="92vh" overflow="hidden" boxShadow="2xl" zIndex={1401}>
-            <ModalHeader bg="white" color={BRAND} pb={1} pt={4} px={6} borderBottom="1px solid" borderColor="gray.100">
+          <ModalContent {...modalContentProps}>
+            <ModalHeader {...modalHeaderProps}>
               <Flex align="center" justify="space-between">
                 <HStack spacing={3}>
                   <Box p={2} bg="teal.50" color={BRAND} borderRadius="10px">
@@ -4680,111 +5175,17 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
             </ModalHeader>
             <ModalCloseButton top={4} right={4} />
 
-            <ModalBody overflowY="auto" p={6} css={globalScrollbarStyles} bg="gray.50">
-              {/* Quick Hub Preset Badges */}
-              <Box bg="white" p={3.5} borderRadius="12px" border="1px solid" borderColor="teal.200" mb={4} boxShadow="xs">
-                <Flex justify="space-between" align="center" mb={2} flexWrap="wrap" gap={2}>
-                  <HStack spacing={1.5}>
-                    <Icon as={MdPlace} color="teal.600" boxSize={4} />
-                    <Text fontSize="xs" fontWeight="700" color="teal.900" textTransform="uppercase" letterSpacing="0.5px">
-                      Quick Operational Hub Presets (Tamil Nadu)
-                    </Text>
-                  </HStack>
-                  <Badge colorScheme="teal" fontSize="10px" borderRadius="full" px={2}>
-                    Auto-Populates Form &amp; Generates 10KM Geofence
-                  </Badge>
-                </Flex>
-
-                {/* Quick Clickable City Pills in Alphabetical Order */}
-                <Flex wrap="wrap" gap={1.5} mb={2.5}>
-                  {[
-                    { name: "Attur", code: "ATT" },
-                    { name: "Chennai", code: "MAA" },
-                    { name: "Coimbatore", code: "CBE" },
-                    { name: "Dindigul", code: "DG" },
-                    { name: "Edappadi", code: "EDP" },
-                    { name: "Erode", code: "ERD" },
-                    { name: "Hosur", code: "HSR" },
-                    { name: "Madurai", code: "MDU" },
-                    { name: "Mettur", code: "MTR" },
-                    { name: "Salem", code: "SLM" },
-                    { name: "Tirunelveli", code: "TEN" },
-                    { name: "Tirupur", code: "TPR" },
-                    { name: "Trichy", code: "TPJ" },
-                    { name: "Vellore", code: "VLR" },
-                  ].map((item) => {
-                    const isSelected = districtFormData.city?.toLowerCase() === item.name.toLowerCase();
-                    return (
-                      <Button
-                        key={item.name}
-                        size="xs"
-                        borderRadius="full"
-                        variant={isSelected ? "solid" : "outline"}
-                        colorScheme="teal"
-                        fontWeight={isSelected ? "700" : "600"}
-                        onClick={() => {
-                          setDistrictModalError("");
-                          const c = TAMIL_NADU_CITIES.find((x) => x.name.toLowerCase() === item.name.toLowerCase());
-                          if (c) {
-                            const cleanCity = c.name;
-                            const poly = generateCircularGeoJSON(c.lat, c.lng, 10);
-                            const districtName = isEditingDistrict ? districtFormData.name : getAvailableDistrictName(cleanCity, districts);
-                            setDistrictFormData((prev) => ({
-                              ...prev,
-                              name: districtName,
-                              city: cleanCity,
-                              state: "Tamil Nadu",
-                              country: "India",
-                              code: c.code,
-                              polygonCoordinates: JSON.stringify(poly, null, 2),
-                            }));
-                          }
-                        }}
-                      >
-                        {item.name} ({item.code})
-                      </Button>
-                    );
-                  })}
-                </Flex>
-
-                {/* All Cities Dropdown */}
-                <Select
-                  size="sm"
-                  bg="white"
-                  borderRadius="8px"
-                  borderColor="teal.300"
-                  fontSize="xs"
-                  fontWeight="600"
-                  placeholder="-- Or select from all 60+ Tamil Nadu Districts &amp; Taluks --"
-                  value={districtFormData.city ? TAMIL_NADU_CITIES.find(c => c.name.toLowerCase() === districtFormData.city.toLowerCase())?.name || "" : ""}
-                  onChange={(e) => {
-                    setDistrictModalError("");
-                    const selectedName = e.target.value;
-                    if (!selectedName) return;
-                    const c = TAMIL_NADU_CITIES.find((item) => item.name === selectedName);
-                    if (c) {
-                      const cleanCity = c.name.split("(")[0].trim();
-                      const poly = generateCircularGeoJSON(c.lat, c.lng, 10);
-                      const districtName = isEditingDistrict ? districtFormData.name : getAvailableDistrictName(cleanCity, districts);
-                      setDistrictFormData((prev) => ({
-                        ...prev,
-                        name: districtName,
-                        city: cleanCity,
-                        state: "Tamil Nadu",
-                        country: "India",
-                        code: c.code,
-                        polygonCoordinates: JSON.stringify(poly, null, 2),
-                      }));
-                    }
-                  }}
-                >
-                  {TAMIL_NADU_CITIES.map((c) => (
-                    <option key={c.name} value={c.name}>
-                      {c.name} ({c.code})
-                    </option>
-                  ))}
-                </Select>
-              </Box>
+            <ModalBody {...modalBodyProps} overflowX="hidden">
+              <DistrictPickerCard
+                mode="master"
+                allDistricts={TAMIL_NADU_DISTRICTS}
+                operationalDistricts={districts}
+                selectedName={districtTnName}
+                onSelectTnDistrict={handlePickTnDistrict}
+                isEditing={isEditingDistrict}
+                editingDistrictId={selectedDistrict?._id}
+                accent="teal"
+              />
 
               {/* Inline Error Alert Banner */}
               {districtModalError && (
@@ -4855,41 +5256,40 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
                             Default City / Hub
                           </FormLabel>
-                          <InputGroup size="sm">
-                            <Input
-                              value={districtFormData.city}
-                              onChange={(e) => {
-                                setDistrictModalError("");
-                                setDistrictFormData({ ...districtFormData, city: e.target.value });
-                              }}
-                              placeholder="e.g. Edappadi, Salem"
-                              borderRadius="8px"
-                            />
-                            <InputRightElement w="auto" pr={1}>
-                              <Button
-                                size="xs"
+                          <HStack spacing={2} align="flex-start">
+                            <Box flex="1" minW={0}>
+                              <LocationCombobox
+                                options={districtHubOptions}
+                                value={districtFormData.city}
+                                selectedLabel={districtFormData.city}
+                                onChange={(option) => applyHubCity(option.city)}
+                                onCustomSelect={geocodeHub}
+                                allowCustom
+                                placeholder={
+                                  districtTnName
+                                    ? `Search ${districtTnName} towns...`
+                                    : "Search or type a hub city..."
+                                }
+                                emptyText={
+                                  districtTnName
+                                    ? `No mapped towns for ${districtTnName}. Type a custom hub.`
+                                    : "Type a custom hub city."
+                                }
                                 colorScheme="teal"
-                                variant="solid"
-                                borderRadius="6px"
-                                leftIcon={<MdLocationOn />}
-                                onClick={() => {
-                                  setDistrictModalError("");
-                                  const clean = (districtFormData.city || "").trim().toLowerCase();
-                                  const c = TAMIL_NADU_CITIES.find(x => x.name.toLowerCase() === clean);
-                                  if (c) {
-                                    const poly = generateCircularGeoJSON(c.lat, c.lng, 10);
-                                    setDistrictFormData((prev) => ({
-                                      ...prev,
-                                      code: prev.code || c.code,
-                                      polygonCoordinates: JSON.stringify(poly, null, 2),
-                                    }));
-                                  }
-                                }}
-                              >
-                                Locate
-                              </Button>
-                            </InputRightElement>
-                          </InputGroup>
+                              />
+                            </Box>
+                            <Button
+                              size="xs"
+                              h="32px"
+                              variant="brand"
+                              borderRadius="6px"
+                              leftIcon={<MdLocationOn />}
+                              isLoading={isLocatingHub}
+                              onClick={() => geocodeHub(districtFormData.city)}
+                            >
+                              Locate
+                            </Button>
+                          </HStack>
                         </FormControl>
 
                         <FormControl>
@@ -4999,8 +5399,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       <HStack spacing={2}>
                         <Button
                           size="xs"
-                          colorScheme="teal"
-                          variant="outline"
+                          variant="brand-outline"
                           leftIcon={<Icon as={MdVerified} />}
                           isLoading={isCheckingModalBoundary}
                           onClick={() => handleValidateModalPolygon(districtFormData.polygonCoordinates)}
@@ -5058,7 +5457,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </VStack>
 
                 {/* Right Column: Interactive Leaflet Map */}
-                <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="teal.200" boxShadow="xs" display="flex" flexDirection="column">
+                <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="teal.200" boxShadow="xs" display="flex" flexDirection="column" minW={0}>
                   <Flex justify="space-between" align="center" mb={2}>
                     <HStack spacing={1.5}>
                       <Icon as={MdMap} color={BRAND} boxSize={4} />
@@ -5074,6 +5473,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   <Box flex="1" minH="360px">
                     <ZoneMap
                       cityName={districtFormData.city}
+                      cityOptions={districtHubCities}
                       districtName={districtFormData.name}
                       polygonCoordinates={districtFormData.polygonCoordinates}
                       onPolygonChange={(newPoly) => setDistrictFormData((prev) => ({ ...prev, polygonCoordinates: newPoly }))}
@@ -5107,18 +5507,17 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
               </Grid>
             </ModalBody>
 
-            <ModalFooter borderTop="1px solid" borderColor="gray.200" bg="white" px={6} py={3}>
-              <Button variant="ghost" mr={3} borderRadius="8px" onClick={handleCloseDistrictModal}>
+            <ModalFooter {...modalFooterProps}>
+              <Button variant="ghost" size="sm" mr={3} borderRadius="8px" onClick={handleCloseDistrictModal}>
                 Cancel
               </Button>
               <Button
-                bg={BRAND}
-                color="white"
+                variant="brand"
+                size="sm"
                 borderRadius="8px"
-                _hover={{ bg: BRAND_DARK }}
                 onClick={handleSubmitDistrict}
                 isLoading={isSubmitting}
-                px={6}
+                px={5}
                 leftIcon={<Icon as={MdCheckCircle} />}
               >
                 {isEditingDistrict ? "Save Changes" : "Create Operational District"}
@@ -5130,12 +5529,12 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         {/* VIEW SINGLE DISTRICT LIVE MAP MODAL */}
         <Modal isOpen={isViewMapModalOpen} onClose={() => setIsViewMapModalOpen(false)} size="xl">
           <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
-          <ModalContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401}>
-            <ModalHeader bg="white" color={BRAND}>
+          <ModalContent {...modalContentProps}>
+            <ModalHeader {...modalHeaderProps}>
               Operational Range Map — {viewMapDistrict?.name} ({viewMapDistrict?.city})
             </ModalHeader>
-            <ModalCloseButton />
-            <ModalBody pb={6}>
+            <ModalCloseButton top={4} right={4} />
+            <ModalBody {...modalBodyProps}>
               {viewMapDistrict && (
                 <VStack spacing={3} align="stretch">
                   <HStack justify="space-between" bg="teal.50" p={3} borderRadius="8px">
@@ -5164,27 +5563,32 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </VStack>
               )}
             </ModalBody>
+            <ModalFooter {...modalFooterProps}>
+              <Button variant="ghost" size="sm" borderRadius="8px" onClick={() => setIsViewMapModalOpen(false)}>
+                Close
+              </Button>
+            </ModalFooter>
           </ModalContent>
         </Modal>
 
         {/* VIEW DISTRICT TECHNICIANS MODAL */}
         <Modal isOpen={isDistrictTechModalOpen} onClose={() => setIsDistrictTechModalOpen(false)} size="xl">
           <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
-          <ModalContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401}>
-            <ModalHeader bg="white" color={BRAND} pb={2} borderBottom="1px solid" borderColor="gray.100">
+          <ModalContent {...modalContentProps}>
+            <ModalHeader {...modalHeaderProps}>
               <HStack spacing={2}>
                 <Icon as={MdPersonAdd} color={BRAND} />
                 <Text fontSize="md" fontWeight="700">Technicians Authorized in {viewingDistrictName}</Text>
               </HStack>
             </ModalHeader>
             <ModalCloseButton top={4} right={4} />
-            <ModalBody py={4}>
+            <ModalBody {...modalBodyProps}>
               {(!Array.isArray(districtTechList) || districtTechList.length === 0) ? (
                 <Text color="gray.500" py={6} textAlign="center" fontSize="xs">
                   No technicians currently authorized for this district.
                 </Text>
               ) : (
-                <Box border="1px solid" borderColor="gray.200" borderRadius="8px" overflow="hidden">
+                <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="8px" overflow="hidden">
                   <Table size="sm" variant="simple">
                     <Thead bg="teal.50">
                       <Tr>
@@ -5220,8 +5624,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </Box>
               )}
             </ModalBody>
-            <ModalFooter borderTop="1px solid" borderColor="gray.100" pt={3} pb={3}>
-              <Button colorScheme="teal" borderRadius="8px" size="sm" onClick={() => setIsDistrictTechModalOpen(false)}>
+            <ModalFooter {...modalFooterProps}>
+              <Button variant="ghost" borderRadius="8px" size="sm" onClick={() => setIsDistrictTechModalOpen(false)}>
                 Close
               </Button>
             </ModalFooter>
@@ -5232,8 +5636,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         {/* MANAGE TECHNICIAN DISTRICT & CITY ZONE PERMISSIONS MODAL */}
         <Modal isOpen={isPermissionModalOpen} onClose={() => setIsPermissionModalOpen(false)} size="2xl">
           <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
-          <ModalContent bg="white" borderRadius="16px" maxH="88vh" boxShadow="2xl" zIndex={1401}>
-            <ModalHeader bg="white" color={BRAND} pb={2} borderBottom="1px solid" borderColor="gray.100">
+          <ModalContent {...modalContentProps}>
+            <ModalHeader {...modalHeaderProps}>
               <Flex align="center" justify="space-between" pr={6}>
                 <HStack spacing={3}>
                   <Box p={2} bg="teal.50" color={BRAND} borderRadius="10px">
@@ -5245,7 +5649,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     </Text>
                     <HStack spacing={2} mt={0.5}>
                       <Badge colorScheme="teal" fontSize="10px">
-                        Base Hub: {getResolvedPrimaryDistrict()?.name || selectedTechForPermission?.city || "Primary Assigned"}
+                        Registration District: {getResolvedPrimaryDistrict()?.name || selectedTechForPermission?.city || "Not Assigned"}
                       </Badge>
                       {(selectedTechForPermission?.mobileNumber || selectedTechForPermission?.phone || selectedTechForPermission?.userId?.mobileNumber) && (
                         <Text fontSize="11px" color="gray.500">
@@ -5258,7 +5662,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
               </Flex>
             </ModalHeader>
             <ModalCloseButton top={4} right={4} />
-            <ModalBody overflowY="auto" css={globalScrollbarStyles} py={4}>
+            <ModalBody {...modalBodyProps}>
               <VStack spacing={4} align="stretch">
                 <Box p={3.5} bg="teal.50" borderRadius="12px" border="1px solid" borderColor="teal.200">
                   <Flex justify="space-between" align="center" flexWrap="wrap" gap={2}>
@@ -5268,13 +5672,13 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                         <Text fontSize="11px" fontWeight="700" color="teal.800" textTransform="uppercase" letterSpacing="0.5px">
                           Primary Registered District
                         </Text>
-                        <Badge colorScheme="teal" fontSize="9px" px={1.5}>Default Base Hub</Badge>
+                        <Badge colorScheme="gray" fontSize="9px" px={1.5}>Metadata Only</Badge>
                       </HStack>
                       <Text fontSize="sm" fontWeight="700" color={BRAND}>
                         {getResolvedPrimaryDistrict()?.name || selectedTechForPermission?.city || "None Specified"}
                       </Text>
                       <Text fontSize="10px" color="gray.600">
-                        Auto-authorized for all bookings in this hub. Cannot be disabled without reassigning base registration hub.
+                        Registration context only. It grants no dispatch coverage until an admin grants district access below.
                       </Text>
                     </Box>
                   </Flex>
@@ -5317,17 +5721,21 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 {(() => {
                   const resolvedPrim = getResolvedPrimaryDistrict();
                   const primaryId = resolvedPrim?._id ? String(resolvedPrim._id) : "";
-                  const primaryCity = (resolvedPrim?.city || resolvedPrim?.name || "").toLowerCase().trim();
-
-                  const currentRawAddl = techPermissions?.permissions || techPermissions?.additionalPermissions || [];
-                  const currentAddl = currentRawAddl.filter((p) => {
-                    const dId = String(p.districtId?._id || p.districtId?.id || p.districtId || "");
-                    const dCity = (p.districtId?.city || "").toLowerCase().trim();
-                    const dName = (p.districtId?.name || getDistrictNameById(dId) || "").toLowerCase().trim();
-                    if (primaryId && dId === primaryId) return false;
-                    if (primaryCity && (dCity === primaryCity || dName.includes(primaryCity))) return false;
-                    return true;
+                  const currentRaw = techPermissions?.permissions || techPermissions?.additionalPermissions || [];
+                  const getPermDistrictId = (p) =>
+                    String(p.districtId?._id || p.districtId?.id || p.districtId || "");
+                  const currentAddl = currentRaw.filter((p) => {
+                    const dId = getPermDistrictId(p);
+                    return dId && (!primaryId || dId !== primaryId);
                   });
+                  const primaryPerm =
+                    techPermissions?.primaryPermission ||
+                    currentRaw.find((p) => primaryId && getPermDistrictId(p) === primaryId) ||
+                    null;
+                  const primaryEnabled = primaryPerm?.isEnabled === true;
+                  const enabledCoverageCount =
+                    currentAddl.filter((p) => p.isEnabled === true).length + (primaryEnabled ? 1 : 0);
+                  const grantedDistrictIds = new Set([...currentRaw.map(getPermDistrictId)].filter(Boolean));
 
                   return (
                     <Box p={4} border="1px solid" borderColor={SURFACE_BORDER} borderRadius="12px" bg="white" boxShadow="xs">
@@ -5340,38 +5748,35 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             </Text>
                           </HStack>
                           <Text fontSize="11px" color="gray.500">
-                            Authorized operational hubs for service request dispatch.
+                            Explicit operational districts the technician may receive work in. Registration district is metadata only.
                           </Text>
                         </Box>
-                        <Badge colorScheme="purple" fontSize="11px" px={2.5} py={0.5} borderRadius="full">
-                          {1 + currentAddl.length} Authorized Hub{1 + currentAddl.length === 1 ? "" : "s"}
+                        <Badge colorScheme={enabledCoverageCount > 0 ? "purple" : "red"} fontSize="11px" px={2.5} py={0.5} borderRadius="full">
+                          {enabledCoverageCount} Active Coverage
                         </Badge>
                       </Flex>
 
                       <HStack mb={3.5} spacing={2}>
                         <Select
-                          placeholder="Select Additional District to Enable..."
+                          placeholder="Select District to Grant Coverage..."
                           size="sm"
                           borderRadius="8px"
                           value={selectedDistrictToGrant}
                           onChange={(e) => setSelectedDistrictToGrant(e.target.value)}
-                          bg="gray.50"
-                          _focus={{ bg: "white", borderColor: BRAND }}
+                          bg="white"
+                          _focus={{ bg: "white", borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
+                          border="1px solid"
+                          borderColor="gray.300"
+                          _hover={{ borderColor: "gray.400" }}
                         >
                           {districts.map((d) => {
                             const isAct = d.active !== false && d.isActive !== false;
                             const isJobOn = d.isJobEnabled !== false;
-                            const targetCity = (d.city || d.name || "").toLowerCase().trim();
+                            const isAlreadyGranted = grantedDistrictIds.has(String(d._id));
 
-                            const isPrimary = (primaryId && String(d._id) === primaryId) || (primaryCity && targetCity && primaryCity === targetCity);
-                            const isAlreadyGranted = currentAddl.some(
-                              (p) => String(p.districtId?._id || p.districtId?.id || p.districtId) === String(d._id)
-                            );
-
-                            const isDisabled = !isAct || !isJobOn || isPrimary || isAlreadyGranted;
+                            const isDisabled = !isAct || !isJobOn || isAlreadyGranted;
                             let statusNote = "";
-                            if (isPrimary) statusNote = " — [PRIMARY BASE DISTRICT - ACTIVE]";
-                            else if (isAlreadyGranted) statusNote = " — [ALREADY PERMISSIONED]";
+                            if (isAlreadyGranted) statusNote = " — [PERMISSION EXISTS: Enable/Pause Below]";
                             else if (!isAct) statusNote = " — [INACTIVE: Activate in District Master]";
                             else if (!isJobOn) statusNote = " — [JOBS DISABLED: Enable in District Master]";
 
@@ -5381,8 +5786,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                 value={d._id}
                                 disabled={isDisabled}
                                 style={{
-                                  color: (isPrimary || isAlreadyGranted) ? "#718096" : (isDisabled ? "#E53E3E" : "inherit"),
-                                  backgroundColor: (isPrimary || isAlreadyGranted) ? "#EDF2F7" : "inherit",
+                                  color: isAlreadyGranted ? "#718096" : (isDisabled ? "#E53E3E" : "inherit"),
+                                  backgroundColor: isAlreadyGranted ? "#EDF2F7" : "inherit",
                                 }}
                               >
                                 {d.name} ({d.city}){statusNote}
@@ -5392,20 +5797,18 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                         </Select>
                         <Button
                           size="sm"
-                          bg={BRAND}
-                          color="white"
-                          _hover={{ bg: BRAND_DARK }}
+                          variant="brand"
                           borderRadius="8px"
-                          onClick={handleGrantDistrictPermission}
+                          onClick={() => handleGrantDistrictPermission()}
                           isLoading={isSubmitting}
                           leftIcon={<MdAddCircleOutline />}
                           flexShrink={0}
                         >
-                          Enable District
+                          Grant Coverage
                         </Button>
                       </HStack>
 
-                      <Box border="1px solid" borderColor="gray.200" borderRadius="8px" overflow="hidden">
+                      <Box bg="white" border="1px solid" borderColor="gray.200" borderRadius="8px" overflow="hidden">
                         <Table size="sm" variant="simple">
                           <Thead bg={SURFACE_MUTED}>
                             <Tr>
@@ -5415,80 +5818,108 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               <Th fontSize="10px" py={3} color="gray.600" textAlign="center" textTransform="uppercase" letterSpacing="0.5px" w="140px">
                                 Permission Type
                               </Th>
-                              <Th fontSize="10px" py={3} color="gray.600" textAlign="center" textTransform="uppercase" letterSpacing="0.5px" w="150px">
+                              <Th fontSize="10px" py={3} color="gray.600" textAlign="center" textTransform="uppercase" letterSpacing="0.5px" w="180px">
                                 Status
                               </Th>
-                              <Th fontSize="10px" py={3} color="gray.600" textAlign="center" textTransform="uppercase" letterSpacing="0.5px" w="110px">
+                              <Th fontSize="10px" py={3} color="gray.600" textAlign="center" textTransform="uppercase" letterSpacing="0.5px" w="170px">
                                 Action
                               </Th>
                             </Tr>
                           </Thead>
                           <Tbody>
-                            {/* ROW 1: PRIMARY BASE DISTRICT */}
-                            {(() => {
-                              const pName = resolvedPrim?.name || (selectedTechForPermission?.city ? `${selectedTechForPermission.city} Operational Range` : "Primary Base District");
-                              const pCity = resolvedPrim?.city || selectedTechForPermission?.city || "";
-                              return (
-                                <Tr bg="teal.50" borderBottom="1px solid" borderColor="teal.100">
-                                  <Td py={3}>
-                                    <HStack spacing={3} align="center">
-                                      <Flex
-                                        w="32px"
-                                        h="32px"
-                                        bg="teal.100"
-                                        color="teal.800"
-                                        borderRadius="8px"
-                                        align="center"
-                                        justify="center"
-                                        flexShrink={0}
-                                      >
-                                        <Icon as={MdLocationOn} boxSize={4} />
-                                      </Flex>
-                                      <Box>
-                                        <Text fontWeight="700" fontSize="xs" color="teal.900" lineHeight="short">
-                                          {pName} {pCity && !pName.includes(pCity) ? `(${pCity})` : ""}
-                                        </Text>
-                                        <Text fontSize="10px" color="teal.700" mt={0.5}>
-                                          Technician home registration district
-                                        </Text>
-                                      </Box>
-                                    </HStack>
-                                  </Td>
-                                  <Td py={3} textAlign="center" whiteSpace="nowrap">
-                                    <Badge colorScheme="teal" variant="solid" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
-                                      PRIMARY BASE
+                            {/* PRIMARY DISTRICT ROW */}
+                            <Tr bg={primaryEnabled ? "teal.50" : "gray.50"} borderBottom="1px solid" borderColor={primaryEnabled ? "teal.100" : "gray.200"}>
+                              <Td py={3}>
+                                <HStack spacing={3} align="center">
+                                  <Flex
+                                    w="32px"
+                                    h="32px"
+                                    bg={primaryEnabled ? "teal.100" : "gray.200"}
+                                    color={primaryEnabled ? "teal.800" : "gray.600"}
+                                    borderRadius="8px"
+                                    align="center"
+                                    justify="center"
+                                    flexShrink={0}
+                                  >
+                                    <Icon as={MdLocationOn} boxSize={4} />
+                                  </Flex>
+                                  <Box>
+                                    <Text fontWeight="700" fontSize="xs" color={primaryEnabled ? "teal.900" : INK} lineHeight="short">
+                                      {resolvedPrim?.name || (selectedTechForPermission?.city ? `${selectedTechForPermission.city} Operational Range` : "Primary District Not Assigned")}
+                                      {resolvedPrim?.city && !(resolvedPrim?.name || "").includes(resolvedPrim.city) ? ` (${resolvedPrim.city})` : ""}
+                                    </Text>
+                                    <Text fontSize="10px" color="gray.500" mt={0.5}>
+                                      Registration base district — not authorization by itself
+                                    </Text>
+                                  </Box>
+                                </HStack>
+                              </Td>
+                              <Td py={3} textAlign="center" whiteSpace="nowrap">
+                                <Badge colorScheme="teal" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
+                                  PRIMARY
+                                </Badge>
+                              </Td>
+                              <Td py={3} textAlign="center" whiteSpace="nowrap">
+                                {!resolvedPrim ? (
+                                  <Badge colorScheme="gray" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
+                                    No Primary District
+                                  </Badge>
+                                ) : !primaryPerm ? (
+                                  <Badge colorScheme="red" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
+                                    No Coverage
+                                  </Badge>
+                                ) : (
+                                  <HStack spacing={2} justify="center">
+                                    <Switch
+                                      size="sm"
+                                      isChecked={primaryEnabled}
+                                      colorScheme="teal"
+                                      onChange={() => handleTogglePermission(primaryId, primaryEnabled)}
+                                    />
+                                    <Badge colorScheme={primaryEnabled ? "green" : "orange"} fontSize="10px" px={2} py={0.5} borderRadius="full">
+                                      {primaryEnabled ? "Enabled" : "Paused"}
                                     </Badge>
-                                  </Td>
-                                  <Td py={3} textAlign="center" whiteSpace="nowrap">
-                                    <Badge colorScheme="green" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
-                                      <HStack spacing={1} justify="center">
-                                        <Icon as={MdCheckCircle} />
-                                        <Text>Always Active</Text>
-                                      </HStack>
-                                    </Badge>
-                                  </Td>
-                                  <Td py={3} textAlign="center" whiteSpace="nowrap">
-                                    <Badge
-                                      colorScheme="gray"
-                                      variant="outline"
-                                      fontSize="10px"
-                                      px={2.5}
-                                      py={1}
-                                      borderRadius="md"
-                                      whiteSpace="nowrap"
-                                      fontWeight="600"
-                                      bg="white"
-                                    >
-                                      Default Hub
-                                    </Badge>
-                                  </Td>
-                                </Tr>
-                              );
-                            })()}
+                                  </HStack>
+                                )}
+                              </Td>
+                              <Td py={3} textAlign="center" whiteSpace="nowrap">
+                                {!resolvedPrim ? (
+                                  <Text fontSize="10px" color="gray.400">Assign a primary district first</Text>
+                                ) : !primaryPerm ? (
+                                  <Button
+                                    size="xs"
+                                    variant="brand-outline"
+                                    borderRadius="6px"
+                                    h="26px"
+                                    px={2.5}
+                                    fontSize="11px"
+                                    isLoading={isSubmitting}
+                                    onClick={() => handleGrantDistrictPermission(primaryId)}
+                                  >
+                                    Grant Primary
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="xs"
+                                    leftIcon={<MdDelete />}
+                                    colorScheme="red"
+                                    variant="ghost"
+                                    borderRadius="6px"
+                                    h="26px"
+                                    px={2.5}
+                                    fontSize="11px"
+                                    title="Revoke primary district coverage"
+                                    onClick={() => handleRemovePermission(primaryId)}
+                                  >
+                                    Revoke
+                                  </Button>
+                                )}
+                              </Td>
+                            </Tr>
 
-                            {/* ROWS 2+: ADDITIONAL DISTRICT PERMISSIONS */}
+                            {/* ADDITIONAL / EXPLICIT DISTRICT ROWS */}
                             {currentAddl.map((p) => {
-                              const distId = p.districtId?._id || p.districtId?.id || p.districtId;
+                              const distId = getPermDistrictId(p);
                               const distName = p.districtId?.name || getDistrictNameById(distId);
                               const distCity = p.districtId?.city || "";
                               return (
@@ -5512,14 +5943,14 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                           {distName} {distCity && !distName.includes(distCity) ? `(${distCity})` : ""}
                                         </Text>
                                         <Text fontSize="10px" color="gray.500" mt={0.5}>
-                                          Cross-district dispatch authorized
+                                          Explicit cross-district dispatch coverage
                                         </Text>
                                       </Box>
                                     </HStack>
                                   </Td>
                                   <Td py={3} textAlign="center" whiteSpace="nowrap">
                                     <Badge colorScheme="purple" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
-                                      ADDITIONAL GRANT
+                                      {p.permissionType || "ADDITIONAL"}
                                     </Badge>
                                   </Td>
                                   <Td py={3} textAlign="center" whiteSpace="nowrap">
@@ -5531,7 +5962,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                         onChange={() => handleTogglePermission(distId, p.isEnabled)}
                                       />
                                       <Badge
-                                        colorScheme={p.isEnabled ? "green" : "gray"}
+                                        colorScheme={p.isEnabled ? "green" : "orange"}
                                         fontSize="10px"
                                         px={2}
                                         py={0.5}
@@ -5551,7 +5982,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                       h="26px"
                                       px={2.5}
                                       fontSize="11px"
-                                      title="Revoke additional district permission"
+                                      title="Revoke district coverage"
                                       onClick={() => handleRemovePermission(distId)}
                                     >
                                       Revoke
@@ -5564,12 +5995,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                         </Table>
                       </Box>
 
-                      {/* HELPER TEXT WHEN NO ADDITIONAL DISTRICTS ARE YET GRANTED */}
-                      {currentAddl.length === 0 && (
-                        <Flex align="center" mt={3} p={2.5} bg="gray.50" borderRadius="8px" border="1px dashed" borderColor="gray.300">
-                          <Icon as={MdInfoOutline} color="gray.500" mr={2} boxSize={4} />
-                          <Text fontSize="11px" color="gray.600">
-                            No additional districts granted yet. This technician currently operates exclusively within their <strong>Primary Base Hub</strong>. Select an operational district above to expand their dispatch coverage.
+                      {enabledCoverageCount === 0 && (
+                        <Flex align="center" mt={3} p={2.5} bg="red.50" borderRadius="8px" border="1px dashed" borderColor="red.200">
+                          <Icon as={MdInfoOutline} color="red.500" mr={2} boxSize={4} />
+                          <Text fontSize="11px" color="red.700">
+                            No active district coverage. This technician will not receive any jobs, even within their registered primary district, until an admin grants coverage below.
                           </Text>
                         </Flex>
                       )}
@@ -5648,8 +6078,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </Box>
               </VStack>
             </ModalBody>
-            <ModalFooter borderTop="1px solid" borderColor="gray.100" pt={3} pb={3} px={6}>
-              <Button colorScheme="teal" borderRadius="8px" size="sm" px={6} onClick={() => setIsPermissionModalOpen(false)}>
+            <ModalFooter {...modalFooterProps}>
+              <Button variant="ghost" borderRadius="8px" size="sm" px={6} onClick={() => setIsPermissionModalOpen(false)}>
                 Close
               </Button>
             </ModalFooter>
@@ -5657,10 +6087,10 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         </Modal>
 
         {/* CREATE / EDIT ZONE MODAL WITH LEAFLET MAP */}
-        <Modal isOpen={isModalOpen} onClose={handleCloseZoneModal} size="4xl">
+        <Modal isOpen={isModalOpen} onClose={handleCloseZoneModal} size="6xl">
           <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
-          <ModalContent bg="white" borderRadius="16px" maxH="90vh" overflow="hidden" boxShadow="2xl" zIndex={1401}>
-            <ModalHeader bg="white" color={BRAND} pb={2} pt={4} px={6} borderBottom="1px solid" borderColor="gray.100">
+          <ModalContent {...modalContentProps}>
+            <ModalHeader {...modalHeaderProps}>
               <Flex align="center" justify="space-between">
                 <HStack spacing={3}>
                   <Box p={2} bg="teal.50" color={BRAND} borderRadius="10px">
@@ -5679,7 +6109,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
             </ModalHeader>
             <ModalCloseButton top={4} right={4} />
 
-            <ModalBody overflowY="auto" p={6} css={globalScrollbarStyles} bg="gray.50">
+            <ModalBody {...modalBodyProps} overflowX="hidden">
               {/* Inline Error Alert Banner for Zone Modal */}
               {zoneModalError && (
                 <Flex
@@ -5717,60 +6147,245 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </Flex>
               )}
 
-              <Grid templateColumns={{ base: "1fr", md: "1fr 1.15fr" }} gap={5}>
+              <DistrictPickerCard
+                mode="zone"
+                allDistricts={TAMIL_NADU_DISTRICTS}
+                operationalDistricts={districts}
+                selectedId={formData.operationalCityId}
+                onSelectOperationalDistrict={(record) => {
+                  if (!record) return;
+                  setZoneModalError("");
+                  setZoneCityFilterMode("district");
+                  setFormData((prev) => {
+                    const tnDistrict = findTnDistrictForRecord(record);
+                    const cityName =
+                      tnDistrict?.name || record.city || record.name || "";
+                    const districtCities = tnDistrict
+                      ? getDistrictCities(tnDistrict.name)
+                      : getDistrictCities(cityName);
+                    const firstTown = districtCities[0];
+                    if (firstTown) {
+                      return {
+                        ...prev,
+                        operationalCityId: record._id,
+                        city: firstTown.name,
+                        name: firstTown.name,
+                        zoneCode: firstTown.code,
+                        polygonCoordinates: JSON.stringify(
+                          generateCircularGeoJSON(
+                            firstTown.lat,
+                            firstTown.lng,
+                            5
+                          ),
+                          null,
+                          2
+                        ),
+                      };
+                    }
+                    return {
+                      ...prev,
+                      operationalCityId: record._id,
+                      city: cityName,
+                    };
+                  });
+                }}
+                accent="purple"
+              />
+
+              <Grid templateColumns={{ base: "1fr", lg: "1fr 1.45fr" }} gap={5}>
                 {/* Left Column: Form Details */}
-                <VStack spacing={4} align="stretch">
+                <VStack spacing={4} align="stretch" minW={0}>
                   <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="gray.200" boxShadow="xs">
                     <VStack spacing={3} align="stretch">
-                      <FormControl isRequired>
-                        <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
-                          Operational District / City
-                        </FormLabel>
-                        <Select
-                          size="sm"
-                          value={formData.operationalCityId}
-                          onChange={(e) => {
-                            setZoneModalError("");
-                            const nextDistrictId = e.target.value;
-                            setFormData((prev) => {
-                              // Auto-suggest a boundary when district changes and none set yet.
-                              if (!prev.polygonCoordinates && nextDistrictId) {
-                                const parent = districts.find((d) => String(d._id) === String(nextDistrictId));
-                                const cityName = parent?.city || parent?.name || "";
-                                const preset = TAMIL_NADU_CITIES.find(
-                                  (c) => c.name.toLowerCase().trim() === String(cityName).toLowerCase().trim()
-                                );
-                                if (preset) {
-                                  return {
-                                    ...prev,
-                                    operationalCityId: nextDistrictId,
-                                    polygonCoordinates: JSON.stringify(
-                                      generateCircularGeoJSON(preset.lat, preset.lng, 5),
-                                      null,
-                                      2
-                                    ),
-                                  };
-                                }
-                              }
-                              return { ...prev, operationalCityId: nextDistrictId };
-                            });
-                          }}
-                          borderRadius="8px"
-                          fontWeight="600"
+                      <Box
+                        bg="purple.50"
+                        p={3.5}
+                        borderRadius="12px"
+                        border="1px solid"
+                        borderColor="purple.200"
+                        boxShadow="xs"
+                      >
+                        <Flex
+                          justify="space-between"
+                          align="center"
+                          mb={2}
+                          flexWrap="wrap"
+                          gap={1.5}
                         >
-                          <option value="">-- Select Parent District --</option>
-                          {districts.map((d) => (
-                            <option key={d._id} value={d._id}>
-                              {d.name} ({d.city})
-                            </option>
-                          ))}
-                        </Select>
-                      </FormControl>
+                          <HStack spacing={1.5}>
+                            <Icon
+                              as={MdLocationCity}
+                              color="purple.700"
+                              boxSize={4}
+                            />
+                            <Text
+                              fontSize="xs"
+                              fontWeight="700"
+                              color="purple.900"
+                              textTransform="uppercase"
+                              letterSpacing="0.5px"
+                            >
+                              {isZoneCityScoped
+                                ? `${zoneCityScopeName} Towns & Taluks`
+                                : "All Tamil Nadu Towns & Cities"}
+                            </Text>
+                            {isLocatingZoneCity && (
+                              <Spinner size="xs" color="purple.500" />
+                            )}
+                          </HStack>
+                          <HStack spacing={1}>
+                            {zoneParentDistrict && (
+                              <Button
+                                size="xs"
+                                h="22px"
+                                fontSize="10px"
+                                borderRadius="full"
+                                variant={
+                                  zoneCityFilterMode === "district"
+                                    ? "solid"
+                                    : "outline"
+                                }
+                                colorScheme="purple"
+                                fontWeight="700"
+                                onClick={() => setZoneCityFilterMode("district")}
+                              >
+                                {zoneParentTnDistrict?.name ||
+                                  zoneParentDistrict.city ||
+                                  zoneParentDistrict.name}{" "}
+                                ({zoneDistrictCities.length})
+                              </Button>
+                            )}
+                            <Button
+                              size="xs"
+                              h="22px"
+                              fontSize="10px"
+                              borderRadius="full"
+                              variant={
+                                zoneCityFilterMode === "all" ||
+                                !zoneParentDistrict
+                                  ? "solid"
+                                  : "outline"
+                              }
+                              colorScheme="purple"
+                              fontWeight="700"
+                              onClick={() => setZoneCityFilterMode("all")}
+                            >
+                              All TN ({TAMIL_NADU_CITIES.length})
+                            </Button>
+                          </HStack>
+                        </Flex>
 
-                      <Grid templateColumns="1.4fr 0.8fr" gap={3} w="100%">
+                        <QuickPickChips
+                          items={zoneCityOptions.map((city) => ({
+                            key: `${city.district || ""}-${city.name}`,
+                            label: `${city.name} (${city.code})`,
+                            selected:
+                              (formData.city || "").toLowerCase() ===
+                                city.name.toLowerCase() ||
+                              (formData.name || "").toLowerCase() ===
+                                city.name.toLowerCase(),
+                            onClick: () => applyZoneCity(city),
+                          }))}
+                          accent="purple"
+                          label="Quick Pick Town:"
+                          countText={`${zoneCityOptions.length} available`}
+                          onMore={() => zoneCityComboRef.current?.open()}
+                        />
+
+                        <Box>
+                          <Flex
+                            align="center"
+                            justify="space-between"
+                            mb={1}
+                            gap={2}
+                          >
+                            <Text
+                              fontSize="10px"
+                              fontWeight="700"
+                              color="purple.800"
+                              textTransform="uppercase"
+                            >
+                              Select City / Town / Taluk:
+                            </Text>
+                            {formData.city && (
+                              <Badge
+                                colorScheme="purple"
+                                fontSize="10px"
+                                borderRadius="full"
+                                px={2}
+                              >
+                                Selected: {formData.city}
+                              </Badge>
+                            )}
+                          </Flex>
+
+                          <LocationCombobox
+                            ref={zoneCityComboRef}
+                            options={zoneCityOptions.map((city) => ({
+                              value: city.name,
+                              label: city.name,
+                              description: city.district,
+                              badge: city.code,
+                              keywords: `${city.name} ${city.district || ""} ${
+                                city.code || ""
+                              }`,
+                              city,
+                            }))}
+                            value={formData.city}
+                            selectedLabel={formData.city}
+                            onChange={(option) => applyZoneCity(option.city)}
+                            onCustomSelect={locateZoneCity}
+                            allowCustom
+                            placeholder={
+                              isZoneCityScoped
+                                ? `Search ${zoneCityScopeName} towns (${zoneDistrictCities.length})...`
+                                : `Search all ${TAMIL_NADU_CITIES.length} Tamil Nadu cities & taluks...`
+                            }
+                            emptyText={
+                              isZoneCityScoped
+                                ? `No mapped towns for ${zoneCityScopeName}. Type a custom city.`
+                                : "No cities found. Type a custom city."
+                            }
+                            colorScheme="purple"
+                            footer={
+                              zoneParentDistrict &&
+                              zoneCityFilterMode === "district" ? (
+                                <Button
+                                  size="xs"
+                                  w="100%"
+                                  variant="ghost"
+                                  colorScheme="purple"
+                                  onClick={() =>
+                                    setZoneCityFilterMode("all")
+                                  }
+                                >
+                                  Can't find it? Search all Tamil Nadu cities
+                                </Button>
+                              ) : null
+                            }
+                          />
+                        </Box>
+                      </Box>
+
+                      <Grid templateColumns={{ base: "1fr", md: "1.1fr 1.1fr 0.8fr" }} gap={3} w="100%">
                         <FormControl isRequired>
                           <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
-                            Zone Name
+                            City / Town
+                          </FormLabel>
+                          <Input
+                            size="sm"
+                            value={formData.city || ""}
+                            onChange={(e) => {
+                              setZoneModalError("");
+                              setFormData({ ...formData, city: e.target.value });
+                            }}
+                            placeholder="e.g. Dharapuram, Coimbatore"
+                            borderRadius="8px"
+                          />
+                        </FormControl>
+                        <FormControl isRequired>
+                          <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
+                            Micro-Zone Name
                           </FormLabel>
                           <Input
                             size="sm"
@@ -5840,8 +6455,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       <HStack spacing={2}>
                         <Button
                           size="xs"
-                          colorScheme="teal"
-                          variant="outline"
+                          variant="brand-outline"
                           leftIcon={<Icon as={MdVerified} />}
                           isLoading={isCheckingModalBoundary}
                           onClick={() => handleValidateModalPolygon(formData.polygonCoordinates, formData.operationalCityId)}
@@ -5933,7 +6547,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </VStack>
 
                 {/* Right Column: Leaflet Map */}
-                <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="teal.200" boxShadow="xs" display="flex" flexDirection="column">
+                <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="teal.200" boxShadow="xs" display="flex" flexDirection="column" minW={0}>
                   <Flex justify="space-between" align="center" mb={2}>
                     <Text fontSize="xs" fontWeight="700" color={BRAND} textTransform="uppercase" letterSpacing="0.5px">
                       Zone Boundary Leaflet Canvas
@@ -5943,13 +6557,14 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     </Badge>
                   </Flex>
 
-                  <Box flex="1" minH="340px">
+                  <Box flex="1" minH="490px">
                     <ZoneMap
-                      cityName={districts.find((d) => d._id === formData.operationalCityId)?.city || ""}
+                      cityName={formData.city || zoneParentDistrict?.city || ""}
+                      cityOptions={zoneCityOptions}
                       districtName={formData.name || "City Zone"}
                       polygonCoordinates={formData.polygonCoordinates}
                       onPolygonChange={(newPoly) => setFormData((prev) => ({ ...prev, polygonCoordinates: newPoly }))}
-                      height="350px"
+                      height="500px"
                       mode="polygon"
                       showSearch={true}
                       showDrawTools={true}
@@ -5966,18 +6581,17 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </Box>
               </Grid>
             </ModalBody>
-            <ModalFooter borderTop="1px solid" borderColor="gray.200" bg="white" px={6} py={3}>
-              <Button variant="ghost" mr={3} borderRadius="8px" onClick={handleCloseZoneModal}>
+            <ModalFooter {...modalFooterProps}>
+              <Button variant="ghost" size="sm" mr={3} borderRadius="8px" onClick={handleCloseZoneModal}>
                 Cancel
               </Button>
               <Button
-                bg={BRAND}
-                color="white"
+                variant="brand"
+                size="sm"
                 borderRadius="8px"
-                _hover={{ bg: BRAND_DARK }}
                 onClick={handleSubmitZone}
                 isLoading={isSubmitting}
-                px={6}
+                px={5}
                 leftIcon={<Icon as={MdCheckCircle} />}
               >
                 {isEditing ? "Update Zone" : "Create Zone"}
@@ -5989,8 +6603,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         {/* SERVICE ZONE MAPPING CHECKLIST & MANAGEMENT MODAL */}
         <Modal isOpen={isManageServiceModalOpen} onClose={() => setIsManageServiceModalOpen(false)} size="xl">
           <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
-          <ModalContent bg="white" borderRadius="16px" maxH="88vh" boxShadow="2xl" zIndex={1401}>
-            <ModalHeader bg="white" borderBottom="1px solid" borderColor="gray.100" pb={3}>
+          <ModalContent {...modalContentProps}>
+            <ModalHeader {...modalHeaderProps}>
               {isServiceDetailLoading ? (
                 <Flex align="center" gap={2}>
                   <Spinner size="sm" color={BRAND} />
@@ -6023,9 +6637,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 <Text fontSize="md">Service Zone Mapping</Text>
               )}
             </ModalHeader>
-            <ModalCloseButton />
+            <ModalCloseButton top={4} right={4} />
 
-            <ModalBody overflowY="auto" py={4} css={globalScrollbarStyles}>
+            <ModalBody {...modalBodyProps}>
               {isServiceDetailLoading || !selectedServiceDetail ? (
                 <Flex justify="center" align="center" py={12}>
                   <Spinner size="lg" color={BRAND} />
@@ -6062,7 +6676,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       </Text>
                       <Button
                         size="xs"
-                        colorScheme="teal"
+                        variant="brand"
                         leftIcon={<MdCheckCircle />}
                         onClick={() => handleModalEnableAllDistricts(true)}
                       >
@@ -6126,6 +6740,15 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               <Text fontSize="xs" color="gray.500">
                                 Code: {dist.code} • {hasSubZones ? `${dist.activeZonesCount || 0} Active Sub-Zones` : "Entire District Availability"}
                               </Text>
+                              {hasSubZones && typeof dist.isDistrictDefaultEnabled === "boolean" && (
+                                <Text
+                                  fontSize="10px"
+                                  color={dist.isDistrictDefaultEnabled ? "gray.500" : "orange.600"}
+                                  fontWeight="600"
+                                >
+                                  District default: {dist.isDistrictDefaultEnabled ? "On" : "Off"} · sub-zone overrides control the final result
+                                </Text>
+                              )}
                             </Box>
                           </HStack>
 
@@ -6153,8 +6776,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               <HStack spacing={1}>
                                 <Button
                                   size="xs"
-                                  colorScheme="teal"
-                                  variant="ghost"
+                                  variant="brand-ghost"
                                   onClick={() => handleModalDistrictAllZonesToggle(dist, true)}
                                   isLoading={isThisDistrictToggling}
                                 >
@@ -6228,8 +6850,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
               )}
             </ModalBody>
 
-            <ModalFooter borderTop="1px solid" borderColor="gray.100" pt={3}>
-              <Button colorScheme="teal" borderRadius="8px" onClick={() => setIsManageServiceModalOpen(false)}>
+            <ModalFooter {...modalFooterProps}>
+              <Button variant="brand" borderRadius="8px" size="sm" px={6} onClick={() => setIsManageServiceModalOpen(false)}>
                 Done
               </Button>
             </ModalFooter>
@@ -6239,12 +6861,12 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         {/* TECHNICIAN GEOFENCE & GPS VERIFICATION MODAL */}
         <Modal isOpen={!!techGeofenceDetail || isTechGeofenceLoading} onClose={() => setTechGeofenceDetail(null)} size="lg">
           <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
-          <ModalContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401}>
-            <ModalHeader bg="white" color={BRAND} pb={2}>
+          <ModalContent {...modalContentProps}>
+            <ModalHeader {...modalHeaderProps}>
               Technician GPS & Geofence Verification
             </ModalHeader>
-            <ModalCloseButton />
-            <ModalBody pb={6}>
+            <ModalCloseButton top={4} right={4} />
+            <ModalBody {...modalBodyProps}>
               {isTechGeofenceLoading ? (
                 <Flex justify="center" align="center" py={8}>
                   <Spinner size="lg" color={BRAND} />
@@ -6261,7 +6883,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   </Box>
 
                   <Grid templateColumns="1fr 1fr" gap={2} fontSize="xs">
-                    <Box p={2.5} bg="gray.50" borderRadius="8px" border="1px solid" borderColor="gray.200">
+                    <Box p={2.5} bg="white" borderRadius="8px" border="1px solid" borderColor="gray.200">
                       <Flex justify="space-between" align="center" mb={1}>
                         <Text color="gray.500">Registered Lat / Lng</Text>
                         <Button
@@ -6288,7 +6910,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       </Flex>
                       <Text fontWeight="700">{techGeofenceDetail.latitude || 11.0168}, {techGeofenceDetail.longitude || 76.9558}</Text>
                     </Box>
-                    <Box p={2.5} bg="gray.50" borderRadius="8px" border="1px solid" borderColor="gray.200">
+                    <Box p={2.5} bg="white" borderRadius="8px" border="1px solid" borderColor="gray.200">
                       <Text color="gray.500">Boundary Containment</Text>
                       <Badge colorScheme={techGeofenceDetail.isInsideDistrict !== false ? "green" : "red"}>
                         {techGeofenceDetail.isInsideDistrict !== false ? "INSIDE BOUNDARY" : "OUTSIDE BOUNDARY"}
@@ -6337,7 +6959,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </VStack>
               ) : null}
             </ModalBody>
-            <ModalFooter borderTop="1px solid" borderColor="gray.100" pt={3} display="flex" justify="space-between">
+            <ModalFooter {...modalFooterProps} display="flex" justify="space-between">
               <Button
                 colorScheme="purple"
                 variant="outline"
@@ -6362,7 +6984,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   Cancel
                 </Button>
                 <Button
-                  colorScheme="teal"
+                  variant="brand"
                   size="sm"
                   borderRadius="8px"
                   onClick={handleSaveTechGeofenceVerification}
@@ -6383,18 +7005,19 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         >
           <AlertDialogOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400}>
             <AlertDialogContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401}>
-              <AlertDialogHeader bg="white" fontSize="lg" fontWeight="bold" color={INK}>
+              <AlertDialogHeader fontSize="lg" fontWeight="bold" color={INK} px={6} pt={5} pb={2}>
                 Delete {deleteType === "district" ? "Operational District" : "City Micro-Zone"}?
               </AlertDialogHeader>
-              <AlertDialogBody fontSize="sm" color="gray.600">
+              <AlertDialogBody fontSize="sm" color="gray.600" px={6} pb={4}>
                 Are you sure you want to permanently delete <b>"{itemToDelete?.name}"</b>? This action cannot be undone and will invalidate associated spatial caches.
               </AlertDialogBody>
-              <AlertDialogFooter>
-                <Button ref={cancelRef} borderRadius="8px" onClick={() => setIsDeleteDialogOpen(false)}>
+              <AlertDialogFooter {...modalFooterProps}>
+                <Button ref={cancelRef} variant="ghost" size="sm" borderRadius="8px" onClick={() => setIsDeleteDialogOpen(false)}>
                   Cancel
                 </Button>
                 <Button
-                  colorScheme="red"
+                  variant="danger"
+                  size="sm"
                   borderRadius="8px"
                   onClick={handleConfirmDelete}
                   ml={3}
@@ -6413,20 +7036,21 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           leastDestructiveRef={cancelRef}
           onClose={() => setIsConfirmDialogOpen(false)}
         >
-          <AlertDialogOverlay>
-            <AlertDialogContent borderRadius="16px">
-              <AlertDialogHeader fontSize="lg" fontWeight="bold" color={INK}>
+          <AlertDialogOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400}>
+            <AlertDialogContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401}>
+              <AlertDialogHeader fontSize="lg" fontWeight="bold" color={INK} px={6} pt={5} pb={2}>
                 {confirmConfig.title}
               </AlertDialogHeader>
-              <AlertDialogBody fontSize="sm" color="gray.600">
+              <AlertDialogBody fontSize="sm" color="gray.600" px={6} pb={4}>
                 {confirmConfig.description}
               </AlertDialogBody>
-              <AlertDialogFooter>
-                <Button ref={cancelRef} borderRadius="8px" onClick={() => setIsConfirmDialogOpen(false)}>
+              <AlertDialogFooter {...modalFooterProps}>
+                <Button ref={cancelRef} variant="ghost" size="sm" borderRadius="8px" onClick={() => setIsConfirmDialogOpen(false)}>
                   Cancel
                 </Button>
                 <Button
-                  colorScheme={confirmConfig.type?.includes("DISABLE") || confirmConfig.type === "CLEAR_ALL" ? "red" : "teal"}
+                  variant={confirmConfig.type?.includes("DISABLE") || confirmConfig.type === "CLEAR_ALL" ? "danger" : "brand"}
+                  size="sm"
                   borderRadius="8px"
                   onClick={handleExecuteConfirmedAction}
                   ml={3}

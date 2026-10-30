@@ -24,7 +24,7 @@ import {
   FaChartLine,
 } from "react-icons/fa";
 
-export default function UserStatsCards({
+const UserStatsCards = React.memo(function UserStatsCards({
   stats,
   activeFilter,
   onFilterClick,
@@ -132,4 +132,6 @@ export default function UserStatsCards({
       })}
     </SimpleGrid>
   );
-}
+});
+
+export default UserStatsCards;

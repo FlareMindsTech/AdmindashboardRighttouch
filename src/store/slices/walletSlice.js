@@ -318,11 +318,17 @@ export const selectWalletSummary = (state) => state.wallet.summary.data;
 const defaultWithdrawalsSelector = (state) =>
   state.wallet.withdrawals[withdrawalKeyOf({})]?.data ?? EMPTY_WITHDRAWALS;
 
+const withdrawalSelectors = new Map();
 export const selectWithdrawals = (params) => {
   if (!params || Object.keys(params).length === 0) return defaultWithdrawalsSelector;
   if ("wallet" in params) return defaultWithdrawalsSelector(params);
   const key = withdrawalKeyOf(params);
-  return (state) => state.wallet.withdrawals[key]?.data ?? EMPTY_WITHDRAWALS;
+  let sel = withdrawalSelectors.get(key);
+  if (!sel) {
+    sel = (state) => state.wallet.withdrawals[key]?.data ?? EMPTY_WITHDRAWALS;
+    withdrawalSelectors.set(key, sel);
+  }
+  return sel;
 };
 export const selectAllWithdrawals = defaultWithdrawalsSelector;
 export const selectWithdrawalsStatus = (params = {}) => {

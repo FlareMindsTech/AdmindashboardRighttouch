@@ -20,7 +20,7 @@ import {
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL ||
-  "https://righttouchservernew-727889857503.asia-south1.run.app";
+  "http://localhost:7372";
 
 // Preserve the exact legacy login request (URL, payload, response reading).
 export const loginOwner = createAsyncThunk(

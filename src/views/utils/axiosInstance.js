@@ -71,7 +71,7 @@ if (typeof window !== "undefined" && window.fetch) {
 }
 
 // --- Configuration ---
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://righttouchservernew-727889857503.asia-south1.run.app";
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:7372";
 const BASE_URL = `${API_BASE_URL}/api`;
 const TIMEOUT_MS = 10000;
 

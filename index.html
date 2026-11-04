@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tamil Nadu District & City-Village Zone Operations | GeoZone Ops</title>
+  <meta name="description"
+    content="Tamil Nadu Service Zone Operations: interactive map visualization, district and city-wise village sub-zones, real-time enable/disable toggles, geo code display, and custom zone creation with spatial analysis.">
+
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap"
+    rel="stylesheet">
+
+  <!-- Leaflet CSS (Local Zero-Latency) -->
+  <link rel="stylesheet" href="leaflet.css" />
+
+  <!-- App Stylesheet -->
+  <link rel="stylesheet" href="index.css">
+</head>
+
+<body class="theme-dark">
+  <div class="app-container">
+
+    <!-- Top Global Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="brand-logo">
+          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
+            <line x1="8" y1="2" x2="8" y2="18"></line>
+            <line x1="16" y1="6" x2="16" y2="22"></line>
+          </svg>
+          <div class="brand-text">
+            <span class="brand-title">GeoZone <span class="highlight">Ops</span> &bull; Tamil Nadu</span>
+            <span class="brand-sub">District & City-Village Hierarchical Operations Grid</span>
+          </div>
+        </div>
+
+        <!-- Mode Switcher (Districts vs City & Village Zones) -->
+        <div class="view-mode-selector">
+          <button class="btn-mode active" data-mode="DISTRICTS" id="mode-districts">
+            <span class="mode-icon">🏢</span>
+            <span>Districts (37)</span>
+          </button>
+          <button class="btn-mode" data-mode="SUBZONES" id="mode-subzones">
+            <span class="mode-icon">🏘️</span>
+            <span>Cities & Villages</span>
+          </button>
+          <button class="btn-mode" data-mode="COMBINED" id="mode-combined">
+            <span class="mode-icon">🌐</span>
+            <span>Combined View</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Bar in Header -->
+      <div class="header-metrics">
+        <div class="metric-card active-card">
+          <div class="metric-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+          <div class="metric-info">
+            <span class="metric-value" id="kpi-enabled-count">0</span>
+            <span class="metric-label" id="kpi-enabled-label">Zones Enabled</span>
+          </div>
+        </div>
+
+        <div class="metric-card disabled-card">
+          <div class="metric-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+            </svg>
+          </div>
+          <div class="metric-info">
+            <span class="metric-value" id="kpi-disabled-count">0</span>
+            <span class="metric-label" id="kpi-disabled-label">Zones Disabled</span>
+          </div>
+        </div>
+
+        <div class="metric-card coverage-card">
+          <div class="metric-info">
+            <div class="coverage-row">
+              <span class="metric-value" id="kpi-coverage-pct">0%</span>
+              <span class="metric-sublabel" id="kpi-states-covered">0/37 Units</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="kpi-progress-bar" style="width: 0%"></div>
+            </div>
+            <span class="metric-label">Service Coverage</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Header Actions -->
+      <div class="header-actions">
+        <!-- New Zone / Village Creation Trigger -->
+        <button id="btn-open-create-zone" class="btn btn-primary"
+          title="Create a new custom city or village zone with spatial geo analysis">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="16"></line>
+            <line x1="8" y1="12" x2="16" y2="12"></line>
+          </svg>
+          <span>+ Add Zone / Village</span>
+        </button>
+
+        <button id="btn-toggle-sidebar" class="btn btn-secondary btn-icon" title="Toggle Zone Management Panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="9" y1="3" x2="9" y2="21"></line>
+          </svg>
+          <span>Zones Panel</span>
+        </button>
+
+        <div class="dropdown">
+          <button id="btn-bulk-menu" class="btn btn-outline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+            </svg>
+            <span>Batch Actions</span>
+          </button>
+          <div class="dropdown-menu" id="bulk-dropdown">
+            <button id="btn-bulk-enable-all" class="dropdown-item text-success">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Enable All Current View Zones
+            </button>
+            <button id="btn-bulk-disable-all" class="dropdown-item text-danger">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
+              </svg>
+              Disable All Current View Zones
+            </button>
+            <div class="dropdown-divider"></div>
+            <button id="btn-preset-metro" class="dropdown-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                </path>
+              </svg>
+              Preset: Top Cities & Hubs Active
+            </button>
+            <button id="btn-preset-reset" class="dropdown-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 2v6h6"></path>
+                <path d="M21 12A9 9 0 0 0 6 5.3L3 8"></path>
+                <path d="M21 22v-6h-6"></path>
+                <path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"></path>
+              </svg>
+              Reset to Default Configuration
+            </button>
+          </div>
+        </div>
+
+        <button id="btn-header-geojson" class="btn btn-outline"
+          title="View & Download Tamil Nadu District GeoJSON Code">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline>
+            <polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+          <span>Get GeoJSON</span>
+        </button>
+
+        <button id="btn-export-config" class="btn btn-outline" title="Export current zone configuration">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>Export</span>
+        </button>
+
+        <label for="import-file-input" class="btn btn-outline" title="Import zone configuration">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <span>Import</span>
+          <input type="file" id="import-file-input" accept=".json" style="display: none;">
+        </label>
+
+        <!-- Close Application / Return to Admin Dashboard -->
+        <button id="btn-close-app" class="btn btn-danger btn-icon" style="background: #e11d48; color: #fff; border: none; padding: 6px 12px; margin-left: 8px; border-radius: 6px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Close &amp; Return to Dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 16px; height: 16px;">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+          <span>Close</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Layout -->
+    <main class="app-main">
+
+      <!-- Interactive Map Area -->
+      <div class="map-viewport" id="map-viewport">
+        <div id="map"></div>
+
+        <!-- Floating District Drill-Down Header (Appears when drilling into a district!) -->
+        <div id="district-drilldown-banner" class="district-drilldown-banner" style="display: none;">
+          <div class="drilldown-left">
+            <button id="btn-exit-drilldown" class="btn btn-sm btn-secondary"
+              title="Return to All Tamil Nadu Districts View">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+              <span>Back to All Districts</span>
+            </button>
+            <div class="drilldown-title-box">
+              <div class="drilldown-breadcrumb">Tamil Nadu &rsaquo; District Operations</div>
+              <h3 class="drilldown-name" id="drilldown-district-title">Coimbatore District</h3>
+            </div>
+            <div class="drilldown-stats" id="drilldown-stats-pill">
+              <span class="badge-pill" id="dd-stat-total">8 Sub-Zones</span>
+              <span class="badge-pill text-success" id="dd-stat-active">5 Active</span>
+              <span class="badge-pill text-muted" id="dd-stat-inactive">3 Inactive</span>
+            </div>
+          </div>
+          <div class="drilldown-actions">
+            <button id="btn-dd-enable-all" class="btn btn-xs btn-success">Enable All in District</button>
+            <button id="btn-dd-disable-all" class="btn btn-xs btn-danger">Disable All in District</button>
+            <button id="btn-dd-add-zone" class="btn btn-xs btn-primary">+ Add Sub-Zone</button>
+          </div>
+        </div>
+
+        <!-- Pin Drop Indicator (Active when clicking map to set coordinates) -->
+        <div id="pin-mode-banner" class="pin-mode-banner" style="display: none;">
+          <span class="pulse-dot"></span>
+          <span>Click anywhere on the map to place the new zone center point...</span>
+          <button id="btn-cancel-pin-mode" class="btn-xs btn-outline" style="margin-left: 8px;">Cancel</button>
+        </div>
+
+        <!-- Floating Map Overlay Controls: Search -->
+        <div class="map-overlay-top-left">
+          <div class="search-box-map">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="map-quick-search" placeholder="Search District, City, Village or Pincode..."
+              autocomplete="off">
+            <button id="btn-clear-search" class="btn-clear" style="display: none;">&times;</button>
+          </div>
+          <div id="quick-search-results" class="quick-search-dropdown" style="display: none;"></div>
+        </div>
+
+        <!-- Basemap Switcher & Quick Map View Controls -->
+        <div class="map-overlay-top-right">
+          <div class="map-control-card">
+            <div class="control-row">
+              <span class="control-title">Map Mode</span>
+              <div class="basemap-buttons">
+                <button class="btn-basemap active" data-layer="osm" title="Free OpenStreetMap (No API Key Required)">OSM (Free)</button>
+                <button class="btn-basemap" data-layer="carto" title="Clean OpenStreetMap Street View">Street</button>
+                <button class="btn-basemap" data-layer="none"
+                  title="Pure Vector GeoJSON (Zero API Key / Zero Watermarks)">GeoJSON Vector</button>
+              </div>
+            </div>
+            <div class="control-row opacity-row">
+              <span class="control-title">Zone Fill Opacity</span>
+              <input type="range" id="opacity-slider" min="10" max="90" value="45" class="slider">
+              <span id="opacity-value">45%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Map Legend Floating Card -->
+        <div class="map-overlay-bottom-left">
+          <div class="legend-card">
+            <div class="legend-header">
+              <span class="legend-title" id="legend-title-text">Tamil Nadu &bull; All Zones Visible</span>
+            </div>
+            <div class="legend-items">
+              <div class="legend-item">
+                <span class="legend-swatch swatch-enabled"></span>
+                <div class="legend-desc">
+                  <span class="legend-name">Service Enabled</span>
+                  <span class="legend-meta">Operational & Active</span>
+                </div>
+              </div>
+              <div class="legend-item">
+                <span class="legend-swatch swatch-disabled"></span>
+                <div class="legend-desc">
+                  <span class="legend-name">Service Disabled</span>
+                  <span class="legend-meta">Inactive (Visible Outline)</span>
+                </div>
+              </div>
+              <div class="legend-item">
+                <span class="legend-swatch swatch-hover"></span>
+                <div class="legend-desc">
+                  <span class="legend-name">Click Location</span>
+                  <span class="legend-meta">Inspect Live Geo Code</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Click Geo Code Floating Card -->
+        <div id="map-geocode-banner" class="map-geocode-banner">
+          <div class="geocode-banner-left">
+            <div class="geocode-pin-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                <circle cx="12" cy="10" r="3"></circle>
+              </svg>
+            </div>
+            <div class="geocode-banner-info">
+              <div class="geocode-header-row">
+                <span class="geocode-zone-title" id="gc-banner-name">Tamil Nadu Location</span>
+                <span class="geocode-badge" id="gc-banner-type">District Grid</span>
+                <span class="geocode-status-badge badge-enabled" id="gc-banner-status">Active</span>
+              </div>
+              <div class="geocode-data-row">
+                <div class="geocode-item">
+                  <span class="geocode-item-lbl">Geo Coordinates:</span>
+                  <span class="geocode-item-val" id="gc-banner-coords">13.0827° N, 80.2707° E</span>
+                </div>
+                <div class="geocode-item">
+                  <span class="geocode-item-lbl">Plus Code:</span>
+                  <span class="geocode-item-val" id="gc-banner-pluscode">7M52X7X8+9Q</span>
+                </div>
+                <div class="geocode-item" id="gc-banner-pincode-wrap">
+                  <span class="geocode-item-lbl">Pincode:</span>
+                  <span class="geocode-item-val" id="gc-banner-pincode">600001</span>
+                </div>
+                <div class="geocode-item" id="gc-banner-admin-wrap">
+                  <span class="geocode-item-lbl">Admin Code:</span>
+                  <span class="geocode-item-val" id="gc-banner-admincode">TN-GEO-001</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="geocode-banner-actions">
+            <button id="btn-view-district-geojson" class="btn btn-sm btn-info"
+              title="View & Copy District GeoJSON Code">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+              <span>District GeoJSON</span>
+            </button>
+            <button id="btn-copy-geocode" class="btn btn-sm btn-primary" title="Copy Geo Code to Clipboard">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copy Geo Code</span>
+            </button>
+            <button id="btn-geocode-toggle" class="btn btn-sm btn-outline">
+              Toggle Service
+            </button>
+            <button id="btn-close-geocode" class="btn-icon-close" title="Dismiss">&times;</button>
+          </div>
+        </div>
+
+        <!-- Reset Tamil Nadu View Button -->
+        <div class="map-overlay-bottom-right">
+          <button id="btn-reset-view" class="btn btn-floating" title="Reset View to Tamil Nadu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12h18M12 3v18"></path>
+            </svg>
+            <span>Reset Tamil Nadu</span>
+          </button>
+        </div>
+
+        <!-- Loading Spinner Overlay -->
+        <div id="map-loader" class="map-loading-overlay">
+          <div class="spinner"></div>
+          <div class="loading-text">
+            <h3>Loading Tamil Nadu Zone System...</h3>
+            <p>Rendering districts, cities, and village operational zones</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Collapsible Zone Management Sidebar -->
+      <aside class="zone-sidebar" id="zone-sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-header-top">
+            <div class="sidebar-title-group">
+              <h2 class="sidebar-title" id="sidebar-main-title">TN Districts (37)</h2>
+              <span class="sidebar-badge" id="filtered-count-badge">37 Zones</span>
+            </div>
+            <button id="btn-close-sidebar" class="btn-icon-close" title="Close Panel">&times;</button>
+          </div>
+
+          <!-- District Filter Dropdown (Active when in City & Village mode) -->
+          <div class="sidebar-filter-section" id="filter-parent-district-section" style="display: none;">
+            <label class="input-label" for="select-district-filter">Filter by District</label>
+            <div class="select-wrapper">
+              <select id="select-district-filter" class="form-select">
+                <option value="ALL">All 37 Districts</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Region Filter Dropdown (Active when in District mode) -->
+          <div class="sidebar-filter-section" id="filter-region-section">
+            <label class="input-label" for="select-state-filter">Filter by Region</label>
+            <div class="select-wrapper">
+              <select id="select-state-filter" class="form-select">
+                <option value="ALL">All Tamil Nadu (37 Districts)</option>
+                <option value="Northern">Northern Region (8 Districts)</option>
+                <option value="Western">Western / Kongu Region (8 Districts)</option>
+                <option value="Central">Central / Cauvery Delta (9 Districts)</option>
+                <option value="Southern">Southern Region (10 Districts)</option>
+                <option value="Coastal">Coastal Districts (14 Districts)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Batch Controls Bar (Shown when a region or district is selected) -->
+          <div id="state-batch-controls" class="state-batch-bar" style="display: none;">
+            <div class="state-batch-info">
+              <span class="state-batch-name" id="selected-state-name">Northern Region</span>
+              <span class="state-batch-counts" id="selected-state-counts">8 districts</span>
+            </div>
+            <div class="state-batch-buttons">
+              <button id="btn-state-enable-all" class="btn btn-xs btn-success">Enable All</button>
+              <button id="btn-state-disable-all" class="btn btn-xs btn-danger">Disable All</button>
+              <button id="btn-state-zoom" class="btn btn-xs btn-outline">Zoom Extent</button>
+            </div>
+          </div>
+
+          <!-- Status Filter Tabs -->
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-status="ALL">
+              All <span class="tab-count" id="tab-count-all">37</span>
+            </button>
+            <button class="filter-tab" data-status="ENABLED">
+              <span class="status-indicator-dot dot-enabled"></span>
+              Enabled <span class="tab-count" id="tab-count-enabled">0</span>
+            </button>
+            <button class="filter-tab" data-status="DISABLED">
+              <span class="status-indicator-dot dot-disabled"></span>
+              Disabled <span class="tab-count" id="tab-count-disabled">37</span>
+            </button>
+          </div>
+
+          <!-- Search input within sidebar -->
+          <div class="sidebar-search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="sidebar-search-input" placeholder="Search zone name, city, or pincode..."
+              autocomplete="off">
+          </div>
+        </div>
+
+        <!-- District / City & Village Zones Scrollable List -->
+        <div class="sidebar-body">
+          <div id="zones-list-container" class="zones-list">
+            <!-- Dynamic Zone Cards injected here -->
+          </div>
+        </div>
+
+        <!-- Sidebar Footer -->
+        <div class="sidebar-footer">
+          <div class="storage-indicator">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+            <span>TN Service Configuration saved locally</span>
+          </div>
+        </div>
+      </aside>
+
+    </main>
+
+    <!-- Modal: Create New Zone / Village with Spatial Analysis (Directly Requested!) -->
+    <div id="modal-create-zone" class="modal-backdrop" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <div class="modal-icon-badge">➕</div>
+            <div>
+              <h3 class="modal-title">Create & Analyze New Zone / Village</h3>
+              <p class="modal-sub">Add custom delivery hubs, town sectors, or rural village clusters with automated
+                spatial intelligence</p>
+            </div>
+          </div>
+          <button id="btn-close-modal" class="btn-icon-close">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Step 1: Location & Coordinates -->
+          <div class="form-section">
+            <div class="section-title-row">
+              <span class="section-badge">1</span>
+              <span class="section-title">Geographic Location</span>
+            </div>
+            <div class="location-pick-row">
+              <button id="btn-trigger-pin-mode" class="btn btn-secondary btn-block">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                  <circle cx="12" cy="10" r="3"></circle>
+                </svg>
+                <span>Click Point on Map to Set Coordinates</span>
+              </button>
+            </div>
+            <div class="coords-input-grid">
+              <div class="form-group">
+                <label class="input-label" for="new-zone-lat">Latitude</label>
+                <input type="number" step="0.0001" id="new-zone-lat" class="form-input" placeholder="e.g. 11.0168"
+                  value="11.0168">
+              </div>
+              <div class="form-group">
+                <label class="input-label" for="new-zone-lon">Longitude</label>
+                <input type="number" step="0.0001" id="new-zone-lon" class="form-input" placeholder="e.g. 76.9558"
+                  value="76.9558">
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Automated Spatial Analysis Card (How to Analyze and Give That!) -->
+          <div class="spatial-analysis-card">
+            <div class="analysis-card-header">
+              <span class="analysis-card-title">🔍 Automated Spatial Analysis</span>
+              <span class="analysis-status-badge" id="analysis-status">Ready</span>
+            </div>
+            <div class="analysis-grid">
+              <div class="analysis-item">
+                <span class="analysis-lbl">Detected District:</span>
+                <span class="analysis-val highlight-val" id="analysis-district">Coimbatore District</span>
+              </div>
+              <div class="analysis-item">
+                <span class="analysis-lbl">Computed Plus Code:</span>
+                <span class="analysis-val" id="analysis-pluscode">7M422X88+9Q</span>
+              </div>
+              <div class="analysis-item">
+                <span class="analysis-lbl">Generated Admin ID:</span>
+                <span class="analysis-val" id="analysis-admincode">TN-CUSTOM-001</span>
+              </div>
+              <div class="analysis-item">
+                <span class="analysis-lbl">Estimated Service Area:</span>
+                <span class="analysis-val highlight-val" id="analysis-area">113.1 km²</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3: Zone Configuration -->
+          <div class="form-section">
+            <div class="section-title-row">
+              <span class="section-badge">2</span>
+              <span class="section-title">Zone Identification & Service Parameters</span>
+            </div>
+
+            <div class="form-group">
+              <label class="input-label" for="new-zone-name">Zone / Village Name <span class="required">*</span></label>
+              <input type="text" id="new-zone-name" class="form-input" placeholder="e.g. Perur Heritage Village Cluster"
+                required>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label class="input-label" for="new-zone-type">Classification / Category</label>
+                <select id="new-zone-type" class="form-select">
+                  <option value="Village Cluster">Rural Village Cluster</option>
+                  <option value="City Core">City Commercial Core</option>
+                  <option value="Town Zone">Township & Taluk Hub</option>
+                  <option value="Rural Panchayat">Panchayat Farming Zone</option>
+                  <option value="Industrial Zone">Industrial / Tech Estate</option>
+                  <option value="Delivery Hub">Last-Mile Logistics Hub</option>
+                </select>
+              </div>
+
+              <div class="form-group" style="width: 140px;">
+                <label class="input-label" for="new-zone-pincode">Postal Pincode</label>
+                <input type="text" id="new-zone-pincode" class="form-input" placeholder="e.g. 641010" maxlength="6">
+              </div>
+            </div>
+
+            <!-- Service Radius Slider -->
+            <div class="form-group">
+              <div class="slider-header-row">
+                <label class="input-label" for="new-zone-radius">Service Operational Radius</label>
+                <span class="slider-badge" id="new-zone-radius-val">6 km</span>
+              </div>
+              <input type="range" id="new-zone-radius" min="2" max="20" value="6" step="0.5" class="slider">
+              <span class="form-help">Calculates circular operational boundary polygon on map</span>
+            </div>
+
+            <!-- Initial Service Status Switch -->
+            <div class="modal-switch-row">
+              <div class="switch-lbl-group">
+                <span class="switch-title">Service Availability</span>
+                <span class="switch-desc">Enable client delivery and operations immediately upon creation</span>
+              </div>
+              <label class="switch switch-lg">
+                <input type="checkbox" id="new-zone-status" checked>
+                <span class="slider-toggle"></span>
+              </label>
+            </div>
+
+            <div class="form-group">
+              <label class="input-label" for="new-zone-notes">Operational Notes & SLA Details</label>
+              <textarea id="new-zone-notes" class="form-textarea"
+                placeholder="Add custom notes, dispatch hubs, delivery partners, or instructions..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button id="btn-cancel-create" class="btn btn-secondary">Cancel</button>
+          <button id="btn-save-new-zone" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Save & Deploy Zone</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: View & Export GeoJSON Code (Zero API Key Required) -->
+    <div id="modal-geojson-viewer" class="modal-backdrop" style="display: none;">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <div class="modal-icon-badge">🗺️</div>
+            <div>
+              <h3 class="modal-title" id="geojson-modal-title">District GeoJSON Code</h3>
+              <p class="modal-sub">Pure Vector GeoJSON Boundary & Coordinates (100% Free & Open, Zero API Key Required)
+              </p>
+            </div>
+          </div>
+          <button id="btn-close-geojson-modal" class="btn-icon-close">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="geojson-viewer-toolbar">
+            <span id="geojson-modal-meta" class="text-muted"
+              style="font-size: 0.82rem; font-family: monospace;">Feature: Pudukkottai District</span>
+            <div style="display: flex; gap: 8px;">
+              <button id="btn-copy-modal-geojson" class="btn btn-sm btn-primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>Copy GeoJSON Code</span>
+              </button>
+              <button id="btn-download-modal-geojson" class="btn btn-sm btn-outline">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Download .geojson</span>
+              </button>
+            </div>
+          </div>
+          <pre id="geojson-modal-code" class="geojson-code-block"></pre>
+        </div>
+
+        <div class="modal-footer" style="justify-content: space-between;">
+          <button id="btn-download-all-tn-geojson" class="btn btn-secondary">
+            <span>Download All 37 Districts GeoJSON (tamilnadu_districts.geojson)</span>
+          </button>
+          <button id="btn-done-geojson-modal" class="btn btn-primary">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zone Inspector Drawer / Modal (Single District / Sub-zone Deep-Dive) -->
+    <div id="zone-detail-drawer" class="zone-detail-drawer">
+      <div class="detail-header">
+        <div class="detail-header-left">
+          <div class="detail-status-pill" id="detail-status-pill">Service Active</div>
+          <h3 class="detail-district-name" id="detail-district-name">Chennai</h3>
+          <span class="detail-state-name" id="detail-state-name">Tamil Nadu</span>
+        </div>
+        <button id="btn-close-detail" class="btn-icon-close">&times;</button>
+      </div>
+
+      <div class="detail-body">
+        <!-- Interactive Service Toggle Banner -->
+        <div class="service-toggle-banner">
+          <div class="banner-text">
+            <h4>Service Delivery Status</h4>
+            <p>Control client operations, logistics & booking availability in this zone</p>
+          </div>
+          <label class="switch switch-lg">
+            <input type="checkbox" id="detail-service-switch">
+            <span class="slider-toggle"></span>
+          </label>
+        </div>
+
+        <!-- Comprehensive Geo Code Card -->
+        <div class="detail-geocode-box">
+          <div class="geocode-box-header">
+            <span class="geocode-box-title">Geo Code & Location Identifiers</span>
+            <button id="btn-detail-copy-geocode" class="btn btn-xs btn-primary">Copy Geo Code</button>
+          </div>
+          <div class="geocode-box-grid">
+            <div class="stat-cell">
+              <span class="stat-cell-label">Latitude & Longitude</span>
+              <span class="stat-cell-value text-accent" id="detail-coords">--</span>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-cell-label">Plus Code (Open Location)</span>
+              <span class="stat-cell-value" id="detail-pluscode">--</span>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-cell-label">Admin Geo Code</span>
+              <span class="stat-cell-value" id="detail-dtcode">--</span>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-cell-label">Postal Pincode</span>
+              <span class="stat-cell-value" id="detail-pincode">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- District / Sub-zone Metadata Grid -->
+        <div class="detail-stats-grid">
+          <div class="stat-cell">
+            <span class="stat-cell-label">Zone Category / Type</span>
+            <span class="stat-cell-value" id="detail-zone-type">Administrative District</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-cell-label">Approx Area</span>
+            <span class="stat-cell-value" id="detail-area">-- km²</span>
+          </div>
+        </div>
+
+        <!-- Operational Notes Field -->
+        <div class="detail-notes-section">
+          <label class="input-label" for="detail-zone-notes">Operational Notes & Delivery Hubs</label>
+          <textarea id="detail-zone-notes" class="form-textarea"
+            placeholder="Add custom notes, dispatch centers, delivery rules, or SLA details for this zone..."></textarea>
+          <button id="btn-save-notes" class="btn btn-sm btn-primary">Save Notes</button>
+        </div>
+
+        <!-- Actions -->
+        <div class="detail-actions">
+          <button id="btn-detail-drilldown" class="btn btn-secondary btn-block" style="display: none;">
+            <span>Drill Down into Internal Cities & Villages</span>
+          </button>
+          <button id="btn-detail-flyto" class="btn btn-outline btn-block">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>
+            </svg>
+            <span>Center & Zoom on Zone</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast">
+      <span class="toast-icon">✓</span>
+      <span id="toast-message" class="toast-message">Service status updated successfully</span>
+    </div>
+
+  </div>
+
+  <!-- Leaflet Library (Local Zero-Latency) -->
+  <script src="leaflet.js"></script>
+  <!-- Application Script -->
+  <script src="app.js"></script>
+</body>
+
+</html>

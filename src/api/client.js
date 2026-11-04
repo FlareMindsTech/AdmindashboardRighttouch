@@ -7,7 +7,7 @@ import { getToken, clearAuth, handleSessionExpiry } from "views/utils/axiosInsta
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL ||
-  "https://righttouchservernew-727889857503.asia-south1.run.app";
+  "http://localhost:7372";
 
 export const apiClient = axios.create({
   baseURL: `${API_BASE_URL}/api`,

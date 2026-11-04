@@ -52,6 +52,7 @@
     Divider,
     Progress,
     Checkbox,
+    ButtonGroup,
   } from "@chakra-ui/react";
 
 import Card from "components/Card/Card.js";
@@ -63,20 +64,29 @@ import {
   skeuomorphicIconFilter,
 } from "components/common/skeuomorphicStyles";
 import { generateCircularGeoJSON } from "components/Map/DistrictMap.js";
-import ZoneMap from "components/Map/ZoneMap.js";
+import ZoneMap, { ZONE_COLOR_PALETTE } from "components/Map/ZoneMap.js";
 import LocationCombobox from "components/common/LocationCombobox";
 import DistrictPickerCard, {
   QuickPickChips,
 } from "components/common/DistrictPickerCard";
+import DistrictGeoJsonBoundaryCard from "components/common/DistrictGeoJsonBoundaryCard";
+import TamilNaduDistrictMiniMap from "components/Map/TamilNaduDistrictMiniMap";
 import {
   TAMIL_NADU_CITIES,
   TAMIL_NADU_DISTRICTS,
+  findConfiguredDistrictForTnName,
   findTnDistrict,
   findTnCity,
   findTnDistrictForRecord,
+  getAvailableDistrictName,
   getDistrictCities,
   getDistrictForCity,
+  getTnDistrictBoundary,
+  calculatePolygonCentroid,
+  getSubzonesByDistrict,
+  normalizeLocationName,
 } from "data/tamilNaduLocations";
+import polygonClipping from "polygon-clipping";
 import {
   isPolygonDraftDirty,
   confirmIfDirty,
@@ -97,6 +107,7 @@ import {
     MdLink,
     MdRefresh,
     MdLocationOn,
+    MdPublic,
     MdCheckCircle,
     MdPersonAdd,
     MdApartment,
@@ -112,6 +123,7 @@ import {
     MdAnalytics,
     MdGpsFixed,
     MdLocationCity,
+    MdPlace,
     MdAddCircleOutline,
     MdInfoOutline,
     MdOutlineFactCheck,
@@ -244,7 +256,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [searchTerm, setSearchTerm] = useState("");
-    const [districtFilter, setDistrictFilter] = useState("all"); // 'all' | 'active' | 'inactive' | districtId
+    const [districtFilter, setDistrictFilter] = useState("all"); // 'all' (all created districts) | 'active' (enabled) | 'inactive' (disabled)
     const [selectedDistrictFilter, setSelectedDistrictFilter] = useState("all");
     const [permissionFilter, setPermissionFilter] = useState("all"); // 'all' | 'multi_district' | 'single_district'
     const [selectedZoneStatusFilter, setSelectedZoneStatusFilter] = useState("all");
@@ -298,10 +310,17 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       isDistrictModalOpen &&
       isPolygonDraftDirty(districtFormData.polygonCoordinates || "", districtFormSnapshot.current || "");
     useEffect(() => attachBeforeUnload(districtModalDirty), [districtModalDirty]);
+
+    const resumeOpsFromContext = useCallback(() => {}, []);
+
     const handleCloseDistrictModal = () => {
       if (!confirmIfDirty(districtModalDirty, "You have unsaved district boundary changes. Close without saving?")) return;
       districtFormSnapshot.current = "";
+      setDistrictTnName("");
+      setDistrictFormData(initialDistrictForm);
+      setDistrictModalError("");
       setIsDistrictModalOpen(false);
+      resumeOpsFromContext("district");
     };
 
     // Live District Map Modal State
@@ -317,6 +336,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [selectedZone, setSelectedZone] = useState(null);
+    const [selectedTnDistrictName, setSelectedTnDistrictName] = useState("");
+    const [districtMasterView, setDistrictMasterView] = useState("table");
     const initialForm = {
       operationalCityId: "",
       city: "",
@@ -328,6 +349,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     };
     const [formData, setFormData] = useState(initialForm);
     const [zoneCityFilterMode, setZoneCityFilterMode] = useState("district");
+    const [zoneSearchFilter, setZoneSearchFilter] = useState("");
     const [isLocatingZoneCity, setIsLocatingZoneCity] = useState(false);
     const zoneCityComboRef = useRef(null);
     const zoneParentDistrict = useMemo(
@@ -350,23 +372,86 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 zoneParentDistrict.city ||
                 zoneParentDistrict.name
             )
+          : selectedTnDistrictName
+          ? getDistrictCities(selectedTnDistrictName)
           : [],
-      [zoneParentDistrict, zoneParentTnDistrict]
+      [zoneParentDistrict, zoneParentTnDistrict, selectedTnDistrictName]
     );
     const zoneCityOptions = useMemo(
-      () =>
-        zoneCityFilterMode === "district" && zoneParentDistrict
-          ? zoneDistrictCities
-          : TAMIL_NADU_CITIES,
-      [zoneCityFilterMode, zoneDistrictCities, zoneParentDistrict]
+      () => {
+        if (zoneCityFilterMode === "district") {
+          if (zoneParentDistrict) {
+            return zoneDistrictCities;
+          }
+          if (selectedTnDistrictName) {
+            return getDistrictCities(selectedTnDistrictName);
+          }
+        }
+        return TAMIL_NADU_CITIES;
+      },
+      [zoneCityFilterMode, zoneDistrictCities, zoneParentDistrict, selectedTnDistrictName]
     );
     const isZoneCityScoped =
-      zoneCityFilterMode === "district" && Boolean(zoneParentDistrict);
+      zoneCityFilterMode === "district" && Boolean(zoneParentDistrict || selectedTnDistrictName);
     const zoneCityScopeName =
       zoneParentTnDistrict?.name ||
       zoneParentDistrict?.city ||
       zoneParentDistrict?.name ||
+      selectedTnDistrictName ||
       "";
+
+    const selectedDistrictSubzones = useMemo(() => {
+      const dName =
+        selectedTnDistrictName ||
+        zoneParentTnDistrict?.name ||
+        zoneParentDistrict?.name ||
+        zoneParentDistrict?.city ||
+        "";
+      return dName ? getSubzonesByDistrict(dName) : [];
+    }, [selectedTnDistrictName, zoneParentTnDistrict, zoneParentDistrict]);
+
+    const availableDistrictCities = useMemo(() => {
+      if (zoneDistrictCities && zoneDistrictCities.length > 0) {
+        return zoneDistrictCities;
+      }
+      if (zoneParentDistrict?.city) {
+        return [{ name: zoneParentDistrict.city, code: zoneParentDistrict.code || "HQ" }];
+      }
+      return (districts || []).map((d) => ({ name: d.city || d.name, code: d.code || "TN" }));
+    }, [zoneDistrictCities, zoneParentDistrict, districts]);
+
+    const filteredDistrictSubzones = useMemo(() => {
+      let list = selectedDistrictSubzones;
+      if (formData.city) {
+        const cNorm = formData.city.toLowerCase().split("(")[0].trim();
+        const citySpecific = list.filter((sz) => {
+          const szName = (sz.name || "").toLowerCase();
+          const szDist = (sz.district || "").toLowerCase();
+          const szCity = (sz.city || "").toLowerCase();
+          return szName.includes(cNorm) || szCity.includes(cNorm) || cNorm.includes(szCity);
+        });
+        if (citySpecific.length > 0) list = citySpecific;
+      }
+      if (!zoneSearchFilter) return list;
+      const q = zoneSearchFilter.toLowerCase();
+      return list.filter(
+        (sz) =>
+          (sz.name || "").toLowerCase().includes(q) ||
+          (sz.district || "").toLowerCase().includes(q) ||
+          (sz.type || "").toLowerCase().includes(q)
+      );
+    }, [selectedDistrictSubzones, formData.city, zoneSearchFilter]);
+
+    const filteredDistrictCities = useMemo(() => {
+      if (!zoneSearchFilter) return availableDistrictCities;
+      const q = zoneSearchFilter.toLowerCase();
+      return availableDistrictCities.filter(
+        (c) =>
+          (c.name || c || "").toLowerCase().includes(q) ||
+          (c.code || "").toLowerCase().includes(q)
+      );
+    }, [availableDistrictCities, zoneSearchFilter]);
+
     // F-02D: same polygon-draft guard for the micro-zone modal.
     const zoneFormSnapshot = useRef("");
     const zoneModalDirty =
@@ -378,6 +463,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       zoneFormSnapshot.current = "";
       setZoneCityFilterMode("district");
       setIsModalOpen(false);
+      resumeOpsFromContext("zone");
     };
 
     // Delete Dialog
@@ -503,6 +589,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const [categoriesList, setCategoriesList] = useState([]);
     const [matrixCategoryFilter, setMatrixCategoryFilter] = useState("ALL");
     const [matrixDistrictFilter, setMatrixDistrictFilter] = useState("ALL");
+    const [matrixZoneFilter, setMatrixZoneFilter] = useState("ALL");
+    const [matrixZoneSearch, setMatrixZoneSearch] = useState("");
+    const [isTogglingSingleZone, setIsTogglingSingleZone] = useState(false);
     const [matrixZoneStatusFilter, setMatrixZoneStatusFilter] = useState("ALL");
     const [matrixServiceStatusFilter, setMatrixServiceStatusFilter] = useState("ALL");
     const [matrixSearch, setMatrixSearch] = useState("");
@@ -710,6 +799,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         if (matrixSearch.trim()) params.search = matrixSearch.trim();
         if (matrixCategoryFilter !== "ALL") params.categoryId = matrixCategoryFilter;
         if (matrixDistrictFilter !== "ALL") params.districtId = matrixDistrictFilter;
+        if (matrixZoneFilter !== "ALL") params.zoneId = matrixZoneFilter;
         if (matrixZoneStatusFilter !== "ALL") params.zoneStatus = matrixZoneStatusFilter;
         if (matrixServiceStatusFilter !== "ALL") params.serviceStatus = matrixServiceStatusFilter;
 
@@ -726,7 +816,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       } catch (err) {
         console.error("fetchMatrixData error:", err);
       }
-    }, [dispatch, matrixSearch, matrixCategoryFilter, matrixDistrictFilter, matrixZoneStatusFilter, matrixServiceStatusFilter]);
+    }, [dispatch, matrixSearch, matrixCategoryFilter, matrixDistrictFilter, matrixZoneFilter, matrixZoneStatusFilter, matrixServiceStatusFilter]);
 
     useEffect(() => {
       const t = setTimeout(() => {
@@ -739,9 +829,202 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setMatrixSearch("");
       setMatrixCategoryFilter("ALL");
       setMatrixDistrictFilter("ALL");
+      setMatrixZoneFilter("ALL");
+      setMatrixZoneSearch("");
       setMatrixZoneStatusFilter("ALL");
       setMatrixServiceStatusFilter("ALL");
       setShowAllChecked(true);
+    };
+
+    const isServiceActiveInZone = useCallback((serviceId, zoneId) => {
+      if (!serviceId || !zoneId) return false;
+      const sIdStr = String(serviceId);
+      const zIdStr = String(zoneId);
+      const found = (mappings || []).find((m) => {
+        const msId = String(m.serviceId?._id || m.serviceId?.id || m.serviceId || "");
+        const mzId = String(m.zoneId?._id || m.zoneId?.id || m.zoneId || m.cityZoneId?._id || m.cityZoneId?.id || m.cityZoneId || "");
+        return msId === sIdStr && mzId === zIdStr;
+      });
+      if (!found) return false;
+      return found.active === true || found.status === "ENABLED" || found.enabled === true;
+    }, [mappings]);
+
+    const handleToggleSingleServiceInSelectedZone = async (serviceId, currentActive, serviceName) => {
+      if (matrixDistrictFilter === "ALL" || matrixZoneFilter === "ALL") return;
+      const nextActive = !currentActive;
+      const nextStatus = nextActive ? "ENABLED" : "DISABLED";
+      const targetZone = zones.find((z) => String(z._id || z.zoneId || z.id) === String(matrixZoneFilter));
+      const targetDist = districts.find((d) => String(d._id) === String(matrixDistrictFilter));
+
+      // 1. Instant optimistic UI update in mappings state (0ms latency)
+      setMappings((prevMappings) => {
+        const sIdStr = String(serviceId);
+        const zIdStr = String(matrixZoneFilter);
+        const existingIdx = (prevMappings || []).findIndex((m) => {
+          const msId = String(m.serviceId?._id || m.serviceId?.id || m.serviceId || "");
+          const mzId = String(m.zoneId?._id || m.zoneId?.id || m.zoneId || m.cityZoneId?._id || m.cityZoneId?.id || m.cityZoneId || "");
+          return msId === sIdStr && mzId === zIdStr;
+        });
+
+        if (existingIdx >= 0) {
+          const updated = [...prevMappings];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            active: nextActive,
+            enabled: nextActive,
+            status: nextStatus,
+          };
+          return updated;
+        }
+
+        return [
+          ...(prevMappings || []),
+          {
+            serviceId,
+            zoneId: matrixZoneFilter,
+            cityZoneId: matrixZoneFilter,
+            districtId: matrixDistrictFilter,
+            active: nextActive,
+            enabled: nextActive,
+            status: nextStatus,
+          },
+        ];
+      });
+
+      // Optimistically update counts in matrixData
+      setMatrixData((prev) =>
+        prev.map((m) => {
+          if (String(m.serviceId) === String(serviceId)) {
+            const currentActiveCount = m.activeZonesCount || 0;
+            const newActiveCount = nextActive ? currentActiveCount + 1 : Math.max(0, currentActiveCount - 1);
+            return {
+              ...m,
+              activeZonesCount: newActiveCount,
+              inactiveZonesCount: Math.max(0, (m.inactiveZonesCount || 0) + (nextActive ? -1 : 1)),
+            };
+          }
+          return m;
+        })
+      );
+
+      toast({
+        title: `Service ${nextActive ? "Enabled" : "Disabled"} in Zone`,
+        description: `"${serviceName}" is now ${nextStatus} in ${targetZone?.name || "Zone"} (${targetDist?.name || "District"}).`,
+        status: nextActive ? "success" : "info",
+        duration: 1500,
+        isClosable: true,
+      });
+
+      // 2. Perform background write without freezing UI
+      try {
+        await toggleZoneAvailability({
+          serviceId,
+          districtId: matrixDistrictFilter,
+          zoneId: matrixZoneFilter,
+          cityZoneId: matrixZoneFilter,
+          enabled: nextActive,
+          status: nextStatus,
+        });
+      } catch (err) {
+        // Revert on error
+        setMappings((prevMappings) =>
+          (prevMappings || []).map((m) => {
+            const msId = String(m.serviceId?._id || m.serviceId?.id || m.serviceId || "");
+            const mzId = String(m.zoneId?._id || m.zoneId?.id || m.zoneId || m.cityZoneId?._id || m.cityZoneId?.id || m.cityZoneId || "");
+            if (msId === String(serviceId) && mzId === String(matrixZoneFilter)) {
+              return { ...m, active: currentActive, enabled: currentActive, status: currentActive ? "ENABLED" : "DISABLED" };
+            }
+            return m;
+          })
+        );
+        toast({
+          title: "Toggle Error",
+          description: err.message || "Failed to toggle service in zone.",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+    };
+
+    const handleBulkToggleServicesInSelectedZone = async (enable) => {
+      if (matrixDistrictFilter === "ALL" || matrixZoneFilter === "ALL") return;
+      const targetServices = currentMatrixData.map((m) => m.serviceId).filter(Boolean);
+      if (targetServices.length === 0) return;
+
+      const targetZone = zones.find((z) => String(z._id || z.zoneId || z.id) === String(matrixZoneFilter));
+      const targetDist = districts.find((d) => String(d._id) === String(matrixDistrictFilter));
+      const nextStatus = enable ? "ENABLED" : "DISABLED";
+      const zIdStr = String(matrixZoneFilter);
+
+      // 1. Instant optimistic UI update
+      setMappings((prevMappings) => {
+        const targetSet = new Set(targetServices.map(String));
+        const updated = (prevMappings || []).map((m) => {
+          const msId = String(m.serviceId?._id || m.serviceId?.id || m.serviceId || "");
+          const mzId = String(m.zoneId?._id || m.zoneId?.id || m.zoneId || m.cityZoneId?._id || m.cityZoneId?.id || m.cityZoneId || "");
+          if (mzId === zIdStr && targetSet.has(msId)) {
+            return { ...m, active: enable, enabled: enable, status: nextStatus };
+          }
+          return m;
+        });
+
+        const existingSIds = new Set(
+          (prevMappings || [])
+            .filter((m) => String(m.zoneId?._id || m.zoneId || m.cityZoneId) === zIdStr)
+            .map((m) => String(m.serviceId?._id || m.serviceId))
+        );
+        targetServices.forEach((sId) => {
+          if (!existingSIds.has(String(sId))) {
+            updated.push({
+              serviceId: sId,
+              zoneId: matrixZoneFilter,
+              cityZoneId: matrixZoneFilter,
+              districtId: matrixDistrictFilter,
+              active: enable,
+              enabled: enable,
+              status: nextStatus,
+            });
+          }
+        });
+        return updated;
+      });
+
+      toast({
+        title: `All Services ${enable ? "Enabled" : "Disabled"} in Zone`,
+        description: `${targetServices.length} services set to ${nextStatus} in ${targetZone?.name || "Zone"} (${targetDist?.name || "District"}).`,
+        status: enable ? "success" : "info",
+        duration: 2000,
+        isClosable: true,
+      });
+
+      // 2. Perform background writes
+      try {
+        setIsTogglingSingleZone(true);
+        await Promise.all(
+          targetServices.map((sId) =>
+            toggleZoneAvailability({
+              serviceId: sId,
+              districtId: matrixDistrictFilter,
+              zoneId: matrixZoneFilter,
+              cityZoneId: matrixZoneFilter,
+              enabled: enable,
+              status: nextStatus,
+            }).catch((e) => console.warn(`Toggle failed for service ${sId}:`, e))
+          )
+        );
+      } catch (err) {
+        toast({
+          title: "Batch Zone Toggle Error",
+          description: err.message || "Failed to update all services in zone.",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+        await fetchData();
+      } finally {
+        setIsTogglingSingleZone(false);
+      }
     };
 
     const handleOpenManageServiceModal = async (serviceId) => {
@@ -790,26 +1073,30 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       }
       if (dist.isDistrictEnabled === false) return false;
       if (dist.isDistrictEnabled === true) return true;
-      if (dist.status === "DISABLED") return false;
-      if (dist.status === "ENABLED") return true;
-      if (dist.enabled === false) return false;
-      if (dist.enabled === true) return true;
-      if (dist.active === false) return false;
-      if (dist.active === true) return true;
+      if (dist.status === "DISABLED" || dist.status === "INACTIVE") return false;
+      if (dist.status === "ENABLED" || dist.status === "ACTIVE") return true;
       if (dist.isServiceEnabled === false) return false;
       if (dist.isServiceEnabled === true) return true;
       if (dist.isAvailable === false) return false;
       if (dist.isAvailable === true) return true;
-      if (typeof dist.activeZonesCount === "number" && dist.activeZonesCount > 0) {
-        return true;
+      if (dist.enabled === false) return false;
+      if (dist.enabled === true) return true;
+      if (dist.active === false) return false;
+      if (dist.active === true) return true;
+      if (typeof dist.activeZonesCount === "number") {
+        return dist.activeZonesCount > 0;
       }
-      return dist.isDistrictEnabled !== false && dist.status !== "DISABLED" && dist.enabled !== false;
+      return false;
     };
 
     const isZoneServiceActive = (zone) => {
       if (!zone) return false;
-      if (zone.status === "DISABLED") return false;
-      if (zone.status === "ENABLED") return true;
+      if (zone.status === "DISABLED" || zone.status === "INACTIVE") return false;
+      if (zone.status === "ENABLED" || zone.status === "ACTIVE") return true;
+      if (zone.isAvailable === false) return false;
+      if (zone.isAvailable === true) return true;
+      if (zone.isServiceEnabled === false) return false;
+      if (zone.isServiceEnabled === true) return true;
       if (zone.enabled === false) return false;
       if (zone.enabled === true) return true;
       if (zone.active === false) return false;
@@ -882,6 +1169,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 status: nextStatus,
                 enabled: nextEnabled,
                 active: nextEnabled,
+                isAvailable: nextEnabled,
+                isServiceEnabled: nextEnabled,
               }));
               return {
                 ...d,
@@ -889,6 +1178,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 status: nextStatus,
                 enabled: nextEnabled,
                 active: nextEnabled,
+                isAvailable: nextEnabled,
                 isServiceEnabled: nextEnabled,
                 zones: updatedZones,
                 activeZonesCount: nextEnabled ? updatedZones.length : 0,
@@ -971,7 +1261,14 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
             if (String(resolveDetailDistrictId(d)) === String(districtId)) {
               const updatedZones = (d.zones || []).map((z) =>
                 String(resolveDetailZoneId(z)) === String(zoneId)
-                  ? { ...z, status: nextStatus, enabled: nextEnabled, active: nextEnabled }
+                  ? {
+                      ...z,
+                      status: nextStatus,
+                      enabled: nextEnabled,
+                      active: nextEnabled,
+                      isAvailable: nextEnabled,
+                      isServiceEnabled: nextEnabled,
+                    }
                   : z
               );
               const activeCount = updatedZones.filter((z) => isZoneServiceActive(z)).length;
@@ -983,6 +1280,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 isDistrictEnabled: activeCount > 0,
                 status: activeCount > 0 ? "ENABLED" : "DISABLED",
                 enabled: activeCount > 0,
+                active: activeCount > 0,
+                isAvailable: activeCount > 0,
+                isServiceEnabled: activeCount > 0,
               };
             }
             return d;
@@ -1219,21 +1519,126 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       }
     }, [currentUser, fetchData, fetchHealthAndMonitor]);
 
-    // Memoized Filtering Logic for high performance
+    // Unified list of all configured backend operational districts + unconfigured Survey of India revenue districts
+    const allMergedDistricts = useMemo(() => {
+      // 1. All backend operational districts created in database (guaranteed display)
+      const backendDistrictsList = (districts || []).map((d) => {
+        const tn = findTnDistrictForRecord(d) || findTnDistrict(d.city) || findTnDistrict(d.name);
+        const officialBoundary = (tn && getTnDistrictBoundary(tn.name)) || d.polygon || null;
+        const isActive = (d.active !== false && d.isActive !== false && String(d.status || "").toUpperCase() !== "INACTIVE");
+        return {
+          ...d,
+          _id: d._id,
+          name: d.name || tn?.name || "Operational District",
+          city: d.city || tn?.name || d.name || "",
+          code: d.code || tn?.code || "TN",
+          state: d.state || "Tamil Nadu",
+          country: d.country || "India",
+          active: isActive,
+          isActive: isActive,
+          isRegistrationEnabled: d.isRegistrationEnabled !== false,
+          isJobEnabled: d.isJobEnabled !== false,
+          isConfigured: true,
+          polygon: d.polygon || officialBoundary,
+          officialBoundary: d.polygon || officialBoundary,
+          tnDistrict: tn,
+          displayCode: d.code || tn?.code || tn?.dtcode,
+          backendRecord: d,
+        };
+      });
+
+      // Track which TN districts already exist in the backend list
+      const configuredNames = new Set();
+      backendDistrictsList.forEach((d) => {
+        if (d.tnDistrict?.name) configuredNames.add(d.tnDistrict.name.toLowerCase());
+        if (d.name) configuredNames.add(d.name.toLowerCase());
+        if (d.city) configuredNames.add(d.city.toLowerCase());
+        if (d.name) configuredNames.add(normalizeLocationName(d.name));
+        if (d.city) configuredNames.add(normalizeLocationName(d.city));
+      });
+
+      // 2. Unconfigured districts from official Survey of India 38 revenue districts
+      const unconfiguredList = TAMIL_NADU_DISTRICTS.filter((tnDist) => {
+        const lower = tnDist.name.toLowerCase();
+        const norm = normalizeLocationName(tnDist.name);
+        return !configuredNames.has(lower) && !configuredNames.has(norm);
+      }).map((tnDist) => {
+        const officialBoundary = getTnDistrictBoundary(tnDist.name);
+        return {
+          _id: null,
+          name: tnDist.name,
+          city: tnDist.name,
+          state: "Tamil Nadu",
+          country: "India",
+          code: tnDist.code,
+          active: false,
+          isActive: false,
+          isRegistrationEnabled: false,
+          isJobEnabled: false,
+          isConfigured: false,
+          polygon: officialBoundary,
+          officialBoundary: officialBoundary,
+          tnDistrict: tnDist,
+          displayCode: tnDist.code || tnDist.dtcode,
+          backendRecord: null,
+        };
+      });
+
+      return [...backendDistrictsList, ...unconfiguredList];
+    }, [districts]);
+
+    // Only districts that have actually been created in the database
+    const createdDistrictsList = useMemo(() => {
+      return (districts || []).map((d) => {
+        const tn = findTnDistrictForRecord(d) || findTnDistrict(d.city) || findTnDistrict(d.name);
+        const officialBoundary = (tn && getTnDistrictBoundary(tn.name)) || d.polygon || null;
+        const isActive = (d.active !== false && d.isActive !== false && String(d.status || "").toUpperCase() !== "INACTIVE");
+        return {
+          ...d,
+          _id: d._id,
+          name: d.name || tn?.name || "Operational District",
+          city: d.city || tn?.name || d.name || "",
+          code: d.code || tn?.code || "TN",
+          state: d.state || "Tamil Nadu",
+          country: d.country || "India",
+          active: isActive,
+          isActive: isActive,
+          isRegistrationEnabled: d.isRegistrationEnabled !== false,
+          isJobEnabled: d.isJobEnabled !== false,
+          isConfigured: true,
+          polygon: d.polygon || officialBoundary,
+          officialBoundary: d.polygon || officialBoundary,
+          tnDistrict: tn,
+          displayCode: d.code || tn?.code || tn?.dtcode,
+          backendRecord: d,
+        };
+      });
+    }, [districts]);
+
+    const activeDistrictsCount = useMemo(() => {
+      return createdDistrictsList.filter((d) => d.active).length;
+    }, [createdDistrictsList]);
+
+    const inactiveDistrictsCount = useMemo(() => {
+      return createdDistrictsList.filter((d) => !d.active).length;
+    }, [createdDistrictsList]);
+
+    // Memoized Filtering Logic - supports created operational districts & all 38 TN revenue districts
     const filteredDistricts = useMemo(() => {
       const search = searchTerm.toLowerCase();
-      return districts.filter((d) => {
+      const sourceList = districtFilter === "all_tn" ? allMergedDistricts : createdDistrictsList;
+      return sourceList.filter((d) => {
         const matchesSearch =
           (d.name || "").toLowerCase().includes(search) ||
           (d.city || "").toLowerCase().includes(search) ||
-          (d.code || "").toLowerCase().includes(search);
+          (d.code || "").toLowerCase().includes(search) ||
+          (d.displayCode || "").toLowerCase().includes(search);
 
-        const isActive = d.active !== false && d.isActive !== false;
-        if (districtFilter === "active") return matchesSearch && isActive;
-        if (districtFilter === "inactive") return matchesSearch && !isActive;
-        return matchesSearch;
+        if (districtFilter === "active") return matchesSearch && d.active;
+        if (districtFilter === "inactive") return matchesSearch && !d.active;
+        return matchesSearch; // "all" returns created, "all_tn" returns all 38 Survey of India districts
       });
-    }, [districts, searchTerm, districtFilter]);
+    }, [createdDistrictsList, allMergedDistricts, searchTerm, districtFilter]);
 
     const filteredZones = useMemo(() => {
     const search = searchTerm.toLowerCase();
@@ -1299,6 +1704,17 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     };
     const totalPages = getActiveTotalPages();
 
+    const activeTabItemCount =
+      activeTab === 0
+        ? filteredDistricts.length
+        : activeTab === 1
+          ? filteredZones.length
+          : activeTab === 2
+            ? matrixData.length
+            : activeTab === 3
+              ? filteredTechnicians.length
+              : 0;
+
     const handleSearchChange = (e) => {
       setSearchTerm(e.target.value);
       setCurrentPage(1);
@@ -1306,7 +1722,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
     const handleClearFilters = () => {
       setSearchTerm("");
-      setDistrictFilter("all");
+      setDistrictFilter("active");
       setSelectedDistrictFilter("all");
       setPermissionFilter("all");
       setPageByTab({ 0: 1, 1: 1, 2: 1, 3: 1 });
@@ -1327,34 +1743,16 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setCurrentPage(1);
     };
 
-    const getAvailableDistrictName = (cityName, existingDistrictsList) => {
-      const existingNames = new Set((existingDistrictsList || []).map((d) => (d.name || "").toLowerCase().trim()));
-      const baseName = `${cityName} Operational Range`;
-      if (!existingNames.has(baseName.toLowerCase())) return baseName;
-      const alt1 = `${cityName} Operational Hub`;
-      if (!existingNames.has(alt1.toLowerCase())) return alt1;
-      const alt2 = `${cityName} District`;
-      if (!existingNames.has(alt2.toLowerCase())) return alt2;
-      let counter = 2;
-      while (existingNames.has(`${cityName} Range ${counter}`.toLowerCase())) {
-        counter++;
-      }
-      return `${cityName} Range ${counter}`;
+    const handleFilterDistricts = (filterType) => {
+      setDistrictFilter(filterType);
+      setCurrentPage(1);
     };
-
-    const isTnDistrictConfigured = (tnDistrict, ignoreId = null) =>
-      !tnDistrict
-        ? false
-        : (districts || []).some((district) => {
-            if (ignoreId != null && String(district._id) === String(ignoreId)) {
-              return false;
-            }
-            return findTnDistrictForRecord(district)?.name === tnDistrict.name;
-          });
 
     const applyHubCity = (city) => {
       if (!city) return;
-      const polygon = generateCircularGeoJSON(city.lat, city.lng, 10);
+      const polygon =
+        getTnDistrictBoundary(city.district || city.name) ||
+        generateCircularGeoJSON(city.lat, city.lng, 10);
       setDistrictModalError("");
       setDistrictFormData((prev) => ({
         ...prev,
@@ -1417,9 +1815,23 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     };
 
     const handlePickTnDistrict = (districtName) => {
+      if (!districtName) {
+        setDistrictTnName("");
+        setModalBoundaryCheckResult(null);
+        setDistrictFormData((prev) => ({
+          ...prev,
+          name: "",
+          city: "",
+          code: "",
+          polygonCoordinates: "",
+        }));
+        return;
+      }
       const tnDistrict = findTnDistrict(districtName);
       if (!tnDistrict) return;
-      const polygon = generateCircularGeoJSON(tnDistrict.lat, tnDistrict.lng, 10);
+      const polygon =
+        getTnDistrictBoundary(tnDistrict.name) ||
+        generateCircularGeoJSON(tnDistrict.lat, tnDistrict.lng, 10);
       const isSameDistrict =
         isEditingDistrict && districtTnName === tnDistrict.name;
       const otherDistricts =
@@ -1431,6 +1843,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           : districts;
       setDistrictModalError("");
       setDistrictTnName(tnDistrict.name);
+      const pointsCount = polygon?.coordinates?.[0]?.length || 0;
+      setModalBoundaryCheckResult({
+        isValid: true,
+        message: `Official Survey of India GeoCode Boundary loaded for ${tnDistrict.name} (${pointsCount} polygon vertices).`,
+      });
       setDistrictFormData((prev) => ({
         ...prev,
         name: isSameDistrict
@@ -1445,40 +1862,61 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     };
 
     // District Handlers
-    const handleOpenCreateDistrict = () => {
+    const handleOpenCreateDistrictModal = (initialTnName = "") => {
       setIsEditingDistrict(false);
       setSelectedDistrict(null);
       setDistrictModalError("");
       setIsLocatingHub(false);
 
-      const defaultDistrict =
-        TAMIL_NADU_DISTRICTS.find(
-          (district) => !isTnDistrictConfigured(district)
-        ) || TAMIL_NADU_DISTRICTS[0];
-      const defaultPoly = defaultDistrict
-        ? generateCircularGeoJSON(defaultDistrict.lat, defaultDistrict.lng, 10)
-        : null;
-      const generatedName = defaultDistrict
-        ? getAvailableDistrictName(defaultDistrict.name, districts)
-        : "";
+      if (initialTnName) {
+        const tnDistrict = findTnDistrict(initialTnName);
+        if (tnDistrict) {
+          setDistrictTnName(tnDistrict.name);
+          const polygon =
+            getTnDistrictBoundary(tnDistrict.name) ||
+            generateCircularGeoJSON(tnDistrict.lat, tnDistrict.lng, 10);
+          const polygonStr = JSON.stringify(polygon, null, 2);
+          setDistrictFormData({
+            ...initialDistrictForm,
+            name: getAvailableDistrictName(tnDistrict.name, districts),
+            city: tnDistrict.name,
+            state: "Tamil Nadu",
+            country: "India",
+            code: tnDistrict.code || tnDistrict.name.slice(0, 3).toUpperCase(),
+            active: true,
+            isRegistrationEnabled: true,
+            isJobEnabled: true,
+            polygonCoordinates: polygonStr,
+          });
+          districtFormSnapshot.current = polygonStr;
+          setIsDistrictModalOpen(true);
+          return;
+        }
+      }
 
-      setDistrictTnName(defaultDistrict ? defaultDistrict.name : "");
+      // Default when opening modal without pre-selected district:
+      // Clean empty state — user can pick from dropdown or click any district on the TN map
+      setDistrictTnName("");
       setDistrictFormData({
         ...initialDistrictForm,
-        name: generatedName,
-        city: defaultDistrict ? defaultDistrict.name : "",
+        name: "",
+        city: "",
         state: "Tamil Nadu",
         country: "India",
-        code: defaultDistrict ? defaultDistrict.code : "",
-        polygonCoordinates: defaultPoly
-          ? JSON.stringify(defaultPoly, null, 2)
-          : "",
+        code: "",
+        active: true,
+        isRegistrationEnabled: true,
+        isJobEnabled: true,
+        polygonCoordinates: "",
       });
-      districtFormSnapshot.current = defaultPoly
-        ? JSON.stringify(defaultPoly, null, 2)
-        : "";
+      districtFormSnapshot.current = "";
       setIsDistrictModalOpen(true);
     };
+
+    const handleOpenCreateDistrict = () => {
+      handleOpenCreateDistrictModal();
+    };
+
 
     const handleOpenEditDistrict = (dist) => {
       setIsEditingDistrict(true);
@@ -1504,6 +1942,47 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       });
       districtFormSnapshot.current = polyStr;
       setIsDistrictModalOpen(true);
+    };
+
+    const handleMiniMapSelectDistrict = (tnName) => {
+      if (!tnName) return;
+      if (
+        districtModalDirty &&
+        !confirmIfDirty(
+          true,
+          "You have unsaved district boundary changes. Switch districts without saving?"
+        )
+      ) {
+        return;
+      }
+      const record = findConfiguredDistrictForTnName(tnName, districts);
+      if (record) {
+        handleOpenEditDistrict(record);
+        return;
+      }
+
+      const tnDistrict = findTnDistrict(tnName);
+      if (!tnDistrict) return;
+      const polygon =
+        getTnDistrictBoundary(tnDistrict.name) ||
+        generateCircularGeoJSON(tnDistrict.lat, tnDistrict.lng, 10);
+      const polygonStr = JSON.stringify(polygon, null, 2);
+
+      setIsEditingDistrict(false);
+      setSelectedDistrict(null);
+      setDistrictModalError("");
+      setIsLocatingHub(false);
+      setDistrictTnName(tnDistrict.name);
+      setDistrictFormData({
+        ...initialDistrictForm,
+        name: getAvailableDistrictName(tnDistrict.name, districts),
+        city: tnDistrict.name,
+        state: "Tamil Nadu",
+        country: "India",
+        code: tnDistrict.code,
+        polygonCoordinates: polygonStr,
+      });
+      districtFormSnapshot.current = polygonStr;
     };
 
     const handleOpenViewMapModal = (dist) => {
@@ -1541,31 +2020,63 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         }
       }
 
+      // If polygon is missing, auto-fallback to official district boundary or circle
+      if (!polygon) {
+        const tn = findTnDistrict(districtTnName || districtFormData.city || districtFormData.name);
+        const autoBoundary = tn
+          ? (getTnDistrictBoundary(tn.name) || generateCircularGeoJSON(tn.lat, tn.lng, 10))
+          : null;
+        if (autoBoundary) {
+          polygon = autoBoundary;
+        } else {
+          const msg = "District boundary GeoJSON polygon is required. Please select a Tamil Nadu district to auto-load its boundary.";
+          setDistrictModalError(msg);
+          return toast({ title: "Validation Error", description: msg, status: "error", duration: 3000, isClosable: true });
+        }
+      }
+
       try {
         setIsSubmitting(true);
         const payload = {
           name: districtFormData.name.trim(),
           city: districtFormData.city.trim(),
-          state: districtFormData.state.trim(),
-          country: districtFormData.country.trim(),
-          code: districtFormData.code.trim().toUpperCase(),
-          active: districtFormData.active,
-          isRegistrationEnabled: districtFormData.isRegistrationEnabled,
-          isJobEnabled: districtFormData.isJobEnabled,
+          state: districtFormData.state.trim() || "Tamil Nadu",
+          country: districtFormData.country.trim() || "India",
+          code: districtFormData.code.trim().toUpperCase() || districtFormData.name.slice(0, 3).toUpperCase(),
+          active: districtFormData.active !== false,
+          isActive: districtFormData.active !== false,
+          status: districtFormData.active !== false ? "ACTIVE" : "INACTIVE",
+          isRegistrationEnabled: districtFormData.isRegistrationEnabled !== false,
+          isJobEnabled: districtFormData.isJobEnabled !== false,
+          polygon,
         };
-        if (polygon) payload.polygon = polygon;
 
+        let res;
         if (isEditingDistrict && selectedDistrict) {
-          await updateDistrict(selectedDistrict._id, payload);
-          toast({ title: "District Updated", description: `"${payload.name}" updated successfully.`, status: "success", duration: 3000, isClosable: true });
+          res = await updateDistrict(selectedDistrict._id, payload);
         } else {
-          await createDistrict(payload);
-          toast({ title: "District Created", description: `"${payload.name}" created successfully.`, status: "success", duration: 3000, isClosable: true });
+          res = await createDistrict(payload);
         }
+
+        if (res && res.error) {
+          throw new Error(res.error);
+        }
+        if (res && res.success === false && res.message) {
+          throw new Error(res.message);
+        }
+
+        toast({
+          title: isEditingDistrict ? "District Updated" : "District Created",
+          description: `"${payload.name}" ${isEditingDistrict ? "updated" : "created"} successfully.`,
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
 
         await fetchData();
         districtFormSnapshot.current = "";
         setIsDistrictModalOpen(false);
+        resumeOpsFromContext("district");
       } catch (err) {
         const errMsg = err.message || "Failed to save district.";
         setDistrictModalError(errMsg);
@@ -1576,35 +2087,264 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     };
 
     const handleToggleDistrictActive = async (dist) => {
+      const targetDistId = dist._id || dist.backendRecord?._id;
+      const isCurrentlyActive = (dist.active !== false && dist.isActive !== false);
+      const nextActive = !isCurrentlyActive;
+
+      // 1. Instant optimistic update if already in state
+      if (targetDistId) {
+        setDistricts((prev) =>
+          prev.map((d) => (String(d._id) === String(targetDistId) ? { ...d, active: nextActive, isActive: nextActive } : d))
+        );
+      }
+
       try {
-        const newStatus = !(dist.active !== false && dist.isActive !== false);
-        await toggleDistrictStatus(dist._id, newStatus);
-        toast({ title: "Status Updated", description: `District ${newStatus ? "Activated" : "Deactivated"}`, status: "success", duration: 2000, isClosable: true });
-        await fetchData();
+        if (targetDistId && isCurrentlyActive) {
+          // User requested: disable means created district is deleted from backend database
+          setDistricts((prev) => prev.filter((d) => String(d._id) !== String(targetDistId)));
+          toast({
+            title: "District Disabled & Removed",
+            description: `"${dist.name}" disabled and removed from operational records.`,
+            status: "info",
+            duration: 1500,
+            isClosable: true,
+          });
+          await deleteDistrict(targetDistId);
+        } else if (targetDistId && !isCurrentlyActive) {
+          await toggleDistrictStatus(targetDistId, true);
+          toast({
+            title: "District Activated",
+            description: `"${dist.name}" operational status set to active.`,
+            status: "success",
+            duration: 1500,
+            isClosable: true,
+          });
+        } else {
+          // District not yet configured in backend database: Auto-create with exact Survey of India boundary GeoJSON
+          setIsSubmitting(true);
+          const officialBoundary = dist.officialBoundary || dist.polygon || getTnDistrictBoundary(dist.name);
+          const payload = {
+            name: dist.name,
+            city: dist.city || dist.name,
+            state: "Tamil Nadu",
+            country: "India",
+            code: dist.code || dist.tnDistrict?.code || dist.name.slice(0, 3).toUpperCase(),
+            active: true,
+            isRegistrationEnabled: true,
+            isJobEnabled: true,
+            polygon: officialBoundary,
+          };
+          await createDistrict(payload);
+          toast({
+            title: "District Enabled",
+            description: `"${dist.name}" created and enabled as an operational district.`,
+            status: "success",
+            duration: 2000,
+            isClosable: true,
+          });
+          await fetchData();
+        }
       } catch (err) {
-        toast({ title: "Error", description: err.message || "Failed to toggle status.", status: "error", duration: 3000, isClosable: true });
+        // Revert on error
+        await fetchData();
+        toast({
+          title: "Error",
+          description: err.message || "Failed to update district status.",
+          status: "error",
+          duration: 3500,
+          isClosable: true,
+        });
+      } finally {
+        setIsSubmitting(false);
       }
     };
 
     const handleToggleDistrictRegistrationFlag = async (dist) => {
-      try {
-        const newFlag = !dist.isRegistrationEnabled;
-        await toggleDistrictRegistration(dist._id, newFlag);
-        toast({ title: "Registration Updated", description: `Technician Registration ${newFlag ? "Enabled" : "Disabled"}`, status: "success", duration: 2000, isClosable: true });
-        await fetchData();
-      } catch (err) {
-        toast({ title: "Error", description: err.message || "Failed to toggle registration flag.", status: "error", duration: 3000, isClosable: true });
+      const targetDistId = dist._id || dist.backendRecord?._id;
+      const newFlag = !dist.isRegistrationEnabled;
+
+      if (targetDistId) {
+        // 1. Instant optimistic update
+        setDistricts((prev) =>
+          prev.map((d) => (String(d._id) === String(targetDistId) ? { ...d, isRegistrationEnabled: newFlag } : d))
+        );
+        toast({
+          title: "Registration Updated",
+          description: `Technician Registration ${newFlag ? "Enabled" : "Disabled"} for ${dist.name}`,
+          status: "success",
+          duration: 1500,
+          isClosable: true,
+        });
+        try {
+          await toggleDistrictRegistration(targetDistId, newFlag);
+        } catch (err) {
+          // Revert on error
+          setDistricts((prev) =>
+            prev.map((d) => (String(d._id) === String(targetDistId) ? { ...d, isRegistrationEnabled: !newFlag } : d))
+          );
+          toast({
+            title: "Error",
+            description: err.message || "Failed to toggle registration flag.",
+            status: "error",
+            duration: 3000,
+            isClosable: true,
+          });
+        }
+      } else {
+        // Auto-create with registration flag enabled
+        try {
+          setIsSubmitting(true);
+          const officialBoundary = dist.officialBoundary || dist.polygon || getTnDistrictBoundary(dist.name);
+          await createDistrict({
+            name: dist.name,
+            city: dist.city || dist.name,
+            state: "Tamil Nadu",
+            country: "India",
+            code: dist.code || dist.tnDistrict?.code || dist.name.slice(0, 3).toUpperCase(),
+            active: true,
+            isRegistrationEnabled: true,
+            isJobEnabled: true,
+            polygon: officialBoundary,
+          });
+          toast({
+            title: "District Created & Registration Enabled",
+            description: `"${dist.name}" activated with Survey of India GeoCode boundary.`,
+            status: "success",
+            duration: 2500,
+            isClosable: true,
+          });
+          await fetchData();
+        } catch (err) {
+          toast({
+            title: "Error",
+            description: err.message || "Failed to toggle registration flag.",
+            status: "error",
+            duration: 3000,
+            isClosable: true,
+          });
+        } finally {
+          setIsSubmitting(false);
+        }
       }
     };
 
     const handleToggleDistrictJobFlag = async (dist) => {
+      const targetDistId = dist._id || dist.backendRecord?._id;
+      const newFlag = !dist.isJobEnabled;
+
+      if (targetDistId) {
+        // 1. Instant optimistic update
+        setDistricts((prev) =>
+          prev.map((d) => (String(d._id) === String(targetDistId) ? { ...d, isJobEnabled: newFlag } : d))
+        );
+        toast({
+          title: "Job Assignment Updated",
+          description: `Job Assignment ${newFlag ? "Enabled" : "Disabled"} for ${dist.name}`,
+          status: "success",
+          duration: 1500,
+          isClosable: true,
+        });
+        try {
+          await toggleDistrictJobs(targetDistId, newFlag);
+        } catch (err) {
+          // Revert on error
+          setDistricts((prev) =>
+            prev.map((d) => (String(d._id) === String(targetDistId) ? { ...d, isJobEnabled: !newFlag } : d))
+          );
+          toast({
+            title: "Error",
+            description: err.message || "Failed to toggle job flag.",
+            status: "error",
+            duration: 3000,
+            isClosable: true,
+          });
+        }
+      } else {
+        // Auto-create with job dispatch enabled
+        try {
+          setIsSubmitting(true);
+          const officialBoundary = dist.officialBoundary || dist.polygon || getTnDistrictBoundary(dist.name);
+          await createDistrict({
+            name: dist.name,
+            city: dist.city || dist.name,
+            state: "Tamil Nadu",
+            country: "India",
+            code: dist.code || dist.tnDistrict?.code || dist.name.slice(0, 3).toUpperCase(),
+            active: true,
+            isRegistrationEnabled: true,
+            isJobEnabled: true,
+            polygon: officialBoundary,
+          });
+          toast({
+            title: "District Created & Job Dispatch Enabled",
+            description: `"${dist.name}" activated with Survey of India GeoCode boundary.`,
+            status: "success",
+            duration: 2500,
+            isClosable: true,
+          });
+          await fetchData();
+        } catch (err) {
+          toast({
+            title: "Error",
+            description: err.message || "Failed to toggle job flag.",
+            status: "error",
+            duration: 3000,
+            isClosable: true,
+          });
+        } finally {
+          setIsSubmitting(false);
+        }
+      }
+    };
+
+    const handleBulkToggleAllDistricts = async (targetActive = true) => {
       try {
-        const newFlag = !dist.isJobEnabled;
-        await toggleDistrictJobs(dist._id, newFlag);
-        toast({ title: "Job Assignment Updated", description: `Job Assignment ${newFlag ? "Enabled" : "Disabled"}`, status: "success", duration: 2000, isClosable: true });
+        setIsLoading(true);
+        let updatedCount = 0;
+        let createdCount = 0;
+        for (const dist of allMergedDistricts) {
+          const targetDistId = dist._id || dist.backendRecord?._id;
+          if (targetDistId) {
+            if (dist.active !== targetActive) {
+              await toggleDistrictStatus(targetDistId, targetActive);
+              updatedCount++;
+            }
+          } else if (targetActive) {
+            const officialBoundary = dist.officialBoundary || dist.polygon || getTnDistrictBoundary(dist.name);
+            await createDistrict({
+              name: dist.name,
+              city: dist.city || dist.name,
+              state: "Tamil Nadu",
+              country: "India",
+              code: dist.code || dist.tnDistrict?.code || dist.name.slice(0, 3).toUpperCase(),
+              active: true,
+              isRegistrationEnabled: true,
+              isJobEnabled: true,
+              polygon: officialBoundary,
+            });
+            createdCount++;
+          }
+        }
+        toast({
+          title: "All 38 Districts Ready",
+          description: createdCount > 0
+            ? `Successfully added ${createdCount} Tamil Nadu revenue districts (${updatedCount} updated) with official Survey of India boundary geocodes.`
+            : `All ${updatedCount} operational districts are now ${targetActive ? "ACTIVE" : "INACTIVE"}.`,
+          status: "success",
+          duration: 4000,
+          isClosable: true,
+        });
         await fetchData();
       } catch (err) {
-        toast({ title: "Error", description: err.message || "Failed to toggle job flag.", status: "error", duration: 3000, isClosable: true });
+        toast({
+          title: "District Operation Error",
+          description: err.message || "Failed bulk district update.",
+          status: "error",
+          duration: 4000,
+          isClosable: true,
+        });
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -1861,24 +2601,106 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
     const handleTogglePermission = async (districtId, currentStatus) => {
       if (!selectedTechForPermission) return;
+      const nextStatus = !currentStatus;
+      const targetIdStr = String(districtId);
+
+      // Instant optimistic UI update (0ms switch response)
+      setTechPermissions((prev) => {
+        if (!prev) return prev;
+        const currentPerms = prev.permissions || prev.additionalPermissions || [];
+        const updatedPerms = currentPerms.map((p) => {
+          const pId = String(p.districtId?._id || p.districtId?.id || p.districtId || "");
+          if (pId === targetIdStr) {
+            return { ...p, isEnabled: nextStatus };
+          }
+          return p;
+        });
+
+        let updatedPrimaryPerm = prev.primaryPermission;
+        if (updatedPrimaryPerm) {
+          const primPId = String(updatedPrimaryPerm.districtId?._id || updatedPrimaryPerm.districtId?.id || updatedPrimaryPerm.districtId || "");
+          if (primPId === targetIdStr) {
+            updatedPrimaryPerm = { ...updatedPrimaryPerm, isEnabled: nextStatus };
+          }
+        }
+
+        return {
+          ...prev,
+          permissions: updatedPerms,
+          additionalPermissions: updatedPerms,
+          primaryPermission: updatedPrimaryPerm,
+        };
+      });
+
+      toast({
+        title: "Permission Updated",
+        description: `Permission ${nextStatus ? "Enabled" : "Disabled"}.`,
+        status: "success",
+        duration: 1500,
+        isClosable: true,
+      });
+
       try {
-        await toggleTechnicianDistrictPermission(selectedTechForPermission._id, districtId, !currentStatus);
-        toast({ title: "Permission Updated", description: `Permission ${!currentStatus ? "Enabled" : "Disabled"}.`, status: "success", duration: 2000, isClosable: true });
-        await refreshPermissions(selectedTechForPermission._id);
+        await toggleTechnicianDistrictPermission(selectedTechForPermission._id, districtId, nextStatus);
       } catch (err) {
-        toast({ title: "Error", description: err.message || "Failed to update permission.", status: "error", duration: 3000, isClosable: true });
+        // Rollback on network error
+        await refreshPermissions(selectedTechForPermission._id);
+        toast({
+          title: "Error",
+          description: err.message || "Failed to update permission.",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
       }
     };
 
     const handleRemovePermission = async (districtId) => {
       if (!selectedTechForPermission) return;
+      const targetIdStr = String(districtId);
+
+      // Instant optimistic UI update
+      setTechPermissions((prev) => {
+        if (!prev) return prev;
+        const currentPerms = prev.permissions || prev.additionalPermissions || [];
+        const filtered = currentPerms.filter((p) => {
+          const pId = String(p.districtId?._id || p.districtId?.id || p.districtId || "");
+          return pId !== targetIdStr;
+        });
+        let updatedPrim = prev.primaryPermission;
+        if (updatedPrim) {
+          const primPId = String(updatedPrim.districtId?._id || updatedPrim.districtId?.id || updatedPrim.districtId || "");
+          if (primPId === targetIdStr) updatedPrim = null;
+        }
+        return {
+          ...prev,
+          permissions: filtered,
+          additionalPermissions: filtered,
+          primaryPermission: updatedPrim,
+        };
+      });
+
+      toast({
+        title: "Permission Revoked",
+        description: "District permission removed.",
+        status: "success",
+        duration: 2000,
+        isClosable: true,
+      });
+
       try {
         await removeTechnicianDistrictPermission(selectedTechForPermission._id, districtId);
-        toast({ title: "Permission Revoked", description: "District permission removed.", status: "success", duration: 3000, isClosable: true });
-        await refreshPermissions(selectedTechForPermission._id);
-        await fetchData();
+        // Refresh silently in background
+        refreshPermissions(selectedTechForPermission._id);
       } catch (err) {
-        toast({ title: "Error", description: err.message || "Failed to remove permission.", status: "error", duration: 3000, isClosable: true });
+        await refreshPermissions(selectedTechForPermission._id);
+        toast({
+          title: "Error",
+          description: err.message || "Failed to remove permission.",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
       }
     };
 
@@ -2091,19 +2913,33 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setZoneModalError("");
       const presetId =
         typeof presetDistrictId === "string" ? presetDistrictId : "";
+
+      // Prioritize Tiruppur if created, or active filter
+      const tiruppurDist = createdDistrictsList.find((d) =>
+        (d.name || d.city || "").toLowerCase().includes("tirup")
+      );
+
       const districtId =
         presetId ||
         (selectedDistrictFilter !== "all" ? selectedDistrictFilter : "") ||
+        (tiruppurDist ? String(tiruppurDist._id) : "") ||
+        (createdDistrictsList && createdDistrictsList.length > 0 ? String(createdDistrictsList[0]._id) : "") ||
+        (districts && districts.length > 0 ? String(districts[0]._id) : "") ||
         "";
-      // Pre-generate a sensible default boundary from the parent district city
-      // so "Create" never goes out with an empty polygon by accident.
-      let defaultPolyStr = "";
+
       let defaultTown = null;
       let parentCity = "";
+      let parentTnName = "";
       if (districtId) {
-        const parent = districts.find((d) => String(d._id) === String(districtId));
-        const parentTnDistrict = findTnDistrictForRecord(parent);
+        const parent =
+          createdDistrictsList.find((d) => String(d._id) === String(districtId)) ||
+          districts.find((d) => String(d._id) === String(districtId));
+        const parentTnDistrict =
+          findTnDistrictForRecord(parent) ||
+          findTnDistrict(parent?.name) ||
+          findTnDistrict(parent?.city);
         parentCity = parent?.city || parent?.name || "";
+        parentTnName = parentTnDistrict?.name || parentCity;
         const districtTowns = parent
           ? getDistrictCities(parentTnDistrict?.name || parentCity)
           : [];
@@ -2111,27 +2947,68 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           districtTowns[0] ||
           findTnCity(parentCity, parentTnDistrict?.name) ||
           (parentCity ? findTnCity(parentCity) : null);
-        if (defaultTown) {
-          defaultPolyStr = JSON.stringify(generateCircularGeoJSON(defaultTown.lat, defaultTown.lng, 5), null, 2);
-        } else if (parent?.polygon?.coordinates) {
-          try {
-            defaultPolyStr = JSON.stringify(parent.polygon, null, 2);
-          } catch {
-            defaultPolyStr = "";
-          }
-        }
       }
+
+      setSelectedTnDistrictName(parentTnName || "");
       setFormData({
         ...initialForm,
         operationalCityId: districtId,
         city: defaultTown ? defaultTown.name : parentCity,
-        name: defaultTown ? defaultTown.name : (parentCity ? `${parentCity} Central Zone` : ""),
+        name: "", // clean so user can choose area or type
         zoneCode: defaultTown?.code || "",
-        polygonCoordinates: defaultPolyStr,
+        polygonCoordinates: "", // Starts clean — click on map or area button creates the circle zone!
       });
-      zoneFormSnapshot.current = defaultPolyStr;
+      zoneFormSnapshot.current = "";
       setZoneCityFilterMode("district");
       setIsModalOpen(true);
+    };
+
+    const makeClippedCircleGeoJson = (lat, lng, radiusKm, targetDistrictName) => {
+      const circlePoly = generateCircularGeoJSON(lat, lng, radiusKm || 5);
+      const boundary = getTnDistrictBoundary(targetDistrictName);
+      if (!boundary || !boundary.coordinates) {
+        return JSON.stringify(circlePoly);
+      }
+      const districtCoords =
+        boundary.type === "MultiPolygon" ? boundary.coordinates : [boundary.coordinates];
+      try {
+        const intersection = polygonClipping.intersection(districtCoords, [circlePoly.coordinates]);
+        if (intersection && intersection.length > 0) {
+          const clippedGeom =
+            intersection.length === 1
+              ? { type: "Polygon", coordinates: intersection[0] }
+              : { type: "MultiPolygon", coordinates: intersection };
+          return JSON.stringify(clippedGeom);
+        }
+      } catch (err) {
+        console.warn("Clipping failed, fallback to circle:", err);
+      }
+      return JSON.stringify(circlePoly);
+    };
+
+    const handleSelectSubzonePreset = (sz) => {
+      setZoneModalError("");
+      const distName =
+        selectedTnDistrictName ||
+        zoneParentTnDistrict?.name ||
+        zoneParentDistrict?.name ||
+        "Tiruppur";
+      const clippedGeoJson = makeClippedCircleGeoJson(sz.lat, sz.lng, sz.radius_km || 5, distName);
+
+      setFormData((prev) => ({
+        ...prev,
+        name: sz.name,
+        city: sz.district || distName,
+        zoneCode: sz.id || sz.admin_code || sz.name.slice(0, 3).toUpperCase(),
+        polygonCoordinates: clippedGeoJson,
+      }));
+
+      toast({
+        title: `Loaded ${sz.name}`,
+        description: `Positioned circle zone at ${sz.name} (${sz.radius_km || 5} km) clipped to ${distName} border.`,
+        status: "info",
+        duration: 2500,
+      });
     };
 
     const handleOpenEditZone = (zone) => {
@@ -2141,6 +3018,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
       const distId = resolveZoneDistrictId(zone);
       const parent = districts.find((d) => String(d._id) === String(distId));
+      const parentTn = findTnDistrictForRecord(parent);
+      setSelectedTnDistrictName(parentTn?.name || parent?.name || zone.city || "");
+
       setFormData({
         operationalCityId: distId,
         city: zone.city || parent?.city || "",
@@ -2155,7 +3035,129 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setIsModalOpen(true);
     };
 
-    const handleSubmitZone = async () => {
+    const handleSelectDistrictFromMap = async (distObjOrName) => {
+      const distName =
+        typeof distObjOrName === "string"
+          ? distObjOrName
+          : distObjOrName?.name || distObjOrName?.city || "";
+      if (!distName) return;
+
+      const tnDist = findTnDistrict(distName);
+      const canonicalName = tnDist?.name || distName;
+      setSelectedTnDistrictName(canonicalName);
+      setZoneCityFilterMode("district");
+
+      // Match with backend operational district
+      let matchedBackend = districts.find((d) => {
+        const dTn = findTnDistrictForRecord(d);
+        return (
+          dTn?.name?.toLowerCase() === canonicalName.toLowerCase() ||
+          d.name?.toLowerCase() === canonicalName.toLowerCase() ||
+          d.city?.toLowerCase() === canonicalName.toLowerCase()
+        );
+      });
+
+      const officialBoundary =
+        (matchedBackend?.polygon?.coordinates ? matchedBackend.polygon : null) ||
+        getTnDistrictBoundary(canonicalName) ||
+        distObjOrName?.polygon ||
+        distObjOrName?.geometry;
+
+      // If matched district is inactive, auto-enable/activate it so zones can be added under it
+      if (matchedBackend && (matchedBackend.active === false || matchedBackend.isActive === false)) {
+        try {
+          await toggleDistrictStatus(matchedBackend._id, true);
+          matchedBackend = { ...matchedBackend, active: true, isActive: true };
+          setDistricts((prev) =>
+            prev.map((d) => (d._id === matchedBackend._id ? { ...d, active: true, isActive: true } : d))
+          );
+          toast({
+            title: `District Enabled: ${canonicalName}`,
+            description: `Activated operational district "${canonicalName}". Ready to add micro-zones.`,
+            status: "success",
+            duration: 3000,
+          });
+        } catch (err) {
+          console.warn("Could not activate existing district:", err);
+        }
+      } else if (!matchedBackend) {
+        // District not yet configured in backend database: Auto-create & enable with exact Survey of India boundary!
+        try {
+          const payload = {
+            name: canonicalName,
+            city: canonicalName,
+            state: "Tamil Nadu",
+            country: "India",
+            code: distObjOrName?.code || tnDist?.code || canonicalName.slice(0, 3).toUpperCase(),
+            active: true,
+            isRegistrationEnabled: true,
+            isJobEnabled: true,
+            polygon: officialBoundary,
+          };
+          const createdRes = await createDistrict(payload);
+          const createdDist =
+            createdRes?.data || createdRes?.district || createdRes?.result || createdRes;
+          const newId =
+            createdDist?._id || (typeof createdRes === "object" ? createdRes._id : null);
+          if (newId) {
+            matchedBackend = { ...payload, _id: newId };
+            setDistricts((prev) => [
+              ...prev.filter((d) => d.name?.toLowerCase() !== canonicalName.toLowerCase()),
+              matchedBackend,
+            ]);
+            toast({
+              title: `District Enabled & Configured: ${canonicalName}`,
+              description: `Created and enabled operational district "${canonicalName}" with official Survey of India boundary.`,
+              status: "success",
+              duration: 3500,
+            });
+          }
+        } catch (err) {
+          console.warn("Could not auto-create district on map selection:", err);
+        }
+      }
+
+      const districtTowns = getDistrictCities(canonicalName);
+      const defaultTown = districtTowns[0] || findTnCity(canonicalName) || null;
+
+      setFormData((prev) => ({
+        ...prev,
+        operationalCityId: matchedBackend ? matchedBackend._id : "",
+        city: defaultTown ? defaultTown.name : canonicalName,
+        name: defaultTown ? `${defaultTown.name} Zone` : `${canonicalName} Zone`,
+        zoneCode: defaultTown?.code || tnDist?.code || prev.zoneCode || "",
+        polygonCoordinates:
+          prev.operationalCityId && matchedBackend && String(prev.operationalCityId) === String(matchedBackend._id)
+            ? prev.polygonCoordinates || ""
+            : "", // Clean on district switch, preserve if clicking within active district
+      }));
+
+      zoneFormSnapshot.current = "";
+
+      if (matchedBackend) {
+        toast({
+          title: `Selected District: ${canonicalName}`,
+          description: `Linked to enabled operational district "${canonicalName}". Loaded official Survey of India boundary.`,
+          status: "info",
+          duration: 3000,
+        });
+      }
+    };
+
+    const handleSelectCityFromMap = (cityObj) => {
+      if (!cityObj?.name) return;
+      const townName = cityObj.name;
+      setFormData((prev) => ({
+        ...prev,
+        city: townName,
+        name: prev.name && prev.name.includes("Zone") ? `${townName} Zone` : townName,
+        zoneCode: cityObj.code || prev.zoneCode,
+      }));
+    };
+
+
+    const handleSubmitZone = async (options = {}) => {
+      const keepOpen = Boolean(options && options.keepOpen);
       setZoneModalError("");
 
       const name = String(formData.name || "").trim();
@@ -2193,6 +3195,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
       try {
         setIsSubmitting(true);
+        const ring = Array.isArray(polygon?.coordinates?.[0]) ? polygon.coordinates[0] : [];
+        const centroid = ring.length ? calculatePolygonCentroid(ring.slice(0, -1)) : null;
+        const centerLat = centroid && Number.isFinite(centroid[0]) ? centroid[0] : null;
+        const centerLng = centroid && Number.isFinite(centroid[1]) ? centroid[1] : null;
+
         const payload = {
           operationalCityId,
           districtId: operationalCityId,
@@ -2202,16 +3209,42 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           description,
           active: formData.active !== false,
           polygon,
+          coordinates: polygon?.coordinates || [],
+          geojson: polygon,
+          geocode: {
+            type: "Point",
+            coordinates: centerLng && centerLat ? [centerLng, centerLat] : [],
+            latitude: centerLat,
+            longitude: centerLng,
+            lat: centerLat,
+            lng: centerLng,
+          },
+          lat: centerLat,
+          lng: centerLng,
+          latitude: centerLat,
+          longitude: centerLng,
+          center: centerLat && centerLng ? [centerLat, centerLng] : undefined,
+          location: {
+            type: "Point",
+            coordinates: centerLng && centerLat ? [centerLng, centerLat] : [],
+          },
+          geometry: polygon,
+          officialBoundary: polygon,
         };
 
+        let res;
         if (isEditing && selectedZone) {
           const zid = resolveZoneId(selectedZone);
           if (!zid) throw new Error("Cannot update: zone id is missing. Please refresh and retry.");
-          await updateZone(zid, payload);
+          res = await updateZone(zid, payload);
+          if (res && res.error) throw new Error(res.error);
+          if (res && res.success === false && res.message) throw new Error(res.message);
           toast({ title: "Zone Updated", description: `"${name}" updated successfully.`, status: "success", duration: 3000, isClosable: true });
         } else {
-          const created = await createZone(payload);
-          const seededCount = created?.result?.seededEnabledServices ?? created?.seededEnabledServices;
+          res = await createZone(payload);
+          if (res && res.error) throw new Error(res.error);
+          if (res && res.success === false && res.message) throw new Error(res.message);
+          const seededCount = res?.result?.seededEnabledServices ?? res?.seededEnabledServices;
           toast({
             title: "Zone Created",
             description: Number.isFinite(seededCount)
@@ -2225,9 +3258,28 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
         await fetchData();
         zoneFormSnapshot.current = "";
-        setIsModalOpen(false);
-        setFormData({ ...initialForm });
-        setSelectedZone(null);
+        if (keepOpen) {
+          setFormData((prev) => ({
+            ...initialForm,
+            operationalCityId: prev.operationalCityId,
+            city: prev.city,
+            polygonCoordinates: "",
+            name: "",
+            zoneCode: "",
+          }));
+          toast({
+            title: `Zone "${name}" Saved Successfully!`,
+            description: "Ready to create the next zone. Pick an area or click the map to add another.",
+            status: "success",
+            duration: 3500,
+            isClosable: true,
+          });
+        } else {
+          setIsModalOpen(false);
+          setFormData({ ...initialForm });
+          setSelectedZone(null);
+          resumeOpsFromContext("zone");
+        }
       } catch (err) {
         const errMsg = err.message || "Failed to save zone.";
         setZoneModalError(errMsg);
@@ -2266,19 +3318,73 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     };
 
     const handleToggleZoneServicesBulk = async (zone, nextActive) => {
+      const zoneIdStr = String(zone._id || zone.id);
+      const nextStatus = nextActive ? "ENABLED" : "DISABLED";
+
+      // 1. Instant optimistic update on mappings (0ms response)
+      setMappings((prevMappings) => {
+        const next = [...(prevMappings || [])];
+        // Update existing mappings for this zone
+        let matched = false;
+        const updated = next.map((m) => {
+          const mZoneId = String(m.zoneId?._id || m.zoneId?.id || m.zoneId || m.cityZoneId?._id || m.cityZoneId?.id || m.cityZoneId || "");
+          if (mZoneId === zoneIdStr) {
+            matched = true;
+            return { ...m, active: nextActive, enabled: nextActive, status: nextStatus };
+          }
+          return m;
+        });
+
+        // If no mappings existed yet for this zone, create optimistic entries for all services
+        if (!matched && Array.isArray(services)) {
+          services.forEach((s) => {
+            updated.push({
+              serviceId: s._id || s.id,
+              zoneId: zone._id,
+              cityZoneId: zone._id,
+              active: nextActive,
+              enabled: nextActive,
+              status: nextStatus,
+            });
+          });
+        }
+        return updated;
+      });
+
+      // 2. Optimistically update counts in matrixData if available
+      setMatrixData((prev) =>
+        (prev || []).map((m) => {
+          const currentActive = m.activeZonesCount || 0;
+          const currentInactive = m.inactiveZonesCount || 0;
+          return {
+            ...m,
+            activeZonesCount: nextActive ? currentActive + 1 : Math.max(0, currentActive - 1),
+            inactiveZonesCount: nextActive ? Math.max(0, currentInactive - 1) : currentInactive + 1,
+          };
+        })
+      );
+
+      toast({
+        title: `Zone Services ${nextActive ? "Enabled" : "Disabled"}`,
+        description: `All services in "${zone.name}" are now ${nextActive ? "ACTIVE" : "INACTIVE"}.`,
+        status: nextActive ? "success" : "info",
+        duration: 2000,
+        isClosable: true,
+      });
+
       try {
         await toggleZoneServices(zone._id, nextActive);
-        toast({
-          title: `Zone Services ${nextActive ? "Enabled" : "Disabled"}`,
-          description: `All services in "${zone.name}" are now ${nextActive ? "ACTIVE" : "INACTIVE"}.`,
-          status: "success",
-          duration: 2500,
-          isClosable: true,
-        });
+      } catch (err) {
+        // Rollback on network failure
         await fetchData();
         await fetchMatrixData();
-      } catch (err) {
-        toast({ title: "Toggle Error", description: err.message || "Failed to toggle zone services.", status: "error", duration: 3000, isClosable: true });
+        toast({
+          title: "Toggle Error",
+          description: err.message || "Failed to toggle zone services.",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
       }
     };
 
@@ -2732,13 +3838,45 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const handleModalEnableAllDistricts = async (targetActive) => {
       if (!selectedServiceDetail?.service || !selectedServiceDetail?.districts) return;
       const sid = resolveServiceId(selectedServiceDetail.service);
+      const targetStatus = targetActive ? "ENABLED" : "DISABLED";
+
+      // Optimistic UI update across all districts
+      setSelectedServiceDetail((prev) => {
+        if (!prev || !prev.districts) return prev;
+        return {
+          ...prev,
+          districts: prev.districts.map((d) => {
+            const updatedZones = (d.zones || []).map((z) => ({
+              ...z,
+              status: targetStatus,
+              enabled: targetActive,
+              active: targetActive,
+              isAvailable: targetActive,
+              isServiceEnabled: targetActive,
+            }));
+            return {
+              ...d,
+              isDistrictEnabled: targetActive,
+              status: targetStatus,
+              enabled: targetActive,
+              active: targetActive,
+              isAvailable: targetActive,
+              isServiceEnabled: targetActive,
+              zones: updatedZones,
+              activeZonesCount: targetActive ? updatedZones.length : 0,
+              inactiveZonesCount: targetActive ? 0 : updatedZones.length,
+            };
+          }),
+        };
+      });
+
       try {
         setIsServiceDetailLoading(true);
         const dists = selectedServiceDetail.districts;
         const results = await Promise.allSettled(
           dists.map((dist) => {
-            const districtId = dist.districtId || dist._id;
-            const zoneIds = (dist.zones || []).map((z) => z.zoneId || z._id || z.id).filter(Boolean);
+            const districtId = resolveDetailDistrictId(dist);
+            const zoneIds = collectChildZoneIds(dist, districtId);
             if (zoneIds.length > 0) {
               return bulkToggleZoneAvailability({
                 serviceId: sid,
@@ -2746,14 +3884,14 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 zoneIds,
                 cityZoneIds: zoneIds,
                 enabled: targetActive,
-                status: targetActive ? "ENABLED" : "DISABLED",
+                status: targetStatus,
               });
             }
             return toggleZoneAvailability({
               serviceId: sid,
               districtId,
               enabled: targetActive,
-              status: targetActive ? "ENABLED" : "DISABLED",
+              status: targetStatus,
             });
           })
         );
@@ -2771,6 +3909,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         await fetchMatrixData();
       } catch (err) {
         toast({ title: "Action Failed", description: err.message, status: "error" });
+        await reloadServiceDetail(sid);
       } finally {
         setIsServiceDetailLoading(false);
       }
@@ -2779,19 +3918,54 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const handleModalDistrictAllZonesToggle = async (dist, targetActive) => {
       if (!selectedServiceDetail?.service) return;
       const sid = resolveServiceId(selectedServiceDetail.service);
-      const districtId = dist.districtId || dist._id;
-      const zoneIds = (dist.zones || []).map((z) => z.zoneId || z._id || z.id).filter(Boolean);
+      const districtId = resolveDetailDistrictId(dist);
+      const zoneIds = collectChildZoneIds(dist, districtId);
       if (zoneIds.length === 0) return;
+      const targetStatus = targetActive ? "ENABLED" : "DISABLED";
+
+      setTogglingDistrictId(districtId);
+
+      // Optimistic UI update for this district's sub-zones
+      setSelectedServiceDetail((prev) => {
+        if (!prev || !prev.districts) return prev;
+        return {
+          ...prev,
+          districts: prev.districts.map((d) => {
+            if (String(resolveDetailDistrictId(d)) === String(districtId)) {
+              const updatedZones = (d.zones || []).map((z) => ({
+                ...z,
+                status: targetStatus,
+                enabled: targetActive,
+                active: targetActive,
+                isAvailable: targetActive,
+                isServiceEnabled: targetActive,
+              }));
+              return {
+                ...d,
+                zones: updatedZones,
+                activeZonesCount: targetActive ? updatedZones.length : 0,
+                inactiveZonesCount: targetActive ? 0 : updatedZones.length,
+                isDistrictEnabled: targetActive,
+                status: targetStatus,
+                enabled: targetActive,
+                active: targetActive,
+                isAvailable: targetActive,
+                isServiceEnabled: targetActive,
+              };
+            }
+            return d;
+          }),
+        };
+      });
 
       try {
-        setTogglingDistrictId(districtId);
         await bulkToggleZoneAvailability({
           serviceId: sid,
           districtId,
           zoneIds,
           cityZoneIds: zoneIds,
           enabled: targetActive,
-          status: targetActive ? "ENABLED" : "DISABLED",
+          status: targetStatus,
         });
         toast({
           title: `Sub-Zones ${targetActive ? "Turned ON" : "Turned OFF"}`,
@@ -2803,6 +3977,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         await fetchMatrixData();
       } catch (err) {
         toast({ title: "Toggle Error", description: err.message, status: "error" });
+        await reloadServiceDetail(sid);
       } finally {
         setTogglingDistrictId(null);
       }
@@ -2811,9 +3986,44 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const handleModalDistrictClearZones = async (dist) => {
       if (!selectedServiceDetail?.service) return;
       const sid = resolveServiceId(selectedServiceDetail.service);
-      const districtId = dist.districtId || dist._id;
+      const districtId = resolveDetailDistrictId(dist);
+
+      setTogglingDistrictId(districtId);
+
+      // Optimistic UI update clearing this district
+      setSelectedServiceDetail((prev) => {
+        if (!prev || !prev.districts) return prev;
+        return {
+          ...prev,
+          districts: prev.districts.map((d) => {
+            if (String(resolveDetailDistrictId(d)) === String(districtId)) {
+              const updatedZones = (d.zones || []).map((z) => ({
+                ...z,
+                status: "DISABLED",
+                enabled: false,
+                active: false,
+                isAvailable: false,
+                isServiceEnabled: false,
+              }));
+              return {
+                ...d,
+                zones: updatedZones,
+                activeZonesCount: 0,
+                inactiveZonesCount: updatedZones.length,
+                isDistrictEnabled: false,
+                status: "DISABLED",
+                enabled: false,
+                active: false,
+                isAvailable: false,
+                isServiceEnabled: false,
+              };
+            }
+            return d;
+          }),
+        };
+      });
+
       try {
-        setTogglingDistrictId(districtId);
         await clearDistrictZoneAvailability({ serviceId: sid, districtId });
         toast({
           title: "District Services Cleared",
@@ -2825,6 +4035,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         await fetchMatrixData();
       } catch (err) {
         toast({ title: "Clear Error", description: err.message, status: "error" });
+        await reloadServiceDetail(sid);
       } finally {
         setTogglingDistrictId(null);
       }
@@ -3204,37 +4415,54 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </Box>
 
                 <HStack spacing={2} flexWrap="wrap">
-                  {activeTab === 0 && (
-                    <Button
-                      leftIcon={<MdAdd />}
-                      size="sm"
-                      variant="brand"
-                      borderRadius="8px"
-                      fontWeight="600"
-                      boxShadow="sm"
-                      _hover={{ transform: "translateY(-1px)" }}
-                      _active={{ transform: "translateY(0)" }}
-                      onClick={handleOpenCreateDistrict}
-                    >
-                      Add District
-                    </Button>
+                  {(activeTab === 0 || activeTab === 1) && (
+                    <>
+                      <Button
+                        leftIcon={<MdAdd />}
+                        size="sm"
+                        variant="brand"
+                        borderRadius="8px"
+                        fontWeight="600"
+                        boxShadow="sm"
+                        _hover={{ transform: "translateY(-1px)" }}
+                        _active={{ transform: "translateY(0)" }}
+                        onClick={() => handleOpenCreateDistrictModal()}
+                      >
+                        Add District
+                      </Button>
+                      <Button
+                        leftIcon={<MdAdd />}
+                        size="sm"
+                        bg="purple.600"
+                        color="white"
+                        borderRadius="8px"
+                        fontWeight="600"
+                        boxShadow="sm"
+                        _hover={{ bg: "purple.700", transform: "translateY(-1px)" }}
+                        _active={{ bg: "purple.800", transform: "translateY(0)" }}
+                        onClick={() => handleOpenCreateZone()}
+                      >
+                        Add City Zone
+                      </Button>
+                    </>
                   )}
-                  {activeTab === 1 && (
-                    <Button
-                      leftIcon={<MdAdd />}
-                      size="sm"
-                      bg="purple.600"
-                      color="white"
-                      borderRadius="8px"
-                      fontWeight="600"
-                      boxShadow="sm"
-                      _hover={{ bg: "purple.700", transform: "translateY(-1px)" }}
-                      _active={{ bg: "purple.800", transform: "translateY(0)" }}
-                      onClick={() => handleOpenCreateZone()}
-                    >
-                      Add City Zone
-                    </Button>
-                  )}
+                  <Button
+                    leftIcon={<MdAdd />}
+                    size="sm"
+                    variant="solid"
+                    bg="teal.600"
+                    color="white"
+                    _hover={{ bg: "teal.700", transform: "translateY(-1px)" }}
+                    _active={{ bg: "teal.800", transform: "translateY(0)" }}
+                    borderRadius="8px"
+                    fontWeight="600"
+                    boxShadow="sm"
+                    onClick={() => handleBulkToggleAllDistricts(true)}
+                    isLoading={isLoading}
+                    title="Initialize and add all 38 official Tamil Nadu revenue districts with Survey of India boundary geocodes"
+                  >
+                    Add All 38 Districts
+                  </Button>
                   {activeTab === 4 && (
                     <Button
                       leftIcon={<MdRefresh />}
@@ -3257,10 +4485,10 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
               {/* Tabs Bar — 5 Core Operational Modules */}
               <HStack spacing={2} overflowX="auto" pb={2} pt={1} css={globalScrollbarStyles}>
                 {[
-                  { icon: MdApartment, label: "1. District Master", count: `${districts.length} / 38` },
+                  { icon: MdApartment, label: "1. District Master", count: activeDistrictsCount },
                   { icon: MdMap, label: "2. City Micro-Zones", count: zones.length },
-                  { icon: MdLink, label: "3. Service-Zone Matrix", count: matrixData.length || services.length },
-                  { icon: FaUserGear, label: "4. Technician Permissions", count: technicians.length },
+                  { icon: MdLink, label: "3. Zone-Based Services", count: matrixData.length || services.length },
+                  { icon: FaUserGear, label: "4. Technician District Permissions", count: technicians.length },
                   { icon: MdAnalytics, label: "5. Spatial Diagnostics & Monitoring" },
                 ].map((t, idx) => (
                   <Button
@@ -3372,6 +4600,42 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     </Select>
                   )}
 
+                  {activeTab === 0 && (
+                    <ButtonGroup size="sm" isAttached variant="outline" ml={{ base: 0, sm: 2 }} flexWrap="wrap">
+                      <Button
+                        fontSize="xs"
+                        variant={districtFilter === "all" ? "brand" : "outline"}
+                        onClick={() => handleFilterDistricts("all")}
+                      >
+                        Operational ({createdDistrictsList.length})
+                      </Button>
+                      <Button
+                        fontSize="xs"
+                        variant={districtFilter === "active" ? "brand" : "outline"}
+                        colorScheme={districtFilter === "active" ? undefined : "green"}
+                        onClick={() => handleFilterDistricts("active")}
+                      >
+                        Enabled ({activeDistrictsCount})
+                      </Button>
+                      <Button
+                        fontSize="xs"
+                        variant={districtFilter === "inactive" ? "brand" : "outline"}
+                        colorScheme={districtFilter === "inactive" ? undefined : "red"}
+                        onClick={() => handleFilterDistricts("inactive")}
+                      >
+                        Disabled ({inactiveDistrictsCount})
+                      </Button>
+                      <Button
+                        fontSize="xs"
+                        variant={districtFilter === "all_tn" ? "brand" : "outline"}
+                        colorScheme={districtFilter === "all_tn" ? undefined : "purple"}
+                        onClick={() => handleFilterDistricts("all_tn")}
+                      >
+                        All 38 TN Districts ({allMergedDistricts.length})
+                      </Button>
+                    </ButtonGroup>
+                  )}
+
                   {(searchTerm || districtFilter !== "all" || selectedDistrictFilter !== "all" || permissionFilter !== "all") && (
                     <Button
                       size="sm"
@@ -3403,7 +4667,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
             </CardHeader>
 
             <CardBody bg="white" display="flex" flexDirection="column" p={0} pt={2} flex="1" minH="0" overflow="hidden">
-              <Tabs index={activeTab} onChange={(idx) => { setActiveTab(idx); setCurrentPage(1); }} variant="unstyled" display="flex" flexDirection="column" flex="1" minH="0" overflow="hidden">
+              <Tabs isLazy index={activeTab} onChange={(idx) => { setActiveTab(idx); setCurrentPage(1); }} variant="unstyled" display="flex" flexDirection="column" flex="1" minH="0" overflow="hidden">
                 <TabList display="none">
                   <Tab /><Tab /><Tab /><Tab /><Tab />
                 </TabList>
@@ -3411,69 +4675,161 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 <TabPanels flex="1" minH="0" display="flex" flexDirection="column" overflow="hidden">
                   {/* TAB 0: OPERATIONAL CITIES & DISTRICT MASTER (1.1) */}
                   <TabPanel p={0} display="flex" flexDirection="column" flex="1" minH="0" overflow="hidden">
-                    {/* Tamil Nadu 38 Revenue District Coverage Tracker */}
-                    <Box px={5} py={2.5} bg="teal.50" borderBottom="1px solid" borderColor="teal.100">
-                      <Flex justify="space-between" align="center" flexWrap="wrap" gap={3}>
-                        <HStack spacing={2.5}>
-                          <Icon as={MdApartment} color="teal.700" boxSize={4} />
-                          <Text fontSize="xs" fontWeight="700" color="teal.900">
-                            Tamil Nadu Revenue District Master:
-                          </Text>
-                          <Badge colorScheme={districts.length >= 38 ? "green" : "teal"} fontSize="11px" borderRadius="full" px={2.5} py={0.5} fontWeight="700">
-                            {districts.length} / 38 Districts Configured
-                          </Badge>
-                          <Text fontSize="11px" color="teal.700">
-                            ({Math.max(0, 38 - districts.length)} remaining)
-                          </Text>
-                        </HStack>
-                        <HStack spacing={3} w={{ base: "100%", md: "240px" }}>
-                          <Progress
-                            value={Math.min(100, Math.round((districts.length / 38) * 100))}
-                            colorScheme="teal"
-                            size="xs"
+                    {currentDistricts.length === 0 ? (
+                      <Box
+                        flex="1"
+                        minH="420px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                        p={6}
+                      >
+                        <Box
+                          w="100%"
+                          maxW="780px"
+                          py={10}
+                          px={8}
+                          borderRadius="20px"
+                          bg="linear-gradient(180deg, #f0fdfa 0%, #ffffff 100%)"
+                          border="1.5px dashed"
+                          borderColor="teal.200"
+                          boxShadow="0 4px 20px -2px rgba(13, 148, 136, 0.08)"
+                          textAlign="center"
+                        >
+                          <Flex
+                            w="70px"
+                            h="70px"
                             borderRadius="full"
-                            bg="white"
-                            flex="1"
-                          />
-                          <Text fontSize="11px" fontWeight="700" color="teal.800" minW="32px" textAlign="right">
-                            {Math.min(100, Math.round((districts.length / 38) * 100))}%
-                          </Text>
-                        </HStack>
-                      </Flex>
-                    </Box>
+                            bg="teal.50"
+                            color="teal.600"
+                            align="center"
+                            justify="center"
+                            mx="auto"
+                            boxShadow="0 0 24px rgba(13, 148, 136, 0.2)"
+                            border="2px solid"
+                            borderColor="teal.200"
+                          >
+                            <Icon as={MdApartment} boxSize={9} />
+                          </Flex>
 
-                    <Box
-                      overflowY="auto"
-                      overflowX="auto"
-                      flex="1"
-                      minH="0"
-                      css={globalScrollbarStyles}
-                    >
-                      <Table size="sm" variant="simple">
-                        <Thead bg="gray.50" position="sticky" top={0} zIndex={3} boxShadow="0 1px 0 0 #e2e8f0">
-                          <Tr>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">#</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">DISTRICT</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">OPERATIONAL RANGE (CITY)</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">CODE</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="center" whiteSpace="nowrap">SERVICE CONTROLS</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">POLYGON</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="right" whiteSpace="nowrap">ACTIONS</Th>
-                          </Tr>
-                        </Thead>
-                        <Tbody>
-                          {currentDistricts.length === 0 ? (
-                            <Tr><Td colSpan={7} textAlign="center" py={10} color="gray.500">No operational districts found. Click "Add District" to create one.</Td></Tr>
-                          ) : (
-                            currentDistricts.map((dist, idx) => {
-                              const isActive = dist.active !== false && dist.isActive !== false;
+                          <Text fontSize="xl" fontWeight="800" color="gray.800" mt={4}>
+                            No Operational Districts Activated Yet
+                          </Text>
+
+                          <Text fontSize="sm" color="gray.600" maxW="540px" mx="auto" mt={2} lineHeight="1.6">
+                            Choose from Tamil Nadu's 38 official Survey of India revenue districts to enable technician onboarding, service bookings, and automated dispatch.
+                          </Text>
+
+                          <Grid
+                            templateColumns={{ base: "1fr", md: "repeat(3, 1fr)" }}
+                            gap={3.5}
+                            my={6}
+                            textAlign="left"
+                          >
+                            <Box p={3.5} bg="white" borderRadius="12px" border="1px solid" borderColor="teal.100" boxShadow="xs">
+                              <HStack spacing={2} mb={1.5}>
+                                <Icon as={MdCheckCircle} color="teal.500" boxSize={4} />
+                                <Text fontSize="xs" fontWeight="700" color="gray.800">Survey of India GeoJSON</Text>
+                              </HStack>
+                              <Text fontSize="11px" color="gray.500" lineHeight="1.4">
+                                Pre-loaded official boundary coordinates for all 38 TN revenue districts.
+                              </Text>
+                            </Box>
+
+                            <Box p={3.5} bg="white" borderRadius="12px" border="1px solid" borderColor="teal.100" boxShadow="xs">
+                              <HStack spacing={2} mb={1.5}>
+                                <Icon as={MdCheckCircle} color="purple.500" boxSize={4} />
+                                <Text fontSize="xs" fontWeight="700" color="gray.800">City Micro-Zones</Text>
+                              </HStack>
+                              <Text fontSize="11px" color="gray.500" lineHeight="1.4">
+                                Create sub-zones and villages under parent districts for targeted dispatch.
+                              </Text>
+                            </Box>
+
+                            <Box p={3.5} bg="white" borderRadius="12px" border="1px solid" borderColor="teal.100" boxShadow="xs">
+                              <HStack spacing={2} mb={1.5}>
+                                <Icon as={MdCheckCircle} color="blue.500" boxSize={4} />
+                                <Text fontSize="xs" fontWeight="700" color="gray.800">1-Click Governance</Text>
+                              </HStack>
+                              <Text fontSize="11px" color="gray.500" lineHeight="1.4">
+                                Control master active state, registration access, and job dispatch flags instantly.
+                              </Text>
+                            </Box>
+                          </Grid>
+
+                          <HStack spacing={3} justify="center">
+                            <Button
+                              size="md"
+                              variant="brand"
+                              borderRadius="10px"
+                              px={6}
+                              py={2.5}
+                              fontSize="sm"
+                              fontWeight="700"
+                              leftIcon={<MdAdd />}
+                              onClick={() => handleOpenCreateDistrictModal()}
+                              boxShadow="0 4px 14px rgba(0, 128, 128, 0.3)"
+                              _hover={{ transform: "translateY(-1px)", boxShadow: "0 6px 20px rgba(0, 128, 128, 0.4)" }}
+                              _active={{ transform: "translateY(0)" }}
+                            >
+                              + Add Operational District
+                            </Button>
+                            <Button
+                              size="md"
+                              variant="outline"
+                              borderRadius="10px"
+                              px={5}
+                              py={2.5}
+                              fontSize="sm"
+                              fontWeight="600"
+                              leftIcon={<MdPublic />}
+                              onClick={() => handleBulkToggleAllDistricts(true)}
+                              borderColor="teal.300"
+                              color="teal.700"
+                              _hover={{ bg: "teal.50", borderColor: "teal.400" }}
+                            >
+                              + Add All 38 Districts
+                            </Button>
+                          </HStack>
+                        </Box>
+                      </Box>
+                    ) : (
+                      <Box
+                        overflowY="auto"
+                        overflowX="auto"
+                        flex="1"
+                        minH="0"
+                        css={globalScrollbarStyles}
+                      >
+                        <Table size="sm" variant="simple">
+                          <Thead bg="gray.50" position="sticky" top={0} zIndex={3} boxShadow="0 1px 0 0 #e2e8f0">
+                            <Tr>
+                              <Th bg="gray.50" color="gray.600" py={3.5} fontSize="10px" fontWeight="700" letterSpacing="0.5px" whiteSpace="nowrap">#</Th>
+                              <Th bg="gray.50" color="gray.600" py={3.5} fontSize="10px" fontWeight="700" letterSpacing="0.5px" whiteSpace="nowrap">DISTRICT</Th>
+                              <Th bg="gray.50" color="gray.600" py={3.5} fontSize="10px" fontWeight="700" letterSpacing="0.5px" whiteSpace="nowrap">OPERATIONAL RANGE (CITY)</Th>
+                              <Th bg="gray.50" color="gray.600" py={3.5} fontSize="10px" fontWeight="700" letterSpacing="0.5px" whiteSpace="nowrap">CODE</Th>
+                              <Th bg="gray.50" color="gray.600" py={3.5} fontSize="10px" fontWeight="700" letterSpacing="0.5px" textAlign="center" whiteSpace="nowrap">SERVICE CONTROLS (ENABLE / DISABLE)</Th>
+                              <Th bg="gray.50" color="gray.600" py={3.5} fontSize="10px" fontWeight="700" letterSpacing="0.5px" whiteSpace="nowrap">GEOCODE (SOI)</Th>
+                              <Th bg="gray.50" color="gray.600" py={3.5} fontSize="10px" fontWeight="700" letterSpacing="0.5px" textAlign="right" whiteSpace="nowrap">ACTIONS</Th>
+                            </Tr>
+                          </Thead>
+                          <Tbody>
+                            {currentDistricts.map((dist, idx) => {
+                              const isActive = dist.active === true;
                               return (
-                                <Tr key={dist._id} _hover={{ bg: "teal.50" }} transition="background 0.15s">
+                                <Tr key={dist._id || dist.name} _hover={{ bg: "teal.50" }} transition="background 0.15s">
                                   <Td fontWeight="600" color="gray.400" py={3}>{indexOfFirstItem + idx + 1}</Td>
                                   <Td py={3}>
-                                    <Text fontWeight="700" color={INK}>{dist.name}</Text>
+                                    <HStack spacing={2} align="center">
+                                      <Text fontWeight="700" color={INK}>{dist.name}</Text>
+                                      {dist.tnDistrict?.dtcode && (
+                                        <Badge size="xs" fontSize="9px" colorScheme="blue" variant="subtle" borderRadius="4px">
+                                          dtcode: {dist.tnDistrict.dtcode}
+                                        </Badge>
+                                      )}
+                                    </HStack>
                                     <StatusPill tone={isActive ? "active" : "inactive"}>
-                                      {isActive ? "Active" : "Inactive"}
+                                      {isActive ? "Active / Enabled" : "Disabled / Not Active"}
                                     </StatusPill>
                                   </Td>
                                   <Td py={3}>
@@ -3483,7 +4839,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                     </HStack>
                                   </Td>
                                   <Td py={3}>
-                                    <Tag size="sm" colorScheme="blue" borderRadius="6px" fontWeight="600">{dist.code || "N/A"}</Tag>
+                                    <Tag size="sm" colorScheme="blue" borderRadius="6px" fontWeight="600">{dist.displayCode || dist.code || "N/A"}</Tag>
                                   </Td>
                                   <Td py={3}>
                                     <HStack spacing={4} justify="center">
@@ -3495,79 +4851,115 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                       />
                                       <MiniToggle
                                         label="Registration"
-                                        isChecked={dist.isRegistrationEnabled !== false}
+                                        isChecked={dist.isRegistrationEnabled !== false && isActive}
                                         onChange={() => handleToggleDistrictRegistrationFlag(dist)}
                                         colorScheme="green"
                                       />
                                       <MiniToggle
                                         label="Job Dispatch"
-                                        isChecked={dist.isJobEnabled !== false}
+                                        isChecked={dist.isJobEnabled !== false && isActive}
                                         onChange={() => handleToggleDistrictJobFlag(dist)}
                                         colorScheme="purple"
                                       />
                                     </HStack>
                                   </Td>
                                   <Td py={3}>
-                                    <Badge colorScheme={dist.polygon ? "teal" : "gray"} borderRadius="full" px={2.5} fontWeight="500">
-                                      {dist.polygon ? "Configured" : "Not set"}
-                                    </Badge>
+                                    <Tooltip label="Official Survey of India GeoJSON Boundary Loaded">
+                                      <Badge colorScheme={dist.polygon || dist.officialBoundary ? "teal" : "gray"} borderRadius="full" px={2.5} fontWeight="600" fontSize="10px">
+                                        {dist.polygon || dist.officialBoundary ? "Official SOI GeoJSON" : "No Boundary"}
+                                      </Badge>
+                                    </Tooltip>
                                   </Td>
                                   <Td py={3} textAlign="right">
-                                    <HStack spacing={1} justify="flex-end">
-                                      <Tooltip label="Activate as Operational City Hub">
-                                        <IconButton
+                                    <HStack spacing={1.5} justify="flex-end">
+                                      <Tooltip label={`Add Micro-Zone to ${dist.name}`}>
+                                        <Button
                                           size="xs"
-                                          icon={<MdCheckCircle />}
-                                          colorScheme="green"
-                                          variant="ghost"
-                                          onClick={() => handleActivateDistrict(dist)}
-                                        />
+                                          colorScheme="teal"
+                                          variant="solid"
+                                          borderRadius="6px"
+                                          leftIcon={<MdAdd />}
+                                          onClick={() => handleOpenCreateZone(dist._id || dist.name)}
+                                          fontSize="10px"
+                                          fontWeight="700"
+                                          px={2.5}
+                                          mr={1}
+                                        >
+                                          + Add Zone
+                                        </Button>
                                       </Tooltip>
+                                      {dist.isConfigured && (
+                                        <Tooltip label="Activate as Operational City Hub">
+                                          <IconButton
+                                            size="xs"
+                                            icon={<MdCheckCircle />}
+                                            colorScheme="green"
+                                            variant="ghost"
+                                            onClick={() => handleActivateDistrict(dist.backendRecord || dist)}
+                                          />
+                                        </Tooltip>
+                                      )}
                                       <Tooltip label="View Real-Time Map Range">
                                         <IconButton
                                           size="xs"
                                           icon={<MdMap />}
                                           colorScheme="purple"
                                           variant="ghost"
-                                          onClick={() => handleOpenViewMapModal(dist)}
+                                          onClick={() => handleOpenViewMapModal(dist.backendRecord || dist)}
                                         />
                                       </Tooltip>
-                                      <Tooltip label="View Technicians">
-                                        <IconButton
-                                          size="xs"
-                                          icon={<MdVisibility />}
-                                          colorScheme="blue"
-                                          variant="ghost"
-                                          onClick={() => handleViewDistrictTechnicians(dist)}
-                                        />
-                                      </Tooltip>
-                                      <Tooltip label="Edit District">
-                                        <IconButton
-                                          size="xs"
-                                          icon={<MdEdit />}
-                                          colorScheme="teal"
-                                          variant="ghost"
-                                          onClick={() => handleOpenEditDistrict(dist)}
-                                        />
-                                      </Tooltip>
-                                      <Tooltip label="Delete District">
-                                        <IconButton
-                                          size="xs"
-                                          icon={<MdDelete />}
-                                          colorScheme="red"
-                                          variant="ghost"
-                                          onClick={() => handleDeleteDistrictPrompt(dist)}
-                                        />
-                                      </Tooltip>
+                                      {dist.isConfigured ? (
+                                        <>
+                                          <Tooltip label="View Technicians">
+                                            <IconButton
+                                              size="xs"
+                                              icon={<MdVisibility />}
+                                              colorScheme="blue"
+                                              variant="ghost"
+                                              onClick={() => handleViewDistrictTechnicians(dist.backendRecord || dist)}
+                                            />
+                                          </Tooltip>
+                                          <Tooltip label="Edit District">
+                                            <IconButton
+                                              size="xs"
+                                              icon={<MdEdit />}
+                                              colorScheme="teal"
+                                              variant="ghost"
+                                              onClick={() => handleOpenEditDistrict(dist.backendRecord || dist)}
+                                            />
+                                          </Tooltip>
+                                          <Tooltip label="Delete District">
+                                            <IconButton
+                                              size="xs"
+                                              icon={<MdDelete />}
+                                              colorScheme="red"
+                                              variant="ghost"
+                                              onClick={() => handleDeleteDistrictPrompt(dist.backendRecord || dist)}
+                                            />
+                                          </Tooltip>
+                                        </>
+                                      ) : (
+                                        <Tooltip label="Configure District Details">
+                                          <Button
+                                            size="xs"
+                                            variant="brand-outline"
+                                            borderRadius="6px"
+                                            leftIcon={<MdEdit />}
+                                            onClick={() => handleOpenCreateDistrictModal(dist.name)}
+                                          >
+                                            Configure
+                                          </Button>
+                                        </Tooltip>
+                                      )}
                                     </HStack>
                                   </Td>
                                 </Tr>
                               );
-                            })
-                          )}
-                        </Tbody>
-                      </Table>
-                    </Box>
+                            })}
+                          </Tbody>
+                        </Table>
+                      </Box>
+                    )}
                   </TabPanel>
 
                   {/* TAB 1: CITY MICRO-ZONES / SUB-ZONES (1.2) */}
@@ -3656,11 +5048,24 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                       colorScheme="teal"
                                       isChecked={isZoneActive}
                                       onChange={async () => {
+                                        const nextActive = !isZoneActive;
+                                        // 1. Instant optimistic UI update (0ms switch response)
+                                        setZones((prev) =>
+                                          prev.map((z) => (String(z._id) === String(zone._id) ? { ...z, active: nextActive } : z))
+                                        );
+                                        toast({
+                                          title: `Zone ${nextActive ? "Activated" : "Deactivated"}`,
+                                          status: "success",
+                                          duration: 1500,
+                                          isClosable: true,
+                                        });
                                         try {
-                                          await updateZone(zone._id, { active: !isZoneActive });
-                                          toast({ title: `Zone ${!isZoneActive ? "Activated" : "Deactivated"}`, status: "success", duration: 2000, isClosable: true });
-                                          await fetchData();
+                                          await updateZone(zone._id, { active: nextActive });
                                         } catch (err) {
+                                          // Rollback on network error
+                                          setZones((prev) =>
+                                            prev.map((z) => (String(z._id) === String(zone._id) ? { ...z, active: isZoneActive } : z))
+                                          );
                                           toast({ title: "Error", description: err.message, status: "error", duration: 3000, isClosable: true });
                                         }
                                       }}
@@ -3727,10 +5132,125 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     </Box>
                   </TabPanel>
 
-                  {/* TAB 2: SERVICE AVAILABILITY & SERVICE-ZONE MATRIX (1.3) */}
+                  {/* TAB 2: ZONE-BASED SERVICES (DISTRICT ➔ ZONE HIERARCHICAL SCREENING) */}
                   <TabPanel p={0} display="flex" flexDirection="column" flex="1" minH="0" overflow="hidden">
-                    {/* Filter Toolbar */}
-                    <Box p={2.5} borderBottom="1px solid" borderColor="gray.200" bg="white" flexShrink={0}>
+                    {/* Hierarchical Screening: Step 1 District & Step 2 Micro-Zone */}
+                    <Box p={3} borderBottom="1px solid" borderColor="gray.200" bg="white" flexShrink={0}>
+                      {/* Step 1: District Screening */}
+                      <Flex align="center" gap={2} mb={2.5} flexWrap="wrap">
+                        <HStack spacing={1.5} mr={2} minW="135px">
+                          <Icon as={MdLocationCity} color={BRAND} />
+                          <Text fontSize="xs" fontWeight="700" color="gray.700" textTransform="uppercase" letterSpacing="0.5px">
+                            1. Select District:
+                          </Text>
+                        </HStack>
+                        <Button
+                          size="xs"
+                          borderRadius="full"
+                          variant={matrixDistrictFilter === "ALL" ? "solid" : "outline"}
+                          colorScheme={matrixDistrictFilter === "ALL" ? "teal" : "gray"}
+                          bg={matrixDistrictFilter === "ALL" ? BRAND : "white"}
+                          color={matrixDistrictFilter === "ALL" ? "white" : "gray.700"}
+                          onClick={() => {
+                            setMatrixDistrictFilter("ALL");
+                            setMatrixZoneFilter("ALL");
+                            setCurrentPage(1);
+                          }}
+                        >
+                          🌐 All Districts ({districts.length})
+                        </Button>
+                        {districts.map((d) => {
+                          const zCount = zones.filter((z) => String(z.operationalCityId || z.districtId) === String(d._id)).length;
+                          const isSel = matrixDistrictFilter === String(d._id);
+                          return (
+                            <Button
+                              key={d._id}
+                              size="xs"
+                              borderRadius="full"
+                              variant={isSel ? "solid" : "outline"}
+                              colorScheme={isSel ? "teal" : "gray"}
+                              bg={isSel ? BRAND : "white"}
+                              color={isSel ? "white" : "gray.700"}
+                              onClick={() => {
+                                setMatrixDistrictFilter(String(d._id));
+                                setMatrixZoneFilter("ALL");
+                                setCurrentPage(1);
+                              }}
+                              leftIcon={<Icon as={MdLocationOn} />}
+                            >
+                              {d.name} ({zCount} Zones)
+                            </Button>
+                          );
+                        })}
+                      </Flex>
+
+                      {/* Step 2: Micro-Zone Screening inside Selected District */}
+                      {matrixDistrictFilter !== "ALL" && (
+                        <Box pt={2.5} pb={1} borderTop="1px dashed" borderColor="gray.200">
+                          <Flex align="center" gap={2} flexWrap="wrap">
+                            <HStack spacing={1.5} mr={2} minW="135px">
+                              <Icon as={MdPlace} color="purple.600" />
+                              <Text fontSize="xs" fontWeight="700" color="purple.800" textTransform="uppercase" letterSpacing="0.5px">
+                                2. Screen Zone:
+                              </Text>
+                            </HStack>
+                            <Button
+                              size="xs"
+                              borderRadius="full"
+                              variant={matrixZoneFilter === "ALL" ? "solid" : "outline"}
+                              colorScheme={matrixZoneFilter === "ALL" ? "purple" : "gray"}
+                              bg={matrixZoneFilter === "ALL" ? "purple.600" : "white"}
+                              color={matrixZoneFilter === "ALL" ? "white" : "purple.700"}
+                              onClick={() => {
+                                setMatrixZoneFilter("ALL");
+                                setCurrentPage(1);
+                              }}
+                            >
+                              All Zones in {districts.find((d) => String(d._id) === String(matrixDistrictFilter))?.name || "District"}
+                            </Button>
+
+                            {zones
+                              .filter((z) => String(z.operationalCityId || z.districtId) === String(matrixDistrictFilter))
+                              .filter((z) => !matrixZoneSearch.trim() || (z.name || "").toLowerCase().includes(matrixZoneSearch.toLowerCase()))
+                              .map((z, zIdx) => {
+                                const isZoneSel = matrixZoneFilter === String(z._id || z.zoneId || z.id);
+                                return (
+                                  <Button
+                                    key={z._id || z.zoneId || z.id || zIdx}
+                                    size="xs"
+                                    borderRadius="full"
+                                    variant={isZoneSel ? "solid" : "outline"}
+                                    colorScheme={isZoneSel ? "purple" : "gray"}
+                                    bg={isZoneSel ? "purple.600" : "white"}
+                                    color={isZoneSel ? "white" : "gray.700"}
+                                    borderColor={isZoneSel ? "purple.600" : "purple.200"}
+                                    onClick={() => {
+                                      setMatrixZoneFilter(String(z._id || z.zoneId || z.id));
+                                      setCurrentPage(1);
+                                    }}
+                                  >
+                                    📍 {z.name} ({z.zoneCode || "Zone"})
+                                  </Button>
+                                );
+                              })}
+
+                            <InputGroup size="xs" maxW="160px" ml="auto">
+                              <Input
+                                placeholder="Filter zones..."
+                                value={matrixZoneSearch}
+                                onChange={(e) => setMatrixZoneSearch(e.target.value)}
+                                borderRadius="6px"
+                                bg="white"
+                              />
+                              <InputRightElement><Icon as={MdSearch} color="gray.400" /></InputRightElement>
+                            </InputGroup>
+                          </Flex>
+                        </Box>
+                      )}
+                    </Box>
+
+                    {/* Filter & Search Toolbar */}
+                    <Box p={2.5} borderBottom="1px solid" borderColor="gray.200" bg="gray.50" flexShrink={0}>
                       <Flex gap={3} flexWrap="wrap" align="center" justify="space-between">
                         <HStack spacing={3} flex="1" minW="300px" flexWrap="wrap">
                           <InputGroup size="sm" maxW="240px">
@@ -3739,6 +5259,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               value={matrixSearch}
                               onChange={(e) => { setMatrixSearch(e.target.value); setCurrentPage(1); }}
                               borderRadius="8px"
+                              bg="white"
                             />
                             <InputRightElement><Icon as={MdSearch} color="gray.400" /></InputRightElement>
                           </InputGroup>
@@ -3758,24 +5279,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             <option value="ALL">All Categories</option>
                             {categoriesList.map((c) => (
                               <option key={c._id} value={c._id}>{c.category || c.name || c.categoryName}</option>
-                            ))}
-                          </Select>
-
-                          <Select
-                            size="sm"
-                            maxW="160px"
-                            value={matrixDistrictFilter}
-                            onChange={(e) => { setMatrixDistrictFilter(e.target.value); setCurrentPage(1); }}
-                            borderRadius="8px"
-                            bg="white"
-                            border="1px solid"
-                            borderColor="gray.300"
-                            _hover={{ borderColor: "gray.400" }}
-                            _focus={{ borderColor: BRAND, boxShadow: `0 0 0 1px ${BRAND}` }}
-                          >
-                            <option value="ALL">All Districts</option>
-                            {districts.map((d) => (
-                              <option key={d._id} value={d._id}>{d.name}</option>
                             ))}
                           </Select>
 
@@ -3820,14 +5323,71 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           leftIcon={<MdClear />}
                           onClick={handleResetMatrixFilters}
                           borderRadius="8px"
+                          bg="white"
                         >
                           Reset / Show All
                         </Button>
                       </Flex>
                     </Box>
 
-                    {/* Multi-Service Batch Actions Bar */}
-                    {selectedMatrixServiceIds.length > 0 && (
+                    {/* Specific Zone Screening Banner & Direct Actions */}
+                    {matrixDistrictFilter !== "ALL" && matrixZoneFilter !== "ALL" && (() => {
+                      const activeDistObj = districts.find((d) => String(d._id) === String(matrixDistrictFilter));
+                      const activeZoneObj = zones.find((z) => String(z._id || z.zoneId || z.id) === String(matrixZoneFilter));
+                      const activeCountInZone = currentMatrixData.filter((item) => isServiceActiveInZone(item.serviceId, matrixZoneFilter)).length;
+
+                      return (
+                        <Flex
+                          px={4}
+                          py={2.5}
+                          bg="purple.50"
+                          borderBottom="1px solid"
+                          borderColor="purple.200"
+                          align="center"
+                          justify="space-between"
+                          flexWrap="wrap"
+                          gap={2}
+                          flexShrink={0}
+                        >
+                          <HStack spacing={2.5}>
+                            <Badge colorScheme="purple" px={2.5} py={1} borderRadius="full" fontSize="11px" fontWeight="700">
+                              Zone Screening Active
+                            </Badge>
+                            <Text fontSize="xs" fontWeight="700" color="purple.900">
+                              {activeDistObj?.name || "District"} ➔ {activeZoneObj?.name || "Zone"} ({activeZoneObj?.zoneCode || ""})
+                            </Text>
+                            <Text fontSize="xs" color="purple.700">
+                              • {activeCountInZone} of {currentMatrixData.length} Services Active in this Zone
+                            </Text>
+                          </HStack>
+
+                          <HStack spacing={2}>
+                            <Button
+                              size="xs"
+                              colorScheme="green"
+                              leftIcon={<MdCheckCircle />}
+                              onClick={() => handleBulkToggleServicesInSelectedZone(true)}
+                              isLoading={isTogglingSingleZone}
+                            >
+                              Enable All in Zone
+                            </Button>
+                            <Button
+                              size="xs"
+                              colorScheme="red"
+                              variant="outline"
+                              leftIcon={<MdClear />}
+                              onClick={() => handleBulkToggleServicesInSelectedZone(false)}
+                              isLoading={isTogglingSingleZone}
+                            >
+                              Disable All in Zone
+                            </Button>
+                          </HStack>
+                        </Flex>
+                      );
+                    })()}
+
+                    {/* Multi-Service Batch Actions Bar (when not filtering a single zone) */}
+                    {!(matrixDistrictFilter !== "ALL" && matrixZoneFilter !== "ALL") && selectedMatrixServiceIds.length > 0 && (
                       <Flex
                         px={3.5}
                         py={2}
@@ -3924,94 +5484,203 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     >
                       <Table size="sm" variant="simple">
                         <Thead bg="gray.50" position="sticky" top={0} zIndex={3} boxShadow="0 1px 0 0 #e2e8f0">
-                          <Tr>
-                            <Th bg="gray.50" py={3} w="36px" textAlign="center">
-                              <Checkbox
-                                colorScheme="teal"
-                                size="sm"
-                                isChecked={
-                                  currentMatrixData.length > 0 &&
-                                  currentMatrixData.every((m) => selectedMatrixServiceIds.includes(m.serviceId))
-                                }
-                                isIndeterminate={
-                                  currentMatrixData.some((m) => selectedMatrixServiceIds.includes(m.serviceId)) &&
-                                  !currentMatrixData.every((m) => selectedMatrixServiceIds.includes(m.serviceId))
-                                }
-                                onChange={handleSelectAllMatrix}
-                              />
-                            </Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">#</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">CATEGORY</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">SERVICE</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">DISTRICTS</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">ACTIVE ZONES</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">INACTIVE ZONES</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">STATUS</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="right" whiteSpace="nowrap">ACTIONS</Th>
-                          </Tr>
+                          {matrixDistrictFilter !== "ALL" && matrixZoneFilter !== "ALL" ? (
+                            <Tr>
+                              <Th bg="gray.50" py={3} w="36px" textAlign="center">
+                                <Checkbox
+                                  colorScheme="teal"
+                                  size="sm"
+                                  isChecked={
+                                    currentMatrixData.length > 0 &&
+                                    currentMatrixData.every((m) => selectedMatrixServiceIds.includes(m.serviceId))
+                                  }
+                                  isIndeterminate={
+                                    currentMatrixData.some((m) => selectedMatrixServiceIds.includes(m.serviceId)) &&
+                                    !currentMatrixData.every((m) => selectedMatrixServiceIds.includes(m.serviceId))
+                                  }
+                                  onChange={handleSelectAllMatrix}
+                                />
+                              </Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">#</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">CATEGORY</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">SERVICE</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">DISTRICT</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">SCREENED ZONE</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">AVAILABILITY IN ZONE</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="center" whiteSpace="nowrap">TOGGLE IN ZONE</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="right" whiteSpace="nowrap">ACTIONS</Th>
+                            </Tr>
+                          ) : (
+                            <Tr>
+                              <Th bg="gray.50" py={3} w="36px" textAlign="center">
+                                <Checkbox
+                                  colorScheme="teal"
+                                  size="sm"
+                                  isChecked={
+                                    currentMatrixData.length > 0 &&
+                                    currentMatrixData.every((m) => selectedMatrixServiceIds.includes(m.serviceId))
+                                  }
+                                  isIndeterminate={
+                                    currentMatrixData.some((m) => selectedMatrixServiceIds.includes(m.serviceId)) &&
+                                    !currentMatrixData.every((m) => selectedMatrixServiceIds.includes(m.serviceId))
+                                  }
+                                  onChange={handleSelectAllMatrix}
+                                />
+                              </Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">#</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">CATEGORY</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">SERVICE</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">DISTRICTS</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">ACTIVE ZONES</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">INACTIVE ZONES</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">STATUS</Th>
+                              <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="right" whiteSpace="nowrap">ACTIONS</Th>
+                            </Tr>
+                          )}
                         </Thead>
                         <Tbody>
                           {currentMatrixData.length === 0 ? (
                             <Tr><Td colSpan={9} textAlign="center" py={10} color="gray.500">No services found matching filters.</Td></Tr>
                           ) : (
-                            currentMatrixData.map((item, idx) => (
-                              <Tr key={item.serviceId || idx}>
-                                <Td py={3} textAlign="center">
-                                  <Checkbox
-                                    colorScheme="teal"
-                                    size="sm"
-                                    isChecked={selectedMatrixServiceIds.includes(item.serviceId)}
-                                    onChange={() => handleToggleMatrixServiceSelection(item.serviceId)}
-                                  />
-                                </Td>
-                                <Td fontWeight="600" color="gray.400" py={3}>{indexOfFirstItem + idx + 1}</Td>
-                                <Td py={3}>
-                                  <Tag size="sm" colorScheme="purple" borderRadius="6px" fontWeight="600">
-                                    {item.categoryName || "Uncategorized"}
-                                  </Tag>
-                                </Td>
-                                <Td fontWeight="700" color={INK} py={3}>{item.serviceName}</Td>
-                                <Td py={3}>
-                                  <Tag size="sm" colorScheme="blue" borderRadius="6px" fontWeight="600">
-                                    {item.districtsCount || 0} Districts
-                                  </Tag>
-                                </Td>
-                                <Td py={3}>
-                                  <Badge colorScheme="green" px={2.5} py={0.5} borderRadius="full" fontWeight="700">
-                                    {item.activeZonesCount || 0} Active
-                                  </Badge>
-                                </Td>
-                                <Td py={3}>
-                                  <Badge colorScheme={item.inactiveZonesCount > 0 ? "red" : "gray"} px={2.5} py={0.5} borderRadius="full" fontWeight="700">
-                                    {item.inactiveZonesCount || 0} Inactive
-                                  </Badge>
-                                </Td>
-                                <Td py={3}>
-                                  <StatusPill tone={item.isActive ? "active" : "inactive"}>
-                                    {item.isActive ? "Active" : "Inactive"}
-                                  </StatusPill>
-                                </Td>
-                                <Td py={3} textAlign="right">
-                                  <Button
-                                    size="xs"
-                                    variant="brand"
-                                    borderRadius="6px"
-                                    leftIcon={<MdEdit />}
-                                    onClick={() => handleOpenManageServiceModal(item.serviceId)}
-                                  >
-                                    Manage Mappings
-                                  </Button>
-                                </Td>
-                              </Tr>
-                            ))
+                            currentMatrixData.map((item, idx) => {
+                              if (matrixDistrictFilter !== "ALL" && matrixZoneFilter !== "ALL") {
+                                const isZoneActive = isServiceActiveInZone(item.serviceId, matrixZoneFilter);
+                                const currentDist = districts.find((d) => String(d._id) === String(matrixDistrictFilter));
+                                const currentZone = zones.find((z) => String(z._id || z.zoneId || z.id) === String(matrixZoneFilter));
+
+                                return (
+                                  <Tr key={item.serviceId || idx}>
+                                    <Td py={3} textAlign="center">
+                                      <Checkbox
+                                        colorScheme="teal"
+                                        size="sm"
+                                        isChecked={selectedMatrixServiceIds.includes(item.serviceId)}
+                                        onChange={() => handleToggleMatrixServiceSelection(item.serviceId)}
+                                      />
+                                    </Td>
+                                    <Td fontWeight="600" color="gray.400" py={3}>{indexOfFirstItem + idx + 1}</Td>
+                                    <Td py={3}>
+                                      <Tag size="sm" colorScheme="purple" borderRadius="6px" fontWeight="600">
+                                        {item.categoryName || "Uncategorized"}
+                                      </Tag>
+                                    </Td>
+                                    <Td fontWeight="700" color={INK} py={3}>{item.serviceName}</Td>
+                                    <Td py={3}>
+                                      <Tag size="sm" colorScheme="blue" borderRadius="6px" fontWeight="600">
+                                        {currentDist?.name || "District"}
+                                      </Tag>
+                                    </Td>
+                                    <Td py={3}>
+                                      <Tag size="sm" colorScheme="teal" borderRadius="6px" fontWeight="700">
+                                        📍 {currentZone?.name || "Zone"}
+                                      </Tag>
+                                    </Td>
+                                    <Td py={3}>
+                                      <Badge colorScheme={isZoneActive ? "green" : "gray"} px={2.5} py={0.5} borderRadius="full" fontWeight="700">
+                                        {isZoneActive ? "Active in Zone" : "Disabled in Zone"}
+                                      </Badge>
+                                    </Td>
+                                    <Td py={3} textAlign="center">
+                                      <Switch
+                                        size="sm"
+                                        colorScheme="teal"
+                                        isChecked={isZoneActive}
+                                        isDisabled={isTogglingSingleZone}
+                                        onChange={() => handleToggleSingleServiceInSelectedZone(item.serviceId, isZoneActive, item.serviceName)}
+                                      />
+                                    </Td>
+                                    <Td py={3} textAlign="right">
+                                      <Button
+                                        size="xs"
+                                        variant="brand"
+                                        borderRadius="6px"
+                                        leftIcon={<MdEdit />}
+                                        onClick={() => handleOpenManageServiceModal(item.serviceId)}
+                                      >
+                                        Configure Zones
+                                      </Button>
+                                    </Td>
+                                  </Tr>
+                                );
+                              }
+
+                              return (
+                                <Tr key={item.serviceId || idx}>
+                                  <Td py={3} textAlign="center">
+                                    <Checkbox
+                                      colorScheme="teal"
+                                      size="sm"
+                                      isChecked={selectedMatrixServiceIds.includes(item.serviceId)}
+                                      onChange={() => handleToggleMatrixServiceSelection(item.serviceId)}
+                                    />
+                                  </Td>
+                                  <Td fontWeight="600" color="gray.400" py={3}>{indexOfFirstItem + idx + 1}</Td>
+                                  <Td py={3}>
+                                    <Tag size="sm" colorScheme="purple" borderRadius="6px" fontWeight="600">
+                                      {item.categoryName || "Uncategorized"}
+                                    </Tag>
+                                  </Td>
+                                  <Td fontWeight="700" color={INK} py={3}>{item.serviceName}</Td>
+                                  <Td py={3}>
+                                    <Tag size="sm" colorScheme="blue" borderRadius="6px" fontWeight="600">
+                                      {item.districtsCount || 0} Districts
+                                    </Tag>
+                                  </Td>
+                                  <Td py={3}>
+                                    <Badge colorScheme="green" px={2.5} py={0.5} borderRadius="full" fontWeight="700">
+                                      {item.activeZonesCount || 0} Active
+                                    </Badge>
+                                  </Td>
+                                  <Td py={3}>
+                                    <Badge colorScheme={item.inactiveZonesCount > 0 ? "red" : "gray"} px={2.5} py={0.5} borderRadius="full" fontWeight="700">
+                                      {item.inactiveZonesCount || 0} Inactive
+                                    </Badge>
+                                  </Td>
+                                  <Td py={3}>
+                                    <StatusPill tone={item.isActive ? "active" : "inactive"}>
+                                      {item.isActive ? "Active" : "Inactive"}
+                                    </StatusPill>
+                                  </Td>
+                                  <Td py={3} textAlign="right">
+                                    <Button
+                                      size="xs"
+                                      variant="brand"
+                                      borderRadius="6px"
+                                      leftIcon={<MdEdit />}
+                                      onClick={() => handleOpenManageServiceModal(item.serviceId)}
+                                    >
+                                      Manage Mappings
+                                    </Button>
+                                  </Td>
+                                </Tr>
+                              );
+                            })
                           )}
                         </Tbody>
                       </Table>
                     </Box>
                   </TabPanel>
 
-                  {/* TAB 3: TECHNICIAN MULTI-DISTRICT & ZONE PERMISSIONS (1.4) */}
+                  {/* TAB 3: TECHNICIAN DISTRICT PERMISSIONS (DISTRICT-ONLY COVERAGE) */}
                   <TabPanel p={0} display="flex" flexDirection="column" flex="1" minH="0" overflow="hidden">
+                    {/* District Authorization Scope Banner */}
+                    <Box px={4} py={2.5} bg="purple.50" borderBottom="1px solid" borderColor="purple.200" flexShrink={0}>
+                      <Flex align="center" justify="space-between" flexWrap="wrap" gap={2}>
+                        <HStack spacing={2}>
+                          <Icon as={MdLocationCity} color="purple.700" boxSize={4} />
+                          <Text fontSize="xs" fontWeight="700" color="purple.900">
+                            Technician Dispatch Permissions:
+                          </Text>
+                          <Text fontSize="xs" color="purple.800">
+                            Technicians are authorized exclusively by District coverage and operating radius. Micro-zones do not restrict technician assignments.
+                          </Text>
+                        </HStack>
+                        <Badge colorScheme="purple" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="700">
+                          District-Level Authorization Only
+                        </Badge>
+                      </Flex>
+                    </Box>
+
                     {/* Multi-Technician Batch Actions Bar */}
                     {selectedTechIds.length > 0 && (
                       <Flex
@@ -4130,7 +5799,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">TECHNICIAN</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">PHONE</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">PRIMARY DISTRICT</Th>
-                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">DISTRICT COVERAGE</Th>
+                            <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">ASSIGNED DISTRICT COVERAGE</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">SERVICE RADIUS</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" whiteSpace="nowrap">GEOFENCE STATUS</Th>
                             <Th bg="gray.50" color="gray.500" py={3} fontSize="10px" textAlign="right" whiteSpace="nowrap">ACTIONS</Th>
@@ -4210,7 +5879,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                         leftIcon={<MdPersonAdd />}
                                         onClick={() => handleOpenTechPermissions(tech)}
                                       >
-                                        Permissions
+                                        District Permissions
                                       </Button>
                                       <Button
                                         size="xs"
@@ -4220,7 +5889,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                         leftIcon={<MdGpsFixed />}
                                         onClick={() => handleOpenTechGeofenceModal(tech)}
                                       >
-                                        GPS & Geofence
+                                        GPS & Radius
                                       </Button>
                                     </HStack>
                                   </Td>
@@ -4442,8 +6111,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
                         <Box borderRadius="10px" overflow="hidden" border="1px solid" borderColor="gray.200">
                           <ZoneMap
-                            districts={districts}
-                            allDistricts={districts}
+                            districts={createdDistrictsList}
+                            allDistricts={createdDistrictsList}
                             zones={zones}
                             allZones={zones}
                             technicians={technicians}
@@ -4451,6 +6120,14 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             mode="view"
                             showToolbar={true}
                             showSearch={true}
+                            onlyTamilNadu={true}
+                            onSelectDistrict={(dist) => {
+                              handleSelectDistrictFromMap(dist);
+                              const distId = dist?._id;
+                              if (distId) {
+                                setSelectedDistrictFilter(distId);
+                              }
+                            }}
                           />
                         </Box>
                         </Box>
@@ -5112,7 +6789,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
               </Tabs>
 
               {/* Pagination Footer */}
-              {activeTab <= 3 && (
+              {activeTab <= 3 && activeTabItemCount > 0 && (
                 <Flex p={2.5} px={4} borderTop="1px solid" borderColor="gray.200" justify="space-between" align="center" bg={SURFACE_MUTED} flexShrink={0}>
                   <Text fontSize="xs" color="gray.600">
                     Page <b>{currentPage}</b> of <b>{totalPages}</b>
@@ -5152,41 +6829,59 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           </Card>
         </Box>
 
-        {/* CREATE / EDIT DISTRICT MODAL WITH REAL-TIME LEAFLET MAP */}
-        <Modal isOpen={isDistrictModalOpen} onClose={handleCloseDistrictModal} size="5xl">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
-          <ModalContent {...modalContentProps}>
-            <ModalHeader {...modalHeaderProps}>
-              <Flex align="center" justify="space-between">
+        {/* CREATE / EDIT DISTRICT MODAL WITH FULL TAMIL NADU LEAFLET MAP */}
+        <Modal isOpen={isDistrictModalOpen} onClose={handleCloseDistrictModal} size="full">
+          <ModalOverlay bg="blackAlpha.800" backdropFilter="blur(6px)" />
+          <ModalContent
+            bg="white"
+            borderRadius="16px"
+            maxW="96vw"
+            h="92vh"
+            maxH="92vh"
+            m="auto"
+            overflow="hidden"
+            display="flex"
+            flexDirection="column"
+            boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.4)"
+            zIndex={1401}
+          >
+            <ModalHeader
+              bg="white"
+              px={6}
+              py={3.5}
+              borderBottom="1px solid"
+              borderColor="gray.200"
+            >
+              <Flex align="center" justify="space-between" pr={8}>
                 <HStack spacing={3}>
-                  <Box p={2} bg="teal.50" color={BRAND} borderRadius="10px">
+                  <Box p={2.5} bg="teal.500" color="white" borderRadius="10px" boxShadow="0 2px 8px rgba(0, 128, 128, 0.3)">
                     <Icon as={MdApartment} boxSize={5} />
                   </Box>
                   <Box>
-                    <Text fontSize="lg" fontWeight="700" color={BRAND}>
-                      {isEditingDistrict ? "Edit Operational District" : "Add New Operational District"}
-                    </Text>
+                    <HStack spacing={2} align="center">
+                      <Text fontSize="md" fontWeight="800" color="gray.800">
+                        {isEditingDistrict ? "Edit Operational District" : "Add New Operational District"}
+                      </Text>
+                      {districtTnName ? (
+                        <Badge colorScheme="teal" fontSize="11px" borderRadius="full" px={2.5} py={0.5}>
+                          📍 {districtTnName}
+                        </Badge>
+                      ) : (
+                        <Badge colorScheme="cyan" fontSize="10px" borderRadius="full" px={2} py={0.5}>
+                          Tamil Nadu Map
+                        </Badge>
+                      )}
+                    </HStack>
                     <Text fontSize="xs" color="gray.500" fontWeight="400">
-                      Configure operational hub, technician registration & dispatch policies, and 10KM live Leaflet geofence.
+                      Click any district on the Tamil Nadu map to auto-fill its official Survey of India boundary geofence and hub city.
                     </Text>
                   </Box>
                 </HStack>
               </Flex>
             </ModalHeader>
-            <ModalCloseButton top={4} right={4} />
+            <ModalCloseButton top={3.5} right={4} />
 
-            <ModalBody {...modalBodyProps} overflowX="hidden">
-              <DistrictPickerCard
-                mode="master"
-                allDistricts={TAMIL_NADU_DISTRICTS}
-                operationalDistricts={districts}
-                selectedName={districtTnName}
-                onSelectTnDistrict={handlePickTnDistrict}
-                isEditing={isEditingDistrict}
-                editingDistrictId={selectedDistrict?._id}
-                accent="teal"
-              />
-
+            <ModalBody p={4} flex="1" overflow="hidden" display="flex" flexDirection="column">
               {/* Inline Error Alert Banner */}
               {districtModalError && (
                 <Flex
@@ -5196,9 +6891,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   borderColor="red.400"
                   color="red.800"
                   px={4}
-                  py={3}
+                  py={2.5}
                   borderRadius="10px"
-                  mb={4}
+                  mb={3}
                   justify="space-between"
                   boxShadow="xs"
                 >
@@ -5206,7 +6901,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     <Icon as={MdErrorOutline} boxSize={5} color="red.600" flexShrink={0} />
                     <Box>
                       <Text fontSize="xs" fontWeight="700" color="red.800">
-                        Cannot Create District
+                        Cannot Save District
                       </Text>
                       <Text fontSize="xs" color="red.700">
                         {districtModalError}
@@ -5224,17 +6919,58 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </Flex>
               )}
 
-              {/* 2-Column Responsive Layout: Left = Form Fields, Right = Live Leaflet Map */}
-              <Grid templateColumns={{ base: "1fr", lg: "1fr 1.15fr" }} gap={5}>
-                {/* Left Column: Form Details & Switches */}
-                <VStack spacing={4} align="stretch">
-                  <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="gray.200" boxShadow="xs">
-                    <Text fontSize="xs" fontWeight="700" color="gray.700" mb={3} textTransform="uppercase" letterSpacing="0.5px">
-                      District General Info
-                    </Text>
-                    
-                    <VStack spacing={3}>
+              <Grid
+                templateColumns={{ base: "1fr", xl: "360px 1fr" }}
+                gap={4}
+                alignItems="stretch"
+                flex="1"
+                h="100%"
+                overflow="hidden"
+              >
+                {/* Left Column: Essential District Details */}
+                <VStack
+                  spacing={3.5}
+                  align="stretch"
+                  w={{ base: "100%", xl: "360px" }}
+                  h="100%"
+                  overflowY="auto"
+                  pr={1}
+                >
+                  <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="gray.200" boxShadow="sm">
+                    <Flex align="center" gap={2} mb={3.5} pb={2} borderBottom="1px solid" borderColor="gray.100">
+                      <Icon as={MdApartment} color={BRAND} boxSize={4} />
+                      <Text fontSize="xs" fontWeight="700" color="gray.800" textTransform="uppercase" letterSpacing="0.5px">
+                        District General Info
+                      </Text>
+                    </Flex>
+
+                    <VStack spacing={3} align="stretch">
+                      {/* Select Tamil Nadu District */}
                       <FormControl isRequired>
+                        <FormLabel fontSize="xs" fontWeight="700" color="teal.800" mb={1}>
+                          Select Tamil Nadu District
+                        </FormLabel>
+                        <Select
+                          size="sm"
+                          value={districtTnName}
+                          onChange={(e) => handlePickTnDistrict(e.target.value)}
+                          borderRadius="8px"
+                          fontWeight="700"
+                          borderColor="teal.400"
+                          bg="teal.50"
+                          _focus={{ borderColor: "teal.600", bg: "white" }}
+                        >
+                          <option value="">-- Choose or click map --</option>
+                          {TAMIL_NADU_DISTRICTS.map((d) => (
+                            <option key={d.name} value={d.name}>
+                              📍 {d.name} ({d.code})
+                            </option>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      {/* District Name */}
+                      <FormControl isRequired isInvalid={!districtFormData.name && !!districtModalError}>
                         <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
                           District Name
                         </FormLabel>
@@ -5248,50 +6984,30 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           placeholder="e.g. Salem Operational Range"
                           borderRadius="8px"
                           fontWeight="600"
+                          bg="white"
                         />
                       </FormControl>
 
-                      <Grid templateColumns="1.3fr 0.7fr" gap={3} w="100%">
-                        <FormControl isRequired>
-                          <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
-                            Default City / Hub
-                          </FormLabel>
-                          <HStack spacing={2} align="flex-start">
-                            <Box flex="1" minW={0}>
-                              <LocationCombobox
-                                options={districtHubOptions}
-                                value={districtFormData.city}
-                                selectedLabel={districtFormData.city}
-                                onChange={(option) => applyHubCity(option.city)}
-                                onCustomSelect={geocodeHub}
-                                allowCustom
-                                placeholder={
-                                  districtTnName
-                                    ? `Search ${districtTnName} towns...`
-                                    : "Search or type a hub city..."
-                                }
-                                emptyText={
-                                  districtTnName
-                                    ? `No mapped towns for ${districtTnName}. Type a custom hub.`
-                                    : "Type a custom hub city."
-                                }
-                                colorScheme="teal"
-                              />
-                            </Box>
-                            <Button
-                              size="xs"
-                              h="32px"
-                              variant="brand"
-                              borderRadius="6px"
-                              leftIcon={<MdLocationOn />}
-                              isLoading={isLocatingHub}
-                              onClick={() => geocodeHub(districtFormData.city)}
-                            >
-                              Locate
-                            </Button>
-                          </HStack>
-                        </FormControl>
+                      {/* Default City / Hub */}
+                      <FormControl isRequired isInvalid={!districtFormData.city && !!districtModalError}>
+                        <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
+                          Default City / Hub
+                        </FormLabel>
+                        <Input
+                          size="sm"
+                          value={districtFormData.city}
+                          onChange={(e) => {
+                            setDistrictModalError("");
+                            setDistrictFormData({ ...districtFormData, city: e.target.value });
+                          }}
+                          placeholder="e.g. Salem"
+                          borderRadius="8px"
+                          bg="white"
+                        />
+                      </FormControl>
 
+                      {/* District Code & State */}
+                      <Grid templateColumns="1fr 1fr" gap={2.5}>
                         <FormControl>
                           <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
                             District Code
@@ -5301,61 +7017,43 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             value={districtFormData.code}
                             onChange={(e) => {
                               setDistrictModalError("");
-                              setDistrictFormData({ ...districtFormData, code: e.target.value });
+                              setDistrictFormData({ ...districtFormData, code: e.target.value.toUpperCase() });
                             }}
                             placeholder="e.g. SLM"
                             borderRadius="8px"
                             textTransform="uppercase"
                             fontWeight="700"
+                            bg="white"
                           />
                         </FormControl>
-                      </Grid>
 
-                      <Grid templateColumns="1fr 1fr" gap={3} w="100%">
-                        <FormControl isRequired>
+                        <FormControl>
                           <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
                             State
                           </FormLabel>
                           <Input
                             size="sm"
                             value={districtFormData.state}
-                            onChange={(e) => {
-                              setDistrictModalError("");
-                              setDistrictFormData({ ...districtFormData, state: e.target.value });
-                            }}
-                            placeholder="e.g. Tamil Nadu"
+                            isReadOnly
                             borderRadius="8px"
-                          />
-                        </FormControl>
-                        <FormControl>
-                          <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
-                            Country
-                          </FormLabel>
-                          <Input
-                            size="sm"
-                            value={districtFormData.country}
-                            onChange={(e) => {
-                              setDistrictModalError("");
-                              setDistrictFormData({ ...districtFormData, country: e.target.value });
-                            }}
-                            borderRadius="8px"
+                            bg="gray.50"
                           />
                         </FormControl>
                       </Grid>
                     </VStack>
                   </Box>
 
-                  {/* Service Controls & Policies Card */}
-                  <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="gray.200" boxShadow="xs">
+                  {/* Operational Controls & Policies */}
+                  <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="gray.200" boxShadow="sm">
                     <Text fontSize="xs" fontWeight="700" color="gray.700" mb={2.5} textTransform="uppercase" letterSpacing="0.5px">
-                      Operational Controls &amp; Policies
+                      Operational Controls
                     </Text>
-                    
+
                     <VStack spacing={2.5} align="stretch">
                       <Flex justify="space-between" align="center" p={2} bg="gray.50" borderRadius="8px">
                         <Box>
                           <Text fontSize="xs" fontWeight="700" color="gray.800">District Active</Text>
-                          <Text fontSize="10px" color="gray.500">Master operational switch for this district</Text>
+                          <Text fontSize="10px" color="gray.500">Master operational switch</Text>
                         </Box>
                         <Switch
                           isChecked={districtFormData.active}
@@ -5367,7 +7065,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       <Flex justify="space-between" align="center" p={2} bg="gray.50" borderRadius="8px">
                         <Box>
                           <Text fontSize="xs" fontWeight="700" color="green.700">Technician Registration</Text>
-                          <Text fontSize="10px" color="gray.500">Permit technician sign-ups under this hub</Text>
+                          <Text fontSize="10px" color="gray.500">Permit tech registrations</Text>
                         </Box>
                         <Switch
                           isChecked={districtFormData.isRegistrationEnabled}
@@ -5379,7 +7077,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       <Flex justify="space-between" align="center" p={2} bg="gray.50" borderRadius="8px">
                         <Box>
                           <Text fontSize="xs" fontWeight="700" color="purple.700">Job Assignment</Text>
-                          <Text fontSize="10px" color="gray.500">Permit automatic and manual booking dispatch</Text>
+                          <Text fontSize="10px" color="gray.500">Enable automatic dispatch</Text>
                         </Box>
                         <Switch
                           isChecked={districtFormData.isJobEnabled}
@@ -5390,145 +7088,115 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     </VStack>
                   </Box>
 
-                  {/* GeoJSON Coordinates Raw Input */}
-                  <Box bg="white" p={3.5} borderRadius="12px" border="1px solid" borderColor="gray.200" boxShadow="xs">
-                    <Flex justify="space-between" align="center" mb={1.5}>
-                      <Text fontSize="xs" fontWeight="700" color="gray.700">
-                        GeoJSON Polygon Data
+                  {/* Boundary Status Banner Card */}
+                  <Box
+                    p={3.5}
+                    borderRadius="12px"
+                    bg={districtFormData.polygonCoordinates ? "teal.50" : "orange.50"}
+                    border="1px solid"
+                    borderColor={districtFormData.polygonCoordinates ? "teal.300" : "orange.300"}
+                  >
+                    <HStack spacing={2.5} align="center" mb={1}>
+                      <Icon
+                        as={districtFormData.polygonCoordinates ? MdCheckCircle : MdWarning}
+                        color={districtFormData.polygonCoordinates ? "teal.600" : "orange.500"}
+                        boxSize={4}
+                        flexShrink={0}
+                      />
+                      <Text fontSize="xs" fontWeight="700" color={districtFormData.polygonCoordinates ? "teal.900" : "orange.900"}>
+                        {districtFormData.polygonCoordinates ? "Survey of India Boundary Ready" : "Select District on Map"}
                       </Text>
-                      <HStack spacing={2}>
-                        <Button
-                          size="xs"
-                          variant="brand-outline"
-                          leftIcon={<Icon as={MdVerified} />}
-                          isLoading={isCheckingModalBoundary}
-                          onClick={() => handleValidateModalPolygon(districtFormData.polygonCoordinates)}
-                        >
-                          Audit Boundary
-                        </Button>
-                        <Badge colorScheme={districtFormData.polygonCoordinates ? "green" : "gray"} fontSize="10px">
-                          {districtFormData.polygonCoordinates ? "Boundary Active" : "No Boundary"}
-                        </Badge>
-                        {districtModalDirty && (
-                          <Badge colorScheme="orange" fontSize="10px">
-                            Unsaved changes
-                          </Badge>
-                        )}
-                      </HStack>
-                    </Flex>
-                    <Textarea
-                      rows={3}
-                      value={districtFormData.polygonCoordinates}
-                      onChange={(e) => {
-                        setModalBoundaryCheckResult(null);
-                        setDistrictFormData({ ...districtFormData, polygonCoordinates: e.target.value });
-                      }}
-                      placeholder='{"type": "Polygon", "coordinates": [[[76.85, 11.01], ...]]}'
-                      fontSize="11px"
-                      fontFamily="mono"
-                      borderRadius="8px"
-                      bg="gray.50"
-                    />
-                    {modalBoundaryCheckResult && (
-                      <Box
-                        mt={2}
-                        p={2.5}
-                        borderRadius="8px"
-                        bg={modalBoundaryCheckResult.isValid ? "teal.50" : "red.50"}
-                        border="1px solid"
-                        borderColor={modalBoundaryCheckResult.isValid ? "teal.300" : "red.300"}
-                      >
-                        <HStack spacing={2} align="center">
-                          <Icon
-                            as={modalBoundaryCheckResult.isValid ? MdCheckCircle : MdErrorOutline}
-                            color={modalBoundaryCheckResult.isValid ? "teal.600" : "red.500"}
-                            boxSize={4}
-                          />
-                          <Text fontSize="xs" color={modalBoundaryCheckResult.isValid ? "teal.900" : "red.800"} fontWeight="600">
-                            {modalBoundaryCheckResult.message}
-                          </Text>
-                        </HStack>
-                      </Box>
-                    )}
-                    <Text fontSize="10px" color="gray.500" mt={1}>
-                      Auto-generated from Leaflet map or preset selection. You can also paste custom coordinates.
+                    </HStack>
+                    <Text fontSize="11px" color={districtFormData.polygonCoordinates ? "teal.800" : "orange.800"} lineHeight="1.4">
+                      {districtFormData.polygonCoordinates
+                        ? `Official Survey of India boundary loaded for ${districtTnName || districtFormData.name}. Coordinates linked to operational district.`
+                        : "Click any district on the Tamil Nadu map to auto-fill its official boundary and hub city."}
                     </Text>
                   </Box>
                 </VStack>
 
-                {/* Right Column: Interactive Leaflet Map */}
-                <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="teal.200" boxShadow="xs" display="flex" flexDirection="column" minW={0}>
-                  <Flex justify="space-between" align="center" mb={2}>
-                    <HStack spacing={1.5}>
-                      <Icon as={MdMap} color={BRAND} boxSize={4} />
-                      <Text fontSize="xs" fontWeight="700" color={BRAND} textTransform="uppercase" letterSpacing="0.5px">
-                        Real-Time Leaflet Geofence Map
-                      </Text>
-                    </HStack>
-                    <Badge colorScheme="teal" fontSize="10px">
-                      Live Interactive Canvas
-                    </Badge>
-                  </Flex>
-
-                  <Box flex="1" minH="360px">
+                {/* Right Column: Full Tamil Nadu Interactive Map */}
+                <Box
+                  bg="#0b111e"
+                  borderRadius="12px"
+                  border="1px solid"
+                  borderColor="rgba(6, 182, 212, 0.3)"
+                  boxShadow="md"
+                  display="flex"
+                  flexDirection="column"
+                  minW={0}
+                  flex="1"
+                  h="100%"
+                  overflow="hidden"
+                  p={2}
+                >
+                  {isDistrictModalOpen && (
                     <ZoneMap
-                      cityName={districtFormData.city}
-                      cityOptions={districtHubCities}
-                      districtName={districtFormData.name}
+                      viewMode="state"
+                      districtName={districtTnName || "Tamil Nadu"}
+                      selectedDistrictName={districtTnName || ""}
                       polygonCoordinates={districtFormData.polygonCoordinates}
-                      onPolygonChange={(newPoly) => setDistrictFormData((prev) => ({ ...prev, polygonCoordinates: newPoly }))}
-                      onCitySelect={(cityObj) => {
-                        const cleanCity = cityObj.name;
-                        const poly = generateCircularGeoJSON(cityObj.lat, cityObj.lng, 10);
-                        setDistrictFormData((prev) => ({
-                          ...prev,
-                          name: prev.name && !prev.name.includes("Operational Range") ? prev.name : `${cleanCity} Operational Range`,
-                          city: cleanCity,
-                          state: "Tamil Nadu",
-                          country: "India",
-                          code: cityObj.code || prev.code,
-                          polygonCoordinates: JSON.stringify(poly, null, 2),
-                        }));
-                      }}
-                      height="380px"
-                      mode="radius"
+                      height="100%"
+                      mode="view"
                       showSearch={true}
                       showDrawTools={false}
-                      allowRadiusSelect={true}
+                      allowRadiusSelect={false}
                       showToolbar={true}
                       districts={districts}
-                      zones={zones}
+                      allDistricts={allMergedDistricts}
+                      onlyTamilNadu={true}
+                      onSelectDistrict={(dist) => {
+                        handlePickTnDistrict(dist.name || dist.city);
+                      }}
                     />
-                  </Box>
-                  <Text fontSize="11px" color="gray.500" mt={2}>
-                    💡 <b>Tip:</b> Search or pick a <b>City Preset</b>, click the map to position the hub, use <b>5/10/15/25 KM</b> presets. Boundary is validated (closed ring, area shown).
-                  </Text>
+                  )}
                 </Box>
               </Grid>
             </ModalBody>
 
-            <ModalFooter {...modalFooterProps}>
-              <Button variant="ghost" size="sm" mr={3} borderRadius="8px" onClick={handleCloseDistrictModal}>
-                Cancel
-              </Button>
-              <Button
-                variant="brand"
-                size="sm"
-                borderRadius="8px"
-                onClick={handleSubmitDistrict}
-                isLoading={isSubmitting}
-                px={5}
-                leftIcon={<Icon as={MdCheckCircle} />}
-              >
-                {isEditingDistrict ? "Save Changes" : "Create Operational District"}
-              </Button>
+            <ModalFooter
+              bg="white"
+              borderTop="1px solid"
+              borderColor="gray.200"
+              px={6}
+              py={3}
+              justifyContent="space-between"
+            >
+              <HStack spacing={2}>
+                <Text fontSize="xs" color="gray.500">
+                  {districtTnName
+                    ? `Selected: 📍 ${districtTnName}`
+                    : "Click any district on the Tamil Nadu map"}
+                </Text>
+                {districtFormData.polygonCoordinates && (
+                  <Badge colorScheme="teal" fontSize="10px">
+                    Boundary Active
+                  </Badge>
+                )}
+              </HStack>
+              <HStack spacing={3}>
+                <Button variant="ghost" size="sm" borderRadius="8px" onClick={handleCloseDistrictModal}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="brand"
+                  size="sm"
+                  borderRadius="8px"
+                  onClick={handleSubmitDistrict}
+                  isLoading={isSubmitting}
+                  px={6}
+                  leftIcon={<Icon as={MdCheckCircle} />}
+                >
+                  {isEditingDistrict ? "Save Changes" : "Create Operational District"}
+                </Button>
+              </HStack>
             </ModalFooter>
           </ModalContent>
         </Modal>
 
         {/* VIEW SINGLE DISTRICT LIVE MAP MODAL */}
         <Modal isOpen={isViewMapModalOpen} onClose={() => setIsViewMapModalOpen(false)} size="xl">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
+          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
           <ModalContent {...modalContentProps}>
             <ModalHeader {...modalHeaderProps}>
               Operational Range Map — {viewMapDistrict?.name} ({viewMapDistrict?.city})
@@ -5563,7 +7231,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </VStack>
               )}
             </ModalBody>
-            <ModalFooter {...modalFooterProps}>
+            <ModalFooter {...modalFooterProps} justify="flex-end">
               <Button variant="ghost" size="sm" borderRadius="8px" onClick={() => setIsViewMapModalOpen(false)}>
                 Close
               </Button>
@@ -5573,7 +7241,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
         {/* VIEW DISTRICT TECHNICIANS MODAL */}
         <Modal isOpen={isDistrictTechModalOpen} onClose={() => setIsDistrictTechModalOpen(false)} size="xl">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
+          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
           <ModalContent {...modalContentProps}>
             <ModalHeader {...modalHeaderProps}>
               <HStack spacing={2}>
@@ -5635,7 +7303,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         {/* MANAGE TECHNICIAN DISTRICT & CITY ZONE PERMISSIONS MODAL */}
         {/* MANAGE TECHNICIAN DISTRICT & CITY ZONE PERMISSIONS MODAL */}
         <Modal isOpen={isPermissionModalOpen} onClose={() => setIsPermissionModalOpen(false)} size="2xl">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
+          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
           <ModalContent {...modalContentProps}>
             <ModalHeader {...modalHeaderProps}>
               <Flex align="center" justify="space-between" pr={6}>
@@ -6007,74 +7675,19 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   );
                 })()}
 
-                {/* 2. CITY ZONE PERMISSIONS (GROUPED BY DISTRICT) */}
-                <Box p={4} border="1px solid" borderColor={SURFACE_BORDER} borderRadius="12px" bg="white">
-                  <Text fontSize="xs" fontWeight="700" color="gray.700" mb={1} textTransform="uppercase" letterSpacing="0.5px">
-                    2. City Zone Work Permissions (Grouped by District)
-                  </Text>
-                  <Text fontSize="11px" color="gray.500" mb={3}>
-                    Enforce zone-level eligibility. Technicians must have district access before a zone can be enabled.
-                  </Text>
-
-                  {(!techZonePermissions?.groupedZonesByDistrict || Object.keys(techZonePermissions.groupedZonesByDistrict).length === 0) ? (
-                    <Text fontSize="xs" color="gray.500" py={2}>No city zones available in the system.</Text>
-                  ) : (
-                    <VStack spacing={4} align="stretch">
-                      {Object.values(techZonePermissions.groupedZonesByDistrict).map((group) => (
-                        <Box key={group.districtId} border="1px solid" borderColor="gray.200" borderRadius="10px" overflow="hidden">
-                          <Flex justify="space-between" align="center" bg={group.hasDistrictPermission ? "teal.50" : "gray.100"} px={3} py={2}>
-                            <HStack spacing={2}>
-                              <Text fontSize="xs" fontWeight="700" color={group.hasDistrictPermission ? BRAND : "gray.600"}>
-                                {group.districtName}
-                              </Text>
-                              <Tag size="sm" colorScheme={group.hasDistrictPermission ? "teal" : "gray"} borderRadius="4px" fontSize="10px">
-                                {group.hasDistrictPermission ? "District Enabled" : "District Disabled"}
-                              </Tag>
-                            </HStack>
-                            {!group.hasDistrictPermission && (
-                              <Text fontSize="10px" color="red.500" fontWeight="600">
-                                Requires District Access First
-                              </Text>
-                            )}
-                          </Flex>
-
-                          <Box p={3} bg="white">
-                            {group.zones.length === 0 ? (
-                              <Text fontSize="xs" color="gray.400">No sub-zones created in this district.</Text>
-                            ) : (
-                              <Grid templateColumns="repeat(auto-fill, minmax(200px, 1fr))" gap={3}>
-                                {group.zones.map((z) => (
-                                  <Flex
-                                    key={z.id}
-                                    p={2}
-                                    border="1px solid"
-                                    borderColor={z.isEnabled ? "teal.300" : "gray.200"}
-                                    borderRadius="8px"
-                                    bg={z.isEnabled ? "teal.50" : "white"}
-                                    justify="space-between"
-                                    align="center"
-                                    opacity={group.hasDistrictPermission ? 1 : 0.6}
-                                  >
-                                    <Box pr={2}>
-                                      <Text fontSize="xs" fontWeight="600" color={INK}>{z.name}</Text>
-                                      <Text fontSize="10px" color="gray.500">Code: {z.zoneCode}</Text>
-                                    </Box>
-                                    <Switch
-                                      size="sm"
-                                      colorScheme="teal"
-                                      isChecked={z.isEnabled}
-                                      isDisabled={!group.hasDistrictPermission}
-                                      onChange={() => handleToggleZonePermission(z.id, z.isEnabled, group.districtName)}
-                                    />
-                                  </Flex>
-                                ))}
-                              </Grid>
-                            )}
-                          </Box>
-                        </Box>
-                      ))}
-                    </VStack>
-                  )}
+                {/* STRICT DISTRICT-LEVEL TECHNICIAN AUTHORIZATION */}
+                <Box p={4} borderRadius="12px" bg="purple.50" border="1px solid" borderColor="purple.200">
+                  <Flex align="flex-start" gap={3}>
+                    <Icon as={MdVerified} color="purple.600" boxSize={5} mt={0.5} />
+                    <Box>
+                      <Text fontSize="xs" fontWeight="700" color="purple.900" textTransform="uppercase" letterSpacing="0.5px">
+                        Strict District-Level Technician Authorization
+                      </Text>
+                      <Text fontSize="xs" color="purple.800" mt={1} lineHeight="tall">
+                        Technicians are granted dispatch permissions solely at the <strong>District level</strong>. Once a district is granted above, this technician is eligible for all customer bookings inside that entire district within their <strong>{techServiceRadius || 10} KM</strong> operating radius. Micro-zones do not restrict technician assignments.
+                      </Text>
+                    </Box>
+                  </Flex>
                 </Box>
               </VStack>
             </ModalBody>
@@ -6087,29 +7700,58 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         </Modal>
 
         {/* CREATE / EDIT ZONE MODAL WITH LEAFLET MAP */}
-        <Modal isOpen={isModalOpen} onClose={handleCloseZoneModal} size="6xl">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
-          <ModalContent {...modalContentProps}>
-            <ModalHeader {...modalHeaderProps}>
-              <Flex align="center" justify="space-between">
+        <Modal isOpen={isModalOpen} onClose={handleCloseZoneModal} size="full">
+          <ModalOverlay bg="blackAlpha.800" backdropFilter="blur(6px)" />
+          <ModalContent
+            bg="white"
+            borderRadius="16px"
+            maxW="96vw"
+            h="92vh"
+            maxH="92vh"
+            m="auto"
+            overflow="hidden"
+            display="flex"
+            flexDirection="column"
+            boxShadow="0 25px 50px -12px rgba(0, 0, 0, 0.4)"
+            zIndex={1401}
+          >
+            <ModalHeader
+              bg="white"
+              px={6}
+              py={3.5}
+              borderBottom="1px solid"
+              borderColor="gray.200"
+            >
+              <Flex align="center" justify="space-between" pr={8}>
                 <HStack spacing={3}>
-                  <Box p={2} bg="teal.50" color={BRAND} borderRadius="10px">
+                  <Box p={2.5} bg="teal.500" color="white" borderRadius="10px" boxShadow="0 2px 8px rgba(0, 128, 128, 0.3)">
                     <Icon as={MdMap} boxSize={5} />
                   </Box>
                   <Box>
-                    <Text fontSize="lg" fontWeight="700" color={BRAND}>
-                      {isEditing ? "Edit City Zone" : "Create New City Zone"}
-                    </Text>
+                    <HStack spacing={2} align="center">
+                      <Text fontSize="md" fontWeight="800" color="gray.800">
+                        {isEditing ? "Edit City Zone" : "Create New City Zone"}
+                      </Text>
+                      {selectedTnDistrictName ? (
+                        <Badge colorScheme="teal" fontSize="11px" borderRadius="full" px={2.5} py={0.5}>
+                          📍 {selectedTnDistrictName}
+                        </Badge>
+                      ) : (
+                        <Badge colorScheme="cyan" fontSize="10px" borderRadius="full" px={2} py={0.5}>
+                          Tamil Nadu Map
+                        </Badge>
+                      )}
+                    </HStack>
                     <Text fontSize="xs" color="gray.500" fontWeight="400">
-                      Define operational sub-zone boundaries within parent district using real-time Leaflet map.
+                      Define operational sub-zone boundaries within parent district using real-time Leaflet vector map.
                     </Text>
                   </Box>
                 </HStack>
               </Flex>
             </ModalHeader>
-            <ModalCloseButton top={4} right={4} />
+            <ModalCloseButton top={3.5} right={4} />
 
-            <ModalBody {...modalBodyProps} overflowX="hidden">
+            <ModalBody p={4} flex="1" overflow="hidden" display="flex" flexDirection="column">
               {/* Inline Error Alert Banner for Zone Modal */}
               {zoneModalError && (
                 <Flex
@@ -6119,9 +7761,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   borderColor="red.400"
                   color="red.800"
                   px={4}
-                  py={3}
+                  py={2.5}
                   borderRadius="10px"
-                  mb={4}
+                  mb={3}
                   justify="space-between"
                   boxShadow="xs"
                 >
@@ -6147,462 +7789,370 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </Flex>
               )}
 
-              <DistrictPickerCard
-                mode="zone"
-                allDistricts={TAMIL_NADU_DISTRICTS}
-                operationalDistricts={districts}
-                selectedId={formData.operationalCityId}
-                onSelectOperationalDistrict={(record) => {
-                  if (!record) return;
-                  setZoneModalError("");
-                  setZoneCityFilterMode("district");
-                  setFormData((prev) => {
-                    const tnDistrict = findTnDistrictForRecord(record);
-                    const cityName =
-                      tnDistrict?.name || record.city || record.name || "";
-                    const districtCities = tnDistrict
-                      ? getDistrictCities(tnDistrict.name)
-                      : getDistrictCities(cityName);
-                    const firstTown = districtCities[0];
-                    if (firstTown) {
-                      return {
-                        ...prev,
-                        operationalCityId: record._id,
-                        city: firstTown.name,
-                        name: firstTown.name,
-                        zoneCode: firstTown.code,
-                        polygonCoordinates: JSON.stringify(
-                          generateCircularGeoJSON(
-                            firstTown.lat,
-                            firstTown.lng,
-                            5
-                          ),
-                          null,
-                          2
-                        ),
-                      };
-                    }
-                    return {
-                      ...prev,
-                      operationalCityId: record._id,
-                      city: cityName,
-                    };
-                  });
-                }}
-                accent="purple"
-              />
+              <Grid
+                templateColumns={{ base: "1fr", xl: "360px 1fr" }}
+                gap={4}
+                alignItems="stretch"
+                flex="1"
+                h="100%"
+                overflow="hidden"
+              >
+                {/* Left Column: Essential Zone Details Only */}
+                <VStack
+                  spacing={3.5}
+                  align="stretch"
+                  w={{ base: "100%", xl: "360px" }}
+                  h="100%"
+                  overflowY="auto"
+                  pr={1}
+                >
+                  <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="gray.200" boxShadow="sm">
+                    <Flex align="center" gap={2} mb={3.5} pb={2} borderBottom="1px solid" borderColor="gray.100">
+                      <Icon as={MdApartment} color={BRAND} boxSize={4} />
+                      <Text fontSize="xs" fontWeight="700" color="gray.800" textTransform="uppercase" letterSpacing="0.5px">
+                        Zone Information
+                      </Text>
+                    </Flex>
 
-              <Grid templateColumns={{ base: "1fr", lg: "1fr 1.45fr" }} gap={5}>
-                {/* Left Column: Form Details */}
-                <VStack spacing={4} align="stretch" minW={0}>
-                  <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="gray.200" boxShadow="xs">
                     <VStack spacing={3} align="stretch">
-                      <Box
-                        bg="purple.50"
-                        p={3.5}
-                        borderRadius="12px"
-                        border="1px solid"
-                        borderColor="purple.200"
-                        boxShadow="xs"
-                      >
-                        <Flex
-                          justify="space-between"
-                          align="center"
-                          mb={2}
-                          flexWrap="wrap"
-                          gap={1.5}
+                      {/* Parent Operational District */}
+                      <FormControl isRequired isInvalid={!formData.operationalCityId && !!zoneModalError}>
+                        <FormLabel fontSize="xs" fontWeight="700" color="gray.700" mb={1}>
+                          Parent Operational District
+                        </FormLabel>
+                        <Select
+                          size="sm"
+                          value={formData.operationalCityId || ""}
+                          placeholder="Select created district..."
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setZoneModalError("");
+                            if (!val) {
+                              setFormData((p) => ({ ...p, operationalCityId: "", city: "", name: "" }));
+                              setSelectedTnDistrictName("");
+                              return;
+                            }
+                            const hit = createdDistrictsList.find((d) => String(d._id) === String(val) || d.name === val);
+                            if (hit) {
+                              handleSelectDistrictFromMap(hit);
+                            } else {
+                              setFormData((p) => ({ ...p, operationalCityId: val }));
+                              setSelectedTnDistrictName(val);
+                            }
+                          }}
+                          borderRadius="8px"
+                          bg="white"
+                          borderColor="teal.300"
+                          fontWeight="600"
+                          color="teal.900"
                         >
-                          <HStack spacing={1.5}>
-                            <Icon
-                              as={MdLocationCity}
-                              color="purple.700"
-                              boxSize={4}
-                            />
-                            <Text
-                              fontSize="xs"
-                              fontWeight="700"
-                              color="purple.900"
-                              textTransform="uppercase"
-                              letterSpacing="0.5px"
-                            >
-                              {isZoneCityScoped
-                                ? `${zoneCityScopeName} Towns & Taluks`
-                                : "All Tamil Nadu Towns & Cities"}
-                            </Text>
-                            {isLocatingZoneCity && (
-                              <Spinner size="xs" color="purple.500" />
-                            )}
-                          </HStack>
-                          <HStack spacing={1}>
-                            {zoneParentDistrict && (
-                              <Button
-                                size="xs"
-                                h="22px"
-                                fontSize="10px"
-                                borderRadius="full"
-                                variant={
-                                  zoneCityFilterMode === "district"
-                                    ? "solid"
-                                    : "outline"
-                                }
-                                colorScheme="purple"
-                                fontWeight="700"
-                                onClick={() => setZoneCityFilterMode("district")}
-                              >
-                                {zoneParentTnDistrict?.name ||
-                                  zoneParentDistrict.city ||
-                                  zoneParentDistrict.name}{" "}
-                                ({zoneDistrictCities.length})
-                              </Button>
-                            )}
-                            <Button
-                              size="xs"
-                              h="22px"
-                              fontSize="10px"
-                              borderRadius="full"
-                              variant={
-                                zoneCityFilterMode === "all" ||
-                                !zoneParentDistrict
-                                  ? "solid"
-                                  : "outline"
-                              }
-                              colorScheme="purple"
-                              fontWeight="700"
-                              onClick={() => setZoneCityFilterMode("all")}
-                            >
-                              All TN ({TAMIL_NADU_CITIES.length})
-                            </Button>
-                          </HStack>
-                        </Flex>
+                          {createdDistrictsList.map((d) => (
+                            <option key={d._id} value={d._id}>
+                              📍 {d.name} {d.city && d.city !== d.name ? `(${d.city})` : ""}
+                            </option>
+                          ))}
+                        </Select>
+                      </FormControl>
 
-                        <QuickPickChips
-                          items={zoneCityOptions.map((city) => ({
-                            key: `${city.district || ""}-${city.name}`,
-                            label: `${city.name} (${city.code})`,
-                            selected:
-                              (formData.city || "").toLowerCase() ===
-                                city.name.toLowerCase() ||
-                              (formData.name || "").toLowerCase() ===
-                                city.name.toLowerCase(),
-                            onClick: () => applyZoneCity(city),
-                          }))}
-                          accent="purple"
-                          label="Quick Pick Town:"
-                          countText={`${zoneCityOptions.length} available`}
-                          onMore={() => zoneCityComboRef.current?.open()}
-                        />
-
-                        <Box>
-                          <Flex
-                            align="center"
-                            justify="space-between"
-                            mb={1}
-                            gap={2}
-                          >
-                            <Text
-                              fontSize="10px"
-                              fontWeight="700"
-                              color="purple.800"
-                              textTransform="uppercase"
-                            >
-                              Select City / Town / Taluk:
-                            </Text>
-                            {formData.city && (
-                              <Badge
-                                colorScheme="purple"
-                                fontSize="10px"
-                                borderRadius="full"
-                                px={2}
-                              >
-                                Selected: {formData.city}
-                              </Badge>
-                            )}
-                          </Flex>
-
-                          <LocationCombobox
-                            ref={zoneCityComboRef}
-                            options={zoneCityOptions.map((city) => ({
-                              value: city.name,
-                              label: city.name,
-                              description: city.district,
-                              badge: city.code,
-                              keywords: `${city.name} ${city.district || ""} ${
-                                city.code || ""
-                              }`,
-                              city,
-                            }))}
-                            value={formData.city}
-                            selectedLabel={formData.city}
-                            onChange={(option) => applyZoneCity(option.city)}
-                            onCustomSelect={locateZoneCity}
-                            allowCustom
-                            placeholder={
-                              isZoneCityScoped
-                                ? `Search ${zoneCityScopeName} towns (${zoneDistrictCities.length})...`
-                                : `Search all ${TAMIL_NADU_CITIES.length} Tamil Nadu cities & taluks...`
-                            }
-                            emptyText={
-                              isZoneCityScoped
-                                ? `No mapped towns for ${zoneCityScopeName}. Type a custom city.`
-                                : "No cities found. Type a custom city."
-                            }
-                            colorScheme="purple"
-                            footer={
-                              zoneParentDistrict &&
-                              zoneCityFilterMode === "district" ? (
-                                <Button
-                                  size="xs"
-                                  w="100%"
-                                  variant="ghost"
-                                  colorScheme="purple"
-                                  onClick={() =>
-                                    setZoneCityFilterMode("all")
-                                  }
-                                >
-                                  Can't find it? Search all Tamil Nadu cities
-                                </Button>
-                              ) : null
-                            }
+                      {/* Real-Time City & Zone Search */}
+                      <Box>
+                        <InputGroup size="sm">
+                          <Input
+                            size="sm"
+                            borderRadius="8px"
+                            placeholder={`🔍 Search city or zone in ${selectedTnDistrictName || "district"}...`}
+                            value={zoneSearchFilter}
+                            onChange={(e) => setZoneSearchFilter(e.target.value)}
+                            bg="gray.50"
+                            borderColor="teal.300"
+                            fontSize="xs"
+                            fontWeight="500"
+                            _focus={{ bg: "white", borderColor: "teal.500", boxShadow: "0 0 0 1px #0d9488" }}
                           />
-                        </Box>
+                          {zoneSearchFilter && (
+                            <InputRightElement>
+                              <IconButton
+                                size="xs"
+                                icon={<MdClear />}
+                                variant="ghost"
+                                onClick={() => setZoneSearchFilter("")}
+                                aria-label="Clear search"
+                              />
+                            </InputRightElement>
+                          )}
+                        </InputGroup>
                       </Box>
 
-                      <Grid templateColumns={{ base: "1fr", md: "1.1fr 1.1fr 0.8fr" }} gap={3} w="100%">
-                        <FormControl isRequired>
-                          <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
-                            City / Town
-                          </FormLabel>
-                          <Input
-                            size="sm"
-                            value={formData.city || ""}
-                            onChange={(e) => {
-                              setZoneModalError("");
-                              setFormData({ ...formData, city: e.target.value });
-                            }}
-                            placeholder="e.g. Dharapuram, Coimbatore"
-                            borderRadius="8px"
-                          />
-                        </FormControl>
-                        <FormControl isRequired>
-                          <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
-                            Micro-Zone Name
-                          </FormLabel>
-                          <Input
-                            size="sm"
-                            value={formData.name}
-                            onChange={(e) => {
-                              setZoneModalError("");
-                              setFormData({ ...formData, name: e.target.value });
-                            }}
-                            placeholder="e.g. North Zone, Central Hub"
-                            borderRadius="8px"
-                          />
-                        </FormControl>
-                        <FormControl isRequired>
-                          <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
-                            Zone Code
-                          </FormLabel>
-                          <Input
-                            size="sm"
-                            value={formData.zoneCode}
-                            onChange={(e) => {
-                              setZoneModalError("");
-                              setFormData({ ...formData, zoneCode: e.target.value });
-                            }}
-                            placeholder="e.g. NZ01"
-                            borderRadius="8px"
-                            textTransform="uppercase"
-                            fontWeight="700"
-                          />
-                        </FormControl>
-                      </Grid>
+                      {/* Official Zone Areas in District (e.g. Tiruppur) */}
+                      {filteredDistrictSubzones.length > 0 && (
+                        <Box bg="teal.50" p={3} borderRadius="10px" border="1px solid" borderColor="teal.200">
+                          <Flex align="center" justify="space-between" mb={1.5}>
+                            <Text fontSize="11px" fontWeight="700" color="teal.900" textTransform="uppercase">
+                              ⚡ {selectedTnDistrictName || "District"} Areas ({filteredDistrictSubzones.length})
+                            </Text>
+                            <Badge colorScheme="teal" fontSize="9px" px={2} py={0.5}>Click to Pick Area</Badge>
+                          </Flex>
+                          <Text fontSize="10px" color="gray.600" mb={2} lineHeight="1.4">
+                            Select an area to auto-center & clip a circle geofence to {selectedTnDistrictName || "district"} border:
+                          </Text>
+                          <Grid templateColumns="repeat(2, 1fr)" gap={2}>
+                            {filteredDistrictSubzones.map((sz, szIdx) => {
+                              const isCreated = zones.some((z) => {
+                                const zName = (z.name || "").toLowerCase();
+                                const sName = (sz.name || "").toLowerCase();
+                                return zName.includes(sName) || sName.includes(zName);
+                              });
+                              const isSelected = formData.name === sz.name;
+                              const szColor = ZONE_COLOR_PALETTE[szIdx % ZONE_COLOR_PALETTE.length];
+                              return (
+                                <Button
+                                  key={sz.id || sz.name}
+                                  size="xs"
+                                  variant={isSelected ? "solid" : "outline"}
+                                  bg={isSelected ? szColor.border : isCreated ? "green.50" : "white"}
+                                  borderColor={isSelected ? szColor.border : isCreated ? "green.300" : "gray.300"}
+                                  color={isSelected ? "white" : isCreated ? "green.800" : "gray.800"}
+                                  fontSize="10px"
+                                  fontWeight="600"
+                                  justifyContent="space-between"
+                                  px={2}
+                                  py={2}
+                                  h="auto"
+                                  onClick={() => handleSelectSubzonePreset(sz)}
+                                  leftIcon={<Box w="8px" h="8px" borderRadius="full" bg={isSelected ? "white" : szColor.border} flexShrink={0} />}
+                                >
+                                  <Text isTruncated maxW="90px">{sz.name.replace(/ (Zone|Hub|Area|Canals)$/i, "")}</Text>
+                                  {isCreated && <Badge colorScheme="green" fontSize="8px" ml={1}>Done</Badge>}
+                                </Button>
+                              );
+                            })}
+                          </Grid>
+                        </Box>
+                      )}
 
-                      <FormControl>
-                        <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
-                          Description
+                      {/* City / Taluk Hub Name */}
+                      <FormControl isRequired isInvalid={!formData.city && !!zoneModalError}>
+                        <FormLabel fontSize="xs" fontWeight="700" color="gray.700" mb={1}>
+                          City / Taluk Hub
+                        </FormLabel>
+                        <Select
+                          size="sm"
+                          value={formData.city || ""}
+                          onChange={(e) => {
+                            setZoneModalError("");
+                            setFormData((p) => ({ ...p, city: e.target.value }));
+                          }}
+                          placeholder="Select city / taluk..."
+                          borderRadius="8px"
+                          bg="white"
+                          borderColor="gray.300"
+                          fontWeight="600"
+                        >
+                          {filteredDistrictCities.map((c) => (
+                            <option key={c.name || c} value={c.name || c}>
+                              📍 {c.name || c} {c.code ? `(${c.code})` : ""}
+                            </option>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      {/* Micro-Zone Name */}
+                      <FormControl isRequired isInvalid={!formData.name && !!zoneModalError}>
+                        <FormLabel fontSize="xs" fontWeight="700" color="gray.700" mb={1}>
+                          Zone Name
                         </FormLabel>
                         <Input
                           size="sm"
-                          value={formData.description}
+                          value={formData.name || ""}
                           onChange={(e) => {
                             setZoneModalError("");
-                            setFormData({ ...formData, description: e.target.value });
+                            setFormData((p) => ({ ...p, name: e.target.value }));
                           }}
-                          placeholder="e.g. Covers northern residential blocks"
+                          placeholder="e.g. North Zone, Central Hub"
                           borderRadius="8px"
+                          bg="white"
                         />
                       </FormControl>
 
-                      <Flex justify="space-between" align="center" p={2.5} bg="gray.50" borderRadius="8px">
+                      {/* Zone Code */}
+                      <FormControl isRequired isInvalid={!formData.zoneCode && !!zoneModalError}>
+                        <FormLabel fontSize="xs" fontWeight="700" color="gray.700" mb={1}>
+                          Zone Code
+                        </FormLabel>
+                        <Input
+                          size="sm"
+                          value={formData.zoneCode || ""}
+                          onChange={(e) => {
+                            setZoneModalError("");
+                            setFormData((p) => ({ ...p, zoneCode: e.target.value.toUpperCase() }));
+                          }}
+                          placeholder="e.g. NZ01"
+                          borderRadius="8px"
+                          bg="white"
+                          textTransform="uppercase"
+                          fontWeight="700"
+                        />
+                      </FormControl>
+
+                      {/* Description */}
+                      <FormControl>
+                        <FormLabel fontSize="xs" fontWeight="600" color="gray.700" mb={1}>
+                          Description (Optional)
+                        </FormLabel>
+                        <Input
+                          size="sm"
+                          value={formData.description || ""}
+                          onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
+                          placeholder="e.g. Covers northern residential blocks"
+                          borderRadius="8px"
+                          bg="white"
+                        />
+                      </FormControl>
+
+                      {/* Zone Active Switch */}
+                      <Flex justify="space-between" align="center" p={2.5} bg="gray.50" borderRadius="8px" border="1px solid" borderColor="gray.200">
                         <Box>
                           <Text fontSize="xs" fontWeight="700" color="gray.800">Zone Active</Text>
-                          <Text fontSize="10px" color="gray.500">Enable services and assignments in this zone</Text>
+                          <Text fontSize="10px" color="gray.500">Enable services and dispatch in this zone</Text>
                         </Box>
                         <Switch
                           isChecked={formData.active}
-                          onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
+                          onChange={(e) => setFormData((p) => ({ ...p, active: e.target.checked }))}
                           colorScheme="teal"
                         />
                       </Flex>
                     </VStack>
                   </Box>
 
-                  <Box bg="white" p={3.5} borderRadius="12px" border="1px solid" borderColor="gray.200" boxShadow="xs">
-                    <Flex justify="space-between" align="center" mb={1.5}>
-                      <Text fontSize="xs" fontWeight="700" color="gray.700">
-                        GeoJSON Polygon Data
+                  {/* Boundary Status Banner Card */}
+                  <Box
+                    p={3.5}
+                    borderRadius="12px"
+                    bg={formData.polygonCoordinates ? "teal.50" : "orange.50"}
+                    border="1px solid"
+                    borderColor={formData.polygonCoordinates ? "teal.300" : "orange.300"}
+                  >
+                    <HStack spacing={2.5} align="center" mb={1}>
+                      <Icon
+                        as={formData.polygonCoordinates ? MdCheckCircle : MdWarning}
+                        color={formData.polygonCoordinates ? "teal.600" : "orange.500"}
+                        boxSize={4}
+                        flexShrink={0}
+                      />
+                      <Text fontSize="xs" fontWeight="700" color={formData.polygonCoordinates ? "teal.900" : "orange.900"}>
+                        {formData.polygonCoordinates ? "Boundary Geocode Active" : "Boundary Not Set"}
                       </Text>
-                      <HStack spacing={2}>
-                        <Button
-                          size="xs"
-                          variant="brand-outline"
-                          leftIcon={<Icon as={MdVerified} />}
-                          isLoading={isCheckingModalBoundary}
-                          onClick={() => handleValidateModalPolygon(formData.polygonCoordinates, formData.operationalCityId)}
-                        >
-                          Audit Containment
-                        </Button>
-                        <Badge colorScheme={formData.polygonCoordinates ? "green" : "gray"} fontSize="10px">
-                          {formData.polygonCoordinates ? "Boundary Active" : "No Boundary"}
-                        </Badge>
-                        {zoneModalDirty && (
-                          <Badge colorScheme="orange" fontSize="10px">
-                            Unsaved changes
-                          </Badge>
-                        )}
-                      </HStack>
-                    </Flex>
-                    <Textarea
-                      rows={4}
-                      value={formData.polygonCoordinates}
-                      onChange={(e) => {
-                        setModalBoundaryCheckResult(null);
-                        setFormData({ ...formData, polygonCoordinates: e.target.value });
-                      }}
-                      placeholder='{"type": "Polygon", "coordinates": [[[76.85, 11.01], ...]]}'
-                      fontSize="11px"
-                      fontFamily="mono"
-                      borderRadius="8px"
-                      bg="gray.50"
-                    />
-                    {modalBoundaryCheckResult && (
-                      <Box
-                        mt={2}
-                        p={2.5}
-                        borderRadius="8px"
-                        bg={
-                          modalBoundaryCheckResult.isValid && modalBoundaryCheckResult.isContained
-                            ? "teal.50"
-                            : modalBoundaryCheckResult.isValid
-                            ? "orange.50"
-                            : "red.50"
-                        }
-                        border="1px solid"
-                        borderColor={
-                          modalBoundaryCheckResult.isValid && modalBoundaryCheckResult.isContained
-                            ? "teal.300"
-                            : modalBoundaryCheckResult.isValid
-                            ? "orange.300"
-                            : "red.300"
-                        }
-                      >
-                        <HStack spacing={2} align="center">
-                          <Icon
-                            as={
-                              modalBoundaryCheckResult.isValid && modalBoundaryCheckResult.isContained
-                                ? MdCheckCircle
-                                : modalBoundaryCheckResult.isValid
-                                ? MdWarning
-                                : MdErrorOutline
-                            }
-                            color={
-                              modalBoundaryCheckResult.isValid && modalBoundaryCheckResult.isContained
-                                ? "teal.600"
-                                : modalBoundaryCheckResult.isValid
-                                ? "orange.500"
-                                : "red.500"
-                            }
-                            boxSize={4}
-                          />
-                          <Text
-                            fontSize="xs"
-                            color={
-                              modalBoundaryCheckResult.isValid && modalBoundaryCheckResult.isContained
-                                ? "teal.900"
-                                : modalBoundaryCheckResult.isValid
-                                ? "orange.900"
-                                : "red.800"
-                            }
-                            fontWeight="600"
-                          >
-                            {modalBoundaryCheckResult.message}
-                          </Text>
-                        </HStack>
-                      </Box>
-                    )}
-                    <Text fontSize="10px" color="gray.500" mt={1}>
-                      Auto-generated from Leaflet map drawing or radius preset.
+                    </HStack>
+                    <Text fontSize="11px" color={formData.polygonCoordinates ? "teal.800" : "orange.800"} lineHeight="1.4">
+                      {formData.polygonCoordinates
+                        ? `Official Survey of India geofence loaded for ${selectedTnDistrictName || formData.city || "selected area"}. Centroid geocode will be dispatched to backend.`
+                        : "Click any district directly on the map or use Radius / Draw tools to set the geofence."}
                     </Text>
                   </Box>
                 </VStack>
 
-                {/* Right Column: Leaflet Map */}
-                <Box bg="white" p={4} borderRadius="12px" border="1px solid" borderColor="teal.200" boxShadow="xs" display="flex" flexDirection="column" minW={0}>
-                  <Flex justify="space-between" align="center" mb={2}>
-                    <Text fontSize="xs" fontWeight="700" color={BRAND} textTransform="uppercase" letterSpacing="0.5px">
-                      Zone Boundary Leaflet Canvas
-                    </Text>
-                    <Badge colorScheme="teal" fontSize="10px">
-                      Live Drawing
-                    </Badge>
-                  </Flex>
-
-                  <Box flex="1" minH="490px">
+                {/* Right Column: Full-Height Interactive Leaflet Map */}
+                <Box
+                  bg="#0b111e"
+                  borderRadius="12px"
+                  border="1px solid"
+                  borderColor="rgba(6, 182, 212, 0.3)"
+                  boxShadow="md"
+                  display="flex"
+                  flexDirection="column"
+                  minW={0}
+                  flex="1"
+                  h="100%"
+                  overflow="hidden"
+                  p={2}
+                >
+                  {isModalOpen && (
                     <ZoneMap
-                      cityName={formData.city || zoneParentDistrict?.city || ""}
+                      viewMode="auto"
+                      cityName={formData.city || ""}
+                      selectedCityName={formData.city || ""}
                       cityOptions={zoneCityOptions}
-                      districtName={formData.name || "City Zone"}
+                      districtName={selectedTnDistrictName || zoneParentDistrict?.name || formData.name || "Tamil Nadu"}
+                      selectedDistrictName={selectedTnDistrictName || zoneParentDistrict?.name || ""}
                       polygonCoordinates={formData.polygonCoordinates}
                       onPolygonChange={(newPoly) => setFormData((prev) => ({ ...prev, polygonCoordinates: newPoly }))}
-                      height="500px"
-                      mode="polygon"
+                      height="100%"
+                      mode="radius"
+                      radiusKm={5}
                       showSearch={true}
-                      showDrawTools={true}
+                      showDrawTools={false}
+                      showNavControls={false}
                       allowRadiusSelect={true}
                       showToolbar={true}
-                      districts={districts}
+                      districts={createdDistrictsList}
+                      allDistricts={createdDistrictsList}
                       zones={zones}
                       selectedDistrictId={formData.operationalCityId || null}
+                      onSelectDistrict={handleSelectDistrictFromMap}
+                      onCitySelect={handleSelectCityFromMap}
+                      onlyTamilNadu={true}
                     />
-                  </Box>
-                  <Text fontSize="11px" color="gray.500" mt={2}>
-                    💡 <b>Tip:</b> Use <b>Radius</b> for quick circles or <b>Draw</b> for custom shapes — click to add vertices, drag them to edit, Finish to save. Invalid shapes are blocked on save.
-                  </Text>
+                  )}
                 </Box>
               </Grid>
             </ModalBody>
-            <ModalFooter {...modalFooterProps}>
-              <Button variant="ghost" size="sm" mr={3} borderRadius="8px" onClick={handleCloseZoneModal}>
-                Cancel
-              </Button>
-              <Button
-                variant="brand"
-                size="sm"
-                borderRadius="8px"
-                onClick={handleSubmitZone}
-                isLoading={isSubmitting}
-                px={5}
-                leftIcon={<Icon as={MdCheckCircle} />}
-              >
-                {isEditing ? "Update Zone" : "Create Zone"}
-              </Button>
+            <ModalFooter
+              bg="white"
+              borderTop="1px solid"
+              borderColor="gray.200"
+              px={6}
+              py={3}
+              justifyContent="space-between"
+            >
+              <HStack spacing={2}>
+                <Text fontSize="xs" color="gray.500">
+                  {selectedTnDistrictName
+                    ? `Selected: 📍 ${selectedTnDistrictName}`
+                    : "No district selected — click Tamil Nadu map"}
+                </Text>
+                {formData.polygonCoordinates && (
+                  <Badge colorScheme="teal" fontSize="10px">
+                    Geocode Ready
+                  </Badge>
+                )}
+              </HStack>
+              <HStack spacing={2.5}>
+                <Button variant="ghost" size="sm" borderRadius="8px" onClick={handleCloseZoneModal}>
+                  Cancel
+                </Button>
+                {!isEditing && (
+                  <Button
+                    variant="outline"
+                    colorScheme="teal"
+                    size="sm"
+                    borderRadius="8px"
+                    onClick={() => handleSubmitZone({ keepOpen: true })}
+                    isLoading={isSubmitting}
+                    leftIcon={<Icon as={MdAdd} />}
+                    fontWeight="700"
+                  >
+                    Save & Create Another
+                  </Button>
+                )}
+                <Button
+                  variant="brand"
+                  size="sm"
+                  borderRadius="8px"
+                  onClick={() => handleSubmitZone({ keepOpen: false })}
+                  isLoading={isSubmitting}
+                  px={5}
+                  leftIcon={<Icon as={MdCheckCircle} />}
+                >
+                  {isEditing ? "Update Zone" : "Save & Close"}
+                </Button>
+              </HStack>
             </ModalFooter>
           </ModalContent>
         </Modal>
 
         {/* SERVICE ZONE MAPPING CHECKLIST & MANAGEMENT MODAL */}
         <Modal isOpen={isManageServiceModalOpen} onClose={() => setIsManageServiceModalOpen(false)} size="xl">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
+          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
           <ModalContent {...modalContentProps}>
             <ModalHeader {...modalHeaderProps}>
               {isServiceDetailLoading ? (
@@ -6705,13 +8255,55 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     </InputGroup>
                   </Flex>
 
-                  <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" letterSpacing="0.5px">
-                    City &amp; District Service Availability
-                  </Text>
+                  {/* District Screening Navigation inside Modal */}
+                  <Box>
+                    <Text fontSize="xs" fontWeight="700" color="gray.600" textTransform="uppercase" letterSpacing="0.5px" mb={2}>
+                      Screen by District:
+                    </Text>
+                    <HStack spacing={2} overflowX="auto" pb={2} css={globalScrollbarStyles}>
+                      <Button
+                        size="xs"
+                        borderRadius="full"
+                        variant={!selectedDistrictTab || selectedDistrictTab === "ALL" ? "solid" : "outline"}
+                        colorScheme={!selectedDistrictTab || selectedDistrictTab === "ALL" ? "teal" : "gray"}
+                        bg={!selectedDistrictTab || selectedDistrictTab === "ALL" ? BRAND : "white"}
+                        color={!selectedDistrictTab || selectedDistrictTab === "ALL" ? "white" : "gray.700"}
+                        onClick={() => setSelectedDistrictTab("ALL")}
+                      >
+                        All Districts ({(selectedServiceDetail.districts || []).length})
+                      </Button>
+                      {[...(selectedServiceDetail.districts || [])]
+                        .sort((a, b) => (a.name || a.city || "").localeCompare(b.name || b.city || ""))
+                        .map((d) => {
+                          const dId = d.districtId || d._id;
+                          const isSel = selectedDistrictTab === dId;
+                          const zCount = (d.zones || []).length;
+                          return (
+                            <Button
+                              key={dId}
+                              size="xs"
+                              borderRadius="full"
+                              variant={isSel ? "solid" : "outline"}
+                              colorScheme={isSel ? "teal" : "gray"}
+                              bg={isSel ? BRAND : "white"}
+                              color={isSel ? "white" : "gray.700"}
+                              onClick={() => setSelectedDistrictTab(dId)}
+                              leftIcon={<Icon as={MdLocationOn} />}
+                            >
+                              {d.name} ({zCount} zones)
+                            </Button>
+                          );
+                        })}
+                    </HStack>
+                  </Box>
 
                   {/* List of Cities with Single Clear Toggle Switch per City in Alphabetical Order */}
                   {[...(selectedServiceDetail.districts || [])]
                     .sort((a, b) => (a.name || a.city || "").localeCompare(b.name || b.city || ""))
+                    .filter((dist) => {
+                      if (!selectedDistrictTab || selectedDistrictTab === "ALL") return true;
+                      return String(dist.districtId || dist._id) === String(selectedDistrictTab);
+                    })
                     .map((dist) => {
                       const isCityEnabled = isDistrictServiceActive(dist);
                       const filteredZonesList = (dist.zones || []).filter((z) => {
@@ -6860,7 +8452,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
         {/* TECHNICIAN GEOFENCE & GPS VERIFICATION MODAL */}
         <Modal isOpen={!!techGeofenceDetail || isTechGeofenceLoading} onClose={() => setTechGeofenceDetail(null)} size="lg">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400} />
+          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
           <ModalContent {...modalContentProps}>
             <ModalHeader {...modalHeaderProps}>
               Technician GPS & Geofence Verification

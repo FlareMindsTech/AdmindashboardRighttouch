@@ -163,10 +163,9 @@ export default function DistrictPickerCard({
         return {
           value: district.name,
           label: district.name,
-          description: isCurrent ? "Currently editing" : "Already added",
+          description: isCurrent ? "Currently editing" : "Configured",
           badge: district.code,
           keywords: `${district.name} ${district.code}`,
-          disabled: !isCurrent,
         };
       });
 
@@ -241,7 +240,7 @@ export default function DistrictPickerCard({
   );
 
   const quickItems = isMaster
-    ? availableDistricts.map((district) => ({
+    ? (availableDistricts.length > 0 ? availableDistricts : (allDistricts || [])).map((district) => ({
         key: district.name,
         label: `${district.name} (${district.code})`,
         selected: selectedName === district.name,

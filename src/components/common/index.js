@@ -19,6 +19,7 @@ export {
   default as DistrictPickerCard,
   QuickPickChips,
 } from "./DistrictPickerCard";
+export { default as DistrictGeoJsonBoundaryCard } from "./DistrictGeoJsonBoundaryCard";
 export {
   skeuomorphicCardProps,
   getSkeuomorphicCardStyle,

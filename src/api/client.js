@@ -47,12 +47,23 @@ export const handle = async (promise) => {
     const res = await promise;
     return { data: res.data, error: null };
   } catch (err) {
+    const payload = err.response?.data || null;
     const message =
-      err.response?.data?.message ||
-      err.response?.data?.error ||
+      payload?.message ||
+      payload?.error ||
       err.message ||
       "Request failed";
-    return { data: null, error: message };
+    return {
+      data: null,
+      error: message,
+      status: err.response?.status || 0,
+      code: payload?.code || payload?.errorCode || "",
+      conflicts:
+        payload?.conflicts ||
+        payload?.conflictingDistricts ||
+        payload?.conflictingZones ||
+        [],
+    };
   }
 };
 

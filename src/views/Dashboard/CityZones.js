@@ -86,12 +86,30 @@ import {
   getSubzonesByDistrict,
   normalizeLocationName,
 } from "data/tamilNaduLocations";
-import polygonClipping from "polygon-clipping";
 import {
   isPolygonDraftDirty,
   confirmIfDirty,
   attachBeforeUnload,
 } from "../utils/cityZoneInteraction";
+import { clipPolygonAgainstZones } from "../utils/zoneGeometry";
+import {
+  fitRadiusInDistrict,
+  serializeZonesForGeometry,
+} from "../utils/zoneGeometryOperations";
+import {
+  isGeometryWorkerSupported,
+  runGeometryTask,
+} from "../utils/zoneGeometryWorkerClient";
+import {
+  buildDistrictPolygonDecision,
+  evaluateDistrictOverlap,
+  getDistrictBoundaryGeometry,
+  getDistrictLabel,
+  inspectZoneContainment,
+  isActiveDistrictRecord,
+  parseGeozoneApiError,
+  resolveDistrictPolygonForSave,
+} from "../utils/geozonePolicy";
 
   import {
     FaChevronLeft,
@@ -133,6 +151,7 @@ import {
   import {
     createZone,
     getAllZones,
+    getAllCityZones,
     updateZone,
     deleteZone,
     getAllZoneMappings,
@@ -231,6 +250,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const cancelRef = React.useRef();
 
     const [districtModalError, setDistrictModalError] = useState("");
+    const [districtOverlapWarning, setDistrictOverlapWarning] = useState("");
+    const [districtConflictNames, setDistrictConflictNames] = useState([]);
     const [zoneModalError, setZoneModalError] = useState("");
 
     const [currentUser, setCurrentUser] = useState(null);
@@ -319,6 +340,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setDistrictTnName("");
       setDistrictFormData(initialDistrictForm);
       setDistrictModalError("");
+      setDistrictOverlapWarning("");
+      setDistrictConflictNames([]);
+      setModalBoundaryCheckResult(null);
       setIsDistrictModalOpen(false);
       resumeOpsFromContext("district");
     };
@@ -454,6 +478,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
     // F-02D: same polygon-draft guard for the micro-zone modal.
     const zoneFormSnapshot = useRef("");
+    const zoneFitRequestRef = useRef(0);
     const zoneModalDirty =
       isModalOpen &&
       isPolygonDraftDirty(formData.polygonCoordinates || "", zoneFormSnapshot.current || "");
@@ -720,16 +745,15 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const fetchData = useCallback(async () => {
       try {
         setIsLoading(true);
-        const [districtsData, zonesData, mappingsData, citiesData, servicesData, techData] = await Promise.all([
+        const supportPromise = Promise.all([
+          dispatch(fetchServices()).unwrap().then((r) => r.list).catch(() => []),
+          dispatch(fetchTechniciansShared()).unwrap().then((r) => r.list).catch(() => ({ result: [], data: [], technicians: [] })),
+        ]);
+        const [districtsData, zonesData, mappingsData, citiesData] = await Promise.all([
           getAllDistricts().catch(() => ({ result: [], data: [], districts: [] })),
           getAllZones(1, 100).catch(() => ({ result: [], data: [], zones: [] })),
           getAllZoneMappings(1, 200).catch(() => ({ result: [], data: [], mappings: [] })),
           getAllOperationalCities().catch(() => ({ result: [], data: [], cities: [] })),
-          // Shared services cache (TTL); resolves to the raw list so the
-          // local parsing/sorting below is unchanged. Fallback preserved.
-          dispatch(fetchServices()).unwrap().then((r) => r.list).catch(() => []),
-          // Shared technicians cache (TTL). Fallback preserved.
-          dispatch(fetchTechniciansShared()).unwrap().then((r) => r.list).catch(() => ({ result: [], data: [], technicians: [] })),
         ]);
 
         const districtsRaw = (districtsData.result || districtsData.districts || districtsData.data || districtsData || []).slice();
@@ -743,6 +767,14 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         const citiesRaw = (citiesData.result || citiesData.data || citiesData.cities || citiesData || []).slice();
         citiesRaw.sort((a, b) => (a.name || a.city || "").localeCompare(b.name || b.city || ""));
 
+        if (!isMountedRef.current) return;
+        setDistricts(Array.isArray(districtsRaw) ? districtsRaw : []);
+        setZones(Array.isArray(zonesRaw) ? zonesRaw : []);
+        setMappings(Array.isArray(mappingsRaw) ? mappingsRaw : []);
+        setCities(Array.isArray(citiesRaw) ? citiesRaw : []);
+        setIsLoading(false);
+
+        const [servicesData, techData] = await supportPromise;
         const servicesRaw = (servicesData.result || servicesData.data || servicesData.services || servicesData || []).slice();
         servicesRaw.sort((a, b) => (a.name || a.serviceName || "").localeCompare(b.name || b.serviceName || ""));
 
@@ -754,10 +786,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         });
 
         if (!isMountedRef.current) return;
-        setDistricts(Array.isArray(districtsRaw) ? districtsRaw : []);
-        setZones(Array.isArray(zonesRaw) ? zonesRaw : []);
-        setMappings(Array.isArray(mappingsRaw) ? mappingsRaw : []);
-        setCities(Array.isArray(citiesRaw) ? citiesRaw : []);
         setServices(Array.isArray(servicesRaw) ? servicesRaw : []);
         setTechnicians(Array.isArray(techRaw) ? techRaw : []);
       } catch (err) {
@@ -1818,6 +1846,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       if (!districtName) {
         setDistrictTnName("");
         setModalBoundaryCheckResult(null);
+        setDistrictConflictNames([]);
+        setDistrictOverlapWarning("");
+        setDistrictModalError("");
         setDistrictFormData((prev) => ({
           ...prev,
           name: "",
@@ -1841,13 +1872,27 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 String(district._id) !== String(selectedDistrict._id)
             )
           : districts;
-      setDistrictModalError("");
-      setDistrictTnName(tnDistrict.name);
+      const decision = buildDistrictPolygonDecision(
+        polygon,
+        otherDistricts,
+        isEditingDistrict && selectedDistrict ? selectedDistrict._id : null,
+        tnDistrict.name
+      );
       const pointsCount = polygon?.coordinates?.[0]?.length || 0;
+      const finalPolygon = decision.finalPolygon;
+
+      setDistrictConflictNames(decision.conflictNames || []);
+      setDistrictOverlapWarning(decision.warning || "");
+      setDistrictModalError(decision.error || "");
+      setDistrictTnName(tnDistrict.name);
       setModalBoundaryCheckResult({
-        isValid: true,
-        message: `Official Survey of India GeoCode Boundary loaded for ${tnDistrict.name} (${pointsCount} polygon vertices).`,
+        isValid: decision.isValid,
+        message:
+          decision.isValid && !decision.warning
+            ? `Official Survey of India GeoCode Boundary loaded for ${tnDistrict.name} (${pointsCount} polygon vertices).`
+            : decision.message,
       });
+
       setDistrictFormData((prev) => ({
         ...prev,
         name: isSameDistrict
@@ -1857,7 +1902,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         state: "Tamil Nadu",
         country: "India",
         code: tnDistrict.code,
-        polygonCoordinates: JSON.stringify(polygon, null, 2),
+        polygonCoordinates: JSON.stringify(finalPolygon, null, 2),
       }));
     };
 
@@ -1866,16 +1911,27 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setIsEditingDistrict(false);
       setSelectedDistrict(null);
       setDistrictModalError("");
+      setDistrictOverlapWarning("");
+      setDistrictConflictNames([]);
       setIsLocatingHub(false);
 
       if (initialTnName) {
         const tnDistrict = findTnDistrict(initialTnName);
         if (tnDistrict) {
-          setDistrictTnName(tnDistrict.name);
           const polygon =
             getTnDistrictBoundary(tnDistrict.name) ||
             generateCircularGeoJSON(tnDistrict.lat, tnDistrict.lng, 10);
-          const polygonStr = JSON.stringify(polygon, null, 2);
+          const decision = buildDistrictPolygonDecision(
+            polygon,
+            districts,
+            null,
+            tnDistrict.name
+          );
+          const polygonStr = JSON.stringify(decision.finalPolygon, null, 2);
+          setDistrictTnName(tnDistrict.name);
+          setDistrictConflictNames(decision.conflictNames || []);
+          setDistrictOverlapWarning(decision.warning || "");
+          setDistrictModalError(decision.error || "");
           setDistrictFormData({
             ...initialDistrictForm,
             name: getAvailableDistrictName(tnDistrict.name, districts),
@@ -1922,12 +1978,24 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setIsEditingDistrict(true);
       setSelectedDistrict(dist);
       setDistrictModalError("");
+      setDistrictOverlapWarning("");
+      setDistrictConflictNames([]);
       setIsLocatingHub(false);
       const matchedTnDistrict = findTnDistrictForRecord(dist);
       setDistrictTnName(matchedTnDistrict?.name || "");
       let polyStr = "";
-      if (dist.polygon && typeof dist.polygon === "object") {
-        polyStr = JSON.stringify(dist.polygon, null, 2);
+      const districtBoundary = getDistrictBoundaryGeometry(dist);
+      if (districtBoundary) {
+        polyStr = JSON.stringify(districtBoundary, null, 2);
+        const overlap = evaluateDistrictOverlap(districtBoundary, districts, dist._id);
+        setDistrictConflictNames(overlap.conflictNames || []);
+        if (overlap.conflictNames?.length) {
+          setDistrictOverlapWarning(
+            `This boundary overlaps ${overlap.conflictNames.join(
+              ", "
+            )}. District borders may share edges, but cannot cover the same area. Save is blocked until the overlap is removed.`
+          );
+        }
       }
       setDistrictFormData({
         name: dist.name || "",
@@ -1966,11 +2034,19 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       const polygon =
         getTnDistrictBoundary(tnDistrict.name) ||
         generateCircularGeoJSON(tnDistrict.lat, tnDistrict.lng, 10);
-      const polygonStr = JSON.stringify(polygon, null, 2);
+      const decision = buildDistrictPolygonDecision(
+        polygon,
+        districts,
+        null,
+        tnDistrict.name
+      );
+      const polygonStr = JSON.stringify(decision.finalPolygon, null, 2);
 
       setIsEditingDistrict(false);
       setSelectedDistrict(null);
-      setDistrictModalError("");
+      setDistrictModalError(decision.error || "");
+      setDistrictOverlapWarning(decision.warning || "");
+      setDistrictConflictNames(decision.conflictNames || []);
       setIsLocatingHub(false);
       setDistrictTnName(tnDistrict.name);
       setDistrictFormData({
@@ -2035,6 +2111,29 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         }
       }
 
+      const decision = buildDistrictPolygonDecision(
+        polygon,
+        districts,
+        isEditingDistrict && selectedDistrict ? selectedDistrict._id : null,
+        districtTnName ||
+          findTnDistrictForRecord(districtFormData)?.name ||
+          districtFormData.city ||
+          districtFormData.name
+      );
+      setDistrictConflictNames(decision.conflictNames || []);
+      setDistrictOverlapWarning(decision.warning || "");
+      if (decision.error) {
+        setDistrictModalError(decision.error);
+        return toast({
+          title: "District Overlap Detected",
+          description: decision.error,
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+      polygon = decision.finalPolygon;
+
       try {
         setIsSubmitting(true);
         const payload = {
@@ -2075,12 +2174,30 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
         await fetchData();
         districtFormSnapshot.current = "";
+        setDistrictOverlapWarning("");
+        setDistrictConflictNames([]);
+        setModalBoundaryCheckResult(null);
         setIsDistrictModalOpen(false);
         resumeOpsFromContext("district");
       } catch (err) {
-        const errMsg = err.message || "Failed to save district.";
+        const parsed = parseGeozoneApiError(err);
+        const rawMessage = parsed.message || "Failed to save district.";
+        const overlapMatch = rawMessage.match(/existing district "([^"]+)"/i);
+        if (parsed.conflicts.length > 0) {
+          setDistrictConflictNames(parsed.conflicts);
+        } else if (overlapMatch) {
+          const record = (districts || []).find(
+            (district) => String(district.name || "").toLowerCase() === overlapMatch[1].toLowerCase()
+          );
+          const tnName = record ? findTnDistrictForRecord(record)?.name : "";
+          setDistrictConflictNames([tnName || overlapMatch[1]].filter(Boolean));
+        }
+        const errMsg =
+          overlapMatch || parsed.conflicts.length > 0 || /overlap/i.test(rawMessage)
+            ? `${rawMessage} Open the conflicting operational district to edit its boundary, or choose a non-overlapping area.`
+            : rawMessage;
         setDistrictModalError(errMsg);
-        toast({ title: "Error", description: errMsg, status: "error", duration: 4000, isClosable: true });
+        toast({ title: "Error", description: errMsg, status: "error", duration: 5000, isClosable: true });
       } finally {
         setIsSubmitting(false);
       }
@@ -2094,22 +2211,34 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       // 1. Instant optimistic update if already in state
       if (targetDistId) {
         setDistricts((prev) =>
-          prev.map((d) => (String(d._id) === String(targetDistId) ? { ...d, active: nextActive, isActive: nextActive } : d))
+          prev.map((d) => {
+            const id = d._id || d.backendRecord?._id;
+            if (String(id) !== String(targetDistId)) return d;
+            return {
+              ...d,
+              active: nextActive,
+              isActive: nextActive,
+              backendRecord: d.backendRecord
+                ? { ...d.backendRecord, active: nextActive, isActive: nextActive }
+                : d.backendRecord,
+            };
+          })
         );
       }
 
       try {
         if (targetDistId && isCurrentlyActive) {
-          // User requested: disable means created district is deleted from backend database
-          setDistricts((prev) => prev.filter((d) => String(d._id) !== String(targetDistId)));
+          // Soft-disable preserves the district boundary, zone records, and
+          // technician mappings. Deletion is a separate explicit action.
+          await toggleDistrictStatus(targetDistId, false);
           toast({
-            title: "District Disabled & Removed",
-            description: `"${dist.name}" disabled and removed from operational records.`,
+            title: "District Disabled",
+            description: `"${dist.name}" was disabled without deleting its boundary or sub-zones. Re-enable it to resume dispatch and zone creation.`,
             status: "info",
-            duration: 1500,
+            duration: 3500,
             isClosable: true,
           });
-          await deleteDistrict(targetDistId);
+          await fetchData();
         } else if (targetDistId && !isCurrentlyActive) {
           await toggleDistrictStatus(targetDistId, true);
           toast({
@@ -2119,10 +2248,17 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
             duration: 1500,
             isClosable: true,
           });
+          await fetchData();
         } else {
           // District not yet configured in backend database: Auto-create with exact Survey of India boundary GeoJSON
           setIsSubmitting(true);
           const officialBoundary = dist.officialBoundary || dist.polygon || getTnDistrictBoundary(dist.name);
+          const prepared = resolveDistrictPolygonForSave(
+            officialBoundary,
+            districts,
+            null,
+            findTnDistrictForRecord(dist)?.name || dist.name
+          );
           const payload = {
             name: dist.name,
             city: dist.city || dist.name,
@@ -2132,7 +2268,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
             active: true,
             isRegistrationEnabled: true,
             isJobEnabled: true,
-            polygon: officialBoundary,
+            polygon: prepared.polygon,
           };
           await createDistrict(payload);
           toast({
@@ -2195,6 +2331,12 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         try {
           setIsSubmitting(true);
           const officialBoundary = dist.officialBoundary || dist.polygon || getTnDistrictBoundary(dist.name);
+          const prepared = resolveDistrictPolygonForSave(
+            officialBoundary,
+            districts,
+            null,
+            findTnDistrictForRecord(dist)?.name || dist.name
+          );
           await createDistrict({
             name: dist.name,
             city: dist.city || dist.name,
@@ -2204,7 +2346,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
             active: true,
             isRegistrationEnabled: true,
             isJobEnabled: true,
-            polygon: officialBoundary,
+            polygon: prepared.polygon,
           });
           toast({
             title: "District Created & Registration Enabled",
@@ -2264,6 +2406,12 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         try {
           setIsSubmitting(true);
           const officialBoundary = dist.officialBoundary || dist.polygon || getTnDistrictBoundary(dist.name);
+          const prepared = resolveDistrictPolygonForSave(
+            officialBoundary,
+            districts,
+            null,
+            findTnDistrictForRecord(dist)?.name || dist.name
+          );
           await createDistrict({
             name: dist.name,
             city: dist.city || dist.name,
@@ -2273,7 +2421,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
             active: true,
             isRegistrationEnabled: true,
             isJobEnabled: true,
-            polygon: officialBoundary,
+            polygon: prepared.polygon,
           });
           toast({
             title: "District Created & Job Dispatch Enabled",
@@ -2302,6 +2450,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         setIsLoading(true);
         let updatedCount = 0;
         let createdCount = 0;
+        const createdBoundaries = [];
         for (const dist of allMergedDistricts) {
           const targetDistId = dist._id || dist.backendRecord?._id;
           if (targetDistId) {
@@ -2311,6 +2460,18 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
             }
           } else if (targetActive) {
             const officialBoundary = dist.officialBoundary || dist.polygon || getTnDistrictBoundary(dist.name);
+            let prepared;
+            try {
+              prepared = resolveDistrictPolygonForSave(
+                officialBoundary,
+                [...districts, ...createdBoundaries],
+                null,
+                findTnDistrictForRecord(dist)?.name || dist.name
+              );
+            } catch (err) {
+              console.warn(`Skipping district ${dist.name}:`, err.message);
+              continue;
+            }
             await createDistrict({
               name: dist.name,
               city: dist.city || dist.name,
@@ -2320,8 +2481,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
               active: true,
               isRegistrationEnabled: true,
               isJobEnabled: true,
-              polygon: officialBoundary,
+              polygon: prepared.polygon,
             });
+            createdBoundaries.push({ name: dist.name, city: dist.city || dist.name, polygon: prepared.polygon });
             createdCount++;
           }
         }
@@ -2815,8 +2977,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       return { polygon: { type: "Polygon", coordinates: closed }, error: "" };
     };
 
-    const applyZoneCity = (city) => {
+    const applyZoneCity = async (city) => {
       if (!city) return;
+      const requestId = ++zoneFitRequestRef.current;
       setZoneModalError("");
       const targetTnDistrict =
         findTnDistrict(city.district) || getDistrictForCity(city.name);
@@ -2837,18 +3000,34 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           isClosable: true,
         });
       }
+      const fitted = await buildFittedCircleGeoJson(
+        city.lat,
+        city.lng,
+        5,
+        targetTnDistrict?.name || city.district || "",
+        isEditing && selectedZone ? resolveZoneId(selectedZone) : null,
+        matchingDistrict?._id || formData.operationalCityId
+      );
+      if (requestId !== zoneFitRequestRef.current) return;
+
       setFormData((prev) => ({
         ...prev,
         operationalCityId: matchingDistrict?._id || "",
         city: city.name,
         name: city.name,
         zoneCode: city.code || prev.zoneCode,
-        polygonCoordinates: JSON.stringify(
-          generateCircularGeoJSON(city.lat, city.lng, 5),
-          null,
-          2
-        ),
+        polygonCoordinates: fitted.geoJson || "",
       }));
+
+      if (!fitted.geoJson) {
+        toast({
+          title: "Area already covered",
+          description: `The area around ${city.name} overlaps an existing zone. Click a clear area on the map or reduce the radius.`,
+          status: "warning",
+          duration: 4000,
+          isClosable: true,
+        });
+      }
     };
 
     const locateZoneCity = async (value) => {
@@ -2882,17 +3061,31 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         const lat = Number(result.lat);
         const lng = Number(result.lon);
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        const requestId = ++zoneFitRequestRef.current;
+        const fitted = await buildFittedCircleGeoJson(
+          lat,
+          lng,
+          5,
+          zoneParentTnDistrict?.name || query,
+          isEditing && selectedZone ? resolveZoneId(selectedZone) : null
+        );
+        if (requestId !== zoneFitRequestRef.current) return;
         setZoneModalError("");
         setFormData((prev) => ({
           ...prev,
           city: query,
           name: prev.name || query,
-          polygonCoordinates: JSON.stringify(
-            generateCircularGeoJSON(lat, lng, 5),
-            null,
-            2
-          ),
+          polygonCoordinates: fitted.geoJson || "",
         }));
+        if (!fitted.geoJson) {
+          toast({
+            title: "Area already covered",
+            description: `The area around "${query}" overlaps an existing zone. Click a clear area on the map or reduce the radius.`,
+            status: "warning",
+            duration: 4000,
+            isClosable: true,
+          });
+        }
       } catch (error) {
         toast({
           title: "Location lookup failed",
@@ -2963,51 +3156,119 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setIsModalOpen(true);
     };
 
-    const makeClippedCircleGeoJson = (lat, lng, radiusKm, targetDistrictName) => {
-      const circlePoly = generateCircularGeoJSON(lat, lng, radiusKm || 5);
-      const boundary = getTnDistrictBoundary(targetDistrictName);
-      if (!boundary || !boundary.coordinates) {
-        return JSON.stringify(circlePoly);
-      }
-      const districtCoords =
-        boundary.type === "MultiPolygon" ? boundary.coordinates : [boundary.coordinates];
-      try {
-        const intersection = polygonClipping.intersection(districtCoords, [circlePoly.coordinates]);
-        if (intersection && intersection.length > 0) {
-          const clippedGeom =
-            intersection.length === 1
-              ? { type: "Polygon", coordinates: intersection[0] }
-              : { type: "MultiPolygon", coordinates: intersection };
-          return JSON.stringify(clippedGeom);
+    const buildFittedCircleGeoJson = async (
+      lat,
+      lng,
+      radiusKm,
+      targetDistrictName,
+      excludeZoneId = null,
+      districtId = null
+    ) => {
+      const requestedKm = Number(radiusKm) || 5;
+      const activeDistrictId = districtId || formData.operationalCityId;
+      const districtZones = (zones || []).filter((zone) => {
+        const zoneDistrictId = resolveZoneDistrictId(zone);
+        return (
+          !zoneDistrictId ||
+          !activeDistrictId ||
+          String(zoneDistrictId) === String(activeDistrictId)
+        );
+      });
+
+      const serializedZones = serializeZonesForGeometry(districtZones).filter(
+        (zone) => !excludeZoneId || String(zone.id) !== String(excludeZoneId)
+      );
+
+      const payload = {
+        lat,
+        lng,
+        radiusKm: requestedKm,
+        districtGeometry: getTnDistrictBoundary(targetDistrictName),
+        districtRing: null,
+        zones: serializedZones,
+        preferPoint: [lng, lat],
+        requireInsideDistrict: false,
+        fallbackToCircle: true,
+        maxSteps: 16,
+      };
+
+      let result = null;
+      if (isGeometryWorkerSupported()) {
+        try {
+          result = await runGeometryTask("fitRadius", payload);
+        } catch {
+          result = null;
         }
-      } catch (err) {
-        console.warn("Clipping failed, fallback to circle:", err);
       }
-      return JSON.stringify(circlePoly);
+      if (!result) result = fitRadiusInDistrict(payload);
+
+      const polygon = result.polygon || result.fallbackPolygon || null;
+      return {
+        geoJson: polygon ? JSON.stringify(polygon) : null,
+        adjusted: Boolean(result.reduced || result.adjusted),
+        radiusKm: result.polygon ? result.radiusKm : null,
+        conflicts: result.polygon ? result.overlappingZones || [] : [],
+      };
     };
 
-    const handleSelectSubzonePreset = (sz) => {
+    const handleSelectSubzonePreset = async (sz) => {
+      const requestId = ++zoneFitRequestRef.current;
       setZoneModalError("");
       const distName =
+        sz.district ||
         selectedTnDistrictName ||
         zoneParentTnDistrict?.name ||
         zoneParentDistrict?.name ||
         "Tiruppur";
-      const clippedGeoJson = makeClippedCircleGeoJson(sz.lat, sz.lng, sz.radius_km || 5, distName);
+      const presetDistrict = findTnDistrict(distName);
+      const presetParent = presetDistrict
+        ? (districts || []).find(
+            (district) => findTnDistrictForRecord(district)?.name === presetDistrict.name
+          )
+        : null;
+      const presetParentId = presetParent
+        ? String(presetParent._id || presetParent.backendRecord?._id || "")
+        : "";
+      const fitted = await buildFittedCircleGeoJson(
+        sz.lat,
+        sz.lng,
+        sz.radius_km || 5,
+        distName,
+        isEditing && selectedZone ? resolveZoneId(selectedZone) : null,
+        presetParentId || formData.operationalCityId
+      );
+      if (requestId !== zoneFitRequestRef.current) return;
 
       setFormData((prev) => ({
         ...prev,
+        operationalCityId: presetParentId || prev.operationalCityId,
         name: sz.name,
         city: sz.district || distName,
         zoneCode: sz.id || sz.admin_code || sz.name.slice(0, 3).toUpperCase(),
-        polygonCoordinates: clippedGeoJson,
+        polygonCoordinates: fitted.geoJson || "",
       }));
+
+      if (!fitted.geoJson) {
+        toast({
+          title: "Area already covered",
+          description: `${sz.name} overlaps an existing zone in ${distName}. Click a clear area on the map or reduce the radius.`,
+          status: "warning",
+          duration: 4000,
+          isClosable: true,
+        });
+        return;
+      }
 
       toast({
         title: `Loaded ${sz.name}`,
-        description: `Positioned circle zone at ${sz.name} (${sz.radius_km || 5} km) clipped to ${distName} border.`,
+        description:
+          fitted.radiusKm && fitted.radiusKm < (sz.radius_km || 5)
+            ? `Positioned ${sz.name} and reduced the radius to ${fitted.radiusKm.toFixed(
+                1
+              )} km to fit existing zones in ${distName}.`
+            : `Positioned circle zone at ${sz.name} (${fitted.radiusKm || sz.radius_km || 5} km) clipped to ${distName} border.`,
         status: "info",
-        duration: 2500,
+        duration: 3000,
       });
     };
 
@@ -3057,64 +3318,30 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         );
       });
 
-      const officialBoundary =
-        (matchedBackend?.polygon?.coordinates ? matchedBackend.polygon : null) ||
-        getTnDistrictBoundary(canonicalName) ||
-        distObjOrName?.polygon ||
-        distObjOrName?.geometry;
+      const matchedIsInactive =
+        Boolean(matchedBackend) && !isActiveDistrictRecord(matchedBackend);
 
-      // If matched district is inactive, auto-enable/activate it so zones can be added under it
-      if (matchedBackend && (matchedBackend.active === false || matchedBackend.isActive === false)) {
-        try {
-          await toggleDistrictStatus(matchedBackend._id, true);
-          matchedBackend = { ...matchedBackend, active: true, isActive: true };
-          setDistricts((prev) =>
-            prev.map((d) => (d._id === matchedBackend._id ? { ...d, active: true, isActive: true } : d))
-          );
-          toast({
-            title: `District Enabled: ${canonicalName}`,
-            description: `Activated operational district "${canonicalName}". Ready to add micro-zones.`,
-            status: "success",
-            duration: 3000,
-          });
-        } catch (err) {
-          console.warn("Could not activate existing district:", err);
-        }
+      // A map selection must not silently re-enable a disabled parent. Keep it
+      // disabled and let the explicit district toggle control the parent gate.
+      if (matchedIsInactive) {
+        toast({
+          title: `District Disabled: ${canonicalName}`,
+          description: `"${canonicalName}" remains disabled. Enable it from the district table before creating or activating sub-zones.`,
+          status: "warning",
+          duration: 5000,
+          isClosable: true,
+        });
       } else if (!matchedBackend) {
-        // District not yet configured in backend database: Auto-create & enable with exact Survey of India boundary!
-        try {
-          const payload = {
-            name: canonicalName,
-            city: canonicalName,
-            state: "Tamil Nadu",
-            country: "India",
-            code: distObjOrName?.code || tnDist?.code || canonicalName.slice(0, 3).toUpperCase(),
-            active: true,
-            isRegistrationEnabled: true,
-            isJobEnabled: true,
-            polygon: officialBoundary,
-          };
-          const createdRes = await createDistrict(payload);
-          const createdDist =
-            createdRes?.data || createdRes?.district || createdRes?.result || createdRes;
-          const newId =
-            createdDist?._id || (typeof createdRes === "object" ? createdRes._id : null);
-          if (newId) {
-            matchedBackend = { ...payload, _id: newId };
-            setDistricts((prev) => [
-              ...prev.filter((d) => d.name?.toLowerCase() !== canonicalName.toLowerCase()),
-              matchedBackend,
-            ]);
-            toast({
-              title: `District Enabled & Configured: ${canonicalName}`,
-              description: `Created and enabled operational district "${canonicalName}" with official Survey of India boundary.`,
-              status: "success",
-              duration: 3500,
-            });
-          }
-        } catch (err) {
-          console.warn("Could not auto-create district on map selection:", err);
-        }
+        // Selection is read-only. Operational district creation must be an
+        // explicit action from the district table so a map click cannot
+        // silently mutate backend state.
+        toast({
+          title: `District Not Configured: ${canonicalName}`,
+          description: `"${canonicalName}" is not yet an operational district. Create or enable it from the District Master before adding sub-zones.`,
+          status: "info",
+          duration: 5000,
+          isClosable: true,
+        });
       }
 
       const districtTowns = getDistrictCities(canonicalName);
@@ -3122,7 +3349,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
       setFormData((prev) => ({
         ...prev,
-        operationalCityId: matchedBackend ? matchedBackend._id : "",
+        operationalCityId: matchedBackend
+          ? matchedBackend._id || matchedBackend.backendRecord?._id || ""
+          : "",
         city: defaultTown ? defaultTown.name : canonicalName,
         name: defaultTown ? `${defaultTown.name} Zone` : `${canonicalName} Zone`,
         zoneCode: defaultTown?.code || tnDist?.code || prev.zoneCode || "",
@@ -3134,7 +3363,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
       zoneFormSnapshot.current = "";
 
-      if (matchedBackend) {
+      if (matchedBackend && !matchedIsInactive) {
         toast({
           title: `Selected District: ${canonicalName}`,
           description: `Linked to enabled operational district "${canonicalName}". Loaded official Survey of India boundary.`,
@@ -3176,25 +3405,115 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         setZoneModalError(msg);
         return toast({ title: "Validation Error", description: msg, status: "error", duration: 3000, isClosable: true });
       }
+
+      const parentDistrict = (districts || []).find(
+        (district) =>
+          String(district._id || district.backendRecord?._id || "") === String(operationalCityId)
+      );
+      if (parentDistrict && !isActiveDistrictRecord(parentDistrict)) {
+        const msg = `Parent district "${getDistrictLabel(
+          parentDistrict
+        )}" is disabled. Enable it before creating or updating sub-zones.`;
+        setZoneModalError(msg);
+        return toast({
+          title: "District Disabled",
+          description: msg,
+          status: "warning",
+          duration: 4500,
+          isClosable: true,
+        });
+      }
+
       if (!zoneCode) {
         const msg = "Zone Code is required.";
         setZoneModalError(msg);
         return toast({ title: "Validation Error", description: msg, status: "error", duration: 3000, isClosable: true });
       }
 
-      const { polygon, error: polyError } = parseZonePolygonInput(formData.polygonCoordinates);
+      const { polygon: parsedPolygon, error: polyError } = parseZonePolygonInput(formData.polygonCoordinates);
       if (polyError) {
         setZoneModalError(polyError);
         return toast({ title: "Validation Error", description: polyError, status: "error", duration: 4000, isClosable: true });
       }
-      if (!polygon) {
+      if (!parsedPolygon) {
         const msg = "Zone boundary is required. Click the map or use a 5/10/15/25 KM preset to generate it.";
         setZoneModalError(msg);
         return toast({ title: "Validation Error", description: msg, status: "error", duration: 4000, isClosable: true });
       }
 
+      const parentContainment = inspectZoneContainment(parsedPolygon, parentDistrict);
+      if (parentDistrict && !parentContainment.checked) {
+        const msg = `The boundary for "${
+          getDistrictLabel(parentDistrict)
+        }" could not be resolved. Refresh the district data before saving this zone.`;
+        setZoneModalError(msg);
+        return toast({
+          title: "District Boundary Missing",
+          description: msg,
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+      if (parentContainment.checked && !parentContainment.contained) {
+        const msg = `Zone boundary extends outside the parent district (${(
+          parentContainment.outsideRatio * 100
+        ).toFixed(1)}% outside). Move or resize the boundary so it stays inside ${
+          parentDistrict ? getDistrictLabel(parentDistrict) : "the district"
+        }.`;
+        setZoneModalError(msg);
+        return toast({
+          title: "Boundary Outside District",
+          description: msg,
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+
       try {
         setIsSubmitting(true);
+
+        let districtZones = (zones || []).filter(
+          (zone) => String(resolveZoneDistrictId(zone)) === String(operationalCityId)
+        );
+        try {
+          const zoneRes = await getAllCityZones({ operationalCityId });
+          const zoneList = zoneRes?.result || zoneRes?.data || zoneRes?.zones || zoneRes;
+          if (Array.isArray(zoneList)) {
+            districtZones = zoneList.filter(
+              (zone) => String(resolveZoneDistrictId(zone)) === String(operationalCityId)
+            );
+          }
+        } catch (refreshErr) {
+          console.warn("Could not refresh zones for overlap check:", refreshErr);
+        }
+
+        const zoneResult = clipPolygonAgainstZones(parsedPolygon, districtZones, {
+          excludeZoneId: isEditing && selectedZone ? resolveZoneId(selectedZone) : null,
+        });
+        if (!zoneResult.polygon) {
+          throw new Error(
+            "Zone boundary is entirely covered by an existing zone in this district. Choose a different area."
+          );
+        }
+        if (!zoneResult.compatible) {
+          const blockedNames = (
+            zoneResult.blockers?.length ? zoneResult.blockers : zoneResult.overlappingZones || []
+          )
+            .map((zone) => `"${zone.name}"`)
+            .filter(Boolean)
+            .join(", ");
+          const msg = blockedNames
+            ? `Zone boundary overlaps existing zone ${blockedNames} in this district. Move or resize the boundary on the map and try again.`
+            : "Zone boundary overlaps an existing zone in this district. Move or resize the boundary on the map and try again.";
+          setZoneModalError(msg);
+          toast({ title: "Overlap Detected", description: msg, status: "error", duration: 5000, isClosable: true });
+          return;
+        }
+        const boundaryAdjusted = zoneResult.adjusted;
+        const polygon = zoneResult.polygon;
+
         const ring = Array.isArray(polygon?.coordinates?.[0]) ? polygon.coordinates[0] : [];
         const centroid = ring.length ? calculatePolygonCentroid(ring.slice(0, -1)) : null;
         const centerLat = centroid && Number.isFinite(centroid[0]) ? centroid[0] : null;
@@ -3239,17 +3558,28 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           res = await updateZone(zid, payload);
           if (res && res.error) throw new Error(res.error);
           if (res && res.success === false && res.message) throw new Error(res.message);
-          toast({ title: "Zone Updated", description: `"${name}" updated successfully.`, status: "success", duration: 3000, isClosable: true });
+          toast({
+            title: "Zone Updated",
+            description: `"${name}" updated successfully.${
+              boundaryAdjusted ? " Boundary trimmed to avoid overlapping existing zones." : ""
+            }`,
+            status: "success",
+            duration: 3000,
+            isClosable: true,
+          });
         } else {
           res = await createZone(payload);
           if (res && res.error) throw new Error(res.error);
           if (res && res.success === false && res.message) throw new Error(res.message);
           const seededCount = res?.result?.seededEnabledServices ?? res?.seededEnabledServices;
+          const createdMsg = Number.isFinite(seededCount)
+            ? `"${name}" created with ${seededCount} active service${seededCount === 1 ? "" : "s"} enabled by default.`
+            : `"${name}" created successfully. All active services are enabled by default.`;
           toast({
             title: "Zone Created",
-            description: Number.isFinite(seededCount)
-              ? `"${name}" created with ${seededCount} active service${seededCount === 1 ? "" : "s"} enabled by default.`
-              : `"${name}" created successfully. All active services are enabled by default.`,
+            description: `${createdMsg}${
+              boundaryAdjusted ? " Boundary trimmed to avoid overlapping existing zones." : ""
+            }`,
             status: "success",
             duration: 4000,
             isClosable: true,
@@ -3281,9 +3611,16 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           resumeOpsFromContext("zone");
         }
       } catch (err) {
-        const errMsg = err.message || "Failed to save zone.";
+        const parsed = parseGeozoneApiError(err);
+        const rawMessage = parsed.message || "Failed to save zone.";
+        const hasConflict =
+          parsed.conflicts.length > 0 ||
+          /overlap|already covered|geographically/i.test(rawMessage);
+        const errMsg = hasConflict
+          ? `${rawMessage} Move or resize the boundary on the map, then retry.`
+          : rawMessage;
         setZoneModalError(errMsg);
-        toast({ title: "Error", description: errMsg, status: "error", duration: 4000, isClosable: true });
+        toast({ title: "Error", description: errMsg, status: "error", duration: 5000, isClosable: true });
       } finally {
         setIsSubmitting(false);
       }
@@ -6919,6 +7256,42 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 </Flex>
               )}
 
+              {districtOverlapWarning && (
+                <Flex
+                  align="center"
+                  bg="orange.50"
+                  border="1.5px solid"
+                  borderColor="orange.400"
+                  color="orange.900"
+                  px={4}
+                  py={2.5}
+                  borderRadius="10px"
+                  mb={3}
+                  justify="space-between"
+                  boxShadow="xs"
+                >
+                  <HStack spacing={3} align="center">
+                    <Icon as={MdWarning} boxSize={5} color="orange.600" flexShrink={0} />
+                    <Box>
+                      <Text fontSize="xs" fontWeight="700" color="orange.900">
+                        District Border Notice
+                      </Text>
+                      <Text fontSize="xs" color="orange.800">
+                        {districtOverlapWarning}
+                      </Text>
+                    </Box>
+                  </HStack>
+                  <IconButton
+                    size="xs"
+                    icon={<MdClear />}
+                    variant="ghost"
+                    colorScheme="orange"
+                    onClick={() => setDistrictOverlapWarning("")}
+                    aria-label="Dismiss warning"
+                  />
+                </Flex>
+              )}
+
               <Grid
                 templateColumns={{ base: "1fr", xl: "360px 1fr" }}
                 gap={4}
@@ -7145,8 +7518,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       districts={districts}
                       allDistricts={allMergedDistricts}
                       onlyTamilNadu={true}
+                      conflictDistrictNames={districtConflictNames}
                       onSelectDistrict={(dist) => {
-                        handlePickTnDistrict(dist.name || dist.city);
+                        handleMiniMapSelectDistrict(dist.name || dist.city);
                       }}
                     />
                   )}
@@ -8088,7 +8462,10 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       allDistricts={createdDistrictsList}
                       zones={zones}
                       selectedDistrictId={formData.operationalCityId || null}
+                      selectedZoneId={isEditing && selectedZone ? resolveZoneId(selectedZone) : null}
+                      parentDistrictActive={zoneParentDistrict ? isActiveDistrictRecord(zoneParentDistrict) : true}
                       onSelectDistrict={handleSelectDistrictFromMap}
+                      onSelectSubzone={handleSelectSubzonePreset}
                       onCitySelect={handleSelectCityFromMap}
                       onlyTamilNadu={true}
                     />

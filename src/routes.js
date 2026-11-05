@@ -7,7 +7,6 @@ import {
   MdLogin,
   MdHomeRepairService,
   MdInventory2,
-  MdReceiptLong,
   MdPayments,
   MdInsights,
 } from "react-icons/md";
@@ -35,7 +34,6 @@ import { logout } from "store/slices/authSlice";
 
 // Lazy-loaded views for on-demand bundle splitting & fast initial paint
 const Dashboard = lazy(() => import("views/Dashboard/Dashboard.js"));
-const Billing = lazy(() => import("views/Dashboard/Billing.js"));
 const Profile = lazy(() => import("views/Dashboard/Profile.js"));
 const SignIn = lazy(() => import("views/Pages/SignIn.js"));
 const AdminManagement = lazy(() => import("views/Dashboard/AdminManagement.js"));
@@ -121,6 +119,13 @@ const dashRoutes = [
     layout: "/owner",
   },
   {
+    path: "/finance-tracking",
+    name: "Finance Tracking",
+    icon: <FaChartLine color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <FinanceTracking />,
+    layout: "/owner",
+  },
+  {
     path: "/technician-payouts",
     name: "Pay to Technician",
     icon: <MdPayments color={ICON_COLOR} size={ICON_SIZE} />,
@@ -135,31 +140,17 @@ const dashRoutes = [
     layout: "/owner",
   },
   {
+    path: "/admin-payments",
+    name: "Admin Payments",
+    icon: <FaWallet color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <AdminPayments />,
+    layout: "/owner",
+  },
+  {
     path: "/reports-ratings",
     name: "Report & Ratings",
     icon: <HiDocumentChartBar color={ICON_COLOR} size={ICON_SIZE} />,
     element: <ReportsManagement />,
-    layout: "/owner",
-  },
-  {
-    path: "/finance-tracking",
-    name: "Finance Tracking",
-    icon: <FaChartLine color={ICON_COLOR} size={ICON_SIZE} />,
-    element: <FinanceTracking />,
-    layout: "/owner",
-  },
-  {
-    path: "/skill-requests",
-    name: "Skill Requests",
-    icon: <FaTools color={ICON_COLOR} size={ICON_SIZE} />,
-    element: <SkillRequests />,
-    layout: "/owner",
-  },
-  {
-    path: "/dispatch-ops",
-    name: "Dispatch Ops",
-    icon: <FaTruckFast color={ICON_COLOR} size={ICON_SIZE} />,
-    element: <DispatchOps />,
     layout: "/owner",
   },
   {
@@ -170,31 +161,34 @@ const dashRoutes = [
     layout: "/owner",
   },
   {
+    path: "/skill-requests",
+    name: "Skill Requests",
+    icon: <FaTools color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <SkillRequests />,
+    layout: "/owner",
+    hideInSidebar: true,
+  },
+  {
+    path: "/dispatch-ops",
+    name: "Dispatch Ops",
+    icon: <FaTruckFast color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <DispatchOps />,
+    layout: "/owner",
+    hideInSidebar: true,
+  },
+  {
     path: "/product-insights",
     name: "Product Insights",
     icon: <MdInsights color={ICON_COLOR} size={ICON_SIZE} />,
     element: <ProductInsights />,
     layout: "/owner",
-  },
-  {
-    path: "/admin-payments",
-    name: "Admin Payments",
-    icon: <FaWallet color={ICON_COLOR} size={ICON_SIZE} />,
-    element: <AdminPayments />,
-    layout: "/owner",
+    hideInSidebar: true,
   },
   {
     path: "/permissions",
     name: "Permissions",
     icon: <FaUserShield color={ICON_COLOR} size={ICON_SIZE} />,
     element: <PermissionsManagement />,
-    layout: "/owner",
-  },
-  {
-    path: "/billing",
-    name: "Billing",
-    icon: <MdReceiptLong color={ICON_COLOR} size={ICON_SIZE} />,
-    element: <Billing />,
     layout: "/owner",
     hideInSidebar: true,
   },
@@ -203,6 +197,7 @@ const dashRoutes = [
     name: "Profile",
     element: <Profile />,
     layout: "/owner",
+    hideInSidebar: true,
   },
 
   // ---------------- PUBLIC ROUTES ----------------

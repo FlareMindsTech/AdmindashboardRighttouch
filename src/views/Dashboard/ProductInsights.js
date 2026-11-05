@@ -117,17 +117,14 @@ export default function ProductInsights() {
     setSelectedLog(data?.result ?? data?.data ?? data ?? null);
   };
 
-  const cell = (r) =>
-    r?.action || r?.event || r?.type || r?.status || r?.month || r?.label || "—";
-
   return (
     <Box pt={{ base: "120px", md: "75px" }}>
       {/* Standardized 105px KPI Cards */}
       <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={{ base: 3, md: 4 }} mb={{ base: 3, md: 4 }}>
-        <SharedStatCard kpi title="Active Products" value={String(summary?.products ?? summary?.totalProducts ?? "—")} />
-        <SharedStatCard kpi title="Product Bookings" value={String(summary?.bookings ?? summary?.totalBookings ?? "—")} />
-        <SharedStatCard kpi title="Total Sales Volume" value={`₹${Number(summary?.revenue ?? summary?.totalRevenue ?? 0).toLocaleString()}`} />
-        <SharedStatCard kpi title="Pending Quote Requests" value={String(summary?.pendingQuotes ?? summary?.quoteRequests ?? "—")} />
+        <SharedStatCard kpi title="Active Products" value={String(summary?.totalProductsCount ?? "—")} />
+        <SharedStatCard kpi title="Product Bookings" value={String(summary?.totalBookingsCount ?? "—")} />
+        <SharedStatCard kpi title="Collected Sales" value={`₹${Number(summary?.totalPaid ?? (summary?.paidPaise || 0) / 100).toLocaleString("en-IN")}`} />
+        <SharedStatCard kpi title="Unpaid Amount" value={`₹${Number(summary?.totalUnpaid ?? (summary?.unpaidPaise || 0) / 100).toLocaleString("en-IN")}`} />
       </SimpleGrid>
 
       <Card>
@@ -160,21 +157,37 @@ export default function ProductInsights() {
                     <Table variant="simple" size="sm">
                       <Thead>
                         <Tr>
-                          <Th>Period / Product</Th>
-                          <Th>Orders Count</Th>
-                          <Th>Revenue (₹)</Th>
-                          <Th>Average Order Value</Th>
+                          <Th>Booking</Th>
+                          <Th>Customer</Th>
+                          <Th>Product</Th>
+                          <Th>Amount (₹)</Th>
+                          <Th>Payment</Th>
+                          <Th>Status</Th>
                           <Th>Date</Th>
                         </Tr>
                       </Thead>
                       <Tbody>
                         {sales.map((s, i) => (
-                          <Tr key={s?._id || s?.id || i}>
-                            <Td fontWeight="semibold">{s?.productName || s?.period || cell(s)}</Td>
-                            <Td>{s?.ordersCount ?? s?.count ?? s?.quantity ?? "—"}</Td>
-                            <Td fontWeight="bold" color="teal.600">₹{Number(s?.revenue ?? s?.totalAmount ?? 0).toLocaleString()}</Td>
-                            <Td>₹{Number(s?.aov ?? (s?.revenue && s?.ordersCount ? (s.revenue / s.ordersCount) : 0)).toFixed(2)}</Td>
-                            <Td fontSize="xs">{s?.date || (s?.createdAt ? new Date(s.createdAt).toLocaleDateString() : "—")}</Td>
+                          <Tr key={s?._id || s?.bookingId || s?.id || i}>
+                            <Td fontSize="xs" fontWeight="semibold" fontFamily="mono">
+                              {s?.bookingNumber || s?._id || s?.bookingId || "—"}
+                            </Td>
+                            <Td fontSize="xs">{s?.customerName || "—"}</Td>
+                            <Td fontSize="xs">{s?.productName || "—"}</Td>
+                            <Td fontWeight="bold" color="teal.600">
+                              ₹{Number(s?.amount ?? (s?.amountPaise || 0) / 100).toLocaleString("en-IN")}
+                            </Td>
+                            <Td>
+                              <Badge colorScheme={s?.paymentStatus === "paid" ? "green" : "yellow"}>
+                                {s?.paymentStatus || "pending"}
+                              </Badge>
+                            </Td>
+                            <Td>
+                              <Badge colorScheme={s?.status === "completed" ? "green" : s?.status === "cancelled" ? "red" : "blue"}>
+                                {s?.status || "active"}
+                              </Badge>
+                            </Td>
+                            <Td fontSize="xs">{s?.createdAt ? new Date(s.createdAt).toLocaleDateString() : "—"}</Td>
                           </Tr>
                         ))}
                       </Tbody>

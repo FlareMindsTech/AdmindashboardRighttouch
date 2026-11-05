@@ -10,6 +10,7 @@ import {
   calculatePolygonCentroid,
   isPointInPolygon,
   computePlusCode,
+  normalizeTnDistrictName,
 } from "./tamilNaduDistrictsData";
 
 export {
@@ -24,6 +25,7 @@ export {
   calculatePolygonCentroid,
   isPointInPolygon,
   computePlusCode,
+  normalizeTnDistrictName,
 };
 
 /**
@@ -79,44 +81,6 @@ export const getOfficialDistrictGeocode = (value) => {
   };
 };
 
-const DISTRICT_ALIASES = {
-  villupuram: "Viluppuram",
-  viluppuram: "Viluppuram",
-  vizhupuram: "Viluppuram",
-  kancheepuram: "Kanchipuram",
-  kanchipuram: "Kanchipuram",
-  kanniyakumari: "Kanyakumari",
-  kanyakumari: "Kanyakumari",
-  "the nilgiris": "Nilgiris",
-  nilgiri: "Nilgiris",
-  nilgiris: "Nilgiris",
-  tuticorin: "Thoothukudi",
-  thoothukudi: "Thoothukudi",
-  tiruchirappalli: "Tiruchirappalli",
-  tiruchirapalli: "Tiruchirappalli",
-  trichy: "Tiruchirappalli",
-  tirupur: "Tiruppur",
-  tiruppur: "Tiruppur",
-  thiruvallur: "Tiruvallur",
-  tiruvallur: "Tiruvallur",
-  thiruvannamalai: "Tiruvannamalai",
-  tiruvannamalai: "Tiruvannamalai",
-  thiruvarur: "Tiruvarur",
-  tiruvarur: "Tiruvarur",
-  sivagangai: "Sivaganga",
-  sivaganga: "Sivaganga",
-  virudhunagai: "Virudhunagar",
-  virudhunagar: "Virudhunagar",
-  chengalpet: "Chengalpattu",
-  chengalpattu: "Chengalpattu",
-  tirupattur: "Tirupathur",
-  tirupathur: "Tirupathur",
-  ranipettai: "Ranipet",
-  ranipet: "Ranipet",
-  mayavaram: "Mayiladuthurai",
-  mayiladuthurai: "Mayiladuthurai",
-};
-
 export const normalizeLocationName = (value = "") =>
   String(value)
     .toLowerCase()
@@ -148,10 +112,10 @@ export const findTnDistrict = (value) => {
   );
   if (exact) return exact;
 
-  const aliasTarget = DISTRICT_ALIASES[normalized];
-  if (aliasTarget) {
+  const canonicalTarget = normalizeTnDistrictName(raw);
+  if (canonicalTarget && canonicalTarget !== raw) {
     const aliased = TAMIL_NADU_DISTRICTS.find(
-      (d) => d.name === aliasTarget
+      (d) => d.name === canonicalTarget
     );
     if (aliased) return aliased;
   }

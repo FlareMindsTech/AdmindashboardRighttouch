@@ -20,15 +20,12 @@ import {
   uploadImageCategory,
   removeCategoryImage,
   deleteProductImage,
-  getAllProductBookings,
   updateProductBooking,
   cancelProductBooking,
-  adminListQuoteRequestsController,
   adminGetQuoteRequestController,
   adminAssignQuoteRequestController,
   adminUpdateQuoteRequestStatusController,
   createAdminQuotation,
-  getAdminQuotationsList,
   getAdminQuotationById,
   updateAdminQuotation,
   sendAdminQuotation,
@@ -163,7 +160,6 @@ import {
   FaChevronLeft,
   FaChevronRight,
   FaExclamationTriangle,
-  FaChartLine,
   FaPlus,
   FaTimes,
   FaBox,
@@ -176,7 +172,6 @@ import {
   FaRedo,
   FaFileContract,
   FaUserCheck,
-  FaExchangeAlt,
   FaEnvelope,
   FaPhoneAlt,
   FaMoneyBillWave,
@@ -201,7 +196,17 @@ import {
   FaBan,
   FaFileDownload,
 } from "react-icons/fa";
-import { MdCategory, MdInventory, MdWarning } from "react-icons/md";
+import { MdCategory, MdWarning } from "react-icons/md";
+import QuoteRequestsView from "./ProductManagement/QuoteRequestsView";
+import QuotationsView from "./ProductManagement/QuotationsView";
+import BookingsView from "./ProductManagement/BookingsView";
+import { ADMIN_PRODUCT_FLOW_EVENT } from "hooks/useAdminSocket";
+import {
+  listProductBookings,
+  listQuoteRequests,
+  listQuotations,
+} from "api/quotations";
+import { unwrapList } from "./ProductManagement/productFlowUtils";
 
 // Mobile Card Component for Categories
 const CategoryMobileCard = ({ cat, idx, indexOfFirstItem, onView, onEdit, onDelete, onAddProduct }) => {
@@ -982,18 +987,19 @@ export default function ProductManagement() {
   const fetchQuotationsData = useCallback(async () => {
     setIsLoadingQuotations(true);
     try {
-      const [reqRes, listRes] = await Promise.allSettled([
-        adminListQuoteRequestsController(),
-        getAdminQuotationsList(),
+      const [reqRes, listRes] = await Promise.all([
+        listQuoteRequests(),
+        listQuotations(),
       ]);
 
-      if (reqRes.status === "fulfilled" && reqRes.value) {
-        const raw = reqRes.value.data || reqRes.value.result || reqRes.value.quoteRequests || reqRes.value.requests || reqRes.value;
-        setQuoteRequests(Array.isArray(raw) ? raw : []);
+      if (!reqRes.error) {
+        setQuoteRequests(unwrapList(reqRes.data, ["requests", "quoteRequests"]));
       }
-      if (listRes.status === "fulfilled" && listRes.value) {
-        const raw = listRes.value.data || listRes.value.result || listRes.value.quotations || listRes.value;
-        setQuotationsList(Array.isArray(raw) ? raw : []);
+      if (!listRes.error) {
+        setQuotationsList(unwrapList(listRes.data, ["quotations"]));
+      }
+      if (reqRes.error || listRes.error) {
+        console.error("Error fetching quotation data:", reqRes.error || listRes.error);
       }
     } catch (err) {
       console.error("Error fetching quotation data:", err);
@@ -1010,15 +1016,10 @@ export default function ProductManagement() {
         fetchProducts(),
         fetchQuotationsData(),
         fetchProductBookings(),
-        fetchInventoryData(),
-        fetchPaymentsData(),
-        fetchReconciliationData(),
-        fetchReportsData(),
-        fetchAuditLogsData(),
       ]);
       toast({
         title: "Dashboard Data Refreshed",
-        description: "Latest quote requests, inventory, payments, and reports loaded.",
+        description: "Latest products, quote requests, quotations, and bookings loaded.",
         status: "success",
         duration: 2500,
         isClosable: true,
@@ -2155,9 +2156,9 @@ export default function ProductManagement() {
   const fetchProductBookings = useCallback(async () => {
     setBookingsLoading(true);
     try {
-      const res = await getAllProductBookings();
-      const raw = res?.result || res?.bookings || res?.data || res || [];
-      setProductBookings(Array.isArray(raw) ? raw : []);
+      const res = await listProductBookings();
+      if (res.error) throw new Error(res.error);
+      setProductBookings(unwrapList(res.data, ["bookings"]));
     } catch (err) {
       console.error("Error fetching product bookings:", err);
       toast({
@@ -2175,6 +2176,28 @@ export default function ProductManagement() {
   useEffect(() => {
     if (currentUser) fetchProductBookings();
   }, [currentUser, fetchProductBookings]);
+
+  useEffect(() => {
+    let timer = null;
+    const handleProductFlowEvent = (event) => {
+      const entity = event?.detail?.entity;
+      if (!["quote_request", "quotation", "booking", "payment"].includes(entity)) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (["quote_request", "quotation", "payment"].includes(entity)) {
+          fetchQuotationsData();
+        }
+        if (["quotation", "booking", "payment"].includes(entity)) {
+          fetchProductBookings();
+        }
+      }, 400);
+    };
+    window.addEventListener(ADMIN_PRODUCT_FLOW_EVENT, handleProductFlowEvent);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(ADMIN_PRODUCT_FLOW_EVENT, handleProductFlowEvent);
+    };
+  }, [fetchQuotationsData, fetchProductBookings]);
 
   const handleUpdateProductBooking = async (booking) => {
     const bId = booking._id || booking.id;
@@ -3495,7 +3518,7 @@ export default function ProductManagement() {
       {/* Fixed Statistics Cards */}
       <Box flexShrink={0} p={{ base: 1, md: 4 }} pb={0}>
           <Grid
-            templateColumns={{ base: "1fr 1fr", sm: "repeat(2, 1fr)", md: "repeat(4, 1fr)" }}
+            templateColumns={{ base: "1fr 1fr", sm: "repeat(2, 1fr)", md: "repeat(3, 1fr)", xl: "repeat(5, 1fr)" }}
             gap={{ base: 2.5, md: 3 }}
             mb={{ base: 3, md: 4 }}
           >
@@ -3551,14 +3574,14 @@ export default function ProductManagement() {
               </CardBody>
             </Card>
 
-            {/* 3. Product Quotes Card */}
+            {/* 3. Quote Requests Card */}
             <Card
               minH={{ base: "65px", md: "75px" }}
               borderRadius="20px"
               cursor="pointer"
-              onClick={() => setCurrentView("quotations")}
+              onClick={() => setCurrentView("quote-requests")}
               p={0}
-              {...getSkeuomorphicCardStyle(false, currentView === "quotations", customColor)}
+              {...getSkeuomorphicCardStyle(false, currentView === "quote-requests", customColor)}
             >
               {activeQuoteRequestsCount > 0 && (
                 <Badge colorScheme="red" variant="solid" borderRadius="full" px={2} py={0.5} fontSize="3xs" position="absolute" top="-8px" right="-6px" zIndex={3}>
@@ -3569,10 +3592,10 @@ export default function ProductManagement() {
                 <Flex align="center" justify="space-between" w="100%" gap={2}>
                   <Stat me="auto" minW="0" flex="1">
                     <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
-                      Product Quotes
+                      Quote Requests
                     </StatLabel>
                     <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor} fontWeight="extrabold">
-                      {isLoadingQuotations ? <Spinner size="xs" /> : Math.max(quoteRequests.length, quotationsList.length)}
+                      {isLoadingQuotations ? <Spinner size="xs" /> : quoteRequests.length}
                     </StatNumber>
                   </Stat>
                   <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle(customColor)}>
@@ -3582,12 +3605,38 @@ export default function ProductManagement() {
               </CardBody>
             </Card>
 
-            {/* 4. Accepted Bookings Card */}
+            {/* 4. Quotations Card */}
             <Card
               minH={{ base: "65px", md: "75px" }}
               borderRadius="20px"
               cursor="pointer"
-              onClick={() => { setCurrentView("bookings"); setBookingStatusFilter("active"); }}
+              onClick={() => setCurrentView("quotations")}
+              p={0}
+              {...getSkeuomorphicCardStyle(false, currentView === "quotations", customColor)}
+            >
+              <CardBody p={{ base: 2.5, md: 3.5 }}>
+                <Flex align="center" justify="space-between" w="100%" gap={2}>
+                  <Stat me="auto" minW="0" flex="1">
+                    <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
+                      Quotations
+                    </StatLabel>
+                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor} fontWeight="extrabold">
+                      {isLoadingQuotations ? <Spinner size="xs" /> : quotationsList.length}
+                    </StatNumber>
+                  </Stat>
+                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle("purple.500")}>
+                    <Icon as={FaFileContract} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
+                  </IconBox>
+                </Flex>
+              </CardBody>
+            </Card>
+
+            {/* 5. Bookings Card */}
+            <Card
+              minH={{ base: "65px", md: "75px" }}
+              borderRadius="20px"
+              cursor="pointer"
+              onClick={() => setCurrentView("bookings")}
               p={0}
               {...getSkeuomorphicCardStyle(false, currentView === "bookings", customColor)}
             >
@@ -3598,7 +3647,7 @@ export default function ProductManagement() {
                       Bookings
                     </StatLabel>
                     <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor} fontWeight="extrabold">
-                      {bookingsLoading ? <Spinner size="xs" /> : acceptedBookingsCount}
+                      {bookingsLoading ? <Spinner size="xs" /> : productBookings.length}
                     </StatNumber>
                   </Stat>
                   <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle("blue.500")}>
@@ -3608,110 +3657,15 @@ export default function ProductManagement() {
               </CardBody>
             </Card>
 
-            {/* 5. Inventory & Stock Card */}
-            <Card
-              minH={{ base: "65px", md: "75px" }}
-              borderRadius="20px"
-              cursor="pointer"
-              onClick={() => setCurrentView("inventory")}
-              p={0}
-              {...getSkeuomorphicCardStyle(false, currentView === "inventory", customColor)}
-            >
-              <CardBody p={{ base: 2.5, md: 3.5 }}>
-                <Flex align="center" justify="space-between" w="100%" gap={2}>
-                  <Stat me="auto" minW="0" flex="1">
-                    <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
-                      Stock Inventory
-                    </StatLabel>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor} fontWeight="extrabold">
-                      {isLoadingInventory ? <Spinner size="xs" /> : inventoryList.length || totalProducts}
-                    </StatNumber>
-                  </Stat>
-                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle("orange.400")}>
-                    <Icon as={MdInventory} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
-                  </IconBox>
-                </Flex>
-              </CardBody>
-            </Card>
-
-            {/* 6. Payments Tracking Card */}
-            <Card
-              minH={{ base: "65px", md: "75px" }}
-              borderRadius="20px"
-              cursor="pointer"
-              onClick={() => setCurrentView("payments")}
-              p={0}
-              {...getSkeuomorphicCardStyle(false, currentView === "payments", customColor)}
-            >
-              <CardBody p={{ base: 2.5, md: 3.5 }}>
-                <Flex align="center" justify="space-between" w="100%" gap={2}>
-                  <Stat me="auto" minW="0" flex="1">
-                    <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
-                      Payments & Settlement
-                    </StatLabel>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor} fontWeight="extrabold">
-                      {isLoadingPaymentsList ? <Spinner size="xs" /> : paymentsList.length || 0}
-                    </StatNumber>
-                  </Stat>
-                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle("purple.500")}>
-                    <Icon as={FaCreditCard} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
-                  </IconBox>
-                </Flex>
-              </CardBody>
-            </Card>
-
-            {/* 7. Reconciliation & Refunds Card */}
-            <Card
-              minH={{ base: "65px", md: "75px" }}
-              borderRadius="20px"
-              cursor="pointer"
-              onClick={() => setCurrentView("reconciliation")}
-              p={0}
-              {...getSkeuomorphicCardStyle(false, currentView === "reconciliation", customColor)}
-            >
-              <CardBody p={{ base: 2.5, md: 3.5 }}>
-                <Flex align="center" justify="space-between" w="100%" gap={2}>
-                  <Stat me="auto" minW="0" flex="1">
-                    <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
-                      Reconciliation
-                    </StatLabel>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor} fontWeight="extrabold">
-                      {isLoadingReconciliation ? <Spinner size="xs" /> : `${unmatchedPayments.length} Unmatched`}
-                    </StatNumber>
-                  </Stat>
-                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle("teal.600")}>
-                    <Icon as={FaExchangeAlt} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
-                  </IconBox>
-                </Flex>
-              </CardBody>
-            </Card>
-
-            {/* 8. Financial Reports & Audit Card */}
-            <Card
-              minH={{ base: "65px", md: "75px" }}
-              borderRadius="20px"
-              cursor="pointer"
-              onClick={() => setCurrentView("reports")}
-              p={0}
-              {...getSkeuomorphicCardStyle(false, currentView === "reports" || currentView === "audit-logs", customColor)}
-            >
-              <CardBody p={{ base: 2.5, md: 3.5 }}>
-                <Flex align="center" justify="space-between" w="100%" gap={2}>
-                  <Stat me="auto" minW="0" flex="1">
-                    <StatLabel fontSize={{ base: "xs", lg: "sm" }} color="gray.600" fontWeight="bold">
-                      Reports & Audit
-                    </StatLabel>
-                    <StatNumber fontSize={{ base: "sm", md: "md" }} color={textColor} fontWeight="extrabold">
-                      Overview
-                    </StatNumber>
-                  </Stat>
-                  <IconBox h="38px" w="38px" flexShrink={0} {...getSkeuomorphicIconBoxStyle("green.500")}>
-                    <Icon as={FaChartLine} boxSize="18px" color="white" sx={skeuomorphicIconFilter} />
-                  </IconBox>
-                </Flex>
-              </CardBody>
-            </Card>
           </Grid>
+          <HStack justify="flex-end" spacing={2} px={{ base: 1, md: 4 }} pb={2}>
+            <Button size="xs" variant="outline" colorScheme="teal" onClick={() => navigate("/owner/admin-payments")}>
+              Payments & refunds
+            </Button>
+            <Button size="xs" variant="outline" colorScheme="purple" onClick={() => navigate("/owner/product-insights")}>
+              Product insights
+            </Button>
+          </HStack>
         </Box>
 
         <Box display="flex" flexDirection="column" p={4} pt={0} flex="1" overflow="hidden">
@@ -3723,6 +3677,36 @@ export default function ProductManagement() {
           maxH="100%"
           overflow="hidden"
         >
+          {["quote-requests", "quotations", "bookings"].includes(currentView) ? (
+            <Box flex="1" minH={0} overflow="hidden" display="flex" flexDirection="column">
+              {currentView === "quote-requests" && (
+                <QuoteRequestsView
+                  requests={quoteRequests}
+                  isLoading={isLoadingQuotations}
+                  onRefresh={fetchQuotationsData}
+                />
+              )}
+              {currentView === "quotations" && (
+                <QuotationsView
+                  quotations={quotationsList}
+                  bookings={productBookings}
+                  isLoading={isLoadingQuotations}
+                  onRefresh={fetchQuotationsData}
+                />
+              )}
+              {currentView === "bookings" && (
+                <BookingsView
+                  bookings={productBookings}
+                  quotations={quotationsList}
+                  isLoading={bookingsLoading}
+                  onRefresh={async () => {
+                    await Promise.all([fetchProductBookings(), fetchQuotationsData()]);
+                  }}
+                />
+              )}
+            </Box>
+          ) : (
+          <>
           {/* Fixed Table Header */}
           <CardHeader
             p="10px 16px"
@@ -6523,6 +6507,8 @@ export default function ProductManagement() {
               </Box>
             )}
           </CardBody>
+          </>
+          )}
         </Card>
       </Box>
 

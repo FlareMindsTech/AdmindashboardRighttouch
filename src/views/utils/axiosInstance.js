@@ -3215,6 +3215,42 @@ const extractServerError = async (response) => {
   }
 };
 
+const messageFromErrorBody = (body, fallback) => {
+  if (!body) return fallback;
+  if (typeof body === "string") return body;
+  if (body.message && typeof body.message === "string") return body.message;
+  if (body.error && typeof body.error === "string") return body.error;
+  if (body.error && typeof body.error === "object" && body.error.message) return body.error.message;
+  if (body.err && typeof body.err === "string") return body.err;
+  if (Array.isArray(body.errors)) {
+    return body.errors
+      .map((e) => (typeof e === "string" ? e : e.msg || e.message || JSON.stringify(e)))
+      .join(", ");
+  }
+  return fallback;
+};
+
+const createApiError = async (response) => {
+  const fallback = `Error: ${response.status}`;
+  let text = "";
+  let body = null;
+  try {
+    text = await response.text();
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = null;
+    }
+  } catch {
+    text = "";
+  }
+  const error = new Error(messageFromErrorBody(body, text || fallback));
+  error.status = response.status;
+  error.payload = body;
+  error.code = body?.code || body?.errorCode || "";
+  return error;
+};
+
 export const createZone = async (zoneData) => {
   try {
     const token = getToken();
@@ -3223,7 +3259,7 @@ export const createZone = async (zoneData) => {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(zoneData),
     });
-    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    if (!response.ok) throw await createApiError(response);
     return await response.json();
   } catch (error) {
     console.error("Error creating zone:", error);
@@ -3273,7 +3309,7 @@ export const updateZone = async (zoneId, zoneData) => {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(zoneData),
     });
-    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    if (!response.ok) throw await createApiError(response);
     return await response.json();
   } catch (error) {
     console.error("Error updating zone:", error);
@@ -5038,7 +5074,7 @@ export const createDistrict = async (districtData) => {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(districtData),
     });
-    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    if (!response.ok) throw await createApiError(response);
     return await response.json();
   } catch (error) {
     console.error("Error creating district:", error);
@@ -5054,7 +5090,7 @@ export const updateDistrict = async (districtId, districtData) => {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(districtData),
     });
-    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    if (!response.ok) throw await createApiError(response);
     return await response.json();
   } catch (error) {
     console.error("Error updating district:", error);
@@ -5070,7 +5106,7 @@ export const toggleDistrictStatus = async (districtId, active) => {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ active }),
     });
-    if (!response.ok) throw new Error((await extractServerError(response)) || `Error: ${response.status}`);
+    if (!response.ok) throw await createApiError(response);
     return await response.json();
   } catch (error) {
     console.error("Error toggling district status:", error);

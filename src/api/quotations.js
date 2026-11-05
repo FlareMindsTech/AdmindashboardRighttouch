@@ -58,6 +58,9 @@ export const getProductBookingById = (id) =>
 export const completeProductBooking = (id, body = {}) =>
   handle(apiClient.put(`/admin/product-bookings/${id}/complete`, body));
 
+export const cancelProductBooking = (id, body = {}) =>
+  handle(apiClient.post(`/admin/product-bookings/${id}/cancel`, body));
+
 export const recordManualPaymentForBooking = (bookingId, body) =>
   handle(
     apiClient.post(`/admin/product-bookings/${bookingId}/manual-payment`, body)

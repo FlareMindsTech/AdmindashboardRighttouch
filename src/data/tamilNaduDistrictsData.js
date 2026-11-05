@@ -1762,7 +1762,7 @@ export const TAMIL_NADU_CITIES = [
   }
 ];
 
-export const TAMIL_NADU_SUBZONES = [
+const RAW_TAMIL_NADU_SUBZONES = [
   {
     "id": "TN-CHE-01",
     "name": "Chennai Central / Parry's",
@@ -21434,6 +21434,206 @@ export const TAMIL_NADU_SUBZONES = [
   }
 ];
 
+const TN_DISTRICT_ALIASES = {
+  villupuram: "Viluppuram",
+  viluppuram: "Viluppuram",
+  vizhupuram: "Viluppuram",
+  kancheepuram: "Kanchipuram",
+  kanchipuram: "Kanchipuram",
+  kanniyakumari: "Kanyakumari",
+  kanyakumari: "Kanyakumari",
+  "the nilgiris": "Nilgiris",
+  "the nilgiri": "Nilgiris",
+  nilgiri: "Nilgiris",
+  nilgiris: "Nilgiris",
+  tuticorin: "Thoothukudi",
+  thoothukudi: "Thoothukudi",
+  tiruchirappalli: "Tiruchirappalli",
+  tiruchirapalli: "Tiruchirappalli",
+  trichy: "Tiruchirappalli",
+  tirupur: "Tiruppur",
+  tiruppur: "Tiruppur",
+  thiruvallur: "Tiruvallur",
+  tiruvallur: "Tiruvallur",
+  thiruvannamalai: "Tiruvannamalai",
+  tiruvannamalai: "Tiruvannamalai",
+  thiruvarur: "Tiruvarur",
+  tiruvarur: "Tiruvarur",
+  sivagangai: "Sivaganga",
+  sivaganga: "Sivaganga",
+  virudhunagai: "Virudhunagar",
+  virudhunagar: "Virudhunagar",
+  chengalpet: "Chengalpattu",
+  chengalpattu: "Chengalpattu",
+  tirupattur: "Tirupathur",
+  tirupathur: "Tirupathur",
+  ranipettai: "Ranipet",
+  ranipet: "Ranipet",
+  mayavaram: "Mayiladuthurai",
+  mayiladuthurai: "Mayiladuthurai",
+};
+
+const cleanPlaceKey = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/operational range|district|revenue|range|hub|zone|taluk|town|city/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const TN_DISTRICT_BY_CANONICAL_NAME = new Map(
+  TAMIL_NADU_DISTRICTS.map((district) => [cleanPlaceKey(district.name), district])
+);
+const TN_CITY_BY_NAME = new Map(
+  TAMIL_NADU_CITIES.map((city) => [cleanPlaceKey(city.name), city])
+);
+const TN_SUBZONE_BY_NAME = new Map(
+  RAW_TAMIL_NADU_SUBZONES.map((subzone) => [cleanPlaceKey(subzone.name), subzone])
+);
+
+/**
+ * Resolve legacy spellings, aliases, operational labels, and city names to the
+ * canonical 38-district name.
+ */
+export const normalizeTnDistrictName = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const cleaned = cleanPlaceKey(raw);
+  if (!cleaned) return "";
+  const direct = TN_DISTRICT_BY_CANONICAL_NAME.get(cleaned);
+  if (direct) return direct.name;
+  const alias = TN_DISTRICT_ALIASES[cleaned];
+  if (alias) return alias;
+  const city = TN_CITY_BY_NAME.get(cleaned);
+  if (city) {
+    const cityDistrict = TN_DISTRICT_BY_CANONICAL_NAME.get(cleanPlaceKey(city.district));
+    if (cityDistrict) return cityDistrict.name;
+  }
+  const subzone = TN_SUBZONE_BY_NAME.get(cleaned);
+  if (subzone) {
+    const subzoneDistrict = TN_DISTRICT_BY_CANONICAL_NAME.get(cleanPlaceKey(subzone.district));
+    if (subzoneDistrict) return subzoneDistrict.name;
+    const subzoneAlias = TN_DISTRICT_ALIASES[cleanPlaceKey(subzone.district)];
+    if (subzoneAlias) return subzoneAlias;
+  }
+  return alias || raw;
+};
+
+const buildPresetCircleGeoJSON = (lat, lng, radiusKm = 5, numPoints = 32) => {
+  const points = [];
+  const kmInDegLat = 1 / 110.574;
+  const kmInDegLng = 1 / (111.32 * Math.cos((lat * Math.PI) / 180));
+  for (let i = 0; i < numPoints; i++) {
+    const angle = (i / numPoints) * 2 * Math.PI;
+    points.push([
+      Number((lng + radiusKm * kmInDegLng * Math.cos(angle)).toFixed(5)),
+      Number((lat + radiusKm * kmInDegLat * Math.sin(angle)).toFixed(5)),
+    ]);
+  }
+  points.push([...points[0]]);
+  return { type: "Polygon", coordinates: [points] };
+};
+
+const buildPresetPlusCode = (lat, lon) => {
+  const alphabet = "23456789CFGHJMPQRVWX";
+  let vLat = Math.min(90, Math.max(-90, Number(lat))) + 90;
+  let vLon = Math.min(180, Math.max(-180, Number(lon))) + 180;
+  const code = [];
+  for (const resolution of [20, 1, 0.05, 0.0025, 0.000125]) {
+    const dLat = Math.floor(vLat / resolution);
+    const dLon = Math.floor(vLon / resolution);
+    vLat -= dLat * resolution;
+    vLon -= dLon * resolution;
+    code.push(alphabet[dLat] || "2", alphabet[dLon] || "2");
+  }
+  const joined = code.join("");
+  return `${joined.slice(0, 8)}+${joined.slice(8)}`;
+};
+
+// Three legacy preset centers sat just outside their district polygon. Keep the
+// original preset identity but snap the center to the nearest interior point so
+// the pin, radius preview, and saved zone all agree with the district border.
+const PRESET_CENTER_OVERRIDES = {
+  "Guindy / Alandur": { lat: 13.0113, lng: 80.206 },
+  "Madathukulam Canals": { lat: 10.59141, lng: 77.38556 },
+  "Paramathi Velur Cauvery": { lat: 11.08633, lng: 78.03466 },
+};
+
+const buildNormalizedSubzones = () => {
+  const sequenceByDistrict = new Map();
+  const nextSequence = (districtName) => {
+    const next = (sequenceByDistrict.get(districtName) || 0) + 1;
+    sequenceByDistrict.set(districtName, next);
+    return next;
+  };
+  const districtCodeFor = (districtName) => {
+    const district = TN_DISTRICT_BY_CANONICAL_NAME.get(districtName.toLowerCase());
+    return district?.code || districtName.replace(/[^a-z]/gi, "").slice(0, 3).toUpperCase() || "TN";
+  };
+
+  const normalized = RAW_TAMIL_NADU_SUBZONES.map((subzone) => {
+    const district = normalizeTnDistrictName(subzone.district);
+    const districtCode = districtCodeFor(district);
+    const sequence = nextSequence(district);
+    const override = PRESET_CENTER_OVERRIDES[subzone.name];
+    const lat = override ? override.lat : subzone.lat;
+    const lng = override ? override.lng : subzone.lng;
+    return {
+      ...subzone,
+      id: `TN-${districtCode}-${String(sequence).padStart(2, "0")}`,
+      legacyId: subzone.id || "",
+      district,
+      districtCode,
+      lat,
+      lng,
+      geometry: override
+        ? buildPresetCircleGeoJSON(lat, lng, subzone.radius_km || 5)
+        : subzone.geometry,
+    };
+  });
+
+  const coveredDistricts = new Set(normalized.map((subzone) => subzone.district));
+  const supplemental = [];
+
+  for (const district of TAMIL_NADU_DISTRICTS) {
+    if (coveredDistricts.has(district.name)) continue;
+    const districtCities = TAMIL_NADU_CITIES.filter(
+      (city) => normalizeTnDistrictName(city.district) === district.name
+    );
+    const seedCities = districtCities.length ? districtCities : [district];
+    seedCities.forEach((city, index) => {
+      const sequence = nextSequence(district.name);
+      const radiusKm = 5;
+      const lat = Number(city.lat ?? district.lat);
+      const lng = Number(city.lng ?? district.lng);
+      const suffix = districtCities.length ? `${city.name} Town` : `${district.name} HQ`;
+      supplemental.push({
+        id: `TN-${district.code}-${String(sequence).padStart(2, "0")}`,
+        legacyId: "",
+        name: suffix,
+        district: district.name,
+        districtCode: district.code,
+        state: "Tamil Nadu",
+        type: "City Core",
+        city: city.name || district.name,
+        pincode: "",
+        lat,
+        lng,
+        radius_km: radiusKm,
+        approx_area_sqkm: Number((Math.PI * radiusKm * radiusKm).toFixed(1)),
+        plus_code: buildPresetPlusCode(lat, lng),
+        admin_code: `TN-GEO-${String(RAW_TAMIL_NADU_SUBZONES.length + supplemental.length + 1).padStart(4, "0")}`,
+        geometry: buildPresetCircleGeoJSON(lat, lng, radiusKm),
+      });
+    });
+  }
+
+  return [...normalized, ...supplemental];
+};
+
+export const TAMIL_NADU_SUBZONES = buildNormalizedSubzones();
+
 export const CITY_LOOKUP = {};
 TAMIL_NADU_CITIES.forEach((c) => {
   CITY_LOOKUP[c.name.toLowerCase().trim()] = [c.lat, c.lng];
@@ -21477,11 +21677,12 @@ export const getCitiesByDistrict = (districtNameOrCity) => {
  */
 export const getSubzonesByDistrict = (districtName) => {
   if (!districtName) return TAMIL_NADU_SUBZONES;
-  const q = String(districtName).toLowerCase().replace(/operational range|district|revenue|range|hub|zone/gi, "").trim();
-  return TAMIL_NADU_SUBZONES.filter((s) => {
-    const dist = (s.district || "").toLowerCase().trim();
-    return dist === q || dist.includes(q) || q.includes(dist);
-  });
+  const canonical = normalizeTnDistrictName(districtName);
+  if (!canonical) return TAMIL_NADU_SUBZONES;
+  const q = canonical.toLowerCase().trim();
+  return TAMIL_NADU_SUBZONES.filter(
+    (subzone) => String(subzone.district || "").toLowerCase().trim() === q
+  );
 };
 
 /**

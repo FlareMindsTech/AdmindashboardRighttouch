@@ -43,6 +43,7 @@ import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
 import SharedStatCard from "components/common/StatCard";
+import TablePagination from "components/common/TablePagination";
 import {
   listProductPayments,
   getProductPaymentsSummary,
@@ -62,6 +63,9 @@ export default function AdminPayments() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
 
   // Record Offline Payment Modal
   const [offlineOpen, setOfflineOpen] = useState(false);
@@ -86,7 +90,7 @@ export default function AdminPayments() {
 
   const loadList = useCallback(async (isMounted = { current: true }) => {
     if (isMounted.current) setLoading(true);
-    const params = {};
+    const params = { page, limit };
     if (statusFilter) params.status = statusFilter;
 
     const { data, error } = await listProductPayments(params);
@@ -96,9 +100,18 @@ export default function AdminPayments() {
       toast({ title: "Failed to load payments", description: error, status: "error", duration: 3000, isClosable: true });
       return;
     }
-    const list = data?.result ?? data?.data ?? data ?? [];
-    setRows(Array.isArray(list) ? list : list?.payments ?? []);
-  }, [statusFilter, toast]);
+    const result = data?.result ?? data?.data ?? data ?? {};
+    const list = Array.isArray(result) ? result : result?.payments ?? [];
+    setRows(list);
+    setPagination(
+      result?.pagination ?? {
+        total: list.length,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(list.length / limit)),
+      }
+    );
+  }, [limit, page, statusFilter, toast]);
 
   useEffect(() => {
     const isMounted = { current: true };
@@ -184,15 +197,23 @@ export default function AdminPayments() {
   };
 
   const idOf = (r) => r?._id || r?.paymentId || r?.id || "—";
+  const inrFromPaise = (value) =>
+    `₹${(Number(value || 0) / 100).toLocaleString("en-IN")}`;
+  const paymentAmountPaise = (row) => {
+    if (row?.totalAmountPaise != null) return Number(row.totalAmountPaise);
+    if (row?.totalAmount != null) return Number(row.totalAmount) * 100;
+    if (row?.amount != null) return Number(row.amount) * 100;
+    return 0;
+  };
 
   return (
     <Box pt={{ base: "120px", md: "75px" }}>
       {/* Standardized 105px KPI Cards */}
       <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={{ base: 3, md: 4 }} mb={{ base: 3, md: 4 }}>
-        <SharedStatCard kpi title="Total Records" value={String(summary?.total ?? summary?.count ?? rows.length)} />
-        <SharedStatCard kpi title="Collected Revenue" value={`₹${Number(summary?.collected ?? summary?.totalAmount ?? 0).toLocaleString()}`} />
-        <SharedStatCard kpi title="Pending Verification" value={String(summary?.pending ?? 0)} />
-        <SharedStatCard kpi title="Failed / Disputed" value={String(summary?.failed ?? 0)} />
+        <SharedStatCard kpi title="Total Records" value={String(pagination.total)} />
+        <SharedStatCard kpi title="Collected Revenue" value={inrFromPaise(summary?.paidPaise)} />
+        <SharedStatCard kpi title="Pending Amount" value={inrFromPaise(summary?.pendingPaise)} />
+        <SharedStatCard kpi title="Failed Amount" value={inrFromPaise(summary?.failedPaise)} />
       </SimpleGrid>
 
       <Card>
@@ -267,9 +288,11 @@ export default function AdminPayments() {
                           return (
                             <Tr key={idOf(r) + i}>
                               <Td fontSize="xs" fontFamily="mono">{idOf(r)}</Td>
-                              <Td fontSize="xs" fontFamily="mono">{r?.bookingId || "—"}</Td>
-                              <Td fontWeight="bold">₹{Number(r?.amount ?? 0).toLocaleString()}</Td>
-                              <Td fontSize="xs">{r?.paymentMethod || r?.paymentMode || r?.gateway || "Razorpay"}</Td>
+                              <Td fontSize="xs" fontFamily="mono">
+                                {r?.bookingId?._id || r?.bookingId || "—"}
+                              </Td>
+                              <Td fontWeight="bold">{inrFromPaise(paymentAmountPaise(r))}</Td>
+                              <Td fontSize="xs">{r?.mode || r?.provider || r?.paymentMode || r?.gateway || "—"}</Td>
                               <Td><Badge colorScheme={badgeColor}>{status}</Badge></Td>
                               <Td fontSize="xs">{r?.createdAt ? new Date(r.createdAt).toLocaleString() : "—"}</Td>
                               <Td>
@@ -288,6 +311,25 @@ export default function AdminPayments() {
                       </Tbody>
                     </Table>
                   </Box>
+                )}
+                {rows.length > 0 && (
+                  <TablePagination
+                    page={pagination.page || page}
+                    totalPages={pagination.totalPages || 1}
+                    totalRows={pagination.total || rows.length}
+                    indexOfFirst={(pagination.page - 1) * (pagination.limit || limit)}
+                    indexOfLast={Math.min(
+                      (pagination.page || page) * (pagination.limit || limit),
+                      pagination.total || rows.length
+                    )}
+                    rowsPerPage={pagination.limit || limit}
+                    onPageChange={setPage}
+                    onRowsPerPageChange={(value) => {
+                      setLimit(value);
+                      setPage(1);
+                    }}
+                    label="payments"
+                  />
                 )}
               </TabPanel>
 

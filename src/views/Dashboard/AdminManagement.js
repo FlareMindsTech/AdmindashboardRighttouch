@@ -1478,6 +1478,19 @@ function AdminManagement() {
 
               {/* Controls: Search, Mandatory District Filter, Status Dropdown & Reset */}
               <Flex align="center" gap={3} flexWrap="wrap">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  color={customColor}
+                  borderColor={customColor}
+                  leftIcon={<Icon as={FaUserGraduate} />}
+                  _hover={{ bg: customColor, color: "white" }}
+                  _active={{ bg: "#004d4d", color: "white" }}
+                  onClick={() => navigate("/owner/skill-requests")}
+                >
+                  Skill Requests
+                </Button>
+
                 {/* Search */}
                 <InputGroup size="sm" maxW={{ base: "100%", sm: "300px" }}>
                   <Input

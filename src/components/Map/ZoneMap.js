@@ -13,13 +13,38 @@ import {
   Tooltip,
   VStack,
 } from "@chakra-ui/react";
-import { MdClear, MdCropSquare, MdGpsFixed, MdLocationOn, MdMap, MdRadar, MdSearch } from "react-icons/md";
+import { MdClear, MdContentCopy, MdCropSquare, MdGpsFixed, MdLocationOn, MdMap, MdRadar, MdSearch } from "react-icons/md";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { CITY_LOOKUP, TAMIL_NADU_CITIES, calculatePolygonCentroid, generateCircularGeoJSON } from "./DistrictMap.js";
-import { findTnDistrict, getTnDistrictBoundary, getDistrictCities, TAMIL_NADU_DISTRICTS, formatCleanCityName } from "../../data/tamilNaduLocations";
-import { isPointInPolygon, getSubzonesByDistrict } from "../../data/tamilNaduDistrictsData";
+import { detectParentDistrict, findTnDistrict, getTnDistrictBoundary, getDistrictCities, TAMIL_NADU_DISTRICTS, formatCleanCityName } from "../../data/tamilNaduLocations";
+import { computePlusCode, isPointInPolygon, getSubzonesByDistrict, TAMIL_NADU_SUBZONES } from "../../data/tamilNaduDistrictsData";
 import polygonClipping from "polygon-clipping";
+import {
+  clipPolygonAgainstZones,
+  filterZonesForDistrict,
+  getZoneId,
+} from "../../views/utils/zoneGeometry";
+import {
+  fitRadiusInDistrict,
+  serializeZonesForGeometry,
+} from "../../views/utils/zoneGeometryOperations";
+import {
+  isGeometryWorkerSupported,
+  runGeometryTask,
+} from "../../views/utils/zoneGeometryWorkerClient";
+
+if (L?.Canvas?.prototype && !L.Canvas.prototype._safeRedrawPatched) {
+  const originalRedraw = L.Canvas.prototype._redraw;
+  L.Canvas.prototype._redraw = function safeCanvasRedraw() {
+    if (!this._ctx || !this._map || !this._container) {
+      this._redrawRequest = null;
+      return;
+    }
+    return originalRedraw.call(this);
+  };
+  L.Canvas.prototype._safeRedrawPatched = true;
+}
 
 export const ZONE_COLOR_PALETTE = [
   { border: "#059669", fill: "#10b981", name: "Emerald Green" },
@@ -44,8 +69,11 @@ export const TN_MAX_BOUNDS = [
   [14.2, 81.5],
 ];
 
+let cachedBuiltinTnFeatures = null;
+
 export function getBuiltinTnFeatures() {
-  return TAMIL_NADU_DISTRICTS.map((d) => {
+  if (cachedBuiltinTnFeatures) return cachedBuiltinTnFeatures;
+  cachedBuiltinTnFeatures = TAMIL_NADU_DISTRICTS.map((d) => {
     const boundary = getTnDistrictBoundary(d.name) || generateCircularGeoJSON(d.lat, d.lng, 15);
     return {
       type: "Feature",
@@ -60,6 +88,7 @@ export function getBuiltinTnFeatures() {
       geometry: boundary,
     };
   });
+  return cachedBuiltinTnFeatures;
 }
 
 /**
@@ -190,6 +219,7 @@ export function getClosestPointOnRing(pt, ring) {
 // Global module-level cache for zero-latency instant GeoJSON loading
 let cachedTnFeatures = null;
 let tnFeaturesFetchPromise = null;
+const NO_DISTRICT_CONFLICTS = [];
 
 export default function ZoneMap({
   cityName = "",
@@ -210,7 +240,9 @@ export default function ZoneMap({
   allZones = [],
   selectedDistrictId = null,
   selectedZoneId = null,
+  conflictDistrictNames = NO_DISTRICT_CONFLICTS,
   onSelectDistrict,
+  onSelectSubzone,
   onSelectZone,
   onZoneSelect,
   technicians = [],
@@ -225,13 +257,18 @@ export default function ZoneMap({
   radiusKm = 10,
   onRadiusChange,
   onlyTamilNadu = true,
+  parentDistrictActive = true,
+  basemap = "osm", // "osm" | "vector"
   viewMode = "auto", // "auto" | "state" (full TN map) | "district" (per-district map)
 }) {
   const mode = modeProp || (readOnly || interactive === false ? "view" : "radius");
-  const editable = interactive && !readOnly && mode !== "view";
+  const editable = interactive && !readOnly && mode !== "view" && parentDistrictActive !== false;
 
   const mapRef = useRef(null);
   const leafletMap = useRef(null);
+  const mapAliveRef = useRef(false);
+  const userInteractedRef = useRef(false);
+  const didInitialFitRef = useRef(false);
   const groups = useRef({});
   const vertexMarkers = useRef([]);
 
@@ -258,6 +295,14 @@ export default function ZoneMap({
     () => (Array.isArray(zones) && zones.length ? zones : Array.isArray(allZones) ? allZones : []),
     [zones, allZones]
   );
+  const zoneBlockers = useMemo(() => {
+    const scoped = selectedDistrictId
+      ? filterZonesForDistrict(effectiveZones, selectedDistrictId)
+      : effectiveZones;
+    return scoped.filter(
+      (zone) => !selectedZoneId || String(getZoneId(zone)) !== String(selectedZoneId)
+    );
+  }, [effectiveZones, selectedDistrictId, selectedZoneId]);
   const presetCities = useMemo(
     () =>
       Array.isArray(cityOptions) && cityOptions.length
@@ -270,12 +315,13 @@ export default function ZoneMap({
   const selectZone = onSelectZone || onZoneSelect;
 
   const tileLayerRef = useRef(null);
-  const basemapMode = onlyTamilNadu ? "vector" : "osm";
   const [center, setCenter] = useState(null);
   const [radius, setRadius] = useState(radiusKm || 10);
   const [drawMode, setDrawMode] = useState(mode === "polygon");
   const [draftPoints, setDraftPoints] = useState([]); // [lat,lng][]
+  const [conflictZoneKeys, setConflictZoneKeys] = useState([]);
   const [status, setStatus] = useState("");
+  const [mapGeocode, setMapGeocode] = useState(null);
   const [tileFallback, setTileFallback] = useState(false);
   const [selectedTnDistrict, setSelectedTnDistrict] = useState(() => {
     if (viewMode === "state") return "";
@@ -503,6 +549,51 @@ export default function ZoneMap({
     if (onValidationChange) onValidationChange(validation);
   }, [validation, onValidationChange]);
 
+  const updateGeocode = useCallback(
+    (lat, lng) => {
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const nearest = (TAMIL_NADU_SUBZONES || []).reduce((best, sz) => {
+        const szLat = Number(sz.lat);
+        const szLng = Number(sz.lng);
+        if (!Number.isFinite(szLat) || !Number.isFinite(szLng)) return best;
+        const distance = Math.hypot(lat - szLat, lng - szLng);
+        if (distance > 0.15) return best;
+        if (!best || distance < best.distance) return { subzone: sz, distance };
+        return best;
+      }, null);
+      const subzone = nearest?.subzone || null;
+      const parentDistrict = detectParentDistrict(lat, lng);
+      setMapGeocode({
+        lat,
+        lng,
+        label:
+          subzone?.name ||
+          (parentDistrict?.name ? `${parentDistrict.name} District` : "Tamil Nadu"),
+        district: subzone?.district || parentDistrict?.name || canonicalActiveDistrict || "",
+        plusCode: subzone?.plus_code || computePlusCode(lat, lng),
+        pincode: subzone?.pincode || "",
+        adminCode: subzone?.admin_code || "",
+      });
+    },
+    [canonicalActiveDistrict]
+  );
+
+  const copyGeocode = useCallback(() => {
+    if (!mapGeocode) return;
+    const text =
+      `Geo Code: ${mapGeocode.lat.toFixed(5)}° N, ${mapGeocode.lng.toFixed(5)}° E | ` +
+      `Plus Code: ${mapGeocode.plusCode} | Admin Code: ${mapGeocode.adminCode || "--"} | ` +
+      `Zone: ${mapGeocode.label} (${mapGeocode.district}) | Pincode: ${mapGeocode.pincode || "--"}`;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => setStatus("Geo code copied to clipboard."))
+        .catch(() => setStatus(text));
+    } else {
+      setStatus(text);
+    }
+  }, [mapGeocode]);
+
   useEffect(() => {
     if (radiusKm && radiusKm !== radius) setRadius(radiusKm);
   }, [radiusKm]);
@@ -518,28 +609,38 @@ export default function ZoneMap({
     if (!parsedPolygon) return;
     const ring = parsedPolygon.coordinates[0];
     const c = calculatePolygonCentroid(ring.slice(0, -1));
-    if (c && Number.isFinite(c[0])) setCenter(c);
-  }, [polyKey]);
+    if (c && Number.isFinite(c[0])) {
+      setCenter(c);
+      updateGeocode(c[0], c[1]);
+    }
+  }, [polyKey, updateGeocode]);
 
-  const emitPolygon = useCallback(
-    (poly) => {
-      if (onPolygonChange) onPolygonChange(poly ? JSON.stringify(poly, null, 2) : "");
-    },
-    [onPolygonChange]
-  );
+  const onPolygonChangeRef = useRef(onPolygonChange);
+  useEffect(() => {
+    onPolygonChangeRef.current = onPolygonChange;
+  });
+  const emitPolygon = useCallback((poly) => {
+    if (onPolygonChangeRef.current) {
+      onPolygonChangeRef.current(poly ? JSON.stringify(poly, null, 2) : "");
+    }
+  }, []);
 
   // ---- map init (once) ----
   useEffect(() => {
     if (!mapRef.current || leafletMap.current) return;
+    userInteractedRef.current = false;
+    didInitialFitRef.current = false;
     const map = L.map(mapRef.current, {
       center: center && Number.isFinite(center[0]) ? center : [10.82, 78.4],
       zoom: 7.4,
-      zoomSnap: 0.1,
-      zoomDelta: 0.5,
+      zoomSnap: 0.5,
+      zoomDelta: 1,
+      wheelPxPerZoomLevel: 45,
+      wheelDebounceTime: 30,
       minZoom: 6,
       maxZoom: 18,
       maxBounds: onlyTamilNadu ? TN_MAX_BOUNDS : undefined,
-      maxBoundsViscosity: onlyTamilNadu ? 0.7 : undefined,
+      maxBoundsViscosity: onlyTamilNadu ? 0.4 : undefined,
       zoomControl: true,
       attributionControl: false,
       preferCanvas: true,
@@ -557,16 +658,24 @@ export default function ZoneMap({
       center: L.layerGroup().addTo(map),
     };
     leafletMap.current = map;
+    mapAliveRef.current = true;
 
-    // Responsive state fitting function ensuring full Tamil Nadu view fits viewport
+    const markUserInteraction = (event) => {
+      if (event?.originalEvent) userInteractedRef.current = true;
+    };
+    map.on("zoomstart movestart", markUserInteraction);
+
+    // Responsive state fitting function ensuring full Tamil Nadu view fits viewport.
+    // Only run the initial fit; never override a user's manual zoom afterwards.
     const fitState = () => {
-      if (!map) return;
+      if (!mapAliveRef.current || userInteractedRef.current || didInitialFitRef.current) return;
       try {
         map.invalidateSize();
         const sz = map.getSize();
         if (!sz || sz.x <= 10 || sz.y <= 10) return;
         if (onlyTamilNadu) {
           map.fitBounds(TN_BOUNDS, { padding: [15, 15] });
+          didInitialFitRef.current = true;
         }
       } catch {
         /* ignore */
@@ -575,36 +684,63 @@ export default function ZoneMap({
 
     fitState();
 
-    const ro = new ResizeObserver(() => {
-      if (!map) return;
-      try {
-        map.invalidateSize();
-      } catch {
-        /* ignore */
-      }
-    });
-    if (mapRef.current) ro.observe(mapRef.current);
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined" && mapRef.current) {
+      ro = new ResizeObserver(() => {
+        if (!mapAliveRef.current) return;
+        try {
+          map.invalidateSize();
+        } catch {
+          /* ignore */
+        }
+      });
+      ro.observe(mapRef.current);
+    }
 
     const t1 = setTimeout(fitState, 60);
     const t2 = setTimeout(fitState, 180);
     const t3 = setTimeout(fitState, 450);
 
     return () => {
+      mapAliveRef.current = false;
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
-      ro.disconnect();
-      map._animatingZoom = false;
-      if (typeof map.stop === "function") map.stop();
-      map.remove();
-      leafletMap.current = null;
+      if (ro) ro.disconnect();
+      try {
+        map.off();
+      } catch {
+        /* ignore */
+      }
+      try {
+        Object.values(groups.current).forEach((layerGroup) => {
+          if (layerGroup) layerGroup.clearLayers();
+        });
+      } catch {
+        /* ignore */
+      }
+      groups.current = {};
+      vertexMarkers.current = [];
+      try {
+        map._animatingZoom = false;
+        if (typeof map.stop === "function") map.stop();
+      } catch {
+        /* ignore */
+      }
+      try {
+        map.remove();
+      } catch {
+        /* ignore */
+      }
+      if (leafletMap.current === map) leafletMap.current = null;
+      tileLayerRef.current = null;
     };
   }, [onlyTamilNadu]);
 
-  // Dynamic basemap layer handling (pure vector vs street tile overlay)
+  // Dynamic basemap layer handling (OpenStreetMap by default, vector-only optional)
   useEffect(() => {
     const map = leafletMap.current;
-    if (!map) return;
+    if (!map || !mapAliveRef.current) return;
 
     if (tileLayerRef.current) {
       try {
@@ -615,80 +751,124 @@ export default function ZoneMap({
       tileLayerRef.current = null;
     }
 
-    if (basemapMode === "osm") {
-      const tileUrl = tileFallback
-        ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        : "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png";
-      const layer = L.tileLayer(tileUrl, { maxZoom: 19, subdomains: tileFallback ? "abcd" : "abc" });
+    if (basemap === "osm") {
+      const layer = tileFallback
+        ? L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            maxZoom: 19,
+            subdomains: "abcd",
+          })
+        : L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19,
+          });
       layer.on("tileerror", () => setTileFallback(true));
       layer.addTo(map);
       tileLayerRef.current = layer;
     }
-  }, [basemapMode, tileFallback]);
+  }, [basemap, tileFallback, onlyTamilNadu]);
 
   // ---- interactions ----
+  const zoneBlockersForGeometry = useMemo(
+    () => serializeZonesForGeometry(zoneBlockers),
+    [zoneBlockers]
+  );
+  const radiusRequestRef = useRef(0);
+
   const handleRadiusAt = useCallback(
-    (lat, lng, km) => {
-      // 1. Verify center is inside the active district (if active district exists)
-      if (activeDistrictRing && activeDistrictRing.length >= 3) {
-        if (!isPointInPolygon([lng, lat], activeDistrictRing)) {
-          setStatus(`⚠️ Click inside ${canonicalActiveDistrict || "the district"} to create zone`);
-          return;
+    async (lat, lng, km) => {
+      const requestedKm = Number(km) || 5;
+      const requestId = ++radiusRequestRef.current;
+      setStatus(`Calculating ${requestedKm} KM zone…`);
+
+      const payload = {
+        lat,
+        lng,
+        radiusKm: requestedKm,
+        districtGeometry: activeDistrictFeature?.geometry || null,
+        districtRing: activeDistrictRing,
+        zones: zoneBlockersForGeometry,
+        preferPoint: [lng, lat],
+        requireInsideDistrict: true,
+        fallbackToCircle: false,
+        maxSteps: 16,
+      };
+
+      let result = null;
+      if (isGeometryWorkerSupported()) {
+        try {
+          result = await runGeometryTask("fitRadius", payload);
+        } catch {
+          result = null;
         }
+      }
+      if (!result) result = fitRadiusInDistrict(payload);
+      if (requestId !== radiusRequestRef.current) return;
+
+      if (result.outsideDistrict) {
+        setStatus(`⚠️ Click inside ${canonicalActiveDistrict || "the district"} to create zone`);
+        return;
       }
 
       setCenter([lat, lng]);
+      const conflictKeys = result.conflictKeys || [];
+      const conflictNames = result.conflictNames || "";
 
-      // 2. Generate smooth 48-point circular polygon
-      const baseCircle = generateCircularGeoJSON(lat, lng, km, 48);
-      const circleRing = baseCircle.coordinates[0];
-
-      // 3. Exact boolean clipping: cut circle along district borders and corners
-      if (activeDistrictFeature?.geometry?.coordinates) {
-        try {
-          const geom = activeDistrictFeature.geometry;
-          const districtInput = geom.type === "MultiPolygon" ? geom.coordinates : [geom.coordinates];
-          const circleInput = [[circleRing]];
-
-          const clipped = polygonClipping.intersection(districtInput, circleInput);
-          if (clipped && clipped.length > 0) {
-            // Find the polygon piece containing or closest to [lng, lat]
-            let bestPoly = clipped[0];
-            if (clipped.length > 1) {
-              for (const poly of clipped) {
-                if (poly[0] && isPointInPolygon([lng, lat], poly[0])) {
-                  bestPoly = poly;
-                  break;
-                }
-              }
-            }
-            const clippedResult = {
-              type: "Polygon",
-              coordinates: bestPoly,
-            };
-            emitPolygon(clippedResult);
-            setStatus(`Zone inside ${canonicalActiveDistrict} • ${km} KM radius (cut to district border)`);
-            return;
-          } else {
-            setStatus(`⚠️ Click inside ${canonicalActiveDistrict} to create zone`);
-            return;
-          }
-        } catch (clipErr) {
-          console.warn("polygonClipping intersection error:", clipErr);
-        }
+      if (result.polygon && result.compatible) {
+        emitPolygon(result.polygon);
+        setConflictZoneKeys(result.adjusted ? conflictKeys : []);
+        setStatus(
+          result.reduced
+            ? `⚠️ Overlap with ${conflictNames || "existing zones"} — radius reduced to ${Number(
+                result.radiusKm
+              ).toFixed(1)} KM to fit the available area`
+            : result.adjusted
+              ? `✂ Boundary trimmed to avoid ${conflictNames || "existing zones"} in ${canonicalActiveDistrict || "the district"}`
+              : `Zone inside ${canonicalActiveDistrict || "district"} • ${requestedKm} KM radius${result.cutToDistrict ? " (cut to district border)" : ""}`
+        );
+        return;
       }
 
-      // Default unbounded circle
-      emitPolygon(baseCircle);
-      setStatus(`Center ${lat.toFixed(4)}, ${lng.toFixed(4)} • ${km} KM radius`);
+      setConflictZoneKeys(conflictKeys);
+      emitPolygon(null);
+      setStatus(
+        conflictNames
+          ? `⛔ This area is already covered by ${conflictNames}. Click outside existing zones or pick a smaller radius.`
+          : `⚠️ Could not place a zone here. Click inside ${canonicalActiveDistrict || "the district"} and retry.`
+      );
     },
-    [emitPolygon, activeDistrictFeature, activeDistrictRing, canonicalActiveDistrict]
+    [
+      activeDistrictFeature,
+      activeDistrictRing,
+      zoneBlockersForGeometry,
+      emitPolygon,
+      canonicalActiveDistrict,
+    ]
   );
 
-  // Jump to cityName preset and auto-generate radius circle if in radius mode
+  const mapCallbacksRef = useRef({});
+  useEffect(() => {
+    mapCallbacksRef.current = {
+      onSelectDistrict,
+      onCitySelect,
+      onSelectSubzone,
+      selectZone,
+      emitPolygon,
+      handleRadiusAt,
+    };
+  });
+
+  // Jump to a newly selected city preset. Do not recenter when only the
+  // radius, polygon, or zone data changes — that would fight manual zooming.
+  const cityViewKeyRef = useRef("");
   useEffect(() => {
     const activeCity = (selectedCityName || cityName || "").trim();
-    if (!activeCity) return;
+    if (!activeCity) {
+      cityViewKeyRef.current = "";
+      return;
+    }
     const key = activeCity.split("(")[0].trim().toLowerCase();
     const matchedCity = presetCities.find((city) => {
       const name = String(city.name || "").toLowerCase().trim();
@@ -699,8 +879,12 @@ export default function ZoneMap({
       : CITY_LOOKUP[key];
 
     if (hit && Number.isFinite(hit[0]) && Number.isFinite(hit[1])) {
+      const cityChanged = cityViewKeyRef.current !== key;
+      cityViewKeyRef.current = key;
+      if (!cityChanged) return;
+
       setCenter(hit);
-      if (leafletMap.current) {
+      if (leafletMap.current && mapAliveRef.current) {
         leafletMap.current.setView(hit, 12, { animate: true });
       }
       if (editable && mode === "radius" && !parsedPolygon) {
@@ -762,7 +946,7 @@ export default function ZoneMap({
       const lng = Number(targetItem.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-      if (leafletMap.current) {
+      if (leafletMap.current && mapAliveRef.current) {
         leafletMap.current.setView([lat, lng], 12);
       }
 
@@ -791,10 +975,11 @@ export default function ZoneMap({
 
   useEffect(() => {
     const map = leafletMap.current;
-    if (!map) return;
+    if (!map || !mapAliveRef.current) return;
     const onClick = (e) => {
       if (!editable) return;
       const { lat, lng } = e.latlng;
+      updateGeocode(lat, lng);
       if (drawMode) {
         if (activeDistrictRing && activeDistrictRing.length >= 3) {
           if (!isPointInPolygon([lng, lat], activeDistrictRing)) {
@@ -813,12 +998,12 @@ export default function ZoneMap({
     return () => {
       map.off("click", onClick);
     };
-  }, [editable, drawMode, radius, handleRadiusAt, activeDistrictRing, canonicalActiveDistrict]);
+  }, [editable, drawMode, radius, handleRadiusAt, activeDistrictRing, canonicalActiveDistrict, updateGeocode]);
 
   // ---- render layers ----
   useEffect(() => {
     const map = leafletMap.current;
-    if (!map) return;
+    if (!map || !mapAliveRef.current) return;
     map.invalidateSize();
     const g = groups.current;
     Object.values(g).forEach((lg) => lg && lg.clearLayers());
@@ -852,7 +1037,7 @@ export default function ZoneMap({
               );
               // keep closure
               if (idx === 0) next[next.length - 1] = [p.lng, p.lat];
-              emitPolygon({ type: "Polygon", coordinates: [next, ...parsedPolygon.coordinates.slice(1)] });
+              mapCallbacksRef.current.emitPolygon({ type: "Polygon", coordinates: [next, ...parsedPolygon.coordinates.slice(1)] });
             });
             m.addTo(g.boundary);
             vertexMarkers.current.push(m);
@@ -882,6 +1067,12 @@ export default function ZoneMap({
     if (layers.districts && Array.isArray(tnFeatures)) {
       // Always render all 38 districts of Tamil Nadu so the full operational map is always visible
       const featuresToRender = tnFeatures;
+      const districtConflictSet = new Set();
+      (conflictDistrictNames || []).forEach((name) => {
+        districtConflictSet.add(String(name).toLowerCase());
+        const canonical = findTnDistrict(name);
+        if (canonical?.name) districtConflictSet.add(canonical.name.toLowerCase());
+      });
 
       featuresToRender.forEach((feature) => {
         if (!feature?.geometry?.coordinates) return;
@@ -913,12 +1104,19 @@ export default function ZoneMap({
         const isOperational = Boolean(
           backendMatch && backendMatch.active !== false && backendMatch.isActive !== false
         );
+        const isConflict =
+          districtConflictSet.has(lowerName) ||
+          (distCode && districtConflictSet.has(String(distCode).toLowerCase()));
 
         // Green color for active / operational / selected district inside
-        const fillColor = (isCurrentSelected || isOperational) ? "#064e3b" : "#13253b";
-        const strokeColor = isCurrentSelected ? "#34d399" : isOperational ? "#10b981" : "rgba(56, 189, 248, 0.45)";
-        const fillOpacity = isCurrentSelected ? 0.48 : isOperational ? 0.38 : 0.65;
-        const weight = isCurrentSelected ? 3.0 : isOperational ? 2.0 : 1.4;
+        const fillColor = isConflict
+          ? "#ef4444"
+          : (isCurrentSelected || isOperational) ? "#064e3b" : "#13253b";
+        const strokeColor = isConflict
+          ? "#ef4444"
+          : isCurrentSelected ? "#34d399" : isOperational ? "#10b981" : "rgba(56, 189, 248, 0.45)";
+        const fillOpacity = isConflict ? 0.38 : isCurrentSelected ? 0.48 : isOperational ? 0.38 : 0.65;
+        const weight = isConflict ? 3.5 : isCurrentSelected ? 3.0 : isOperational ? 2.0 : 1.4;
 
         try {
           const layer = L.geoJSON(feature, {
@@ -927,8 +1125,8 @@ export default function ZoneMap({
               weight: weight,
               fillColor: fillColor,
               fillOpacity: fillOpacity,
-              dashArray: null,
-              opacity: isCurrentSelected ? 1.0 : 0.95,
+              dashArray: isConflict ? "7,4" : null,
+              opacity: isConflict ? 1.0 : isCurrentSelected ? 1.0 : 0.95,
             },
           });
 
@@ -938,8 +1136,8 @@ export default function ZoneMap({
                 <span>📍 ${distName}</span>
                 ${distCode ? `<span style="font-size: 10px; background: #1e293b; color: #94a3b8; padding: 1px 6px; border-radius: 4px; font-weight: 600;">${distCode}</span>` : ""}
               </div>
-              <div style="font-size: 11px; margin-top: 3px; font-weight: 600; color: ${isCurrentSelected ? "#22d3ee" : isOperational ? "#34d399" : "#94a3b8"};">
-                ${isCurrentSelected ? "🎯 Active Selected District" : isOperational ? "✓ Service Enabled" : "✕ Service Disabled"}
+              <div style="font-size: 11px; margin-top: 3px; font-weight: 600; color: ${isConflict ? "#fca5a5" : isCurrentSelected ? "#22d3ee" : isOperational ? "#34d399" : "#94a3b8"};">
+                ${isConflict ? "⚠️ Overlaps the boundary being created" : isCurrentSelected ? "🎯 Active Selected District" : isOperational ? "✓ Service Enabled" : "✕ Service Disabled"}
               </div>
               <div style="font-size: 10px; color: #38bdf8; margin-top: 3px;">
                 Click to focus district & inspect sub-zones
@@ -958,7 +1156,9 @@ export default function ZoneMap({
             const isViewingThisDistrictDetail = canonicalActiveDistrict && canonicalActiveDistrict.toLowerCase() === lowerName;
             // Suppress duplicate district centroid label when zoomed into / managing this district's cities
             if (!isViewingThisDistrictDetail) {
-              const labelHtml = isCurrentSelected
+              const labelHtml = isConflict
+                ? `<div class="district-name-badge default"><span>⚠️ ${distName}</span></div>`
+                : isCurrentSelected
                 ? `<div class="district-name-badge active-selected"><span>📍 ${distName}</span></div>`
                 : isOperational
                 ? `<div class="district-name-badge operational"><span>🟢 ${distName}</span></div>`
@@ -981,6 +1181,16 @@ export default function ZoneMap({
 
           layer.on({
             mouseover: () => {
+              if (isConflict) {
+                layer.setStyle({
+                  weight: 4.5,
+                  color: "#ef4444",
+                  fillColor: "#dc2626",
+                  fillOpacity: 0.55,
+                });
+                if (layer.bringToFront) layer.bringToFront();
+                return;
+              }
               if (!isCurrentSelected) {
                 layer.setStyle({
                   weight: 2.6,
@@ -992,13 +1202,14 @@ export default function ZoneMap({
               }
             },
             mouseout: () => {
-              if (!isCurrentSelected) {
+              if (!isCurrentSelected || isConflict) {
                 layer.setStyle({
                   color: strokeColor,
                   weight: weight,
                   fillColor: fillColor,
                   fillOpacity: fillOpacity,
-                  opacity: 0.95,
+                  dashArray: isConflict ? "7,4" : null,
+                  opacity: isConflict ? 1.0 : 0.95,
                 });
               }
             },
@@ -1022,12 +1233,13 @@ export default function ZoneMap({
                 isActive: isOperational,
               };
 
-              if (onSelectDistrict) onSelectDistrict(payload);
+              const callbacks = mapCallbacksRef.current;
+              if (callbacks.onSelectDistrict) callbacks.onSelectDistrict(payload);
 
               if (centerCoord) {
                 setCenter(centerCoord);
-                if (onCitySelect) {
-                  onCitySelect({ name: distName, code: distCode, lat: centerCoord[0], lng: centerCoord[1] });
+                if (!callbacks.onSelectDistrict && callbacks.onCitySelect) {
+                  callbacks.onCitySelect({ name: distName, code: distCode, lat: centerCoord[0], lng: centerCoord[1] });
                 }
               }
 
@@ -1045,10 +1257,10 @@ export default function ZoneMap({
                   setDraftPoints((prev) => [...prev, [lat, lng]]);
                 } else if (mode === "radius" || allowRadiusSelect) {
                   // Creates a micro-zone radius centered at clicked point, clipped to district borders
-                  handleRadiusAt(e.latlng.lat, e.latlng.lng, radius || radiusKm || 5);
+                  callbacks.handleRadiusAt(e.latlng.lat, e.latlng.lng, radius || radiusKm || 5);
                 } else {
                   // Only emit entire district geometry when in pure district mode (not micro-zone mode)
-                  emitPolygon(feature.geometry);
+                  callbacks.emitPolygon(feature.geometry);
                 }
               }
             },
@@ -1065,31 +1277,45 @@ export default function ZoneMap({
     if (layers.zones) {
       const zonesToRender = cappedZones;
 
+      const conflictKeys = new Set(conflictZoneKeys.map(String));
+      const activeDistrictSubzones = canonicalActiveDistrict
+        ? getSubzonesByDistrict(canonicalActiveDistrict)
+        : [];
+
       zonesToRender.forEach((z, idx) => {
         if (!z?.polygon?.coordinates) return;
-        const sel = selectedZoneId && String(z._id) === String(selectedZoneId);
+        const zoneKey = String(getZoneId(z) || z.name || "");
+        const isConflict = conflictKeys.has(zoneKey);
+        const sel = selectedZoneId && String(getZoneId(z)) === String(selectedZoneId);
         const isActive = z.active !== false;
         const colorPair = ZONE_COLOR_PALETTE[idx % ZONE_COLOR_PALETTE.length];
-        const strokeColor = sel ? "#f59e0b" : isActive ? colorPair.border : "#64748b";
-        const fillColor = sel ? "#fbbf24" : isActive ? colorPair.fill : "#475569";
+        const strokeColor = isConflict ? "#ef4444" : sel ? "#f59e0b" : isActive ? colorPair.border : "#64748b";
+        const fillColor = isConflict ? "#ef4444" : sel ? "#fbbf24" : isActive ? colorPair.fill : "#475569";
         try {
           const layer = L.geoJSON(z.polygon, {
             style: {
               color: strokeColor,
-              weight: sel ? 3.5 : 2.5,
+              weight: isConflict ? 3.5 : sel ? 3.5 : 2.5,
               fillColor: fillColor,
-              fillOpacity: sel ? 0.55 : isActive ? 0.45 : 0.15,
-              dashArray: isActive ? null : "3,3",
+              fillOpacity: isConflict ? 0.35 : sel ? 0.55 : isActive ? 0.45 : 0.15,
+              dashArray: isConflict ? "7,4" : isActive ? null : "3,3",
             },
           });
           layer.bindTooltip(
             `<div style="font-family:inherit;font-size:12px;padding:3px 5px;">` +
-            `<div style="font-weight:700;color:${colorPair.fill};">📍 ${z.name || "Zone"} ${z.zoneCode ? `(${z.zoneCode})` : ""}</div>` +
-            `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${isActive ? "Active Service Zone 🟢" : "Inactive ⚪"}</div>` +
+            `<div style="font-weight:700;color:${isConflict ? "#ef4444" : colorPair.fill};">📍 ${z.name || "Zone"} ${z.zoneCode ? `(${z.zoneCode})` : ""}</div>` +
+            `<div style="font-size:10px;color:${isConflict ? "#fca5a5" : "#94a3b8"};margin-top:2px;">${
+              isConflict ? "⚠️ Conflicts with the boundary being drawn" : isActive ? "Active Service Zone 🟢" : "Inactive ⚪"
+            }</div>` +
             `</div>`,
             { sticky: true, className: "custom-zone-tooltip" }
           );
-          if (selectZone) layer.on("click", (e) => { L.DomEvent.stopPropagation(e); selectZone(z); });
+          layer.on("click", (e) => {
+            const callbacks = mapCallbacksRef.current;
+            if (!callbacks.selectZone) return;
+            L.DomEvent.stopPropagation(e);
+            callbacks.selectZone(z);
+          });
           layer.addTo(g.zones);
 
           // Add centered label pill for existing custom zones inside this district
@@ -1098,7 +1324,7 @@ export default function ZoneMap({
             const actLower = (canonicalActiveDistrict || "").toLowerCase();
             const isMatch = zCity && actLower && (zCity === actLower || actLower.includes(zCity) || zCity.includes(actLower));
             if (isMatch) {
-              const subzones = getSubzonesByDistrict(canonicalActiveDistrict);
+              const subzones = activeDistrictSubzones;
               const cleanZoneName = formatCleanCityName(z.name || "Zone", canonicalActiveDistrict);
               const isCoveredBySubzone = subzones.some((sz) => {
                 const szClean = formatCleanCityName(sz.name, canonicalActiveDistrict).toLowerCase();
@@ -1132,7 +1358,7 @@ export default function ZoneMap({
       // Render official sub-zone / city pins for the active district (e.g. Tiruppur)
       if (canonicalActiveDistrict) {
         try {
-          const subzones = getSubzonesByDistrict(canonicalActiveDistrict);
+          const subzones = activeDistrictSubzones;
           subzones.forEach((sz) => {
             if (!Number.isFinite(sz.lat) || !Number.isFinite(sz.lng)) return;
             const cleanCity = formatCleanCityName(sz.name, canonicalActiveDistrict);
@@ -1167,9 +1393,17 @@ export default function ZoneMap({
             );
             m.on("click", (e) => {
               L.DomEvent.stopPropagation(e);
-              handleRadiusAt(sz.lat, sz.lng, sz.radius_km || radiusKm || 5);
-              if (onCitySelect) {
-                onCitySelect({
+              const callbacks = mapCallbacksRef.current;
+              if (callbacks.onSelectSubzone) {
+                if (leafletMap.current && mapAliveRef.current) {
+                  leafletMap.current.setView([sz.lat, sz.lng], 12);
+                }
+                callbacks.onSelectSubzone(sz);
+                return;
+              }
+              callbacks.handleRadiusAt(sz.lat, sz.lng, sz.radius_km || radiusKm || 5);
+              if (callbacks.onCitySelect) {
+                callbacks.onCitySelect({
                   name: cleanCity,
                   fullName: sz.name,
                   city: sz.district || canonicalActiveDistrict,
@@ -1211,11 +1445,11 @@ export default function ZoneMap({
           .addTo(g.customers);
       });
     }
-  }, [parsedPolygon, validation.valid, validation.reason, effectiveDistricts, effectiveZones, cappedZones, technicians, customers, layers, center, cityName, districtName, selectedDistrictId, selectedZoneId, editable, drawMode, draftPoints, selectZone, onSelectDistrict, emitPolygon, tnFeatures, selectedTnDistrict, selectedDistrictName, onCitySelect, mode, allowRadiusSelect, radius, radiusKm, handleRadiusAt, activeDistrictRing, canonicalActiveDistrict]);
+  }, [parsedPolygon, validation.valid, validation.reason, effectiveDistricts, effectiveZones, cappedZones, technicians, customers, layers, center, cityName, districtName, selectedDistrictId, selectedZoneId, editable, drawMode, draftPoints, tnFeatures, selectedTnDistrict, selectedDistrictName, mode, allowRadiusSelect, radius, radiusKm, activeDistrictRing, canonicalActiveDistrict, conflictZoneKeys, conflictDistrictNames]);
 
   const fitTamilNadu = useCallback(() => {
     const map = leafletMap.current;
-    if (!map) return;
+    if (!map || !mapAliveRef.current) return;
     map.invalidateSize();
     try {
       map.fitBounds(TN_BOUNDS, { padding: [15, 15] });
@@ -1229,7 +1463,7 @@ export default function ZoneMap({
   const handleFocusDistrict = useCallback(
     (targetName) => {
       const map = leafletMap.current;
-      if (!map) return;
+      if (!map || !mapAliveRef.current) return;
       const active = (targetName || canonicalActiveDistrict || selectedTnDistrict || districtName || "").trim();
       if (!active || active.toLowerCase() === "tamil nadu") {
         fitTamilNadu();
@@ -1258,7 +1492,7 @@ export default function ZoneMap({
 
   const fitAll = useCallback(() => {
     const map = leafletMap.current;
-    if (!map) return;
+    if (!map || !mapAliveRef.current) return;
     const g = groups.current;
     const b = L.latLngBounds([]);
     [g.boundary, g.zones].forEach((lg) => {
@@ -1288,7 +1522,7 @@ export default function ZoneMap({
 
       setCenter([lat, lng]);
       setSelectedTnDistrict(distName);
-      if (leafletMap.current) {
+      if (leafletMap.current && mapAliveRef.current) {
         if (feat) {
           try {
             const temp = L.geoJSON(feat);
@@ -1339,25 +1573,54 @@ export default function ZoneMap({
     }
     const ring = [...draftPoints.map(([lat, lng]) => [lng, lat]), [draftPoints[0][1], draftPoints[0][0]]];
 
+    let polygon = { type: "Polygon", coordinates: [ring] };
+    let cutToDistrict = false;
+
     if (activeDistrictFeature?.geometry?.coordinates) {
       try {
         const geom = activeDistrictFeature.geometry;
         const districtInput = geom.type === "MultiPolygon" ? geom.coordinates : [geom.coordinates];
         const clipped = polygonClipping.intersection(districtInput, [[[...ring]]]);
         if (clipped && clipped.length > 0) {
-          emitPolygon({ type: "Polygon", coordinates: clipped[0] });
-          setDraftPoints([]);
-          setStatus(`Polygon saved: ${clipped[0][0].length - 1} vertices (cut to district border).`);
-          return;
+          polygon = { type: "Polygon", coordinates: clipped[0] };
+          cutToDistrict = true;
         }
       } catch (err) {
         console.warn("polygonClipping finishDraft error:", err);
       }
     }
 
-    emitPolygon({ type: "Polygon", coordinates: [ring] });
+    const zoneResult = clipPolygonAgainstZones(polygon, zoneBlockers);
+    if (!zoneResult.polygon || !zoneResult.compatible) {
+      const blockedNames = (zoneResult.blockers?.length ? zoneResult.blockers : zoneResult.overlappingZones || [])
+        .map((zone) => `"${zone.name}"`)
+        .filter(Boolean)
+        .join(", ");
+      setConflictZoneKeys(
+        (zoneResult.overlappingZones || []).map((zone) => String(zone.id || zone.name))
+      );
+      setStatus(
+        blockedNames
+          ? `⛔ Boundary overlaps existing zone ${blockedNames}. Adjust the points and finish again.`
+          : "⛔ Boundary overlaps an existing zone in this district. Adjust the points and finish again."
+      );
+      return;
+    }
+
+    emitPolygon(zoneResult.polygon);
+    setConflictZoneKeys(
+      zoneResult.adjusted
+        ? (zoneResult.overlappingZones || []).map((zone) => String(zone.id || zone.name))
+        : []
+    );
     setDraftPoints([]);
-    setStatus(`Polygon saved: ${ring.length - 1} vertices.`);
+    setStatus(
+      zoneResult.adjusted
+        ? "Polygon saved after trimming the area already covered by existing zones."
+        : `Polygon saved: ${zoneResult.polygon.coordinates?.[0]?.length - 1 || ring.length - 1} vertices${
+            cutToDistrict ? " (cut to district border)" : ""
+          }.`
+    );
   };
 
   const showTb = showToolbar && !readOnly ? true : showToolbar && mode === "view";
@@ -1476,6 +1739,11 @@ export default function ZoneMap({
 
           {/* Controls: Focus District & Radius Kilometres */}
           <HStack spacing={2} flexWrap="wrap" align="center">
+            {parentDistrictActive === false && (
+              <Badge colorScheme="orange" variant="subtle" borderRadius="6px" px={2} py={1} fontSize="10px" fontWeight="700">
+                ⚠ Parent district disabled — enable it to draw or edit zones
+              </Badge>
+            )}
 
             {Boolean(canonicalActiveDistrict || selectedTnDistrict || districtName) && (
               <Button
@@ -1577,6 +1845,7 @@ export default function ZoneMap({
                     colorScheme="red"
                     onClick={() => {
                       emitPolygon(null);
+                      setConflictZoneKeys([]);
                       setStatus("Boundary cleared.");
                     }}
                   >
@@ -1610,7 +1879,52 @@ export default function ZoneMap({
           backgroundSize: "32px 32px",
           backgroundPosition: "0 0, 16px 16px",
         }}
-      />
+      >
+        {mapGeocode && (
+          <Box
+            position="absolute"
+            left="10px"
+            bottom="10px"
+            zIndex={450}
+            maxW="calc(100% - 20px)"
+            bg="rgba(2, 6, 23, 0.92)"
+            border="1px solid"
+            borderColor="rgba(6, 182, 212, 0.45)"
+            borderRadius="10px"
+            px={3}
+            py={2}
+            boxShadow="0 6px 18px rgba(0,0,0,0.4)"
+          >
+            <HStack spacing={2} align="flex-start">
+              <Icon as={MdLocationOn} color="cyan.300" boxSize={4} mt="1px" />
+              <Box minW={0}>
+                <HStack spacing={2} flexWrap="wrap">
+                  <Text fontSize="11px" fontWeight="800" color="cyan.200" noOfLines={1}>
+                    {mapGeocode.label}
+                  </Text>
+                  <Badge colorScheme="cyan" variant="subtle" fontSize="9px" borderRadius="4px">
+                    {mapGeocode.plusCode}
+                  </Badge>
+                </HStack>
+                <Text fontSize="10px" color="gray.300" mt="1px">
+                  {mapGeocode.lat.toFixed(5)}° N, {mapGeocode.lng.toFixed(5)}° E
+                  {mapGeocode.pincode ? ` • PIN ${mapGeocode.pincode}` : ""}
+                  {mapGeocode.adminCode ? ` • ${mapGeocode.adminCode}` : ""}
+                </Text>
+              </Box>
+              <IconButton
+                size="xs"
+                variant="ghost"
+                colorScheme="cyan"
+                icon={<MdContentCopy />}
+                aria-label="Copy geo code"
+                title="Copy geo code"
+                onClick={copyGeocode}
+              />
+            </HStack>
+          </Box>
+        )}
+      </Box>
 
       {/* Clean Status Strip */}
       <Flex

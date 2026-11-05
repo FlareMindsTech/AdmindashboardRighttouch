@@ -29,6 +29,7 @@ import {
 } from "store/slices/authSlice";
 import { clearAuth } from "views/utils/axiosInstance";
 import { useNotificationCoordinator } from "hooks/useNotificationCoordinator";
+import { useAdminSocket } from "hooks/useAdminSocket";
 
 export default function Dashboard(props) {
   const { ...rest } = props;
@@ -44,6 +45,7 @@ export default function Dashboard(props) {
   // Phase 3: single notification refresh owner for the owner session.
   // Owns the badge/inbox-count polling + cross-tab sync; unmounts on logout.
   useNotificationCoordinator();
+  useAdminSocket();
 
   const { isOpen: isSidebarOpen, onOpen: onSidebarOpen, onClose: onSidebarClose } = useDisclosure();
   const { isOpen: isPluginOpen, onOpen: onPluginOpen, onClose: onPluginClose } = useDisclosure();

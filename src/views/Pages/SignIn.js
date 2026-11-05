@@ -16,24 +16,9 @@ import {
   VStack,
   HStack,
   Badge,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalBody,
-  ModalFooter,
-  ModalCloseButton,
   keyframes,
 } from "@chakra-ui/react";
-import {
-  MdAdminPanelSettings,
-  MdLightbulb,
-  MdErrorOutline,
-  MdLockOutline,
-  MdWarningAmber,
-  MdWifiOff,
-  MdPersonOff,
-  MdSecurity,
-} from "react-icons/md";
+import { MdAdminPanelSettings, MdLightbulb } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
@@ -75,17 +60,7 @@ function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isGlow, setIsGlow] = useState(false);
-
-  // Professional Login Failure Modal State
-  const [errorModal, setErrorModal] = useState({
-    isOpen: false,
-    title: "",
-    message: "",
-    code: "",
-    tips: [],
-    type: "error", // "error" | "warning"
-    focusField: "password", // "mobile" | "password" | "none"
-  });
+  const [invalidField, setInvalidField] = useState("");
 
   // Animations
   const floatAnimation = keyframes`
@@ -120,30 +95,22 @@ function AdminLogin() {
     100% { transform: rotate(-5deg); }
   `;
 
-  const pulseRing = keyframes`
-    0% { transform: scale(0.95); opacity: 0.7; }
-    50% { transform: scale(1.2); opacity: 0.2; }
-    100% { transform: scale(0.95); opacity: 0.7; }
-  `;
+  const focusField = (field) => {
+    setInvalidField(field === "mobile" || field === "password" ? field : "");
+    if (field !== "mobile" && field !== "password") return;
+    setTimeout(() => {
+      const target = field === "password" ? passwordInputRef.current : mobileInputRef.current;
+      target?.focus();
+      target?.select?.();
+    }, 100);
+  };
 
-  const showErrorModal = ({
+  const showErrorToast = ({
     title,
     message,
-    code = "",
-    tips = [],
     type = "error",
-    focusField = "password",
+    field = "",
   }) => {
-    setErrorModal({
-      isOpen: true,
-      title,
-      message,
-      code,
-      tips,
-      type,
-      focusField,
-    });
-    // Also trigger toast notification for stack visibility
     toast({
       title,
       description: message,
@@ -151,90 +118,57 @@ function AdminLogin() {
       duration: 5000,
       isClosable: true,
     });
+    focusField(field);
   };
 
-  const handleCloseModal = () => {
-    const focusTarget = errorModal.focusField;
-    setErrorModal((prev) => ({ ...prev, isOpen: false }));
-    setTimeout(() => {
-      if (focusTarget === "password") {
-        passwordInputRef.current?.focus();
-        passwordInputRef.current?.select?.();
-      } else if (focusTarget === "mobile") {
-        mobileInputRef.current?.focus();
-        mobileInputRef.current?.select?.();
-      }
-    }, 150);
-  };
-
-  const handleClearAndRetry = () => {
-    if (errorModal.focusField === "password") {
-      setPassword("");
-      handleCloseModal();
-      setTimeout(() => passwordInputRef.current?.focus(), 150);
-    } else {
-      setIdentifier("");
-      setPassword("");
-      handleCloseModal();
-      setTimeout(() => mobileInputRef.current?.focus(), 150);
+  const handleMobileKeyDown = (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const cleanIdentifier = (identifier || "").toString().trim();
+    if (!cleanIdentifier) {
+      showErrorToast({
+        title: "Mobile Number Required",
+        message: "Please enter your registered mobile number to continue.",
+        type: "warning",
+        field: "mobile",
+      });
+      return;
     }
-  };
-
-  const getModalIcon = (code, type) => {
-    if (code === "NETWORK_ERROR" || code === "HTTP_0") return MdWifiOff;
-    if (code === "USER_NOT_FOUND" || code === "ROLE_MISMATCH" || code === "FORBIDDEN") return MdPersonOff;
-    if (code === "ACCOUNT_BLOCKED" || code === "ACCOUNT_DELETED") return MdSecurity;
-    if (code === "INVALID_CREDENTIALS" || code === "PASSWORD_REQUIRED") return MdLockOutline;
-    if (type === "warning") return MdWarningAmber;
-    return MdErrorOutline;
+    focusField("password");
   };
 
   const handleLogin = async (e) => {
     if (e) e.preventDefault();
+    setInvalidField("");
 
     const cleanIdentifier = (identifier || "").toString().trim();
 
     if (!cleanIdentifier && !password) {
-      showErrorModal({
+      showErrorToast({
         title: "Required Fields Missing",
         message: "Please enter your registered mobile number and password to sign in.",
-        code: "FIELDS_REQUIRED",
         type: "warning",
-        focusField: "mobile",
-        tips: [
-          "Enter your registered 10-digit mobile number.",
-          "Enter your administrator password.",
-        ],
+        field: "mobile",
       });
       return;
     }
 
     if (!cleanIdentifier) {
-      showErrorModal({
+      showErrorToast({
         title: "Mobile Number Required",
         message: "Please enter your registered mobile number to proceed.",
-        code: "MOBILE_REQUIRED",
         type: "warning",
-        focusField: "mobile",
-        tips: [
-          "Enter your 10-digit mobile number (e.g. 9876543210).",
-          "Ensure your account is registered with Right Touch.",
-        ],
+        field: "mobile",
       });
       return;
     }
 
     if (!password || !password.trim()) {
-      showErrorModal({
+      showErrorToast({
         title: "Password Required",
         message: "Please enter your password to sign in.",
-        code: "PASSWORD_REQUIRED",
         type: "warning",
-        focusField: "password",
-        tips: [
-          "Password cannot be left blank.",
-          "Check that Caps Lock is not enabled.",
-        ],
+        field: "password",
       });
       return;
     }
@@ -274,43 +208,23 @@ function AdminLogin() {
 
       let title = "Login Failed";
       let message = rawMessage || "Invalid mobile number or password.";
-      let tips = [
-        "Check that Caps Lock is turned off.",
-        "Verify your registered 10-digit mobile number.",
-        "Contact super administrator if you forgot your credentials.",
-      ];
       let type = "error";
-      let focusField = "password";
+      let field = "password";
 
       if (code === "NETWORK_ERROR" || status === 0 || (err?.name === "AxiosError" && !err.response)) {
         title = "Server Connection Error";
         message = "Unable to connect to the Right Touch authentication server. Please check your network connection or server status.";
-        tips = [
-          "Check your internet or Wi-Fi connectivity.",
-          "If connected via VPN or strict firewall, ensure server access is allowed.",
-          "The backend server may be restarting; please wait a moment.",
-        ];
         type = "warning";
-        focusField = "none";
+        field = "none";
       } else if (status === 429 || code === "TOO_MANY_ATTEMPTS") {
         title = "Too Many Attempts";
         message = rawMessage || "Too many failed login attempts. For security reasons, access is temporarily locked.";
-        tips = [
-          "Temporary rate limit has been triggered to safeguard your account.",
-          "Please wait 15 minutes before submitting your next attempt.",
-          "If urgent, reach out to your super administrator.",
-        ];
         type = "warning";
-        focusField = "none";
+        field = "none";
       } else if (status === 404 || code === "USER_NOT_FOUND" || /not found/i.test(rawMessage)) {
         title = "Account Not Found";
         message = rawMessage || "No account found with this mobile number. Please check the number or contact your super administrator.";
-        tips = [
-          "Verify the registered 10-digit mobile number.",
-          "Ensure your account has been provisioned as an Owner/Admin.",
-          "Contact your super admin to invite or register your mobile number.",
-        ];
-        focusField = "mobile";
+        field = "mobile";
       } else if (
         status === 403 ||
         code === "FORBIDDEN" ||
@@ -319,20 +233,11 @@ function AdminLogin() {
       ) {
         title = "Access Restricted";
         message = rawMessage || "This mobile number is registered under a different role. This dashboard is strictly for Owner and Admin accounts.";
-        tips = [
-          "The Admin Portal is restricted to Owner/Admin accounts only.",
-          "Customer or technician accounts must use their respective mobile apps.",
-          "Contact system administration to request elevated privileges.",
-        ];
-        focusField = "mobile";
+        field = "mobile";
       } else if (code === "ACCOUNT_BLOCKED" || /blocked|suspended/i.test(rawMessage)) {
         title = "Account Suspended";
         message = rawMessage || "Your administrator account has been suspended or blocked by security policy.";
-        tips = [
-          "Account access has been temporarily restricted.",
-          "Please contact technical support or your super admin to restore access.",
-        ];
-        focusField = "none";
+        field = "none";
       } else if (
         status === 401 ||
         code === "INVALID_CREDENTIALS" ||
@@ -340,31 +245,14 @@ function AdminLogin() {
       ) {
         title = "Incorrect Credentials";
         message = rawMessage || "The mobile number or password you entered is incorrect. Please verify your credentials and try again.";
-        tips = [
-          "Ensure Caps Lock is not turned on.",
-          "Double-check for typos in your password.",
-          "Verify that your registered 10-digit mobile number is correct.",
-        ];
-        focusField = "password";
+        field = "password";
       } else if (status >= 500) {
         title = "Authentication Service Error";
         message = rawMessage || "The authentication service encountered an unexpected error. Please try again shortly.";
-        tips = [
-          "The backend server is temporarily experiencing issues.",
-          "Please wait a few seconds and click Try Again.",
-          "If the issue persists, contact technical support.",
-        ];
-        focusField = "none";
+        field = "none";
       }
 
-      showErrorModal({
-        title,
-        message,
-        code: code || (status ? `HTTP_${status}` : "AUTH_FAILED"),
-        tips,
-        type,
-        focusField,
-      });
+      showErrorToast({ title, message, type, field });
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -566,13 +454,7 @@ function AdminLogin() {
         >
           <VStack spacing={{ base: "20px", sm: "22px", md: "25px", lg: "28px", xl: "30px" }} align="stretch">
             {/* Mobile / Identifier Field */}
-            <FormControl
-              isRequired
-              isInvalid={Boolean(
-                errorModal.isOpen &&
-                  (errorModal.focusField === "mobile" || errorModal.code === "FIELDS_REQUIRED")
-              )}
-            >
+            <FormControl isRequired isInvalid={invalidField === "mobile"}>
               <FormLabel
                 fontSize={{ base: "14px", sm: "15px", md: "16px", lg: "16px", xl: "17px" }}
                 fontWeight="600"
@@ -615,22 +497,15 @@ function AdminLogin() {
                 value={identifier}
                 onChange={(e) => {
                   setIdentifier(e.target.value);
-                  if (errorModal.isOpen) setErrorModal((prev) => ({ ...prev, isOpen: false }));
+                  setInvalidField("");
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleLogin(e);
-                }}
+                onKeyDown={handleMobileKeyDown}
                 size={{ base: "md", sm: "lg", md: "lg", lg: "lg", xl: "lg" }}
                 h={{ base: "45px", sm: "48px", md: "50px", lg: "52px", xl: "55px" }}
                 p="14px"
                 borderRadius="12px"
                 border="2px solid"
-                borderColor={
-                  errorModal.isOpen &&
-                  (errorModal.focusField === "mobile" || errorModal.code === "FIELDS_REQUIRED")
-                    ? "red.400"
-                    : "gray.200"
-                }
+                borderColor={invalidField === "mobile" ? "red.400" : "gray.200"}
                 bg="white"
                 _hover={{ borderColor: "teal.300" }}
                 _focus={{
@@ -643,13 +518,7 @@ function AdminLogin() {
             </FormControl>
 
             {/* Password Field */}
-            <FormControl
-              isRequired
-              isInvalid={Boolean(
-                errorModal.isOpen &&
-                  (errorModal.focusField === "password" || errorModal.code === "FIELDS_REQUIRED")
-              )}
-            >
+            <FormControl isRequired isInvalid={invalidField === "password"}>
               <FormLabel
                 fontSize={{ base: "14px", sm: "15px", md: "16px", lg: "16px", xl: "17px" }}
                 fontWeight="600"
@@ -679,21 +548,13 @@ function AdminLogin() {
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
-                    if (errorModal.isOpen) setErrorModal((prev) => ({ ...prev, isOpen: false }));
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleLogin(e);
+                    setInvalidField("");
                   }}
                   h={{ base: "45px", sm: "48px", md: "50px", lg: "52px", xl: "55px" }}
                   p="14px"
                   borderRadius="12px"
                   border="2px solid"
-                  borderColor={
-                    errorModal.isOpen &&
-                    (errorModal.focusField === "password" || errorModal.code === "FIELDS_REQUIRED")
-                      ? "red.400"
-                      : "gray.200"
-                  }
+                  borderColor={invalidField === "password" ? "red.400" : "gray.200"}
                   bg="white"
                   _hover={{ borderColor: "teal.300" }}
                   _focus={{
@@ -730,7 +591,6 @@ function AdminLogin() {
               borderRadius="14px"
               bg="linear-gradient(135deg, #FFD700 0%, #F5B700 100%)"
               color="#004d4d"
-              onClick={handleLogin}
               isLoading={loading}
               loadingText="Authenticating..."
               fontSize={{ base: "16px", sm: "17px", md: "18px", lg: "18px", xl: "19px" }}
@@ -779,218 +639,6 @@ function AdminLogin() {
           </VStack>
         </Flex>
       </Flex>
-
-      {/* Professional Login Failure Pop-up Modal */}
-      <Modal
-        isOpen={errorModal.isOpen}
-        onClose={handleCloseModal}
-        isCentered
-        motionPreset="scale"
-        size="md"
-        closeOnOverlayClick={true}
-      >
-        <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(6px)" />
-        <ModalContent
-          containerProps={{ zIndex: 1401 }}
-          borderRadius="24px"
-          overflow="hidden"
-          boxShadow="0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 0 35px rgba(239, 68, 68, 0.25)"
-          border="1.5px solid"
-          borderColor={errorModal.type === "warning" ? "orange.300" : "red.300"}
-          bg="white"
-          mx={{ base: 4, sm: "auto" }}
-        >
-          {/* Top Decorative Gradient Accent */}
-          <Box
-            h="6px"
-            w="100%"
-            bg={
-              errorModal.type === "warning"
-                ? "linear-gradient(90deg, #F59E0B 0%, #FBBF24 100%)"
-                : "linear-gradient(90deg, #EF4444 0%, #DC2626 100%)"
-            }
-          />
-
-          <ModalCloseButton
-            top="14px"
-            right="14px"
-            borderRadius="full"
-            _hover={{ bg: "gray.100" }}
-          />
-
-          <ModalBody pt="28px" pb="20px" px={{ base: "20px", sm: "28px" }}>
-            <VStack spacing={4} align="center" textAlign="center">
-              {/* Pulsing Icon Badge */}
-              <Box position="relative" display="flex" alignItems="center" justifyContent="center">
-                <Box
-                  position="absolute"
-                  w="84px"
-                  h="84px"
-                  borderRadius="full"
-                  bg={errorModal.type === "warning" ? "orange.100" : "red.100"}
-                  opacity={0.6}
-                  animation={`${pulseRing} 2s infinite`}
-                />
-                <Box
-                  w="70px"
-                  h="70px"
-                  borderRadius="full"
-                  bg={errorModal.type === "warning" ? "orange.50" : "red.50"}
-                  border="2px solid"
-                  borderColor={errorModal.type === "warning" ? "orange.300" : "red.300"}
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  boxShadow="0 8px 24px rgba(239, 68, 68, 0.15)"
-                  zIndex={2}
-                >
-                  <Icon
-                    as={getModalIcon(errorModal.code, errorModal.type)}
-                    w="36px"
-                    h="36px"
-                    color={errorModal.type === "warning" ? "orange.500" : "red.500"}
-                  />
-                </Box>
-              </Box>
-
-              {/* Title & Badge */}
-              <VStack spacing={2}>
-                <Text
-                  fontSize={{ base: "20px", sm: "22px" }}
-                  fontWeight="800"
-                  color="gray.800"
-                  letterSpacing="-0.3px"
-                  lineHeight="1.2"
-                >
-                  {errorModal.title || "Login Failed"}
-                </Text>
-                <HStack spacing={2} justify="center">
-                  <Badge
-                    colorScheme={errorModal.type === "warning" ? "orange" : "red"}
-                    variant="subtle"
-                    fontSize="11px"
-                    px="10px"
-                    py="2px"
-                    borderRadius="6px"
-                    textTransform="uppercase"
-                    letterSpacing="0.5px"
-                    fontWeight="700"
-                  >
-                    {errorModal.code ? errorModal.code.replace(/_/g, " ") : "AUTHENTICATION FAILED"}
-                  </Badge>
-                </HStack>
-              </VStack>
-
-              {/* Error Message */}
-              <Text
-                fontSize={{ base: "14px", sm: "15px" }}
-                color="gray.600"
-                lineHeight="1.6"
-              >
-                {errorModal.message}
-              </Text>
-
-              {/* Helpful Tips Card */}
-              {errorModal.tips && errorModal.tips.length > 0 && (
-                <Box
-                  w="100%"
-                  bg="gray.50"
-                  border="1px solid"
-                  borderColor="gray.200"
-                  borderRadius="14px"
-                  p="14px 16px"
-                  textAlign="left"
-                >
-                  <HStack spacing="6px" mb="8px">
-                    <Text fontSize="13px">💡</Text>
-                    <Text
-                      fontSize="12px"
-                      fontWeight="700"
-                      color="gray.700"
-                      textTransform="uppercase"
-                      letterSpacing="0.5px"
-                    >
-                      Troubleshooting Tips:
-                    </Text>
-                  </HStack>
-                  <VStack align="stretch" spacing="6px">
-                    {errorModal.tips.map((tip, idx) => (
-                      <HStack key={idx} align="flex-start" spacing="8px">
-                        <Box
-                          w="5px"
-                          h="5px"
-                          borderRadius="full"
-                          bg={errorModal.type === "warning" ? "orange.400" : "red.400"}
-                          mt="7px"
-                          flexShrink={0}
-                        />
-                        <Text fontSize="13px" color="gray.600" lineHeight="1.4">
-                          {tip}
-                        </Text>
-                      </HStack>
-                    ))}
-                  </VStack>
-                </Box>
-              )}
-            </VStack>
-          </ModalBody>
-
-          <ModalFooter
-            bg="gray.50"
-            borderTop="1px solid"
-            borderColor="gray.100"
-            px={{ base: "20px", sm: "28px" }}
-            py="16px"
-            display="flex"
-            flexDirection="column"
-            gap="10px"
-          >
-            <HStack w="100%" spacing="12px">
-              <Button
-                variant="outline"
-                colorScheme="gray"
-                h="44px"
-                borderRadius="12px"
-                flex="1"
-                fontSize="14px"
-                fontWeight="600"
-                onClick={handleClearAndRetry}
-              >
-                {errorModal.focusField === "password" ? "Clear Password" : "Clear Form"}
-              </Button>
-
-              <Button
-                bg="linear-gradient(135deg, #008080 0%, #006666 100%)"
-                color="white"
-                h="44px"
-                borderRadius="12px"
-                flex="1.3"
-                fontSize="14px"
-                fontWeight="bold"
-                _hover={{
-                  bg: "linear-gradient(135deg, #006666 0%, #004d4d 100%)",
-                  transform: "translateY(-1px)",
-                  boxShadow: "0 6px 18px rgba(0, 128, 128, 0.35)",
-                }}
-                _active={{
-                  transform: "translateY(0)",
-                }}
-                transition="all 0.2s"
-                onClick={handleCloseModal}
-              >
-                Try Again
-              </Button>
-            </HStack>
-
-            <Text fontSize="12px" color="gray.500" textAlign="center" mt="2px">
-              Need assistance? Contact{" "}
-              <Text as="span" color="teal.600" fontWeight="600">
-                support@righttouch.com
-              </Text>
-            </Text>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
     </Flex>
   );
 }

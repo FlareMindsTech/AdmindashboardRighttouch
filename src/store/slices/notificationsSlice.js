@@ -186,6 +186,16 @@ const notificationsSlice = createSlice({
         state.counts = { ...DEFAULT_MODULE_COUNTS, ...counts };
       }
     },
+    // Authoritative counts pushed over Socket.IO. Persist so cross-tab
+    // storage sync and a hard refresh start from the latest values.
+    applySocketCounts(state, action) {
+      const counts = action.payload;
+      if (counts && typeof counts === "object") {
+        state.counts = { ...DEFAULT_MODULE_COUNTS, ...counts };
+        persistCounts(state.counts);
+        state.lastFetchedCountsAt = Date.now();
+      }
+    },
     resetNotifications(state) {
       state.counts = { ...DEFAULT_MODULE_COUNTS };
       state.countsStatus = "idle";
@@ -378,7 +388,7 @@ const notificationsSlice = createSlice({
   },
 });
 
-export const { syncCountsFromStorage, resetNotifications } =
+export const { syncCountsFromStorage, applySocketCounts, resetNotifications } =
   notificationsSlice.actions;
 
 // Selectors for sidebar badges and navbar display.

@@ -1,11 +1,6 @@
 import React from "react";
+import AppModal from "components/common/AppModal";
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
   Flex,
   HStack,
   Box,
@@ -33,11 +28,7 @@ const UserDetailsModal = React.memo(function UserDetailsModal({
   if (!selectedUser) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg">
-      <ModalOverlay backdropFilter="blur(2px)" bg="blackAlpha.500" />
-      <ModalContent maxW="620px" borderRadius="xl" overflow="hidden" shadow="2xl">
-        <ModalHeader bg="gray.900" color="white" py={4} px={6}>
-          <Flex align="center" justify="space-between" pr={6}>
+    <AppModal isOpen={isOpen} onClose={onClose} size="lg" headerBg="gray.900" headerColor="white" closeButtonColor="white" bodyMaxH="75vh" title={<><Flex align="center" justify="space-between" pr={6}>
             <HStack spacing={3}>
               <Box p={2} bg={`${customColor}30`} borderRadius="md">
                 <Icon as={FaUsers} color="teal.300" boxSize={5} />
@@ -60,10 +51,7 @@ const UserDetailsModal = React.memo(function UserDetailsModal({
             >
               {selectedUser.status || "Active"}
             </Badge>
-          </Flex>
-        </ModalHeader>
-        <ModalCloseButton color="white" mt={1} />
-        <ModalBody p={5} maxH="75vh" overflowY="auto" bg="gray.50">
+          </Flex></>}>
           <VStack spacing={4} align="stretch">
             {/* Profile Banner Card */}
             <Box bg="white" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200" shadow="xs">
@@ -199,9 +187,8 @@ const UserDetailsModal = React.memo(function UserDetailsModal({
               </Badge>
             </Box>
           </VStack>
-        </ModalBody>
-      </ModalContent>
-    </Modal>
+
+</AppModal>
   );
 });
 

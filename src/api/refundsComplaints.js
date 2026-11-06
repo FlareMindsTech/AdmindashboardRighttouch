@@ -47,3 +47,10 @@ export const getComplaintCategories = () =>
 export const updateComplaintStatus = (id, body) =>
   handle(apiClient.post(`/admin/complaints/${id}/status`, body));
 
+// Manual Customer Refunds Processing (Post-removal of in-system provider refunds)
+export const markRefundProcessed = (refundId, body) =>
+  handle(apiClient.post(`/admin/refunds/${refundId}/mark-processed`, body));
+
+export const cancelRefund = (refundId, body) =>
+  handle(apiClient.post(`/admin/refunds/${refundId}/cancel`, body));
+

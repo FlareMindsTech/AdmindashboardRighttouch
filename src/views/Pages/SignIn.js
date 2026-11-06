@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useAppToast } from "components/feedback";
 import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
 import {
   Flex,
@@ -10,7 +11,6 @@ import {
   InputRightElement,
   Text,
   useColorModeValue,
-  useToast,
   Icon,
   Box,
   VStack,
@@ -30,7 +30,7 @@ import {
 
 function AdminLogin() {
   const bgForm = useColorModeValue("white", "gray.800");
-  const toast = useToast();
+  const toast = useAppToast();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const isOwner = useAppSelector(selectIsOwner);

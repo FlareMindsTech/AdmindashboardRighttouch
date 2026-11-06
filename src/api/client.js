@@ -4,6 +4,7 @@
 // paths like `/user/owner/login` instead of repeating `/api`.
 import axios from "axios";
 import { getToken, clearAuth, handleSessionExpiry } from "views/utils/axiosInstance";
+import { normalizeError } from "errors/normalizeError";
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL ||
@@ -47,22 +48,17 @@ export const handle = async (promise) => {
     const res = await promise;
     return { data: res.data, error: null };
   } catch (err) {
-    const payload = err.response?.data || null;
-    const message =
-      payload?.message ||
-      payload?.error ||
-      err.message ||
-      "Request failed";
+    const normalized = normalizeError(err).normalized;
     return {
       data: null,
-      error: message,
-      status: err.response?.status || 0,
-      code: payload?.code || payload?.errorCode || "",
-      conflicts:
-        payload?.conflicts ||
-        payload?.conflictingDistricts ||
-        payload?.conflictingZones ||
-        [],
+      error: normalized.message || normalized.title || "Request failed",
+      errorInfo: normalized,
+      status: normalized.status,
+      code: normalized.code,
+      fieldErrors: normalized.fieldErrors,
+      retryable: normalized.retryable,
+      requestId: normalized.requestId,
+      conflicts: normalized.conflicts,
     };
   }
 };

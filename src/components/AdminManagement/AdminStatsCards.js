@@ -7,7 +7,6 @@ import {
   Badge,
   Skeleton,
   Icon,
-  useColorMode,
 } from "@chakra-ui/react";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
@@ -33,8 +32,7 @@ export default function AdminStatsCards({
   customColor = "#008080",
   textColor = "gray.700",
 }) {
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
+  const isDark = false;
 
   const {
     totalCount = 0,

@@ -18,3 +18,18 @@ export const getAutoPayoutSettings = () =>
 export const updateAutoPayoutSettings = (body) =>
   handle(apiClient.put("/admin/settings/auto-payout", body));
 
+// Withdrawal Configuration & Limits (Manual Payouts)
+export const getWithdrawalSettings = () =>
+  handle(
+    apiClient
+      .get("/admin/settings/withdrawal")
+      .catch(() => apiClient.get("/admin/settings/auto-payout"))
+  );
+
+export const updateWithdrawalSettings = (body) =>
+  handle(
+    apiClient
+      .put("/admin/settings/withdrawal", body)
+      .catch(() => apiClient.put("/admin/settings/auto-payout", body))
+  );
+

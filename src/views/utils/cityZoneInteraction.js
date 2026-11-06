@@ -29,17 +29,13 @@ export const isPolygonDraftDirty = (current, saved) =>
 
 /**
  * Returns true when the caller may proceed with a discard/replace.
- * Never prompts when nothing changed. `confirmFn` defaults to
- * `window.confirm` so tests can inject a stub.
+ * Never prompts when nothing changed. The confirmation UI is injected so
+ * callers can use the shared app modal instead of a native browser prompt.
  */
 export const confirmIfDirty = (dirty, message, confirmFn) => {
   if (!dirty) return true;
-  const fn =
-    confirmFn ||
-    (typeof window !== "undefined" && typeof window.confirm === "function"
-      ? (msg) => window.confirm(msg)
-      : () => true);
-  return fn(message || "You have unsaved polygon changes. Discard them?") === true;
+  if (typeof confirmFn !== "function") return false;
+  return confirmFn(message || "You have unsaved polygon changes. Discard them?") === true;
 };
 
 export const shouldBlockUnload = (dirty) => dirty === true;

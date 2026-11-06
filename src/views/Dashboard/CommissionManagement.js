@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import AppModal from "components/common/AppModal";
+import { useAppToast } from "components/feedback";
+import ErrorState from "components/feedback/ErrorState";
 import {
   Box,
   Button,
@@ -18,16 +21,8 @@ import {
   HStack,
   Text,
   useColorModeValue,
-  useToast,
   Spinner,
   Badge,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Center,
   Select,
   SimpleGrid,
@@ -137,7 +132,7 @@ const globalScrollbarStyles = {
 };
 
 export default function CommissionManagement() {
-  const toast = useToast();
+  const toast = useAppToast();
   const dispatch = useAppDispatch();
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
@@ -148,6 +143,7 @@ export default function CommissionManagement() {
   const [commissions, setCommissions] = useState([]);
   const [allServices, setAllServices] = useState([]);
   const [isLoadingCommissions, setIsLoadingCommissions] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [commissionSearch, setCommissionSearch] = useState("");
   const [commissionMarginFilter, setCommissionMarginFilter] = useState("ALL");
   const [commissionStatusFilter, setCommissionStatusFilter] = useState("ALL");
@@ -237,6 +233,7 @@ export default function CommissionManagement() {
   // -------------------------------------------------------------
   const fetchCommissions = useCallback(async () => {
     try {
+      setLoadError(null);
       setIsLoadingCommissions(true);
       const response = await getAllServiceCommissions(commissionPage, 100, commissionSearch);
       const data = response.result || response.data || response.commissions || response || [];
@@ -245,6 +242,7 @@ export default function CommissionManagement() {
       setTotalCommissionPages(Math.ceil(list.length / itemsPerPage) || 1);
     } catch (err) {
       console.error("Error fetching commissions:", err);
+      setLoadError(err);
       setCommissions([]);
     } finally {
       setIsLoadingCommissions(false);
@@ -546,13 +544,7 @@ export default function CommissionManagement() {
       setIsRuleModalOpen(false);
       fetchCommissions();
     } catch (err) {
-      toast({
-        title: "Action Failed",
-        description: err.message || "Failed to save commission rate.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Action Failed", description: "Failed to save commission rate.", duration: 3000, isClosable: true });
     } finally {
       setIsSubmittingRule(false);
     }
@@ -571,13 +563,7 @@ export default function CommissionManagement() {
       });
       fetchCommissions();
     } catch (err) {
-      toast({
-        title: "Cancel Failed",
-        description: err.message || "Could not cancel scheduled revision.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Cancel Failed", description: "Could not cancel scheduled revision.", duration: 3000, isClosable: true });
     }
   };
 
@@ -598,13 +584,7 @@ export default function CommissionManagement() {
       });
       fetchCommissions();
     } catch (err) {
-      toast({
-        title: "Status Update Failed",
-        description: err.message || "Could not toggle commission rule status.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Status Update Failed", description: "Could not toggle commission rule status.", duration: 3000, isClosable: true });
     }
   };
 
@@ -658,13 +638,7 @@ export default function CommissionManagement() {
       setIsOverrideModalOpen(false);
       fetchBookingsList();
     } catch (err) {
-      toast({
-        title: "Override Failed",
-        description: err.message || "Could not apply commission override.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Override Failed", description: "Could not apply commission override.", duration: 3000, isClosable: true });
     } finally {
       setIsSubmittingOverride(false);
     }
@@ -683,13 +657,7 @@ export default function CommissionManagement() {
       });
       fetchBookingsList();
     } catch (err) {
-      toast({
-        title: "Revert Failed",
-        description: err.message || "Could not revert booking override.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Revert Failed", description: "Could not revert booking override.", duration: 3000, isClosable: true });
     }
   };
 
@@ -732,6 +700,16 @@ export default function CommissionManagement() {
       overflowY="auto"
       css={globalScrollbarStyles}
     >
+      {loadError && (
+        <Box mb={4}>
+          <ErrorState
+            compact
+            error={loadError}
+            title="Could not load commission data"
+            onRetry={fetchCommissions}
+          />
+        </Box>
+      )}
       {/* ------------------------------------------------------------- */}
       {/* 1. KPI STAT CARDS BANNER                                        */}
       {/* ------------------------------------------------------------- */}
@@ -1597,11 +1575,7 @@ export default function CommissionManagement() {
       {/* ============================================================= */}
       {/* MODAL 1: CREATE / UPDATE / SCHEDULE COMMISSION RULE           */}
       {/* ============================================================= */}
-      <Modal isOpen={isRuleModalOpen} onClose={() => setIsRuleModalOpen(false)} size="xl" isCentered>
-        <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(6px)" zIndex={1400} />
-        <ModalContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401} mx={4} overflow="hidden">
-          <ModalHeader bg="white" color="gray.800" borderBottom="1px solid" borderColor="gray.100" pr="50px" py={4}>
-            <HStack spacing={2.5}>
+      <AppModal isOpen={isRuleModalOpen} onClose={() => setIsRuleModalOpen(false)} size="xl" isCentered headerBg="white" headerColor="gray.800" closeButtonColor="gray.800" title={<><HStack spacing={2.5}>
               <Flex
                 w="36px"
                 h="36px"
@@ -1627,11 +1601,21 @@ export default function CommissionManagement() {
                     : "Configure platform revenue cut applied to new bookings"}
                 </Text>
               </Box>
-            </HStack>
-          </ModalHeader>
-          <ModalCloseButton top="16px" right="16px" borderRadius="full" _hover={{ bg: "gray.100" }} />
-
-          <ModalBody bg="white" py={5} px={6}>
+            </HStack></>} footer={<><Button variant="ghost" mr={3} size="sm" onClick={() => setIsRuleModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              bg={isSchedulingMode ? "purple.600" : BRAND}
+              _hover={{ bg: isSchedulingMode ? "purple.700" : BRAND_DARK }}
+              _active={{ bg: isSchedulingMode ? "purple.800" : "#004d4d" }}
+              color="white"
+              size="sm"
+              borderRadius="8px"
+              isLoading={isSubmittingRule}
+              onClick={handleSubmitRule}
+            >
+              {isSchedulingMode ? "Confirm & Schedule" : targetCommissionItem ? "Confirm Rate Update" : "Create Commission Rule"}
+            </Button></>}>
             <VStack spacing={4} align="stretch">
               {/* Service Selector */}
               <FormControl isRequired>
@@ -1763,36 +1747,13 @@ export default function CommissionManagement() {
                 />
               </FormControl>
             </VStack>
-          </ModalBody>
 
-          <ModalFooter bg="gray.50" borderTop="1px solid" borderColor="gray.100" py={3} px={6}>
-            <Button variant="ghost" mr={3} size="sm" onClick={() => setIsRuleModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              bg={isSchedulingMode ? "purple.600" : BRAND}
-              _hover={{ bg: isSchedulingMode ? "purple.700" : BRAND_DARK }}
-              _active={{ bg: isSchedulingMode ? "purple.800" : "#004d4d" }}
-              color="white"
-              size="sm"
-              borderRadius="8px"
-              isLoading={isSubmittingRule}
-              onClick={handleSubmitRule}
-            >
-              {isSchedulingMode ? "Confirm & Schedule" : targetCommissionItem ? "Confirm Rate Update" : "Create Commission Rule"}
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+</AppModal>
 
       {/* ============================================================= */}
       {/* MODAL 2: SERVICE COMMISSION AUDIT HISTORY                     */}
       {/* ============================================================= */}
-      <Modal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} size="xl" isCentered>
-        <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(6px)" zIndex={1400} />
-        <ModalContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401} mx={4} overflow="hidden">
-          <ModalHeader bg="white" color="gray.800" borderBottom="1px solid" borderColor="gray.100" pr="50px" py={4}>
-            <HStack spacing={2.5} align="flex-start">
+      <AppModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} size="xl" isCentered headerBg="white" headerColor="gray.800" closeButtonColor="gray.800" bodyMaxH="65vh" title={<><HStack spacing={2.5} align="flex-start">
               <Flex w="36px" h="36px" borderRadius="10px" bg="teal.50" color={BRAND} align="center" justify="center" flexShrink={0} mt={0.5}>
                 <Icon as={FaHistory} boxSize={5} />
               </Flex>
@@ -1809,11 +1770,9 @@ export default function CommissionManagement() {
                   </Tag>
                 </HStack>
               </Box>
-            </HStack>
-          </ModalHeader>
-          <ModalCloseButton top="16px" right="16px" borderRadius="full" _hover={{ bg: "gray.100" }} />
-
-          <ModalBody bg="white" py={4} px={6} maxH="65vh" overflowY="auto" css={globalScrollbarStyles}>
+            </HStack></>} footer={<><Button size="sm" onClick={() => setIsHistoryModalOpen(false)} borderRadius="8px">
+              Close
+            </Button></>}>
             {/* Current Active Configuration Snapshot */}
             {historyService && (
               <Box mb={4} p={3.5} bg="gray.50" borderRadius="12px" border="1px solid" borderColor="gray.200">
@@ -1892,24 +1851,13 @@ export default function CommissionManagement() {
                 ))}
               </VStack>
             )}
-          </ModalBody>
 
-          <ModalFooter bg="gray.50" borderTop="1px solid" borderColor="gray.100" py={3} px={6}>
-            <Button size="sm" onClick={() => setIsHistoryModalOpen(false)} borderRadius="8px">
-              Close
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+</AppModal>
 
       {/* ============================================================= */}
       {/* MODAL 3: BOOKING COMMISSION OVERRIDE MODAL                    */}
       {/* ============================================================= */}
-      <Modal isOpen={isOverrideModalOpen} onClose={() => setIsOverrideModalOpen(false)} size="lg" isCentered>
-        <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(6px)" zIndex={1400} />
-        <ModalContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401} mx={4} overflow="hidden">
-          <ModalHeader bg="white" color="gray.800" borderBottom="1px solid" borderColor="gray.100" pr="50px" py={4}>
-            <HStack spacing={2.5}>
+      <AppModal isOpen={isOverrideModalOpen} onClose={() => setIsOverrideModalOpen(false)} size="lg" isCentered headerBg="white" headerColor="gray.800" closeButtonColor="gray.800" title={<><HStack spacing={2.5}>
               <Flex w="36px" h="36px" borderRadius="10px" bg="purple.50" color="purple.600" align="center" justify="center">
                 <Icon as={FaCalculator} boxSize={5} />
               </Flex>
@@ -1917,11 +1865,21 @@ export default function CommissionManagement() {
                 <Text fontSize="md" fontWeight="800">Override Booking Commission</Text>
                 <Text fontSize="xs" fontWeight="500" color="gray.500">Apply a negotiated manual commission rate exception</Text>
               </Box>
-            </HStack>
-          </ModalHeader>
-          <ModalCloseButton top="16px" right="16px" borderRadius="full" _hover={{ bg: "gray.100" }} />
-
-          <ModalBody bg="white" py={5} px={6}>
+            </HStack></>} footer={<><Button variant="ghost" mr={3} size="sm" onClick={() => setIsOverrideModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              bg="purple.600"
+              _hover={{ bg: "purple.700" }}
+              _active={{ bg: "purple.800" }}
+              color="white"
+              size="sm"
+              borderRadius="8px"
+              isLoading={isSubmittingOverride}
+              onClick={handleSubmitOverride}
+            >
+              Confirm Override
+            </Button></>}>
             {selectedBookingForOverride && (
               <VStack spacing={4} align="stretch">
                 <Box p={3.5} bg="purple.50" borderRadius="12px" border="1px solid" borderColor="purple.200">
@@ -2021,27 +1979,8 @@ export default function CommissionManagement() {
                 </FormControl>
               </VStack>
             )}
-          </ModalBody>
 
-          <ModalFooter bg="gray.50" borderTop="1px solid" borderColor="gray.100" py={3} px={6}>
-            <Button variant="ghost" mr={3} size="sm" onClick={() => setIsOverrideModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              bg="purple.600"
-              _hover={{ bg: "purple.700" }}
-              _active={{ bg: "purple.800" }}
-              color="white"
-              size="sm"
-              borderRadius="8px"
-              isLoading={isSubmittingOverride}
-              onClick={handleSubmitOverride}
-            >
-              Confirm Override
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+</AppModal>
 
       {/* ============================================================= */}
       {/* MODAL 4: AUDIT LOG DETAILS MODAL (Using Global InspectionModal) */}

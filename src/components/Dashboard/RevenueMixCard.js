@@ -7,7 +7,6 @@ import {
   Icon,
   Text,
   VStack,
-  useColorMode,
 } from "@chakra-ui/react";
 import { FaChartPie } from "react-icons/fa";
 import ReactApexChart from "react-apexcharts";
@@ -69,8 +68,7 @@ export default function RevenueMixCard({
   productRevenue = 0,
   gridColumn,
 }) {
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
+  const isDark = false;
   const total = Number(serviceRevenue) + Number(productRevenue);
   const servicePercent = total > 0 ? (serviceRevenue / total) * 100 : 0;
   const productPercent = total > 0 ? (productRevenue / total) * 100 : 0;

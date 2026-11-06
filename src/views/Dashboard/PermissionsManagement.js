@@ -2,13 +2,13 @@
 // Covers permissions requests in Postman folder 17:
 // GET /admin/permissions/:userId, GET /admin/permissions/analytics
 import React, { useState, useCallback, useEffect } from "react";
+import { useAppToast } from "components/feedback";
 import {
   Box,
   Button,
   Flex,
   Heading,
   Text,
-  useToast,
   Spinner,
   Center,
   SimpleGrid,
@@ -58,7 +58,7 @@ const DEFAULT_MODULES = [
 ];
 
 export default function PermissionsManagement() {
-  const toast = useToast();
+  const toast = useAppToast();
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector(selectUser);
 

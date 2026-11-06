@@ -34,7 +34,7 @@ export default function InspectionModal({
   primaryAction,
   secondaryAction = { label: "Close", onClick: onClose },
 }) {
-  const cardBg = useColorModeValue("gray.50", "gray.750");
+  const cardBg = useColorModeValue("gray.50", "gray.800");
   const cardBorder = useColorModeValue("gray.200", "gray.700");
   const labelColor = useColorModeValue("gray.500", "gray.400");
   const valueColor = useColorModeValue("gray.800", "white");

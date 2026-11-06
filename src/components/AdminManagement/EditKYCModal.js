@@ -1,12 +1,6 @@
 import React from "react";
+import AppModal from "components/common/AppModal";
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Button,
   VStack,
   FormControl,
@@ -23,14 +17,12 @@ export default function EditKYCModal({
   isLoading,
 }) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="md">
-      <ModalOverlay />
-      <ModalContent borderRadius="14px">
-        <ModalHeader borderBottom="1px solid" borderColor="gray.100">
-          Edit Technician KYC Numbers
-        </ModalHeader>
-        <ModalCloseButton />
-        <ModalBody py={4}>
+    <AppModal isOpen={isOpen} onClose={onClose} size="md" title={<>Edit Technician KYC Numbers</>} footer={<><Button size="sm" mr={2} variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" colorScheme="teal" onClick={onSave} isLoading={isLoading}>
+            Save Changes
+          </Button></>}>
           <VStack spacing={3}>
             <FormControl>
               <FormLabel fontSize="xs">Aadhaar Number (12 digits)</FormLabel>
@@ -62,16 +54,7 @@ export default function EditKYCModal({
               />
             </FormControl>
           </VStack>
-        </ModalBody>
-        <ModalFooter bg="gray.50">
-          <Button size="sm" mr={2} variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button size="sm" colorScheme="teal" onClick={onSave} isLoading={isLoading}>
-            Save Changes
-          </Button>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+
+</AppModal>
   );
 }

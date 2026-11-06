@@ -1,125 +1,85 @@
-// Chakra Imports
+import React, { useEffect, useState } from "react";
 import {
   Box,
   Flex,
-  useColorModeValue,
   IconButton,
   HStack,
 } from "@chakra-ui/react";
 import { HamburgerIcon } from "@chakra-ui/icons";
-import React, { useEffect, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
 import AdminNavbarLinks from "./AdminNavbarLinks";
 
 const AdminNavbar = React.memo(function AdminNavbar(props) {
+  const { onOpen } = props;
   const [scrolled, setScrolled] = useState(false);
-  const { fixed, secondary, onOpen } = props;
 
   useEffect(() => {
-    const changeNavbar = () => setScrolled(window.scrollY > 1);
-    window.addEventListener("scroll", changeNavbar);
-    return () => window.removeEventListener("scroll", changeNavbar);
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 8);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-  // Colors
-  let mainText = useColorModeValue("gray.700", "gray.200");
-  let navbarBg = "#008080";
-  let navbarShadow = "none";
-  let navbarBorder = "transparent";
-
-  // Hoisted unconditionally (Rules of Hooks); branch selection below is
-  // plain assignment, so rendered values are unchanged.
-  const navbarBgScrolled = useColorModeValue("white", "gray.800");
-  const navbarShadowScrolled = useColorModeValue(
-    "0px 7px 23px rgba(0, 0, 0, 0.1)",
-    "none"
-  );
-  const navbarBorderScrolled = useColorModeValue("#E2E8F0", "rgba(255,255,255,0.1)");
-  const navbarBgUnscrolled = useColorModeValue("#008080", "gray.800");
-
-  if (fixed) {
-    if (scrolled) {
-      navbarBg = navbarBgScrolled;
-      navbarShadow = navbarShadowScrolled;
-      navbarBorder = navbarBorderScrolled;
-    } else {
-      navbarBg = navbarBgUnscrolled;
-      navbarShadow = "0px 4px 20px rgba(0, 0, 0, 0.05)";
-    }
-  }
-
-  if (secondary) {
-    mainText = "white";
-    navbarBg = "transparent";
-  }
 
   return (
     <>
-      {/* Background layer – FIXED RESPONSIVE HEIGHT */}
+      {/* Background layer for deep visual anchor */}
       <Box
         position="fixed"
         top="0"
         left="0"
         right="0"
-        height={{ base: "0px", md: "100px", lg: "110px", xl: "120px" }}
+        height={{ base: "0px", md: "90px", lg: "95px" }}
         bg="#008080"
         zIndex="-1"
       />
 
-      {/* MAIN NAVBAR */}
+      {/* Main Luxury Executive Header Bar */}
       <Flex
-        as="nav"
+        as="header"
         position="fixed"
         top="0"
+        left="0"
+        right="0"
         w="100%"
+        h={{ base: "64px", md: "74px" }}
         align="center"
         justify="space-between"
-        px={{ base: 4, md: 6, lg: 10 }}
-        minH={{ base: "70px", md: "80px", lg: "85px" }}
-        bg={navbarBg}
-        borderColor={navbarBorder}
-        borderWidth={fixed ? "1.5px" : "0px"}
-        boxShadow={navbarShadow}
-        transition="all 0.25s ease"
+        px={{ base: 3, sm: 4, md: 6, lg: 8 }}
+        bg="linear-gradient(135deg, #008080 0%, #006b6b 60%, #005454 100%)"
+        backdropFilter="blur(12px)"
+        WebkitBackdropFilter="blur(12px)"
+        borderBottom="1px solid"
+        borderColor="rgba(255, 255, 255, 0.16)"
+        boxShadow={
+          scrolled
+            ? "0 10px 28px -4px rgba(0, 50, 50, 0.5), 0 2px 8px rgba(0, 0, 0, 0.15)"
+            : "0 4px 18px rgba(0, 50, 50, 0.28)"
+        }
+        transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
         zIndex="1000"
       >
-        {/* MOBILE: HAMBURGER */}
-        <IconButton
-          aria-label="Open Menu"
-          icon={<HamburgerIcon />}
-          display={{ base: "flex", lg: "none" }}
-          color="white"
-          bg="transparent"
-          _hover={{ bg: "rgba(255,255,255,0.2)" }}
-          _active={{ bg: "rgba(255,255,255,0.3)" }}
-          onClick={onOpen}
-        />
-
-        {/* MOBILE: EMPTY CENTER HOLDER */}
-        <Box
-          flex="1"
-          textAlign="center"
-          display={{ base: "block", lg: "none" }}
-        />
-
-        {/* DESKTOP SPACER */}
-        <Box flex="1" display={{ base: "none", lg: "block" }} />
-
-        {/* RIGHT-SIDE LINKS */}
-        <HStack spacing={{ base: 3, md: 4, lg: 6 }} flexShrink={0}>
-          <AdminNavbarLinks
-            size={{ base: "lg", md: "xl", lg: "xl" }}
-            logoText={props.logoText}
-            secondary={secondary}
-            fixed={fixed}
-            scrolled={scrolled}
-            iconSpacing={{ base: 3, md: 4, lg: 6 }}
+        {/* LEFT SECTION: Mobile Hamburger Trigger */}
+        <HStack spacing={3} align="center">
+          <IconButton
+            aria-label="Open Navigation Drawer"
+            icon={<HamburgerIcon boxSize={5} color="white" />}
+            display={{ base: "flex", lg: "none" }}
+            variant="ghost"
+            size="sm"
+            borderRadius="10px"
+            bg="rgba(255, 255, 255, 0.12)"
+            _hover={{ bg: "rgba(255, 255, 255, 0.22)" }}
+            _active={{ bg: "rgba(255, 255, 255, 0.3)" }}
+            onClick={onOpen}
           />
         </HStack>
-      </Flex>
 
-      {/* RESPONSIVE SPACER (prevents content hiding under navbar) */}
-      <Box height={{ base: "70px", md: "100px", lg: "110px", xl: "125px" }} />
+        {/* Flexible center spacer */}
+        <Box flex="1" />
+
+        {/* RIGHT SECTION: Quick links, Notifications, Profile capsule */}
+        <AdminNavbarLinks scrolled={scrolled} />
+      </Flex>
     </>
   );
 });

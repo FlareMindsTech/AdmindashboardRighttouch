@@ -4,7 +4,6 @@ import {
   useDisclosure,
   Stack,
   Box,
-  useColorMode,
   Spinner,
   Flex,
 } from "@chakra-ui/react";
@@ -33,7 +32,7 @@ import { useAdminSocket } from "hooks/useAdminSocket";
 
 export default function Dashboard(props) {
   const { ...rest } = props;
-  const [fixed, setFixed] = useState(false);
+  const [fixed] = useState(false);
   const dispatch = useAppDispatch();
   // Canonical auth state (Phase 2): restored once from legacy storage by
   // initializeAuth (also dispatched at entry in index.js — idempotent).
@@ -48,7 +47,7 @@ export default function Dashboard(props) {
   useAdminSocket();
 
   const { isOpen: isSidebarOpen, onOpen: onSidebarOpen, onClose: onSidebarClose } = useDisclosure();
-  const { isOpen: isPluginOpen, onOpen: onPluginOpen, onClose: onPluginClose } = useDisclosure();
+  const { onOpen: onPluginOpen } = useDisclosure();
 
   document.documentElement.dir = "ltr";
 
@@ -281,7 +280,7 @@ export default function Dashboard(props) {
         minH="100vh"
         overflowX="hidden"
         overflowY="auto"
-        w={{ base: "100%", sm: "100%", md: "100%", lg: "calc(100% - 335px)", xl: "calc(100% - 340px)", "2xl": "calc(100% - 340px)" }}
+        w={{ base: "100%", sm: "100%", md: "100%", lg: "calc(100% - 390px)", xl: "calc(100% - 410px)", "2xl": "calc(100% - 410px)" }}
         transition="all 0.33s cubic-bezier(0.685, 0.0473, 0.346, 1)"
         css={{
           scrollbarWidth: "thin",

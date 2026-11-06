@@ -1,12 +1,6 @@
 import React from "react";
+import AppModal from "components/common/AppModal";
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Flex,
   Box,
   Heading,
@@ -47,14 +41,44 @@ export default function AdminDetailsModal({
   getTechnicianSpecialization,
 }) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside">
-      <ModalOverlay />
-      <ModalContent borderRadius="16px">
-        <ModalHeader borderBottom="1px solid" borderColor="gray.100">
-          Technician Complete Profile
-        </ModalHeader>
-        <ModalCloseButton />
-        <ModalBody py={4}>
+    <AppModal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside" title={<>Technician Complete Profile</>} footer={<>{selectedTechnician && (
+            <Flex w="100%" justify="space-between" align="center">
+              <Button
+                size="sm"
+                colorScheme={selectedTechnician.trainingCompleted ? "orange" : "teal"}
+                leftIcon={<FaUserGraduate />}
+                onClick={() => onToggleTraining(selectedTechnician, !selectedTechnician.trainingCompleted)}
+                isLoading={loading}
+              >
+                {selectedTechnician.trainingCompleted ? "Mark Training Incomplete" : "Approve Gate 1 Training"}
+              </Button>
+
+              <HStack spacing={2}>
+                <Button
+                  size="sm"
+                  colorScheme="purple"
+                  leftIcon={<FaIdCard />}
+                  onClick={() => {
+                    onClose();
+                    onOpenKYCModal(selectedTechnician);
+                  }}
+                >
+                  Review KYC
+                </Button>
+                <Button
+                  size="sm"
+                  colorScheme="orange"
+                  leftIcon={<FaUniversity />}
+                  onClick={() => {
+                    onClose();
+                    onOpenBankModal(selectedTechnician);
+                  }}
+                >
+                  Review Bank
+                </Button>
+              </HStack>
+            </Flex>
+          )}</>}>
           {selectedTechnician && (
             <VStack spacing={4} align="stretch">
               {/* Header info */}
@@ -319,48 +343,7 @@ export default function AdminDetailsModal({
               })()}
             </VStack>
           )}
-        </ModalBody>
-        <ModalFooter bg="gray.50" borderTop="1px solid" borderColor="gray.100">
-          {selectedTechnician && (
-            <Flex w="100%" justify="space-between" align="center">
-              <Button
-                size="sm"
-                colorScheme={selectedTechnician.trainingCompleted ? "orange" : "teal"}
-                leftIcon={<FaUserGraduate />}
-                onClick={() => onToggleTraining(selectedTechnician, !selectedTechnician.trainingCompleted)}
-                isLoading={loading}
-              >
-                {selectedTechnician.trainingCompleted ? "Mark Training Incomplete" : "Approve Gate 1 Training"}
-              </Button>
 
-              <HStack spacing={2}>
-                <Button
-                  size="sm"
-                  colorScheme="purple"
-                  leftIcon={<FaIdCard />}
-                  onClick={() => {
-                    onClose();
-                    onOpenKYCModal(selectedTechnician);
-                  }}
-                >
-                  Review KYC
-                </Button>
-                <Button
-                  size="sm"
-                  colorScheme="orange"
-                  leftIcon={<FaUniversity />}
-                  onClick={() => {
-                    onClose();
-                    onOpenBankModal(selectedTechnician);
-                  }}
-                >
-                  Review Bank
-                </Button>
-              </HStack>
-            </Flex>
-          )}
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+</AppModal>
   );
 }

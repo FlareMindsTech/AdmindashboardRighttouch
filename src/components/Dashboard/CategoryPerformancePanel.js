@@ -8,7 +8,6 @@ import {
   SimpleGrid,
   Text,
   VStack,
-  useColorMode,
 } from "@chakra-ui/react";
 import SectionCard from "components/common/SectionCard";
 import EmptyState from "components/common/EmptyState";
@@ -77,8 +76,7 @@ export default function CategoryPerformancePanel({
   revenue: revenueOverride,
   catalog,
 }) {
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
+  const isDark = false;
   const palette = PALETTES[kind] || PALETTES.service;
   const accentText = isDark
     ? palette.accentTextDark

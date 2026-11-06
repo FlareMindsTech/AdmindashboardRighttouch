@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useAppToast } from "components/feedback";
 import {
   Box,
   Button,
@@ -16,8 +17,6 @@ import {
   Tabs,
   TabList,
   Tab,
-  useToast,
-  useColorMode,
   Badge,
   IconButton,
   Menu,
@@ -28,7 +27,21 @@ import {
   TagLabel,
   TagCloseButton,
 } from "@chakra-ui/react";
-import { FaSearch, FaRedo, FaTimes, FaFileCsv, FaPlus, FaMoneyBillWave } from "react-icons/fa";
+import {
+  FaSearch,
+  FaRedo,
+  FaTimes,
+  FaFileCsv,
+  FaMoneyBillWave,
+  FaSlidersH,
+  FaListAlt,
+  FaUserCog,
+  FaClock,
+  FaMoneyCheckAlt,
+  FaCheckCircle,
+  FaBan,
+  FaUndoAlt,
+} from "react-icons/fa";
 import { MdRefresh, MdFileDownload, MdArrowDropDown } from "react-icons/md";
 
 // Reusable TechnicianPayouts Components
@@ -40,7 +53,12 @@ import {
   RecordBankTransferModal,
   ApproveWithdrawalModal,
   RejectWithdrawalModal,
-  SendMoneyModal,
+  PayoutFlowPipeline,
+  TechnicianProfileDrawer,
+  PayoutSettingsModal,
+  RevertPaidModal,
+  FreezePayoutModal,
+  TechnicianWalletDetailsCard,
 } from "components/TechnicianPayouts";
 
 import {
@@ -65,32 +83,36 @@ import {
   selectWalletSummary,
   selectAutoPayoutSummary,
 } from "store/slices/walletSlice";
+import { selectIsOwner, selectRole } from "store/slices/authSlice";
 
 // Status tab definitions mapped to backend withdrawal statuses
 const STATUS_TABS = [
-  { id: "all", label: "All Withdrawals", status: "", countKey: "all" },
-  { id: "requested", label: "Pending Review", status: "requested", countKey: "requested" },
-  { id: "pending", label: "Awaiting Approval", status: "pending", countKey: "pending" },
-  { id: "approved", label: "Ready to Pay", status: "approved", countKey: "approved" },
-  { id: "paid", label: "Paid", status: "paid", countKey: "paid" },
-  { id: "rejected", label: "Rejected / Cancelled", status: "rejected,cancelled", countKey: "rejected" },
-  { id: "failed", label: "Failed", status: "failed", countKey: "failed" },
+  { id: "all", label: "All Withdrawals", status: "", countKey: "all", icon: FaListAlt },
+  { id: "requested", label: "Pending Review", status: "requested,pending", countKey: "requested", icon: FaClock },
+  { id: "approved", label: "Ready to Disburse", status: "approved", countKey: "approved", icon: FaMoneyCheckAlt },
+  { id: "paid", label: "Paid & Settled", status: "paid", countKey: "paid", icon: FaCheckCircle },
+  { id: "rejected", label: "Rejected / Cancelled", status: "rejected,cancelled", countKey: "rejected", icon: FaBan },
+  { id: "failed", label: "Reverted / Failed", status: "failed", countKey: "failed", icon: FaUndoAlt },
 ];
 
 export default function TechnicianPayouts() {
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
-  const toast = useToast();
+  const isDark = false;
+  const toast = useAppToast();
   const dispatch = useAppDispatch();
 
-  // Current authenticated user (Owner / Admin)
+  // Role permissions (Owner vs Admin)
+  const reduxIsOwner = useAppSelector(selectIsOwner);
+  const reduxRole = useAppSelector(selectRole);
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Redux Shared Data (Authoritative Single Source of Truth)
+  // Redux Shared Data
   const reduxWalletSummary = useAppSelector(selectWalletSummary);
   const reduxAutoSummary = useAppSelector(selectAutoPayoutSummary);
   const rawTechnicians = useAppSelector(selectTechnicians);
   const techniciansList = useMemo(() => rawTechnicians || [], [rawTechnicians]);
+
+  // Console Mode: "queue" (Disbursement Queue) vs "directory" (Technician Wallets & Liquidity)
+  const [consoleMode, setConsoleMode] = useState("queue");
 
   // Local Component State
   const [withdrawals, setWithdrawals] = useState([]);
@@ -114,7 +136,10 @@ export default function TechnicianPayouts() {
   const [targetRecordTransfer, setTargetRecordTransfer] = useState(null);
   const [targetApprove, setTargetApprove] = useState(null);
   const [targetReject, setTargetReject] = useState(null);
-  const [isSendMoneyOpen, setIsSendMoneyOpen] = useState(false);
+  const [targetRevertPaid, setTargetRevertPaid] = useState(null);
+  const [targetFreezeTech, setTargetFreezeTech] = useState(null);
+  const [selectedProfileTechId, setSelectedProfileTechId] = useState(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // 1. Load User from localStorage
   useEffect(() => {
@@ -128,12 +153,18 @@ export default function TechnicianPayouts() {
     }
   }, []);
 
+  const isOwner = Boolean(
+    reduxIsOwner ||
+    currentUser?.role?.toLowerCase() === "owner" ||
+    reduxRole === "owner"
+  );
+
   // 2. Fetch Technicians for Send Money & Wallet Console dropdown
   useEffect(() => {
     dispatch(fetchTechniciansShared());
   }, [dispatch]);
 
-  // 3. Fetch Platform Wallet Summary & Auto Payout Summary (via Redux with TTL & Deduplication)
+  // 3. Fetch Platform Wallet Summary & Auto Payout Summary
   const refreshSummaries = useCallback(async () => {
     try {
       await Promise.all([
@@ -176,13 +207,7 @@ export default function TechnicianPayouts() {
       const { data, error } = await getWithdrawals(params);
 
       if (error) {
-        toast({
-          title: "Error Loading Withdrawals",
-          description: error,
-          status: "error",
-          duration: 4000,
-          isClosable: true,
-        });
+        toast.error(error, { title: "Error Loading Withdrawals", duration: 4000, isClosable: true });
         setWithdrawals([]);
         setTotalRecords(0);
         setTotalPages(1);
@@ -273,13 +298,7 @@ export default function TechnicianPayouts() {
         isClosable: true,
       });
     } catch (err) {
-      toast({
-        title: "Export Failed",
-        description: err.message,
-        status: "error",
-        duration: 4000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Export Failed", duration: 4000, isClosable: true });
     }
   };
 
@@ -307,13 +326,7 @@ export default function TechnicianPayouts() {
         isClosable: true,
       });
     } catch (err) {
-      toast({
-        title: "Batch Export Failed",
-        description: err.message,
-        status: "error",
-        duration: 4000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Batch Export Failed", duration: 4000, isClosable: true });
     }
   };
 
@@ -338,14 +351,23 @@ export default function TechnicianPayouts() {
       autoSummary?.allTimePaidCount ??
       0;
 
+    const rejected =
+      withdrawalsData?.rejected?.count ??
+      withdrawalsData?.cancelled?.count ??
+      0;
+
+    const failed =
+      withdrawalsData?.failed?.count ??
+      withdrawalsData?.reverted?.count ??
+      0;
+
     return {
       all: totalRecords,
       requested: pending,
-      pending: pending,
       approved: approved,
       paid: paid,
-      rejected: 0,
-      failed: 0,
+      rejected: rejected,
+      failed: failed,
     };
   }, [reduxWalletSummary, reduxAutoSummary, totalRecords]);
 
@@ -369,7 +391,7 @@ export default function TechnicianPayouts() {
     bg: isDark ? "gray.850" : "white",
     borderRadius: "20px",
     border: "1px solid",
-    borderColor: isDark ? "gray.750" : "gray.100",
+    borderColor: isDark ? "gray.800" : "gray.100",
     boxShadow: isDark
       ? "0 8px 30px -4px rgba(0, 0, 0, 0.5)"
       : "0 4px 24px -2px rgba(0, 0, 0, 0.05), 0 2px 8px -1px rgba(0, 0, 0, 0.02)",
@@ -387,38 +409,26 @@ export default function TechnicianPayouts() {
           gap={4}
         >
           <Box>
-            <HStack spacing={3} align="center">
-              <Heading as="h1" size="lg" fontWeight="800" color={isDark ? "white" : "gray.800"}>
-                Pay to Technician
-              </Heading>
-              <Badge colorScheme="teal" variant="subtle" px={2.5} py={0.5} borderRadius="full" fontSize="xs">
-                Disbursement Console
-              </Badge>
-            </HStack>
+            <Heading as="h1" size="lg" fontWeight="900" letterSpacing="-0.5px" color={isDark ? "white" : "gray.850"}>
+              Pay to Technician
+            </Heading>
             <Text fontSize="sm" color="gray.500" mt={1}>
-              Review withdrawal requests, approve disbursements, and record bank transfers with one-click verification.
+              Review withdrawal requests, transfer funds externally, and record bank UTRs.
             </Text>
           </Box>
 
           {/* Header Action Buttons */}
           <HStack spacing={3} flexWrap="wrap">
-            {/* Direct Payout / Send Money Button */}
+            {/* Payout Policy & Limits Modal Button */}
             <Button
               size="sm"
-              bg="linear-gradient(135deg, #008080 0%, #006666 100%)"
-              color="white"
-              _hover={{
-                bg: "linear-gradient(135deg, #006666 0%, #004d4d 100%)",
-                transform: "translateY(-1px)",
-                boxShadow: "0 4px 12px rgba(0, 128, 128, 0.35)",
-              }}
-              _active={{ transform: "translateY(0)" }}
-              leftIcon={<FaPlus size={12} />}
-              fontWeight="bold"
+              variant="outline"
               borderRadius="10px"
-              onClick={() => setIsSendMoneyOpen(true)}
+              fontWeight="700"
+              leftIcon={<FaSlidersH size={13} />}
+              onClick={() => setIsSettingsOpen(true)}
             >
-              Direct Payout
+              Withdrawal Limits & Policy
             </Button>
 
             {/* Export Menu */}
@@ -427,6 +437,7 @@ export default function TechnicianPayouts() {
                 as={Button}
                 size="sm"
                 variant="outline"
+                fontWeight="700"
                 leftIcon={<MdFileDownload size={18} />}
                 rightIcon={<MdArrowDropDown />}
                 borderRadius="10px"
@@ -448,6 +459,7 @@ export default function TechnicianPayouts() {
               size="sm"
               variant="outline"
               borderRadius="10px"
+              fontWeight="700"
               leftIcon={<MdRefresh size={16} />}
               isLoading={refreshing}
               loadingText="Refreshing..."
@@ -458,221 +470,322 @@ export default function TechnicianPayouts() {
           </HStack>
         </Flex>
 
-        {/* ================= 2. SUMMARY METRICS CARDS ================= */}
-        <PayoutSummaryCards
-          walletSummary={reduxWalletSummary}
-          autoPayoutSummary={reduxAutoSummary}
-          activeTab={activeTabId}
-          onSelectTab={handleTabSelect}
-          loading={loading && !reduxWalletSummary}
-        />
-
-        {/* ================= 3. MAIN CONTENT CARD ================= */}
-        <Card {...containerCardStyle}>
-          <CardBody p={{ base: "16px", md: "24px" }}>
-            <VStack spacing={5} align="stretch">
-              {/* STATUS TABS WITH LIVE COUNTERS */}
-              <Tabs
-                variant="soft-rounded"
-                colorScheme="teal"
-                index={STATUS_TABS.findIndex((t) => t.id === activeTabId)}
-                onChange={(idx) => handleTabSelect(STATUS_TABS[idx].id)}
-                overflowX="auto"
-                pb={1}
+        {/* ================= 2. CONSOLE MODE SWITCHER ================= */}
+        <HStack
+          spacing={2}
+          p={1.5}
+          bg={isDark ? "gray.800" : "gray.100"}
+          borderRadius="14px"
+          w="fit-content"
+          border="1px solid"
+          borderColor={isDark ? "gray.700" : "gray.200"}
+          boxShadow="sm"
+        >
+          <Button
+            size="sm"
+            borderRadius="10px"
+            variant={consoleMode === "queue" ? "solid" : "ghost"}
+            colorScheme={consoleMode === "queue" ? "teal" : "gray"}
+            leftIcon={<FaListAlt />}
+            onClick={() => setConsoleMode("queue")}
+            fontWeight="800"
+            fontSize="xs"
+            px={4}
+          >
+            <HStack spacing={2}>
+              <Text>Payout Requests</Text>
+              <Badge
+                borderRadius="full"
+                px={2}
+                py={0.5}
+                fontSize="3xs"
+                bg={consoleMode === "queue" ? "whiteAlpha.300" : isDark ? "gray.700" : "gray.200"}
+                color={consoleMode === "queue" ? "white" : isDark ? "gray.200" : "gray.700"}
               >
-                <TabList gap={2} flexWrap="nowrap">
-                  {STATUS_TABS.map((tab) => {
-                    const count = tabCounts[tab.countKey];
-                    const isSelected = activeTabId === tab.id;
-                    return (
-                      <Tab
-                        key={tab.id}
-                        fontSize="xs"
-                        fontWeight="700"
-                        borderRadius="full"
-                        px={4}
-                        py={2}
-                        whiteSpace="nowrap"
-                        _selected={{
-                          bg: "teal.600",
-                          color: "white",
-                          boxShadow: "sm",
-                        }}
-                      >
-                        {tab.label}
-                        {count !== undefined && count > 0 && (
-                          <Badge
-                            ml={2}
-                            borderRadius="full"
-                            px={2}
-                            py={0.5}
-                            fontSize="2xs"
-                            bg={isSelected ? "whiteAlpha.300" : isDark ? "gray.700" : "gray.200"}
-                            color={isSelected ? "white" : isDark ? "gray.200" : "gray.700"}
-                          >
-                            {count}
-                          </Badge>
-                        )}
-                      </Tab>
-                    );
-                  })}
-                </TabList>
-              </Tabs>
+                {totalRecords}
+              </Badge>
+            </HStack>
+          </Button>
+          <Button
+            size="sm"
+            borderRadius="10px"
+            variant={consoleMode === "directory" ? "solid" : "ghost"}
+            colorScheme={consoleMode === "directory" ? "teal" : "gray"}
+            leftIcon={<FaUserCog />}
+            onClick={() => setConsoleMode("directory")}
+            fontWeight="800"
+            fontSize="xs"
+            px={4}
+          >
+            <HStack spacing={2}>
+              <Text>Technician Wallets</Text>
+              <Badge
+                borderRadius="full"
+                px={2}
+                py={0.5}
+                fontSize="3xs"
+                bg={consoleMode === "directory" ? "whiteAlpha.300" : isDark ? "gray.700" : "gray.200"}
+                color={consoleMode === "directory" ? "white" : isDark ? "gray.200" : "gray.700"}
+              >
+                {techniciansList.length}
+              </Badge>
+            </HStack>
+          </Button>
+        </HStack>
 
-              {/* FILTERS TOOLBAR */}
-              <VStack spacing={3} align="stretch">
-                <Flex
-                  direction={{ base: "column", md: "row" }}
-                  gap={3}
-                  align={{ base: "stretch", md: "center" }}
-                  justify="space-between"
-                  bg={isDark ? "gray.800" : "gray.50"}
-                  p={3}
-                  borderRadius="14px"
-                  border="1px solid"
-                  borderColor={isDark ? "gray.700" : "gray.200"}
-                >
-                  <HStack spacing={3} flex={1} flexWrap="wrap">
-                    {/* Search Input with Clear Button */}
-                    <InputGroup size="sm" maxW={{ base: "full", md: "300px" }}>
-                      <InputLeftElement pointerEvents="none">
-                        <Icon as={FaSearch} color="gray.400" />
-                      </InputLeftElement>
-                      <Input
-                        borderRadius="10px"
-                        placeholder="Search Tech, ID, or UTR..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        bg={isDark ? "gray.900" : "white"}
-                      />
-                      {searchTerm && (
-                        <InputRightElement>
-                          <IconButton
-                            size="2xs"
-                            icon={<FaTimes />}
-                            variant="ghost"
-                            aria-label="Clear Search"
-                            onClick={() => setSearchTerm("")}
-                          />
-                        </InputRightElement>
-                      )}
-                    </InputGroup>
+        {/* ================= MODE A: DISBURSEMENT QUEUE ================= */}
+        {consoleMode === "queue" && (
+          <VStack spacing={6} align="stretch">
+            {/* SUMMARY METRICS CARDS */}
+            <PayoutSummaryCards
+              walletSummary={reduxWalletSummary}
+              autoPayoutSummary={reduxAutoSummary}
+              activeTab={activeTabId}
+              onSelectTab={handleTabSelect}
+              loading={loading && !reduxWalletSummary}
+            />
 
-                    {/* Technician Filter */}
-                    <Select
-                      size="sm"
-                      w={{ base: "full", sm: "220px" }}
-                      borderRadius="10px"
-                      placeholder="All Technicians"
-                      value={selectedTechFilter}
-                      bg={isDark ? "gray.900" : "white"}
-                      onChange={(e) => {
-                        setSelectedTechFilter(e.target.value);
-                        setPage(1);
-                      }}
-                    >
-                      {techniciansList.map((t) => {
-                        const id = t._id || t.id || t.technicianId;
-                        const name =
-                          t.name ||
-                          (t.userId?.fname ? `${t.userId.fname} ${t.userId.lname || ""}`.trim() : "") ||
-                          t.fname ||
-                          "Technician";
+            {/* VISUAL PAYMENT FLOW PIPELINE */}
+            <PayoutFlowPipeline
+              activeStage={activeTabId}
+              onSelectStage={handleTabSelect}
+              counts={tabCounts}
+            />
+
+            {/* MAIN CONTENT CARD */}
+            <Card {...containerCardStyle}>
+              <CardBody p={{ base: "16px", md: "24px" }}>
+                <VStack spacing={5} align="stretch">
+                  {/* STATUS TABS WITH LIVE COUNTERS */}
+                  <Tabs
+                    variant="soft-rounded"
+                    colorScheme="teal"
+                    index={STATUS_TABS.findIndex((t) => t.id === activeTabId)}
+                    onChange={(idx) => handleTabSelect(STATUS_TABS[idx].id)}
+                    overflowX="auto"
+                    pb={1}
+                  >
+                    <TabList gap={2} flexWrap="nowrap">
+                      {STATUS_TABS.map((tab) => {
+                        const count = tabCounts[tab.countKey];
+                        const isSelected = activeTabId === tab.id;
                         return (
-                          <option key={id} value={id}>
-                            {name}
-                          </option>
+                          <Tab
+                            key={tab.id}
+                            fontSize="xs"
+                            fontWeight="800"
+                            borderRadius="full"
+                            px={4}
+                            py={2}
+                            whiteSpace="nowrap"
+                            _selected={{
+                              bg: "teal.600",
+                              color: "white",
+                              boxShadow: "0 2px 8px rgba(0, 128, 128, 0.35)",
+                            }}
+                          >
+                            <HStack spacing={1.5}>
+                              {tab.icon && <Icon as={tab.icon} boxSize={3} />}
+                              <Text>{tab.label}</Text>
+                              {count !== undefined && count > 0 && (
+                                <Badge
+                                  borderRadius="full"
+                                  px={2}
+                                  py={0.5}
+                                  fontSize="2xs"
+                                  bg={isSelected ? "whiteAlpha.300" : isDark ? "gray.700" : "gray.200"}
+                                  color={isSelected ? "white" : isDark ? "gray.200" : "gray.700"}
+                                >
+                                  {count}
+                                </Badge>
+                              )}
+                            </HStack>
+                          </Tab>
                         );
                       })}
-                    </Select>
-                  </HStack>
+                    </TabList>
+                  </Tabs>
 
-                  {/* Reset Filters Button */}
-                  {(searchTerm || selectedTechFilter) && (
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      colorScheme="red"
-                      leftIcon={<FaRedo />}
-                      onClick={handleResetFilters}
-                      borderRadius="8px"
+                  {/* FILTERS TOOLBAR */}
+                  <VStack spacing={3} align="stretch">
+                    <Flex
+                      direction={{ base: "column", md: "row" }}
+                      gap={3}
+                      align={{ base: "stretch", md: "center" }}
+                      justify="space-between"
+                      bg={isDark ? "gray.800" : "gray.50"}
+                      p={3}
+                      borderRadius="14px"
+                      border="1px solid"
+                      borderColor={isDark ? "gray.700" : "gray.200"}
                     >
-                      Reset Filters
-                    </Button>
-                  )}
-                </Flex>
+                      <HStack spacing={3} flex={1} flexWrap="wrap">
+                        {/* Search Input with Clear Button */}
+                        <InputGroup size="sm" maxW={{ base: "full", md: "360px" }}>
+                          <InputLeftElement pointerEvents="none">
+                            <Icon as={FaSearch} color="gray.400" />
+                          </InputLeftElement>
+                          <Input
+                            borderRadius="10px"
+                            placeholder="Search by Tech, Mobile, ID, or UTR..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            bg={isDark ? "gray.900" : "white"}
+                            fontWeight="600"
+                            fontSize="xs"
+                          />
+                          {searchTerm && (
+                            <InputRightElement>
+                              <IconButton
+                                size="2xs"
+                                icon={<FaTimes />}
+                                variant="ghost"
+                                aria-label="Clear Search"
+                                onClick={() => setSearchTerm("")}
+                              />
+                            </InputRightElement>
+                          )}
+                        </InputGroup>
 
-                {/* Active Filter Chips */}
-                {(searchTerm || selectedTechFilter) && (
-                  <HStack spacing={2} flexWrap="wrap" px={1}>
-                    <Text fontSize="xs" color="gray.500" fontWeight="600">
-                      Active Filters:
-                    </Text>
-                    {searchTerm && (
-                      <Tag size="sm" borderRadius="full" variant="subtle" colorScheme="teal">
-                        <TagLabel>Search: &quot;{searchTerm}&quot;</TagLabel>
-                        <TagCloseButton onClick={() => setSearchTerm("")} />
-                      </Tag>
-                    )}
-                    {selectedTechFilter && (
-                      <Tag size="sm" borderRadius="full" variant="subtle" colorScheme="blue">
-                        <TagLabel>Technician: {selectedTechDisplayName}</TagLabel>
-                        <TagCloseButton onClick={() => setSelectedTechFilter("")} />
-                      </Tag>
-                    )}
-                  </HStack>
-                )}
-              </VStack>
+                        {/* Technician Filter */}
+                        <Select
+                          size="sm"
+                          w={{ base: "full", sm: "260px" }}
+                          borderRadius="10px"
+                          placeholder="All Technicians"
+                          value={selectedTechFilter}
+                          bg={isDark ? "gray.900" : "white"}
+                          fontWeight="600"
+                          fontSize="xs"
+                          onChange={(e) => {
+                            setSelectedTechFilter(e.target.value);
+                            setPage(1);
+                          }}
+                        >
+                          {techniciansList.map((t) => {
+                            const id = t._id || t.id || t.technicianId;
+                            const name =
+                              t.name ||
+                              (t.userId?.fname ? `${t.userId.fname} ${t.userId.lname || ""}`.trim() : "") ||
+                              t.fname ||
+                              "Technician";
+                            return (
+                              <option key={id} value={id}>
+                                {name}
+                              </option>
+                            );
+                          })}
+                        </Select>
+                      </HStack>
 
-              {/* ================= 4. TABLE ================= */}
-              <TechnicianPayoutsTable
-                withdrawals={withdrawals}
-                loading={loading}
-                page={page}
-                totalPages={totalPages}
-                total={totalRecords}
-                limit={limit}
-                onPageChange={(p) => setPage(p)}
-                onLimitChange={(l) => {
-                  setLimit(l);
-                  setPage(1);
-                }}
-                onViewDetails={(item) => setSelectedDrawerId(item._id || item.withdrawalId)}
-                onViewReceipt={(item) => setTargetReceiptId(item._id || item.withdrawalId)}
-                onRecordTransfer={(item) => setTargetRecordTransfer(item)}
-                onApprove={(item) => setTargetApprove(item)}
-                onReject={(item) => setTargetReject(item)}
-                onRetry={fetchWithdrawalsList}
-              />
-            </VStack>
-          </CardBody>
-        </Card>
+                      {/* Reset Filters Button */}
+                      {(searchTerm || selectedTechFilter) && (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="red"
+                          leftIcon={<FaRedo />}
+                          onClick={handleResetFilters}
+                          borderRadius="8px"
+                        >
+                          Reset Filters
+                        </Button>
+                      )}
+                    </Flex>
+
+                    {/* Active Filter Chips */}
+                    {(searchTerm || selectedTechFilter) && (
+                      <HStack spacing={2} flexWrap="wrap" px={1}>
+                        <Text fontSize="xs" color="gray.500" fontWeight="600">
+                          Active Filters:
+                        </Text>
+                        {searchTerm && (
+                          <Tag size="sm" borderRadius="full" variant="subtle" colorScheme="teal">
+                            <TagLabel>Search: &quot;{searchTerm}&quot;</TagLabel>
+                            <TagCloseButton onClick={() => setSearchTerm("")} />
+                          </Tag>
+                        )}
+                        {selectedTechFilter && (
+                          <Tag size="sm" borderRadius="full" variant="subtle" colorScheme="blue">
+                            <TagLabel>Technician: {selectedTechDisplayName}</TagLabel>
+                            <TagCloseButton onClick={() => setSelectedTechFilter("")} />
+                          </Tag>
+                        )}
+                      </HStack>
+                    )}
+                  </VStack>
+
+                  {/* TABLE */}
+                  <TechnicianPayoutsTable
+                    withdrawals={withdrawals}
+                    loading={loading}
+                    page={page}
+                    totalPages={totalPages}
+                    total={totalRecords}
+                    limit={limit}
+                    isOwner={isOwner}
+                    onPageChange={(p) => setPage(p)}
+                    onLimitChange={(l) => {
+                      setLimit(l);
+                      setPage(1);
+                    }}
+                    onViewDetails={(item) => setSelectedDrawerId(item._id || item.withdrawalId)}
+                    onViewReceipt={(item) => setTargetReceiptId(item._id || item.withdrawalId)}
+                    onRecordTransfer={(item) => setTargetRecordTransfer(item)}
+                    onApprove={(item) => setTargetApprove(item)}
+                    onReject={(item) => setTargetReject(item)}
+                    onViewTechnician={(techId) => setSelectedProfileTechId(techId)}
+                    onRevertPaid={(item) => setTargetRevertPaid(item)}
+                    onFreezeTechnician={(tech) => setTargetFreezeTech(tech)}
+                    onRetry={fetchWithdrawalsList}
+                    onResetFilters={handleResetFilters}
+                  />
+                </VStack>
+              </CardBody>
+            </Card>
+          </VStack>
+        )}
+
+        {/* ================= MODE B: TECHNICIAN WALLETS DIRECTORY ================= */}
+        {consoleMode === "directory" && (
+          <TechnicianWalletDetailsCard
+            technicians={techniciansList}
+            selectedTechId={selectedTechFilter}
+            onSelectTechnician={(id) => setSelectedTechFilter(id)}
+            onOpenFreeze={(tech) => setTargetFreezeTech(tech)}
+            onFilterTableByTech={(id) => {
+              setSelectedTechFilter(id);
+              setConsoleMode("queue");
+            }}
+          />
+        )}
       </VStack>
 
       {/* ================= MODALS & DRAWERS ================= */}
 
-      {/* Direct Send Money / Payout Modal */}
-      {isSendMoneyOpen && (
-        <SendMoneyModal
-          isOpen={isSendMoneyOpen}
-          onClose={() => setIsSendMoneyOpen(false)}
-          technicians={techniciansList}
-          onSuccess={() => {
-            fetchWithdrawalsList();
-            refreshSummaries();
-          }}
-        />
-      )}
+      {/* Technician Profile & Liquidity 360° Drawer */}
+      <TechnicianProfileDrawer
+        isOpen={!!selectedProfileTechId}
+        onClose={() => setSelectedProfileTechId(null)}
+        technicianId={selectedProfileTechId}
+        onOpenFreeze={(tech) => setTargetFreezeTech(tech)}
+        onViewReceipt={(id) => setTargetReceiptId(id)}
+        onViewWithdrawalDetails={(id) => setSelectedDrawerId(id)}
+      />
 
       {/* Details Slide-out Drawer */}
       <WithdrawalDetailsDrawer
         isOpen={!!selectedDrawerId}
         onClose={() => setSelectedDrawerId(null)}
         withdrawalId={selectedDrawerId}
+        currentUser={currentUser}
+        isOwner={isOwner}
         onOpenRecordTransfer={(item) => setTargetRecordTransfer(item)}
         onOpenApprove={(item) => setTargetApprove(item)}
         onOpenReject={(item) => setTargetReject(item)}
         onViewReceipt={(item) => setTargetReceiptId(item.withdrawalId || item._id)}
+        onOpenTechnicianProfile={(techId) => setSelectedProfileTechId(techId)}
+        onRevertPaid={(item) => setTargetRevertPaid(item)}
       />
 
       {/* Official Payout Receipt Modal */}
@@ -719,6 +832,44 @@ export default function TechnicianPayouts() {
           withdrawal={targetReject}
           onSuccess={() => {
             fetchWithdrawalsList();
+            refreshSummaries();
+          }}
+        />
+      )}
+
+      {/* Revert Paid Modal (Owner Only) */}
+      {targetRevertPaid && (
+        <RevertPaidModal
+          isOpen={!!targetRevertPaid}
+          onClose={() => setTargetRevertPaid(null)}
+          withdrawal={targetRevertPaid}
+          currentUser={currentUser}
+          onSuccess={() => {
+            fetchWithdrawalsList();
+            refreshSummaries();
+          }}
+        />
+      )}
+
+      {/* Freeze / Unfreeze Payouts Modal */}
+      {targetFreezeTech && (
+        <FreezePayoutModal
+          isOpen={!!targetFreezeTech}
+          onClose={() => setTargetFreezeTech(null)}
+          technician={targetFreezeTech}
+          onSuccess={() => {
+            fetchWithdrawalsList();
+            refreshSummaries();
+          }}
+        />
+      )}
+
+      {/* Global Payout Policy & Limits Modal */}
+      {isSettingsOpen && (
+        <PayoutSettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          onSuccess={() => {
             refreshSummaries();
           }}
         />

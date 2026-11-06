@@ -9,7 +9,6 @@ import {
   StatLabel,
   StatNumber,
   Spinner,
-  useColorMode,
 } from "@chakra-ui/react";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
@@ -32,8 +31,7 @@ function KpiVariant({
   textColor,
   subTextColor,
 }) {
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
+  const isDark = false;
   const cardStyles = getClaymorphicCardStyle(isDark, false);
   const iconBg = `${color}.500`;
 
@@ -126,8 +124,7 @@ function MiniVariant({
   interactive = true,
   onClick,
 }) {
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
+  const isDark = false;
   const cardStyles = getClaymorphicCardStyle(isDark, false, accent);
 
   return (

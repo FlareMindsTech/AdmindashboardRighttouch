@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { useAppToast } from "components/feedback";
 import {
   Box,
   Flex,
@@ -12,7 +13,6 @@ import {
   Textarea,
   Collapse,
   Tooltip,
-  useToast,
   Grid,
 } from "@chakra-ui/react";
 import {
@@ -104,7 +104,7 @@ export default function DistrictGeoJsonBoundaryCard({
   onPolygonChange,
   code = "",
 }) {
-  const toast = useToast();
+  const toast = useAppToast();
   const [showRawJson, setShowRawJson] = useState(false);
 
   // 1. Resolve canonical Tamil Nadu district metadata

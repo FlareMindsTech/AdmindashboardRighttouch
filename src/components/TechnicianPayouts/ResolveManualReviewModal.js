@@ -1,12 +1,7 @@
 import React, { useState, useEffect } from "react";
+import AppModal from "components/common/AppModal";
+import { useAppToast } from "components/feedback";
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Button,
   VStack,
   HStack,
@@ -22,7 +17,6 @@ import {
   Text,
   Box,
   Badge,
-  useToast,
 } from "@chakra-ui/react";
 import { resolveManualReviewPayout } from "api/wallet";
 import { formatInr } from "./FinancialBreakdown";
@@ -33,7 +27,7 @@ export default function ResolveManualReviewModal({
   withdrawal,
   onSuccess,
 }) {
-  const toast = useToast();
+  const toast = useAppToast();
 
   const [decision, setDecision] = useState("complete");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -101,11 +95,18 @@ export default function ResolveManualReviewModal({
       : "Technician";
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="md" isCentered closeOnOverlayClick={!isSubmitting}>
-      <ModalOverlay backdropFilter="blur(4px)" />
-      <ModalContent borderRadius="20px" overflow="hidden" boxShadow="2xl">
-        <ModalHeader bg="purple.800" color="white" py={4} px={6}>
-          <HStack justify="space-between" align="center">
+    <AppModal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="2xl"
+      maxW={{ base: "95vw", md: "720px", lg: "760px" }}
+      bodyMaxH="75vh"
+      isCentered
+      closeOnOverlayClick={!isSubmitting}
+      headerBg="purple.800"
+      headerColor="white"
+      closeButtonColor="white"
+      title={<><HStack justify="space-between" align="center">
             <Box>
               <Text fontSize="md" fontWeight="bold">
                 Resolve Manual Review Payout
@@ -117,11 +118,21 @@ export default function ResolveManualReviewModal({
             <Badge colorScheme="purple" px={2.5} py={1} borderRadius="full" fontSize="2xs">
               MANUAL REVIEW
             </Badge>
-          </HStack>
-        </ModalHeader>
-        <ModalCloseButton color="white" top={4} right={4} isDisabled={isSubmitting} />
-
-        <ModalBody p={6}>
+          </HStack></>} footer={<><HStack spacing={3} justify="flex-end" w="full">
+            <Button size="sm" variant="ghost" onClick={onClose} isDisabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              colorScheme={decision === "complete" ? "purple" : "red"}
+              fontWeight="700"
+              onClick={handleSubmit}
+              isLoading={isSubmitting}
+              loadingText="Resolving..."
+            >
+              Confirm Resolution ({decision})
+            </Button>
+          </HStack></>}>
           <VStack spacing={4} align="stretch" as="form" onSubmit={handleSubmit}>
             <Alert status="warning" borderRadius="12px" fontSize="xs">
               <AlertIcon />
@@ -185,26 +196,7 @@ export default function ResolveManualReviewModal({
               </RadioGroup>
             </FormControl>
           </VStack>
-        </ModalBody>
 
-        <ModalFooter bg="gray.50" py={3} px={6} borderTop="1px solid" borderColor="gray.200">
-          <HStack spacing={3} justify="flex-end" w="full">
-            <Button size="sm" variant="ghost" onClick={onClose} isDisabled={isSubmitting}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              colorScheme={decision === "complete" ? "purple" : "red"}
-              fontWeight="700"
-              onClick={handleSubmit}
-              isLoading={isSubmitting}
-              loadingText="Resolving..."
-            >
-              Confirm Resolution ({decision})
-            </Button>
-          </HStack>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+</AppModal>
   );
 }

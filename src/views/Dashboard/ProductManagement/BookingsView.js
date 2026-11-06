@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useAppToast } from "components/feedback";
 import {
   Box,
   Button,
@@ -7,7 +8,6 @@ import {
   Input,
   Select,
   Text,
-  useToast,
   VStack,
 } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
@@ -44,7 +44,7 @@ export default function BookingsView({
   isLoading,
   onRefresh,
 }) {
-  const toast = useToast();
+  const toast = useAppToast();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
@@ -104,7 +104,7 @@ export default function BookingsView({
     const { error } = await completeProductBooking(booking._id);
     setBusy(false);
     if (error) {
-      toast({ title: "Booking not completed", description: error, status: "error", duration: 4500, isClosable: true });
+      toast.error(error, { title: "Booking not completed", duration: 4500, isClosable: true });
       return;
     }
     toast({ title: "Booking completed", status: "success", duration: 2500, isClosable: true });
@@ -120,7 +120,7 @@ export default function BookingsView({
     });
     setBusy(false);
     if (error) {
-      toast({ title: "Booking not cancelled", description: error, status: "error", duration: 4500, isClosable: true });
+      toast.error(error, { title: "Booking not cancelled", duration: 4500, isClosable: true });
       return;
     }
     toast({ title: "Booking cancelled", status: "success", duration: 2500, isClosable: true });

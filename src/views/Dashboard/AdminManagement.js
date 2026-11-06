@@ -15,7 +15,6 @@ import {
   Thead,
   Tr,
   useColorModeValue,
-  useToast,
   Heading,
   Badge,
   Text,
@@ -60,6 +59,9 @@ import {
   FaTimes,
 } from "react-icons/fa";
 import DataTable from "components/common/DataTable";
+import ConfirmActionModal from "components/common/ConfirmActionModal";
+import ErrorState from "components/feedback/ErrorState";
+import { useAppToast } from "components/feedback";
 import { MdVerified, MdOutlinePending } from "react-icons/md";
 import {
   getKYCFullPII,
@@ -583,7 +585,7 @@ function AdminManagement() {
   const customHoverColor = "#006666";
   const customBorderColor = "gray.200";
 
-  const toast = useToast();
+  const toast = useAppToast();
   const navigate = useNavigate();
 
   // Primary data states
@@ -647,6 +649,9 @@ function AdminManagement() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [adminToDelete, setAdminToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isKycDeleteConfirmOpen, setIsKycDeleteConfirmOpen] = useState(false);
+  const [isDeletingKyc, setIsDeletingKyc] = useState(false);
+  const [kycDeleteError, setKycDeleteError] = useState(null);
   const cancelRef = useRef();
 
   // Orphaned KYC maintenance (KYC docs with no linked technician)
@@ -663,13 +668,7 @@ function AdminManagement() {
       const list = data?.result ?? data?.data ?? data ?? [];
       setOrphanedKyc(Array.isArray(list) ? list : list?.records ?? []);
     } catch (e) {
-      toast({
-        title: "Orphaned KYC Error",
-        description: e.message || "Failed to load orphaned KYC records.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(e, { title: "Orphaned KYC Error", description: "Failed to load orphaned KYC records.", duration: 3000, isClosable: true });
     } finally {
       setOrphanedLoading(false);
     }
@@ -682,7 +681,34 @@ function AdminManagement() {
       toast({ title: "Orphaned KYC Deleted", status: "success", duration: 2500, isClosable: true });
       fetchOrphanedKyc();
     } catch (e) {
-      toast({ title: "Delete Error", description: e.message, status: "error", duration: 3000, isClosable: true });
+      toast.error(e, { title: "Delete Error", duration: 3000, isClosable: true });
+    }
+  };
+
+  const handleConfirmKycDelete = async () => {
+    if (!selectedTechForKYC?._id) return false;
+    setIsDeletingKyc(true);
+    setKycDeleteError(null);
+    try {
+      await dispatch(removeKYC({ id: selectedTechForKYC._id })).unwrap();
+      setIsKycDeleteConfirmOpen(false);
+      setIsKYCModalOpen(false);
+      toast({ title: "KYC record deleted", status: "success", duration: 2500, isClosable: true });
+      await fetchData();
+      return true;
+    } catch (e) {
+      const failure = e || new Error("Failed to delete KYC record.");
+      setKycDeleteError(failure);
+      toast({
+        title: "KYC delete failed",
+        description: failure?.message || "Failed to delete KYC record.",
+        status: "error",
+        duration: 3500,
+        isClosable: true,
+      });
+      throw failure;
+    } finally {
+      setIsDeletingKyc(false);
     }
   };
 
@@ -693,7 +719,7 @@ function AdminManagement() {
       toast({ title: "Orphaned KYC Cleaned Up", status: "success", duration: 2500, isClosable: true });
       fetchOrphanedKyc();
     } catch (e) {
-      toast({ title: "Cleanup Error", description: e.message, status: "error", duration: 3000, isClosable: true });
+      toast.error(e, { title: "Cleanup Error", duration: 3000, isClosable: true });
     }
   };
   const isMountedRef = useRef(true);
@@ -764,6 +790,7 @@ function AdminManagement() {
     if (!currentUser) return;
     setLoading(true);
     setTableLoading(true);
+    setError("");
     try {
       const [adminsResult, kycResult, distResult] = await Promise.allSettled([
         dispatch(fetchTechnicians({ force: true })).unwrap().then((r) => r.list),
@@ -1072,13 +1099,7 @@ function AdminManagement() {
         setSelectedTechnician((prev) => ({ ...prev, trainingCompleted: nextStatus }));
       }
     } catch (err) {
-      toast({
-        title: "Training Update Error",
-        description: err.message || "Failed to update training status.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Training Update Error", description: "Failed to update training status.", duration: 3000, isClosable: true });
     } finally {
       setLoading(false);
     }
@@ -1102,13 +1123,7 @@ function AdminManagement() {
       });
       await fetchData();
     } catch (err) {
-      toast({
-        title: "Status Update Error",
-        description: err.message || "Failed to update work status.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Status Update Error", description: "Failed to update work status.", duration: 3000, isClosable: true });
     } finally {
       setLoading(false);
     }
@@ -1162,13 +1177,7 @@ function AdminManagement() {
         isClosable: true,
       });
     } catch (e) {
-      toast({
-        title: "Audit Error",
-        description: e.message || "Failed to retrieve unmasked KYC details.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(e, { title: "Audit Error", description: "Failed to retrieve unmasked KYC details.", duration: 3000, isClosable: true });
     } finally {
       setKYcLoading(false);
     }
@@ -1203,13 +1212,7 @@ function AdminManagement() {
       setIsKYCModalOpen(false);
       await fetchData();
     } catch (e) {
-      toast({
-        title: "Verification Error",
-        description: e.message || "Failed to submit KYC verification.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(e, { title: "Verification Error", description: "Failed to submit KYC verification.", duration: 3000, isClosable: true });
     } finally {
       setKYcLoading(false);
     }
@@ -1240,13 +1243,7 @@ function AdminManagement() {
       await handleOpenKYCModal(selectedTechForKYC);
       await fetchData();
     } catch (e) {
-      toast({
-        title: "Save Error",
-        description: e.message || "Failed to update KYC numbers.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(e, { title: "Save Error", description: "Failed to update KYC numbers.", duration: 3000, isClosable: true });
     } finally {
       setSavingKycEdit(false);
     }
@@ -1301,13 +1298,7 @@ function AdminManagement() {
       setIsBankModalOpen(false);
       await fetchData();
     } catch (e) {
-      toast({
-        title: "Bank Verification Error",
-        description: e.message || "Failed to update bank verification status.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(e, { title: "Bank Verification Error", description: "Failed to update bank verification status.", duration: 3000, isClosable: true });
     } finally {
       setLoading(false);
     }
@@ -1328,13 +1319,7 @@ function AdminManagement() {
       setIsEditBankOpen(false);
       await fetchData();
     } catch (e) {
-      toast({
-        title: "Save Error",
-        description: e.message || "Failed to update bank details.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(e, { title: "Save Error", description: "Failed to update bank details.", duration: 3000, isClosable: true });
     } finally {
       setSavingBankEdit(false);
     }
@@ -1357,13 +1342,7 @@ function AdminManagement() {
       setAdminToDelete(null);
       await fetchData();
     } catch (e) {
-      toast({
-        title: "Delete Error",
-        description: e.message || "Failed to delete technician.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(e, { title: "Delete Error", description: "Failed to delete technician.", duration: 3000, isClosable: true });
     } finally {
       setIsDeleting(false);
     }
@@ -1602,6 +1581,16 @@ function AdminManagement() {
 
           {/* Table Body */}
           <CardBody p={0} flex="1" display="flex" flexDirection="column" overflow="hidden">
+            {error ? (
+              <Box p={4}>
+                <ErrorState
+                  compact
+                  error={error}
+                  title="Could not load technicians"
+                  onRetry={fetchData}
+                />
+              </Box>
+            ) : null}
             <DataTable
               keyExtractor={(tech) => tech._id}
               rows={currentItems}
@@ -2065,12 +2054,9 @@ function AdminManagement() {
         isUnmaskedPII={isUnmaskedPII}
         onToggleUnmaskedPII={handleToggleUnmaskedPII}
         onOpenEditKYC={handleOpenEditKYC}
-        onDeleteKYC={async () => {
-          if (window.confirm("Are you sure you want to delete this KYC record?")) {
-            await dispatch(removeKYC({ id: selectedTechForKYC._id })).unwrap();
-            setIsKYCModalOpen(false);
-            await fetchData();
-          }
+        onDeleteKYC={() => {
+          setKycDeleteError(null);
+          setIsKycDeleteConfirmOpen(true);
         }}
         showRejectionInput={showRejectionInput}
         setShowRejectionInput={setShowRejectionInput}
@@ -2142,6 +2128,22 @@ function AdminManagement() {
         getTechnicianDistrict={getTechnicianDistrict}
         getTechnicianAddress={getTechnicianAddress}
         getTechnicianSpecialization={getTechnicianSpecialization}
+      />
+
+      <ConfirmActionModal
+        isOpen={isKycDeleteConfirmOpen}
+        onClose={() => {
+          if (isDeletingKyc) return;
+          setIsKycDeleteConfirmOpen(false);
+          setKycDeleteError(null);
+        }}
+        onConfirm={handleConfirmKycDelete}
+        title="Delete KYC record"
+        description={`This permanently deletes the KYC record for ${getTechnicianName(selectedTechForKYC)}. This action cannot be undone.`}
+        confirmText="Delete KYC record"
+        confirmColorScheme="red"
+        isLoading={isDeletingKyc}
+        error={kycDeleteError}
       />
 
       {/* DELETE CONFIRMATION ALERT */}

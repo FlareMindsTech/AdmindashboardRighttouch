@@ -1,4 +1,5 @@
 import React from "react";
+import { useAppToast } from "components/feedback";
 import {
   Table,
   Thead,
@@ -21,7 +22,6 @@ import {
   Center,
   Icon,
   Tooltip,
-  useToast,
   useColorMode,
   Flex,
   Select,
@@ -35,9 +35,12 @@ import {
   FaEye,
   FaFileInvoice,
   FaCopy,
-  FaExclamationCircle,
   FaUniversity,
   FaMobileAlt,
+  FaUndoAlt,
+  FaUserCog,
+  FaSnowflake,
+  FaShieldAlt,
 } from "react-icons/fa";
 import PayoutStatusBadge from "./PayoutStatusBadge";
 import { formatInr } from "./FinancialBreakdown";
@@ -49,6 +52,7 @@ export default function TechnicianPayoutsTable({
   totalPages = 1,
   total = 0,
   limit = 25,
+  isOwner = false,
   onPageChange,
   onLimitChange,
   onViewDetails,
@@ -56,9 +60,14 @@ export default function TechnicianPayoutsTable({
   onRecordTransfer,
   onApprove,
   onReject,
+  onViewTechnician,
+  onRevertPaid,
+  onFreezeTechnician,
   onRetry,
+  onOpenDirectPayout,
+  onResetFilters,
 }) {
-  const toast = useToast();
+  const toast = useAppToast();
   const { colorMode } = useColorMode();
   const isDark = colorMode === "dark";
 
@@ -124,24 +133,39 @@ export default function TechnicianPayoutsTable({
       boxShadow="sm"
     >
       <Table variant="simple" size="sm" bg={isDark ? "gray.850" : "white"}>
-        <Thead bg={isDark ? "gray.800" : "gray.50"}>
+        <Thead bg={isDark ? "gray.800" : "gray.50"} borderBottom="2px solid" borderColor={isDark ? "gray.700" : "gray.200"}>
           <Tr>
-            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em">
-              Withdrawal Info
+            <Th py={4} fontSize="2xs" fontWeight="800" textTransform="uppercase" letterSpacing="0.06em" color={isDark ? "gray.400" : "gray.600"}>
+              <HStack spacing={1.5}>
+                <Icon as={FaFileInvoice} color="teal.500" boxSize={3} />
+                <Text>Withdrawal Info</Text>
+              </HStack>
             </Th>
-            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em">
-              Technician
+            <Th py={4} fontSize="2xs" fontWeight="800" textTransform="uppercase" letterSpacing="0.06em" color={isDark ? "gray.400" : "gray.600"}>
+              <HStack spacing={1.5}>
+                <Icon as={FaMobileAlt} color="blue.500" boxSize={3} />
+                <Text>Technician</Text>
+              </HStack>
             </Th>
-            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em">
-              Net Payable
+            <Th py={4} fontSize="2xs" fontWeight="800" textTransform="uppercase" letterSpacing="0.06em" color={isDark ? "gray.400" : "gray.600"}>
+              <HStack spacing={1.5}>
+                <Icon as={FaMoneyCheckAlt} color="green.500" boxSize={3} />
+                <Text>Net Payable</Text>
+              </HStack>
             </Th>
-            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em">
-              Beneficiary Bank / Account
+            <Th py={4} fontSize="2xs" fontWeight="800" textTransform="uppercase" letterSpacing="0.06em" color={isDark ? "gray.400" : "gray.600"}>
+              <HStack spacing={1.5}>
+                <Icon as={FaUniversity} color="purple.500" boxSize={3} />
+                <Text>Beneficiary Bank / Account</Text>
+              </HStack>
             </Th>
-            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em">
-              Status & UTR
+            <Th py={4} fontSize="2xs" fontWeight="800" textTransform="uppercase" letterSpacing="0.06em" color={isDark ? "gray.400" : "gray.600"}>
+              <HStack spacing={1.5}>
+                <Icon as={FaShieldAlt} color="orange.500" boxSize={3} />
+                <Text>Status & UTR</Text>
+              </HStack>
             </Th>
-            <Th py={4} fontSize="3xs" textTransform="uppercase" letterSpacing="0.06em" textAlign="center">
+            <Th py={4} fontSize="2xs" fontWeight="800" textTransform="uppercase" letterSpacing="0.06em" textAlign="center" color={isDark ? "gray.400" : "gray.600"}>
               Quick Actions
             </Th>
           </Tr>
@@ -158,16 +182,70 @@ export default function TechnicianPayoutsTable({
             ))
           ) : withdrawals.length === 0 ? (
             <Tr>
-              <Td colSpan={6} py={14} textAlign="center">
+              <Td colSpan={6} py={16} textAlign="center">
                 <Center>
-                  <VStack spacing={3}>
-                    <Icon as={FaExclamationCircle} boxSize={10} color="gray.300" />
-                    <Text fontSize="md" fontWeight="700" color="gray.600">
-                      No withdrawal requests found
-                    </Text>
-                    <Text fontSize="xs" color="gray.400" maxW="360px">
-                      No records match the current tab and filter criteria. Try clearing search filters or selecting another tab.
-                    </Text>
+                  <VStack spacing={4} maxW="460px">
+                    <Flex
+                      w="72px"
+                      h="72px"
+                      borderRadius="22px"
+                      bg={isDark ? "teal.900" : "teal.50"}
+                      color="teal.600"
+                      align="center"
+                      justify="center"
+                      boxShadow="0 8px 24px rgba(0, 128, 128, 0.15)"
+                      border="1.5px solid"
+                      borderColor={isDark ? "teal.700" : "teal.200"}
+                    >
+                      <Icon as={FaMoneyCheckAlt} boxSize={8} />
+                    </Flex>
+                    <Box>
+                      <Text fontSize="lg" fontWeight="900" color={isDark ? "white" : "gray.800"}>
+                        No Withdrawal Requests In This View
+                      </Text>
+                      <Text fontSize="xs" color="gray.500" mt={1} lineHeight="1.6">
+                        No transactions match the selected lifecycle stage or filters. You can initiate an admin-direct payout or clear your filters to view all records.
+                      </Text>
+                    </Box>
+                    <HStack spacing={3} pt={2} flexWrap="wrap" justify="center">
+                      {onOpenDirectPayout && (
+                        <Button
+                          size="sm"
+                          bg="linear-gradient(135deg, #008080 0%, #006666 100%)"
+                          color="white"
+                          _hover={{
+                            bg: "linear-gradient(135deg, #006666 0%, #004d4d 100%)",
+                            boxShadow: "0 4px 12px rgba(0, 128, 128, 0.35)",
+                          }}
+                          leftIcon={<FaMoneyCheckAlt />}
+                          onClick={onOpenDirectPayout}
+                          fontWeight="800"
+                          borderRadius="10px"
+                        >
+                          + Send Direct Payout
+                        </Button>
+                      )}
+                      {onResetFilters && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          borderRadius="10px"
+                          onClick={onResetFilters}
+                        >
+                          View All Withdrawals
+                        </Button>
+                      )}
+                      {onRetry && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          borderRadius="10px"
+                          onClick={onRetry}
+                        >
+                          Refresh Desk
+                        </Button>
+                      )}
+                    </HStack>
                   </VStack>
                 </Center>
               </Td>
@@ -185,6 +263,17 @@ export default function TechnicianPayoutsTable({
               const techName = getTechName(item);
               const techPhone = getTechPhone(item);
               const techObj = item.technicianId || item.technician || {};
+              const resolvedTechId =
+                techObj._id ||
+                techObj.id ||
+                techObj.technicianId ||
+                (typeof item.technicianId === "string" ? item.technicianId : null) ||
+                (typeof item.technician === "string" ? item.technician : null);
+              const isDualApproval = Boolean(
+                item.requiresApproval ||
+                item.requiresDualApproval ||
+                (item.origin === "admin_direct" && (netPaise >= 1000000 || grossPaise >= 1000000))
+              );
               const bank = getBankDetails(item);
               const rawAcc = String(bank?.accountNumber || item?.payoutDestination || "").replace(/\s/g, "");
               const maskedAcc = rawAcc.length >= 4 ? `••••${rawAcc.slice(-4)}` : rawAcc || "—";
@@ -195,7 +284,7 @@ export default function TechnicianPayoutsTable({
               return (
                 <Tr
                   key={id}
-                  _hover={{ bg: isDark ? "gray.750" : "teal.50", transition: "background 0.15s ease" }}
+                  _hover={{ bg: isDark ? "gray.800" : "teal.50", transition: "background 0.15s ease" }}
                   transition="background 0.15s ease"
                 >
                   {/* Withdrawal Info */}
@@ -251,44 +340,64 @@ export default function TechnicianPayoutsTable({
 
                   {/* Technician */}
                   <Td py={3}>
-                    <HStack spacing={2.5}>
-                      <Avatar
-                        size="sm"
-                        name={techName}
-                        bg="teal.600"
-                        color="white"
-                        fontWeight="700"
-                        fontSize="xs"
-                      />
-                      <Box>
-                        <HStack spacing={1.5}>
-                          <Text fontSize="xs" fontWeight="700" color={isDark ? "white" : "gray.800"} noOfLines={1}>
-                            {techName}
-                          </Text>
-                          {techObj.payoutBlocked && (
-                            <Badge colorScheme="red" fontSize="3xs" px={1} borderRadius="3px">
-                              FROZEN
-                            </Badge>
-                          )}
-                        </HStack>
-                        {techPhone && (
-                          <HStack spacing={1} color="gray.500" fontSize="3xs">
-                            <Icon as={FaMobileAlt} boxSize={2.5} />
-                            <Text>{techPhone}</Text>
-                            <Tooltip label="Copy Phone Number" hasArrow>
-                              <IconButton
-                                size="2xs"
-                                icon={<FaCopy />}
-                                variant="ghost"
-                                boxSize="14px"
-                                minW="14px"
-                                onClick={() => copyToClipboard(techPhone, "Mobile Number")}
-                              />
-                            </Tooltip>
+                    <Tooltip label="Click to inspect technician wallet & liquidity profile" hasArrow placement="top">
+                      <HStack
+                        spacing={2.5}
+                        cursor="pointer"
+                        role="button"
+                        p={1.5}
+                        borderRadius="8px"
+                        _hover={{ bg: isDark ? "gray.750" : "teal.50" }}
+                        transition="all 0.15s ease"
+                        onClick={() => onViewTechnician && onViewTechnician(resolvedTechId, techObj)}
+                      >
+                        <Avatar
+                          size="sm"
+                          name={techName}
+                          bg="teal.600"
+                          color="white"
+                          fontWeight="700"
+                          fontSize="xs"
+                        />
+                        <Box>
+                          <HStack spacing={1.5}>
+                            <Text
+                              fontSize="xs"
+                              fontWeight="700"
+                              color={isDark ? "white" : "teal.700"}
+                              noOfLines={1}
+                              _hover={{ textDecoration: "underline" }}
+                            >
+                              {techName}
+                            </Text>
+                            {techObj.payoutBlocked && (
+                              <Badge colorScheme="red" fontSize="3xs" px={1} borderRadius="3px">
+                                FROZEN
+                              </Badge>
+                            )}
                           </HStack>
-                        )}
-                      </Box>
-                    </HStack>
+                          {techPhone && (
+                            <HStack spacing={1} color="gray.500" fontSize="3xs">
+                              <Icon as={FaMobileAlt} boxSize={2.5} />
+                              <Text>{techPhone}</Text>
+                              <Tooltip label="Copy Phone Number" hasArrow>
+                                <IconButton
+                                  size="2xs"
+                                  icon={<FaCopy />}
+                                  variant="ghost"
+                                  boxSize="14px"
+                                  minW="14px"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyToClipboard(techPhone, "Mobile Number");
+                                  }}
+                                />
+                              </Tooltip>
+                            </HStack>
+                          )}
+                        </Box>
+                      </HStack>
+                    </Tooltip>
                   </Td>
 
                   {/* Net Payable */}
@@ -365,7 +474,9 @@ export default function TechnicianPayoutsTable({
                   {/* Status & UTR */}
                   <Td py={3}>
                     <VStack align="flex-start" spacing={1}>
-                      <PayoutStatusBadge status={status} size="sm" />
+                      <HStack spacing={1} flexWrap="wrap">
+                        <PayoutStatusBadge status={status} size="sm" />
+                      </HStack>
                       {item.utr ? (
                         <HStack spacing={1}>
                           <Text fontSize="3xs" fontFamily="mono" color="green.700" fontWeight="700">
@@ -395,42 +506,24 @@ export default function TechnicianPayoutsTable({
                   {/* Quick Action Buttons */}
                   <Td py={3} textAlign="center">
                     <HStack spacing={1.5} justify="center">
-                      {/* Approved -> Direct Pay / Transfer Button */}
-                      {status === "approved" && (
-                        <Button
-                          size="xs"
-                          colorScheme="teal"
-                          bg="teal.600"
-                          _hover={{ bg: "teal.700", transform: "translateY(-1px)" }}
-                          _active={{ bg: "teal.800" }}
-                          leftIcon={<FaMoneyCheckAlt />}
-                          fontWeight="bold"
-                          borderRadius="8px"
-                          boxShadow="0 2px 6px rgba(0, 128, 128, 0.3)"
-                          onClick={() => onRecordTransfer && onRecordTransfer(item)}
-                        >
-                          Pay / Transfer
-                        </Button>
-                      )}
-
-                      {/* Requested or Pending -> Direct Approve Button & Reject */}
-                      {(status === "pending" || status === "requested") && (
+                      {/* Pending / Requested / Approved -> Pay & Record UTR or Reject */}
+                      {(status === "pending" || status === "requested" || status === "approved") && (
                         <>
                           <Button
                             size="xs"
-                            colorScheme="green"
-                            bg="green.600"
-                            _hover={{ bg: "green.700", transform: "translateY(-1px)" }}
-                            _active={{ bg: "green.800" }}
-                            leftIcon={<FaCheck />}
+                            colorScheme="teal"
+                            bg="teal.600"
+                            _hover={{ bg: "teal.700", transform: "translateY(-1px)" }}
+                            _active={{ bg: "teal.800" }}
+                            leftIcon={<FaMoneyCheckAlt />}
                             fontWeight="bold"
                             borderRadius="8px"
-                            boxShadow="0 2px 6px rgba(16, 185, 129, 0.3)"
-                            onClick={() => onApprove && onApprove(item)}
+                            boxShadow="0 2px 6px rgba(0, 128, 128, 0.3)"
+                            onClick={() => onRecordTransfer && onRecordTransfer(item)}
                           >
-                            Approve
+                            Transfer & Record UTR
                           </Button>
-                          <Tooltip label="Reject Request" hasArrow>
+                          <Tooltip label="Reject & Refund Reserve" hasArrow>
                             <IconButton
                               size="xs"
                               colorScheme="red"
@@ -475,9 +568,15 @@ export default function TechnicianPayoutsTable({
                             aria-label="More Options"
                           />
                         </Tooltip>
-                        <MenuList fontSize="xs" shadow="xl" borderRadius="12px" py={1} minW="180px">
+                        <MenuList fontSize="xs" shadow="xl" borderRadius="12px" py={1} minW="210px">
                           <MenuItem icon={<FaEye />} onClick={() => onViewDetails && onViewDetails(item)}>
                             View Full Details Drawer
+                          </MenuItem>
+                          <MenuItem
+                            icon={<FaUserCog color="#008080" />}
+                            onClick={() => onViewTechnician && onViewTechnician(resolvedTechId, techObj)}
+                          >
+                            Technician Wallet & Profile
                           </MenuItem>
                           {status === "paid" && (
                             <MenuItem
@@ -485,6 +584,16 @@ export default function TechnicianPayoutsTable({
                               onClick={() => onViewReceipt && onViewReceipt(item)}
                             >
                               View Official Receipt
+                            </MenuItem>
+                          )}
+                          {status === "paid" && isOwner && (
+                            <MenuItem
+                              icon={<FaUndoAlt color="red" />}
+                              color="red.600"
+                              fontWeight="700"
+                              onClick={() => onRevertPaid && onRevertPaid(item)}
+                            >
+                              Revert Paid (Owner Only)
                             </MenuItem>
                           )}
                           {status === "approved" && (
@@ -504,7 +613,7 @@ export default function TechnicianPayoutsTable({
                               fontWeight="600"
                               onClick={() => onApprove && onApprove(item)}
                             >
-                              Approve Request
+                              {isDualApproval ? "Approve High-Value Payout" : "Approve Request"}
                             </MenuItem>
                           )}
                           {(status === "pending" || status === "requested") && (
@@ -516,6 +625,12 @@ export default function TechnicianPayoutsTable({
                               Reject Request
                             </MenuItem>
                           )}
+                          <MenuItem
+                            icon={<FaSnowflake color={techObj.payoutBlocked ? "green" : "red"} />}
+                            onClick={() => onFreezeTechnician && onFreezeTechnician(techObj)}
+                          >
+                            {techObj.payoutBlocked ? "Unfreeze Technician Payouts" : "Freeze Technician Payouts"}
+                          </MenuItem>
                           <MenuItem icon={<FaCopy />} onClick={() => copyToClipboard(id, "Withdrawal ID")}>
                             Copy Withdrawal ID
                           </MenuItem>

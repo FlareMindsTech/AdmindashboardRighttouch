@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useAppToast } from "components/feedback";
 import {
   Box,
   Button,
@@ -7,7 +8,6 @@ import {
   Input,
   Select,
   Text,
-  useToast,
   VStack,
 } from "@chakra-ui/react";
 import DataTable from "components/common/DataTable";
@@ -43,7 +43,7 @@ const canAssign = (request) =>
   );
 
 export default function QuoteRequestsView({ requests = [], isLoading, onRefresh }) {
-  const toast = useToast();
+  const toast = useAppToast();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
   const [page, setPage] = useState(1);
@@ -94,7 +94,7 @@ export default function QuoteRequestsView({ requests = [], isLoading, onRefresh 
     const { error } = await assignQuoteRequest(request._id);
     setBusy(false);
     if (error) {
-      toast({ title: "Assign failed", description: error, status: "error", duration: 4000, isClosable: true });
+      toast.error(error, { title: "Assign failed", duration: 4000, isClosable: true });
       return;
     }
     toast({ title: "Request assigned", status: "success", duration: 2500, isClosable: true });

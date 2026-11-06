@@ -7,7 +7,6 @@ import {
   StatNumber,
   Spinner,
   Icon,
-  useColorMode,
 } from "@chakra-ui/react";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
@@ -32,8 +31,7 @@ const UserStatsCards = React.memo(function UserStatsCards({
   customColor = "#008080",
   textColor,
 }) {
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
+  const isDark = false;
 
   const cards = [
     {

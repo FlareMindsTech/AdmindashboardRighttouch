@@ -1,12 +1,6 @@
 import React from "react";
+import AppModal from "components/common/AppModal";
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Flex,
   Box,
   Heading,
@@ -42,11 +36,7 @@ export default function BankDetailsModal({
   getTechnicianName,
 }) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg">
-      <ModalOverlay />
-      <ModalContent borderRadius="16px">
-        <ModalHeader borderBottom="1px solid" borderColor="gray.100">
-          <Flex justify="space-between" align="center" pr={6}>
+    <AppModal isOpen={isOpen} onClose={onClose} size="lg" title={<><Flex justify="space-between" align="center" pr={6}>
             <Box>
               <Heading size="sm">Gate 3: Bank & Payout Verification</Heading>
               <Text fontSize="xs" color="gray.500" mt={0.5}>
@@ -62,11 +52,43 @@ export default function BankDetailsModal({
             >
               Edit Bank Details
             </Button>
-          </Flex>
-        </ModalHeader>
-        <ModalCloseButton />
-
-        <ModalBody py={4}>
+          </Flex></>} footer={<><HStack spacing={2} justify="flex-end" w="100%">
+            {!showBankRejection ? (
+              <>
+                <Button
+                  size="sm"
+                  colorScheme="red"
+                  variant="outline"
+                  onClick={() => setShowBankRejection(true)}
+                >
+                  Reject Bank
+                </Button>
+                {(() => {
+                  const isBankVer = isTechnicianBankVerified(selectedTechForBank, allKycRecords);
+                  return (
+                    <Button
+                      size="sm"
+                      colorScheme={isBankVer ? "teal" : "green"}
+                      leftIcon={<FaCheckCircle />}
+                      onClick={() => onVerifyBankAction(true)}
+                      isLoading={loading}
+                    >
+                      {isBankVer ? "Already Verified ✓" : "Verify Bank (Enable Payouts)"}
+                    </Button>
+                  );
+                })()}
+              </>
+            ) : (
+              <>
+                <Button size="sm" variant="ghost" onClick={() => setShowBankRejection(false)}>
+                  Cancel
+                </Button>
+                <Button size="sm" colorScheme="red" onClick={() => onVerifyBankAction(false)}>
+                  Confirm Rejection
+                </Button>
+              </>
+            )}
+          </HStack></>}>
           {selectedTechForBank && (
             <VStack spacing={4} align="stretch">
               {/* Bank status banner */}
@@ -159,48 +181,7 @@ export default function BankDetailsModal({
               })()}
             </VStack>
           )}
-        </ModalBody>
 
-        <ModalFooter borderTop="1px solid" borderColor="gray.100" bg="gray.50">
-          <HStack spacing={2} justify="flex-end" w="100%">
-            {!showBankRejection ? (
-              <>
-                <Button
-                  size="sm"
-                  colorScheme="red"
-                  variant="outline"
-                  onClick={() => setShowBankRejection(true)}
-                >
-                  Reject Bank
-                </Button>
-                {(() => {
-                  const isBankVer = isTechnicianBankVerified(selectedTechForBank, allKycRecords);
-                  return (
-                    <Button
-                      size="sm"
-                      colorScheme={isBankVer ? "teal" : "green"}
-                      leftIcon={<FaCheckCircle />}
-                      onClick={() => onVerifyBankAction(true)}
-                      isLoading={loading}
-                    >
-                      {isBankVer ? "Already Verified ✓" : "Verify Bank (Enable Payouts)"}
-                    </Button>
-                  );
-                })()}
-              </>
-            ) : (
-              <>
-                <Button size="sm" variant="ghost" onClick={() => setShowBankRejection(false)}>
-                  Cancel
-                </Button>
-                <Button size="sm" colorScheme="red" onClick={() => onVerifyBankAction(false)}>
-                  Confirm Rejection
-                </Button>
-              </>
-            )}
-          </HStack>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+</AppModal>
   );
 }

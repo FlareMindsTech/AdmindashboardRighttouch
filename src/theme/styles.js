@@ -1,5 +1,3 @@
-import { mode } from "@chakra-ui/theme-tools";
-
 export const globalStyles = {
   colors: {
     gray: {
@@ -42,7 +40,7 @@ export const globalStyles = {
     global: (props) => ({
       body: {
         overflowX: "hidden",
-        bg: mode("gray.50", "#1B254B")(props),
+        bg: "gray.50",
         fontFamily: "Helvetica, sans-serif",
       },
       html: {

@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import AppModal from "components/common/AppModal";
+import { useAppToast } from "components/feedback";
+import ErrorState from "components/feedback/ErrorState";
 import {
   Box,
   Button,
@@ -20,17 +23,8 @@ import {
   StatNumber,
   StatHelpText,
   useColorModeValue,
-  useColorMode,
-  useToast,
   Spinner,
   Badge,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Center,
   Select,
   SimpleGrid,
@@ -107,7 +101,6 @@ import {
 const BRAND_COLOR = "#008080";
 
 export default function BillingPaymentDashboard() {
-  const { colorMode } = useColorMode();
   const textColor = useColorModeValue("gray.700", "white");
   const subTextColor = useColorModeValue("gray.500", "gray.400");
   const cardBg = useColorModeValue("white", "gray.800");
@@ -115,11 +108,12 @@ export default function BillingPaymentDashboard() {
   // Hoisted unconditionally (Rules of Hooks); previously called inline in
   // five table headers with this exact pair — rendered value unchanged.
   const tableHeaderBg = useColorModeValue("gray.50", "gray.900");
-  const toast = useToast();
+  const toast = useAppToast();
   const dispatch = useAppDispatch();
 
   // Active Tab State
   const [tabIndex, setTabIndex] = useState(0);
+  const [loadError, setLoadError] = useState(null);
 
   // ----------------------------------------------------
   // 1. AUTOMATIC PAYOUT & WALLET MONITORING STATE
@@ -222,6 +216,7 @@ export default function BillingPaymentDashboard() {
   // DATA FETCHING
   // ----------------------------------------------------
   const fetchWalletData = useCallback(async () => {
+    setLoadError(null);
     setWalletLoading(true);
     try {
       // Shared wallet cache (TTL), withdrawals keyed by status filter.
@@ -236,12 +231,14 @@ export default function BillingPaymentDashboard() {
       ]);
     } catch (err) {
       console.error("Error fetching wallet data:", err);
+      setLoadError(err);
     } finally {
       setWalletLoading(false);
     }
   }, [dispatch, withdrawalStatusFilter]);
 
   const fetchFinanceData = useCallback(async () => {
+    setLoadError(null);
     setFinanceLoading(true);
     try {
       // Shared finance cache (TTL) — same entries FinanceTracking reads.
@@ -251,12 +248,14 @@ export default function BillingPaymentDashboard() {
       ]);
     } catch (err) {
       console.error("Error fetching finance data:", err);
+      setLoadError(err);
     } finally {
       setFinanceLoading(false);
     }
   }, [dispatch]);
 
   const fetchRefundsData = useCallback(async () => {
+    setLoadError(null);
     setRefundsLoading(true);
     try {
       const res = await refundsComplaints.listRefunds(refundStatusFilter ? { status: refundStatusFilter } : {});
@@ -266,12 +265,14 @@ export default function BillingPaymentDashboard() {
       }
     } catch (err) {
       console.error("Error fetching refunds:", err);
+      setLoadError(err);
     } finally {
       setRefundsLoading(false);
     }
   }, [refundStatusFilter]);
 
   const fetchQuotationsData = useCallback(async () => {
+    setLoadError(null);
     setQuotationsLoading(true);
     try {
       const [quotesRes, reqsRes] = await Promise.allSettled([
@@ -289,12 +290,14 @@ export default function BillingPaymentDashboard() {
       }
     } catch (err) {
       console.error("Error fetching quotations:", err);
+      setLoadError(err);
     } finally {
       setQuotationsLoading(false);
     }
   }, []);
 
   const fetchCommissionData = useCallback(async () => {
+    setLoadError(null);
     setCommissionLoading(true);
     try {
       const res = await commission.listServiceCommissions();
@@ -304,6 +307,7 @@ export default function BillingPaymentDashboard() {
       }
     } catch (err) {
       console.error("Error fetching commission data:", err);
+      setLoadError(err);
     } finally {
       setCommissionLoading(false);
     }
@@ -386,7 +390,7 @@ export default function BillingPaymentDashboard() {
         fetchWalletData();
       }
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     } finally {
       setSendMoneyLoading(false);
     }
@@ -417,7 +421,7 @@ export default function BillingPaymentDashboard() {
         fetchWalletData();
       }
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     } finally {
       setReviewLoading(false);
     }
@@ -436,7 +440,7 @@ export default function BillingPaymentDashboard() {
       if (res?.error) toast({ title: "Preview Error", description: res.error, status: "error" });
       else setRefundPreview(res.data);
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     } finally {
       setPreviewLoading(false);
     }
@@ -461,7 +465,7 @@ export default function BillingPaymentDashboard() {
         fetchRefundsData();
       }
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     } finally {
       setCreateRefundLoading(false);
     }
@@ -476,7 +480,7 @@ export default function BillingPaymentDashboard() {
         fetchRefundsData();
       }
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     }
   };
 
@@ -489,7 +493,7 @@ export default function BillingPaymentDashboard() {
         fetchRefundsData();
       }
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     }
   };
 
@@ -514,7 +518,7 @@ export default function BillingPaymentDashboard() {
         fetchQuotationsData();
       }
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     } finally {
       setQuoteSubmitting(false);
     }
@@ -533,7 +537,7 @@ export default function BillingPaymentDashboard() {
         fetchQuotationsData();
       }
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     }
   };
 
@@ -552,7 +556,7 @@ export default function BillingPaymentDashboard() {
         fetchCommissionData();
       }
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     } finally {
       setCommissionSubmitting(false);
     }
@@ -572,12 +576,22 @@ export default function BillingPaymentDashboard() {
         setOverrideForm({ bookingId: "", rate: "", reason: "" });
       }
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     }
   };
 
   return (
     <Flex direction="column" pt={{ base: "120px", md: "75px" }}>
+      {loadError && (
+        <Box mb="16px">
+          <ErrorState
+            compact
+            error={loadError}
+            title="Could not load billing data"
+            onRetry={tabIndex === 0 ? fetchWalletData : tabIndex === 1 ? fetchFinanceData : tabIndex === 2 ? fetchRefundsData : tabIndex === 3 ? fetchQuotationsData : fetchCommissionData}
+          />
+        </Box>
+      )}
       {/* Visual System Banner: Automatic Payout Engine Status */}
       <Alert status="info" borderRadius="16px" mb="24px" bg="teal.50" border="1px solid" borderColor="teal.200">
         <AlertIcon as={FaRobot} color={BRAND_COLOR} w="20px" h="20px" />
@@ -597,17 +611,17 @@ export default function BillingPaymentDashboard() {
 
       {/* Real-time Monitoring Executive Stat Cards */}
       <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={{ base: 3, md: 4 }} mb={{ base: 3, md: 4 }}>
-        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(colorMode === "dark", false, BRAND_COLOR)}>
+        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(false, false, BRAND_COLOR)}>
           <CardBody p={{ base: 3, md: 4 }} display="flex" alignItems="center">
             <Flex align="center" justify="space-between" w="100%">
               <Stat me="auto">
-                <StatLabel fontSize="xs" color={colorMode === "dark" ? "gray.400" : "gray.600"} fontWeight="bold" textTransform="uppercase">
+                <StatLabel fontSize="xs" color="gray.600" fontWeight="bold" textTransform="uppercase">
                   Total Wallet Volume
                 </StatLabel>
                 <StatNumber fontSize="2xl" color={textColor} fontWeight="extrabold" mt={1}>
                   ₹{walletSummary?.balance ?? walletSummary?.summary?.balance ?? walletSummary?.totalCollected ?? walletSummary?.summary?.totalCollected ?? 0}
                 </StatNumber>
-                <StatHelpText fontSize="3xs" color={colorMode === "dark" ? "gray.400" : "gray.500"} mb="0">Available net earnings</StatHelpText>
+                <StatHelpText fontSize="3xs" color="gray.500" mb="0">Available net earnings</StatHelpText>
               </Stat>
               <Flex w={{ base: "40px", md: "44px" }} h={{ base: "40px", md: "44px" }} flexShrink={0} ml={2} {...getSkeuomorphicIconBoxStyle(BRAND_COLOR)}>
                 <Icon as={FaWallet} color="white" w="22px" h="22px" sx={skeuomorphicIconFilter} />
@@ -616,11 +630,11 @@ export default function BillingPaymentDashboard() {
           </CardBody>
         </Card>
 
-        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(colorMode === "dark", false, "green.500")}>
+        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(false, false, "green.500")}>
           <CardBody p={{ base: 3, md: 4 }} display="flex" alignItems="center">
             <Flex align="center" justify="space-between" w="100%">
               <Stat me="auto">
-                <StatLabel fontSize="xs" color={colorMode === "dark" ? "gray.400" : "gray.600"} fontWeight="bold" textTransform="uppercase">
+                <StatLabel fontSize="xs" color="gray.600" fontWeight="bold" textTransform="uppercase">
                   Auto Paid Payouts
                 </StatLabel>
                 <StatNumber fontSize="2xl" color="green.500" fontWeight="extrabold" mt={1}>
@@ -635,11 +649,11 @@ export default function BillingPaymentDashboard() {
           </CardBody>
         </Card>
 
-        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(colorMode === "dark", false, "blue.500")}>
+        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(false, false, "blue.500")}>
           <CardBody p={{ base: 3, md: 4 }} display="flex" alignItems="center">
             <Flex align="center" justify="space-between" w="100%">
               <Stat me="auto">
-                <StatLabel fontSize="xs" color={colorMode === "dark" ? "gray.400" : "gray.600"} fontWeight="bold" textTransform="uppercase">
+                <StatLabel fontSize="xs" color="gray.600" fontWeight="bold" textTransform="uppercase">
                   Auto Processing
                 </StatLabel>
                 <StatNumber fontSize="2xl" color="blue.500" fontWeight="extrabold" mt={1}>
@@ -654,11 +668,11 @@ export default function BillingPaymentDashboard() {
           </CardBody>
         </Card>
 
-        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(colorMode === "dark", false, "orange.500")}>
+        <Card minH={{ base: "90px", md: "105px" }} h={{ base: "auto", md: "105px" }} borderRadius="10px" p={0} {...getSkeuomorphicCardStyle(false, false, "orange.500")}>
           <CardBody p={{ base: 3, md: 4 }} display="flex" alignItems="center">
             <Flex align="center" justify="space-between" w="100%">
               <Stat me="auto">
-                <StatLabel fontSize="xs" color={colorMode === "dark" ? "gray.400" : "gray.600"} fontWeight="bold" textTransform="uppercase">
+                <StatLabel fontSize="xs" color="gray.600" fontWeight="bold" textTransform="uppercase">
                   Manual Review
                 </StatLabel>
                 <StatNumber fontSize="2xl" color="orange.500" fontWeight="extrabold" mt={1}>
@@ -1082,12 +1096,10 @@ export default function BillingPaymentDashboard() {
       </Tabs>
 
       {/* FLOW B: ADMIN DIRECT SEND MONEY MODAL */}
-      <Modal isOpen={isSendMoneyOpen} onClose={onSendMoneyClose} size="lg">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Flow B: Direct Admin Payout to Technician</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+      <AppModal isOpen={isSendMoneyOpen} onClose={onSendMoneyClose} size="lg" title={<>Flow B: Direct Admin Payout to Technician</>} footer={<><Button size="sm" mr={3} onClick={onSendMoneyClose}>Cancel</Button>
+            <Button size="sm" colorScheme="teal" isLoading={sendMoneyLoading} onClick={handleExecuteSendMoney}>
+              {sendMoneyForm.isHighAmount ? "Confirm High Payout" : "Execute Direct Payout"}
+            </Button></>}>
             <VStack spacing="14px" align="stretch">
               <Alert status="warning" borderRadius="8px" fontSize="xs">
                 <AlertIcon />
@@ -1145,23 +1157,11 @@ export default function BillingPaymentDashboard() {
                 </Alert>
               )}
             </VStack>
-          </ModalBody>
-          <ModalFooter>
-            <Button size="sm" mr={3} onClick={onSendMoneyClose}>Cancel</Button>
-            <Button size="sm" colorScheme="teal" isLoading={sendMoneyLoading} onClick={handleExecuteSendMoney}>
-              {sendMoneyForm.isHighAmount ? "Confirm High Payout" : "Execute Direct Payout"}
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* TRANSACTION AUDIT TRAIL MODAL */}
-      <Modal isOpen={isAuditOpen} onClose={onAuditClose} size="lg">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Transaction Audit Trail Details</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+      <AppModal isOpen={isAuditOpen} onClose={onAuditClose} size="lg" title={<>Transaction Audit Trail Details</>} footer={<><Button size="sm" colorScheme="teal" onClick={onAuditClose}>Close Audit Log</Button></>}>
             {selectedTx && (
               <VStack spacing="12px" align="stretch">
                 <Box p="12px" bg="gray.50" borderRadius="8px">
@@ -1196,20 +1196,14 @@ export default function BillingPaymentDashboard() {
                 </VStack>
               </VStack>
             )}
-          </ModalBody>
-          <ModalFooter>
-            <Button size="sm" colorScheme="teal" onClick={onAuditClose}>Close Audit Log</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* AMBIGUOUS PAYOUT / MANUAL REVIEW RECONCILIATION MODAL */}
-      <Modal isOpen={isReviewOpen} onClose={onReviewClose}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Reconcile Ambiguous Payout</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+      <AppModal isOpen={isReviewOpen} onClose={onReviewClose} title={<>Reconcile Ambiguous Payout</>} footer={<><Button size="sm" mr={3} onClick={onReviewClose}>Cancel</Button>
+            <Button size="sm" colorScheme="teal" isLoading={reviewLoading} onClick={handleResolveReview}>
+              Confirm Reconciliation
+            </Button></>}>
             <VStack spacing="12px" align="stretch">
               <Alert status="warning" borderRadius="8px" fontSize="xs">
                 <AlertIcon />
@@ -1229,23 +1223,12 @@ export default function BillingPaymentDashboard() {
                 <Textarea size="sm" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="Bank statement verified..." />
               </FormControl>
             </VStack>
-          </ModalBody>
-          <ModalFooter>
-            <Button size="sm" mr={3} onClick={onReviewClose}>Cancel</Button>
-            <Button size="sm" colorScheme="teal" isLoading={reviewLoading} onClick={handleResolveReview}>
-              Confirm Reconciliation
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* ISSUE REFUND MODAL */}
-      <Modal isOpen={isRefundOpen} onClose={onRefundClose}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Issue Refund</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+      <AppModal isOpen={isRefundOpen} onClose={onRefundClose} title={<>Issue Refund</>} footer={<><Button size="sm" mr={2} variant="ghost" isLoading={previewLoading} onClick={handlePreviewRefund}>Preview</Button>
+            <Button size="sm" colorScheme="teal" isLoading={createRefundLoading} onClick={handleCreateRefund}>Confirm Refund</Button></>}>
             <VStack spacing="12px">
               <FormControl isRequired>
                 <FormLabel fontSize="xs">Booking ID</FormLabel>
@@ -1260,21 +1243,12 @@ export default function BillingPaymentDashboard() {
                 <Textarea size="sm" value={refundForm.reason} onChange={(e) => setRefundForm({ ...refundForm, reason: e.target.value })} placeholder="Customer unsatisfied" />
               </FormControl>
             </VStack>
-          </ModalBody>
-          <ModalFooter>
-            <Button size="sm" mr={2} variant="ghost" isLoading={previewLoading} onClick={handlePreviewRefund}>Preview</Button>
-            <Button size="sm" colorScheme="teal" isLoading={createRefundLoading} onClick={handleCreateRefund}>Confirm Refund</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* CREATE QUOTATION MODAL */}
-      <Modal isOpen={isQuoteModalOpen} onClose={onQuoteModalClose}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Create Customer Quotation</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+      <AppModal isOpen={isQuoteModalOpen} onClose={onQuoteModalClose} title={<>Create Customer Quotation</>} footer={<><Button size="sm" mr={3} onClick={onQuoteModalClose}>Cancel</Button>
+            <Button size="sm" colorScheme="teal" isLoading={quoteSubmitting} onClick={handleCreateQuotation}>Create Quote</Button></>}>
             <VStack spacing="12px">
               <FormControl isRequired>
                 <FormLabel fontSize="xs">Customer ID</FormLabel>
@@ -1289,21 +1263,12 @@ export default function BillingPaymentDashboard() {
                 <Input size="sm" type="number" value={quoteForm.amount} onChange={(e) => setQuoteForm({ ...quoteForm, amount: e.target.value })} placeholder="2500" />
               </FormControl>
             </VStack>
-          </ModalBody>
-          <ModalFooter>
-            <Button size="sm" mr={3} onClick={onQuoteModalClose}>Cancel</Button>
-            <Button size="sm" colorScheme="teal" isLoading={quoteSubmitting} onClick={handleCreateQuotation}>Create Quote</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* EDIT COMMISSION MODAL */}
-      <Modal isOpen={isCommissionOpen} onClose={onCommissionClose}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Set Service Commission</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+      <AppModal isOpen={isCommissionOpen} onClose={onCommissionClose} title={<>Set Service Commission</>} footer={<><Button size="sm" mr={3} onClick={onCommissionClose}>Cancel</Button>
+            <Button size="sm" colorScheme="teal" isLoading={commissionSubmitting} onClick={handleSaveCommission}>Save Rate</Button></>}>
             <VStack spacing="12px">
               <Text fontSize="sm">Service: <strong>{selectedService?.serviceName || selectedService?.name}</strong></Text>
               <FormControl isRequired>
@@ -1311,21 +1276,12 @@ export default function BillingPaymentDashboard() {
                 <Input size="sm" type="number" value={newCommissionRate} onChange={(e) => setNewCommissionRate(e.target.value)} />
               </FormControl>
             </VStack>
-          </ModalBody>
-          <ModalFooter>
-            <Button size="sm" mr={3} onClick={onCommissionClose}>Cancel</Button>
-            <Button size="sm" colorScheme="teal" isLoading={commissionSubmitting} onClick={handleSaveCommission}>Save Rate</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* OVERRIDE BOOKING COMMISSION MODAL */}
-      <Modal isOpen={isOverrideOpen} onClose={onOverrideClose}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Override Booking Commission</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+      <AppModal isOpen={isOverrideOpen} onClose={onOverrideClose} title={<>Override Booking Commission</>} footer={<><Button size="sm" mr={3} onClick={onOverrideClose}>Cancel</Button>
+            <Button size="sm" colorScheme="teal" onClick={handleSaveBookingOverride}>Apply Override</Button></>}>
             <VStack spacing="12px">
               <FormControl isRequired>
                 <FormLabel fontSize="xs">Booking ID</FormLabel>
@@ -1340,13 +1296,8 @@ export default function BillingPaymentDashboard() {
                 <Input size="sm" value={overrideForm.reason} onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })} placeholder="Special promo / dispute resolution" />
               </FormControl>
             </VStack>
-          </ModalBody>
-          <ModalFooter>
-            <Button size="sm" mr={3} onClick={onOverrideClose}>Cancel</Button>
-            <Button size="sm" colorScheme="teal" onClick={handleSaveBookingOverride}>Apply Override</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
     </Flex>
   );
 }

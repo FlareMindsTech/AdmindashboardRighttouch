@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from "react";
+import PropTypes from "prop-types";
+import AppModal from "components/common/AppModal";
+import { useAppToast } from "components/feedback";
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Button,
   VStack,
   HStack,
+  Flex,
   FormControl,
   FormLabel,
   Textarea,
@@ -20,10 +17,27 @@ import {
   Text,
   Box,
   Badge,
-  useToast,
+  Avatar,
+  Icon,
+  Wrap,
+  WrapItem,
+  useColorMode,
 } from "@chakra-ui/react";
+import {
+  FaTimesCircle,
+  FaUndoAlt,
+} from "react-icons/fa";
 import { rejectWithdrawal } from "api/wallet";
 import { formatInr } from "./FinancialBreakdown";
+
+const REJECTION_PRESETS = [
+  "Bank details mismatch with verified KYC record",
+  "Active customer dispute or unresolved warranty complaint",
+  "Technician requested cancellation of withdrawal",
+  "Suspected fraudulent activity or unauthorized request",
+  "Outstanding penalty dues / negative balance adjustment",
+  "Incomplete KYC documentation submitted",
+];
 
 export default function RejectWithdrawalModal({
   isOpen,
@@ -31,7 +45,9 @@ export default function RejectWithdrawalModal({
   withdrawal,
   onSuccess,
 }) {
-  const toast = useToast();
+  const toast = useAppToast();
+  const { colorMode } = useColorMode();
+  const isDark = colorMode === "dark";
 
   const [reason, setReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,7 +91,9 @@ export default function RejectWithdrawalModal({
 
       toast({
         title: "Withdrawal Rejected",
-        description: `Rejected withdrawal #${withdrawal._id}. ${formatInr(requestedPaise)} has been returned to the technician's available balance.`,
+        description: `Rejected withdrawal #${withdrawal._id}. ${formatInr(
+          requestedPaise
+        )} has been released back to the technician's available balance.`,
         status: "info",
         duration: 4000,
         isClosable: true,
@@ -93,90 +111,197 @@ export default function RejectWithdrawalModal({
   const techName =
     withdrawal?.technician?.name ||
     withdrawal?.technicianName ||
-    withdrawal?.technicianId?.userId?.fname
+    (withdrawal?.technicianId?.userId?.fname
       ? `${withdrawal?.technicianId?.userId?.fname} ${withdrawal?.technicianId?.userId?.lname || ""}`.trim()
-      : "Technician";
+      : "Technician");
+
+  const techPhone =
+    withdrawal?.technician?.phone ||
+    withdrawal?.technicianId?.userId?.mobileNumber ||
+    withdrawal?.technicianId?.mobileNumber ||
+    "";
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="md" isCentered closeOnOverlayClick={!isSubmitting}>
-      <ModalOverlay backdropFilter="blur(4px)" />
-      <ModalContent borderRadius="20px" overflow="hidden" boxShadow="2xl">
-        <ModalHeader bg="red.700" color="white" py={4} px={6}>
-          <HStack justify="space-between" align="center">
+    <AppModal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="4xl"
+      maxW={{ base: "95vw", md: "850px", lg: "920px" }}
+      bodyMaxH="75vh"
+      isCentered
+      closeOnOverlayClick={!isSubmitting}
+      headerBg="red.800"
+      headerColor="white"
+      closeButtonColor="white"
+      title={
+        <HStack justify="space-between" align="center" w="full" pr={4}>
+          <HStack spacing={3}>
+            <Flex
+              w="40px"
+              h="40px"
+              borderRadius="10px"
+              bg="red.700"
+              color="white"
+              align="center"
+              justify="center"
+            >
+              <Icon as={FaTimesCircle} boxSize={5} />
+            </Flex>
             <Box>
-              <Text fontSize="md" fontWeight="bold">
+              <Text fontSize="lg" fontWeight="800">
                 Reject Withdrawal Request
               </Text>
-              <Text fontSize="2xs" color="red.100" fontFamily="mono">
+              <Text fontSize="xs" color="red.200" fontFamily="mono">
                 Withdrawal #{withdrawal?._id} • {techName}
               </Text>
             </Box>
-            <Badge colorScheme="red" px={2.5} py={1} borderRadius="full" fontSize="2xs">
-              REJECTION
-            </Badge>
           </HStack>
-        </ModalHeader>
-        <ModalCloseButton color="white" top={4} right={4} isDisabled={isSubmitting} />
-
-        <ModalBody p={6}>
-          <VStack spacing={4} align="stretch" as="form" onSubmit={handleSubmit}>
-            <Alert status="info" borderRadius="12px" fontSize="xs">
-              <AlertIcon />
-              <Box>
-                <AlertTitle fontWeight="700">Reservation Release</AlertTitle>
-                <AlertDescription>
-                  Upon rejection, the reserved amount of <strong>{formatInr(requestedPaise)}</strong> will be immediately unblocked and credited back to the technician's available balance.
-                </AlertDescription>
-              </Box>
-            </Alert>
-
-            {errorMsg && (
-              <Alert status="error" borderRadius="12px" fontSize="xs">
-                <AlertIcon />
-                <AlertDescription>{errorMsg}</AlertDescription>
-              </Alert>
-            )}
-
-            <FormControl isRequired isInvalid={reason.length > 0 && reason.trim().length < 5}>
-              <FormLabel fontSize="xs" fontWeight="700">
-                Reason for Rejection (Visible to Technician)
-              </FormLabel>
-              <Textarea
-                size="sm"
-                borderRadius="8px"
-                rows={3}
-                placeholder="Explain the specific reason (e.g. Incomplete KYC bank verification, disputed booking commission, etc.)"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                isDisabled={isSubmitting}
-                autoFocus
-              />
-              <Text fontSize="3xs" color="gray.500" mt={1}>
-                Minimum 5 characters required. This note will be recorded in the audit logs and sent in the push notification.
-              </Text>
-            </FormControl>
-          </VStack>
-        </ModalBody>
-
-        <ModalFooter bg="gray.50" py={3} px={6} borderTop="1px solid" borderColor="gray.200">
-          <HStack spacing={3} justify="flex-end" w="full">
-            <Button size="sm" variant="ghost" onClick={onClose} isDisabled={isSubmitting}>
+          <Badge
+            colorScheme="red"
+            px={3}
+            py={1}
+            borderRadius="full"
+            fontSize="2xs"
+            fontWeight="800"
+          >
+            DECLINE & REFUND
+          </Badge>
+        </HStack>
+      }
+      footer={
+        <HStack spacing={3} justify="space-between" w="full">
+          <Text fontSize="xs" color="gray.500">
+            Funds will immediately return to technician's active balance.
+          </Text>
+          <HStack spacing={3}>
+            <Button size="md" variant="ghost" onClick={onClose} isDisabled={isSubmitting}>
               Cancel
             </Button>
             <Button
-              size="sm"
+              size="md"
               colorScheme="red"
-              fontWeight="700"
+              bg="red.600"
+              _hover={{ bg: "red.700" }}
+              fontWeight="800"
+              px={6}
               onClick={handleSubmit}
               isLoading={isSubmitting}
               loadingText="Rejecting..."
               isDisabled={reason.trim().length < 5 || isSubmitting}
             >
-              Confirm Rejection
+              Confirm Rejection & Refund ({formatInr(requestedPaise)})
             </Button>
           </HStack>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+        </HStack>
+      }
+    >
+      <VStack spacing={5} align="stretch" as="form" onSubmit={handleSubmit} py={1}>
+        {/* Reservation Refund Notice */}
+        <Alert status="info" borderRadius="12px" variant="left-accent" bg="blue.50" borderColor="blue.500">
+          <AlertIcon as={FaUndoAlt} color="blue.600" />
+          <Box>
+            <AlertTitle fontWeight="800" fontSize="sm" color="blue.900">
+              Immediate Escrow Balance Restoration
+            </AlertTitle>
+            <AlertDescription fontSize="xs" color="blue.800">
+              Upon rejection, the reserved balance of <strong>{formatInr(requestedPaise)}</strong> will be immediately unblocked and credited back to the technician's available wallet balance.
+            </AlertDescription>
+          </Box>
+        </Alert>
+
+        {errorMsg && (
+          <Alert status="error" borderRadius="12px" fontSize="xs">
+            <AlertIcon />
+            <AlertDescription>{errorMsg}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Withdrawal Overview Card */}
+        <Box
+          p={4}
+          borderRadius="14px"
+          bg={isDark ? "gray.800" : "gray.50"}
+          border="1px solid"
+          borderColor={isDark ? "gray.700" : "gray.200"}
+        >
+          <HStack justify="space-between" align="center">
+            <HStack spacing={3}>
+              <Avatar size="sm" name={techName} bg="red.600" color="white" fontWeight="700" />
+              <Box>
+                <Text fontSize="sm" fontWeight="800">
+                  {techName}
+                </Text>
+                <Text fontSize="2xs" color="gray.500">
+                  {techPhone ? `Mobile: ${techPhone}` : `Origin: ${withdrawal?.origin || "technician_request"}`}
+                </Text>
+              </Box>
+            </HStack>
+            <Box textAlign="right">
+              <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                Reserved Amount to Refund
+              </Text>
+              <Text fontSize="xl" fontWeight="900" color="red.600">
+                {formatInr(requestedPaise)}
+              </Text>
+            </Box>
+          </HStack>
+        </Box>
+
+        {/* Rejection Preset Chips */}
+        <Box>
+          <Text fontSize="xs" fontWeight="800" textTransform="uppercase" letterSpacing="0.5px" color="gray.600" mb={2}>
+            Common Rejection Reasons (Click to Apply)
+          </Text>
+          <Wrap spacing={2}>
+            {REJECTION_PRESETS.map((preset) => (
+              <WrapItem key={preset}>
+                <Button
+                  size="xs"
+                  variant={reason === preset ? "solid" : "outline"}
+                  colorScheme="red"
+                  borderRadius="full"
+                  onClick={() => setReason(preset)}
+                  isDisabled={isSubmitting}
+                >
+                  {preset}
+                </Button>
+              </WrapItem>
+            ))}
+          </Wrap>
+        </Box>
+
+        {/* Mandatory Reason Textarea */}
+        <FormControl isRequired isInvalid={reason.length > 0 && reason.trim().length < 5}>
+          <FormLabel fontSize="xs" fontWeight="800" textTransform="uppercase" letterSpacing="0.5px">
+            Detailed Reason for Rejection (Visible to Technician)
+          </FormLabel>
+          <Textarea
+            size="md"
+            borderRadius="10px"
+            rows={4}
+            placeholder="Explain the specific reason for rejecting this payout request..."
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            isDisabled={isSubmitting}
+            fontSize="xs"
+          />
+          <HStack justify="space-between" mt={1}>
+            <Text fontSize="3xs" color="gray.500">
+              Minimum 5 characters required. This note is recorded in audit logs and sent via notification.
+            </Text>
+            <Text fontSize="3xs" color={reason.trim().length >= 5 ? "green.600" : "gray.400"} fontWeight="700">
+              {reason.trim().length} chars
+            </Text>
+          </HStack>
+        </FormControl>
+      </VStack>
+    </AppModal>
   );
 }
+
+RejectWithdrawalModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  withdrawal: PropTypes.object,
+  onSuccess: PropTypes.func,
+};

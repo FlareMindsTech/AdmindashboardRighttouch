@@ -25,7 +25,6 @@ import {
   FaExclamationTriangle,
   FaCheckCircle,
   FaCoins,
-  FaPaperPlane,
 } from "react-icons/fa";
 import { getTechnicianWalletOverview } from "api/wallet";
 import { formatInr } from "./FinancialBreakdown";
@@ -92,7 +91,7 @@ export default function TechnicianWalletDetailsCard({
     bg: isDark ? "gray.850" : "white",
     borderRadius: "20px",
     border: "1px solid",
-    borderColor: isDark ? "gray.750" : "gray.100",
+    borderColor: isDark ? "gray.800" : "gray.100",
     boxShadow: isDark
       ? "0 8px 30px -4px rgba(0, 0, 0, 0.5)"
       : "0 4px 24px -2px rgba(0, 0, 0, 0.05), 0 2px 8px -1px rgba(0, 0, 0, 0.02)",
@@ -254,14 +253,17 @@ export default function TechnicianWalletDetailsCard({
                   </Badge>
 
                   {/* Actions for this technician */}
-                  <Button
-                    size="xs"
-                    colorScheme="teal"
-                    leftIcon={<FaPaperPlane />}
-                    onClick={() => onOpenSendMoney && onOpenSendMoney(overview.technician)}
-                  >
-                    Send Money
-                  </Button>
+                  {onFilterTableByTech && (
+                    <Button
+                      size="xs"
+                      colorScheme="teal"
+                      variant="solid"
+                      leftIcon={<FaCoins />}
+                      onClick={() => onFilterTableByTech(overview.technician?._id)}
+                    >
+                      View Payout Requests
+                    </Button>
+                  )}
 
                   <Button
                     size="xs"
@@ -271,17 +273,6 @@ export default function TechnicianWalletDetailsCard({
                   >
                     {eligibility.payoutBlocked ? "Unfreeze Payouts" : "Freeze Payouts"}
                   </Button>
-
-                  {onFilterTableByTech && (
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      colorScheme="blue"
-                      onClick={() => onFilterTableByTech(overview.technician?._id)}
-                    >
-                      Filter Table
-                    </Button>
-                  )}
                 </HStack>
               </Flex>
 

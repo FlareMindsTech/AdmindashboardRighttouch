@@ -7,6 +7,7 @@ import {
 import { geometryArea, toMultiPolygonCoordinates } from "./zoneGeometry";
 
 const MIN_OVERLAP_AREA = 1e-9;
+const CONTAINMENT_AREA_TOLERANCE = 1e-6;
 
 const districtIdOf = (district) =>
   district?._id || district?.backendRecord?._id || district?.id || "";
@@ -49,7 +50,7 @@ export const inspectZoneContainment = (zonePolygon, district) => {
     const outsideRatio = zoneArea > 0 ? outsideArea / zoneArea : 0;
     return {
       checked: true,
-      contained: outsideRatio <= 0.005,
+      contained: outsideRatio <= CONTAINMENT_AREA_TOLERANCE,
       outsideRatio,
     };
   } catch {

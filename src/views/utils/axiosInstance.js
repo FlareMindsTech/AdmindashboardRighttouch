@@ -1,8 +1,7 @@
 import axios from "axios";
-import { createStandaloneToast } from "@chakra-ui/toast";
-import theme from "theme/theme.js";
+import { appToast } from "components/feedback/standaloneToast";
+import { normalizeError } from "errors/normalizeError";
 
-const standaloneToast = createStandaloneToast({ theme });
 let lastExpiryToastTime = 0;
 
 // Phase 2 bridge: the Redux store registers a reset callback here so the
@@ -31,18 +30,11 @@ export const handleSessionExpiry = (customMessage) => {
     console.error("Auth reset listener error:", e);
   }
 
-  const toastId = "session-expired-toast";
-  if (!standaloneToast.isActive(toastId)) {
-    standaloneToast({
-      id: toastId,
-      title: "Session Expired",
-      description: customMessage || "Your session has expired. Please log in again.",
-      status: "warning",
-      duration: 5000,
-      isClosable: true,
-      position: "top-right",
-    });
-  }
+  appToast.warning("Session expired", {
+    id: "session-expired-toast",
+    description: customMessage || "Your session has expired. Please sign in again to continue.",
+    duration: 5000,
+  });
 
   // Redirect to signin if not already on the auth page
   if (typeof window !== "undefined" && window.location) {
@@ -3194,44 +3186,6 @@ export const getServiceBookings = async () => {
 };
 
 const extractServerError = async (response) => {
-  try {
-    const text = await response.text();
-    try {
-      const body = JSON.parse(text);
-      if (typeof body === "string") return body;
-      if (body.message && typeof body.message === "string") return body.message;
-      if (body.error && typeof body.error === "string") return body.error;
-      if (body.error && typeof body.error === "object" && body.error.message) return body.error.message;
-      if (body.err && typeof body.err === "string") return body.err;
-      if (Array.isArray(body.errors)) {
-        return body.errors.map(e => (typeof e === "string" ? e : e.msg || e.message || JSON.stringify(e))).join(", ");
-      }
-      return text || `Error: ${response.status}`;
-    } catch {
-      return text || `Error: ${response.status}`;
-    }
-  } catch (e) {
-    return `Error: ${response.status}`;
-  }
-};
-
-const messageFromErrorBody = (body, fallback) => {
-  if (!body) return fallback;
-  if (typeof body === "string") return body;
-  if (body.message && typeof body.message === "string") return body.message;
-  if (body.error && typeof body.error === "string") return body.error;
-  if (body.error && typeof body.error === "object" && body.error.message) return body.error.message;
-  if (body.err && typeof body.err === "string") return body.err;
-  if (Array.isArray(body.errors)) {
-    return body.errors
-      .map((e) => (typeof e === "string" ? e : e.msg || e.message || JSON.stringify(e)))
-      .join(", ");
-  }
-  return fallback;
-};
-
-const createApiError = async (response) => {
-  const fallback = `Error: ${response.status}`;
   let text = "";
   let body = null;
   try {
@@ -3244,10 +3198,40 @@ const createApiError = async (response) => {
   } catch {
     text = "";
   }
-  const error = new Error(messageFromErrorBody(body, text || fallback));
-  error.status = response.status;
+  const normalized = normalizeError({
+    status: response.status,
+    response: { status: response.status, data: body ?? text },
+    payload: body ?? text,
+  }).normalized;
+  return normalized.message || normalized.title || `Request failed (${response.status})`;
+};
+
+const createApiError = async (response) => {
+  const fallback = `Request failed (${response.status})`;
+  let text = "";
+  let body = null;
+  try {
+    text = await response.text();
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = null;
+    }
+  } catch {
+    text = "";
+  }
+  const error = normalizeError({
+    status: response.status,
+    response: { status: response.status, data: body ?? text },
+    payload: body,
+    code: body?.code || body?.errorCode || "",
+  });
   error.payload = body;
-  error.code = body?.code || body?.errorCode || "";
+  error.response = { status: response.status, data: body ?? text };
+  if (!error.normalized.message) {
+    error.normalized.message = fallback;
+    error.message = fallback;
+  }
   return error;
 };
 

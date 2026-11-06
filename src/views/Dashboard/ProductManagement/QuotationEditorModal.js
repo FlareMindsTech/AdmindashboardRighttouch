@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useAppToast } from "components/feedback";
 import {
   Button,
   Divider,
@@ -11,7 +12,6 @@ import {
   InputLeftAddon,
   Text,
   Textarea,
-  useToast,
   VStack,
 } from "@chakra-ui/react";
 import AppModal from "components/common/AppModal";
@@ -95,7 +95,7 @@ export default function QuotationEditorModal({
   quotation = null,
   onSaved,
 }) {
-  const toast = useToast();
+  const toast = useAppToast();
   const [form, setForm] = useState(() => getInitialState({ request, quotation }));
   const [saving, setSaving] = useState(false);
 

@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import AppModal from "components/common/AppModal";
 import { useNavigate } from "react-router-dom";
 import ReactApexChart from "react-apexcharts";
 import {
@@ -42,7 +43,6 @@ import {
   Badge,
   Heading,
   Text,
-  useToast,
   Icon,
   Button,
   IconButton,
@@ -50,13 +50,6 @@ import {
   Input,
   FormControl,
   FormLabel,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Select,
   Image,
   Textarea,
@@ -82,6 +75,9 @@ import CardHeader from "components/Card/CardHeader.js";
 import IconBox from "components/common/IconBox";
 import { MobileCard, MobileCardActions } from "components/common/MobileCard";
 import DataTable from "components/common/DataTable";
+import ConfirmActionModal from "components/common/ConfirmActionModal";
+import ErrorState from "components/feedback/ErrorState";
+import { useAppToast } from "components/feedback";
 import {
   getSkeuomorphicCardStyle,
   getSkeuomorphicIconBoxStyle,
@@ -116,7 +112,7 @@ import { MdCategory, MdInventory, MdWarning, MdAttachMoney } from "react-icons/m
 
 export default function ServiceManagement() {
   const textColor = useColorModeValue("gray.700", "white");
-  const toast = useToast();
+  const toast = useAppToast();
   const navigate = useNavigate();
 
   // Custom color theme
@@ -150,12 +146,15 @@ export default function ServiceManagement() {
 
 
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [deleteType, setDeleteType] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [polygonInput, setPolygonInput] = useState("");
   const [polygonSubmitting, setPolygonSubmitting] = useState(false);
+  const [isRemovePolygonConfirmOpen, setIsRemovePolygonConfirmOpen] = useState(false);
+  const [removePolygonError, setRemovePolygonError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const [serviceSearch, setServiceSearch] = useState("");
@@ -404,13 +403,7 @@ export default function ServiceManagement() {
         isClosable: true,
       });
     } catch (error) {
-      toast({
-        title: "Upload Error",
-        description: error.message || "Failed to upload images",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(error, { title: "Upload Error", description: "Failed to upload images", duration: 3000, isClosable: true });
     } finally {
       setIsSubmitting(false);
       event.target.value = "";
@@ -459,14 +452,7 @@ export default function ServiceManagement() {
         serviceImages: prev.serviceImages.filter((_, i) => i !== index)
       }));
     } catch (error) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete image",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-        position: "top-right",
-      });
+      toast.error(error, { title: "Error", description: "Failed to delete image", duration: 3000, isClosable: true, position: "top-right" });
     } finally {
       setIsSubmitting(false);
     }
@@ -494,13 +480,7 @@ export default function ServiceManagement() {
         isClosable: true,
       });
     } catch (error) {
-      toast({
-        title: "Upload Error",
-        description: error.message || "Failed to upload image",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(error, { title: "Upload Error", description: "Failed to upload image", duration: 3000, isClosable: true });
     } finally {
       setIsSubmitting(false);
       event.target.value = "";
@@ -603,6 +583,7 @@ export default function ServiceManagement() {
       setIsLoadingData(true);
       setIsLoadingCategories(true);
       setIsLoadingServices(true);
+      setLoadError(null);
 
 
       await Promise.all([
@@ -614,13 +595,8 @@ export default function ServiceManagement() {
 
     } catch (err) {
       console.error("Fetch error:", err);
-      toast({
-        title: "Fetch Error",
-        description: err.message || "Failed to load dashboard data.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      setLoadError(err);
+      toast.error(err, { title: "Fetch Error", description: "Failed to load dashboard data.", duration: 3000, isClosable: true });
     } finally {
       if (isMountedRef.current) {
         setIsLoadingData(false);
@@ -753,13 +729,7 @@ export default function ServiceManagement() {
       await fetchData();
       handleBack();
     } catch (err) {
-      toast({
-        title: "Error Creating Category",
-        description: err.message || "Failed to create category",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Error Creating Category", description: "Failed to create category", duration: 3000, isClosable: true });
     } finally {
       setIsSubmitting(false);
     }
@@ -807,13 +777,7 @@ export default function ServiceManagement() {
       await fetchData();
       handleBack();
     } catch (error) {
-      toast({
-        title: "Error Updating Category",
-        description: error.message || "Failed to update category",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(error, { title: "Error Updating Category", description: "Failed to update category", duration: 3000, isClosable: true });
     } finally {
       setIsSubmitting(false);
     }
@@ -876,13 +840,7 @@ export default function ServiceManagement() {
       await fetchData();
       closeDeleteModal();
     } catch (err) {
-      toast({
-        title: `Error Deleting ${deleteType === "category" ? "Category" : "Service"}`,
-        description: err.message || `Failed to delete ${deleteType}`,
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: `Error Deleting ${deleteType === "category" ? "Category" : "Service"}`, description: `Failed to delete ${deleteType}`, duration: 3000, isClosable: true });
     } finally {
       setIsDeleting(false);
     }
@@ -1183,22 +1141,22 @@ export default function ServiceManagement() {
       const svc = selectServices(store.getState()).find((s) => s._id === selectedService._id);
       if (svc) setSelectedService(svc);
     } catch (err) {
-      toast({
-        title: "Polygon Error",
-        description: err.message || "Failed to set polygon.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Polygon Error", description: "Failed to set polygon.", duration: 3000, isClosable: true });
     } finally {
       setPolygonSubmitting(false);
     }
   };
 
-  const handleRemoveServicePolygon = async () => {
+  const handleRemoveServicePolygon = () => {
     if (!selectedService) return;
-    if (!window.confirm("Remove the coverage polygon for this service? The service will be available everywhere.")) return;
+    setRemovePolygonError(null);
+    setIsRemovePolygonConfirmOpen(true);
+  };
+
+  const handleConfirmRemoveServicePolygon = async () => {
+    if (!selectedService) return false;
     setPolygonSubmitting(true);
+    setRemovePolygonError(null);
     try {
       await removeServicePolygon(selectedService._id);
       toast({
@@ -1209,18 +1167,16 @@ export default function ServiceManagement() {
         isClosable: true,
       });
       setPolygonInput("");
+      setIsRemovePolygonConfirmOpen(false);
       invalidateSharedKeys();
       await fetchData();
       const svc = selectServices(store.getState()).find((s) => s._id === selectedService._id);
       if (svc) setSelectedService(svc);
+      return true;
     } catch (err) {
-      toast({
-        title: "Polygon Error",
-        description: err.message || "Failed to remove polygon.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      setRemovePolygonError(err);
+      toast.error(err, { title: "Polygon Error", description: "Failed to remove polygon.", duration: 3000, isClosable: true });
+      throw err;
     } finally {
       setPolygonSubmitting(false);
     }
@@ -2586,7 +2542,16 @@ export default function ServiceManagement() {
             p={0}
             overflow="hidden"
           >
-            {isLoadingData ? (
+            {loadError ? (
+              <Box p={4}>
+                <ErrorState
+                  compact
+                  error={loadError}
+                  title="Could not load service data"
+                  onRetry={fetchData}
+                />
+              </Box>
+            ) : isLoadingData ? (
               <Flex justify="center" align="center" py={6} flex="1">
                 <Spinner size="lg" color={customColor} />
                 <Text ml={3} fontSize="sm">Loading data...</Text>
@@ -3429,14 +3394,7 @@ export default function ServiceManagement() {
       </Box>
 
       {/* View Modal for Category and Service Details */}
-      <Modal isOpen={isViewModalOpen} onClose={closeModal} size="lg">
-        <ModalOverlay />
-        <ModalContent maxW="800px">
-          <ModalHeader color="gray.700">
-            {viewModalType === "category" ? "Category Details" : "Service Details"}
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody maxH="70vh" overflowY="auto">
+      <AppModal isOpen={isViewModalOpen} onClose={closeModal} size="lg" headerColor="gray.700" closeButtonColor="gray.700" bodyMaxH="70vh" title={<>{viewModalType === "category" ? "Category Details" : "Service Details"}</>}>
             {viewModalType === "category" && selectedCategory && (
               <SimpleGrid columns={1} spacing={4}>
                 {selectedCategory.image && (
@@ -3826,23 +3784,34 @@ export default function ServiceManagement() {
                 </Box>
               </Box>
             )}
-          </ModalBody>
 
-        </ModalContent>
-      </Modal>
+</AppModal>
 
       {/* Delete Confirmation Modal */}
-      <Modal isOpen={isDeleteModalOpen} onClose={closeDeleteModal} size="md">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader color="gray.700">
-            <Flex align="center" gap={2}>
+      <AppModal isOpen={isDeleteModalOpen} onClose={closeDeleteModal} size="md" headerColor="gray.700" closeButtonColor="gray.700" title={<><Flex align="center" gap={2}>
               <Icon as={FaExclamationTriangle} color="red.500" />
               Confirm Delete
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+            </Flex></>} footer={<><Button
+              variant="outline"
+              mr={3}
+              onClick={closeDeleteModal}
+              isDisabled={isDeleting}
+              size="sm"
+            >
+              Cancel
+            </Button>
+            <Button
+              bg="red.500"
+              _hover={{ bg: "red.600" }}
+              _active={{ bg: "red.700" }}
+              color="white"
+              onClick={handleConfirmDelete}
+              isLoading={isDeleting}
+              loadingText="Deleting..."
+              size="sm"
+            >
+              Delete {deleteType === "category" ? "Category" : "Service"}
+            </Button></>}>
             <Text fontSize="md" mb={4}>
               Are you sure you want to delete{" "}
               <Text as="span" fontWeight="bold" color={customColor}>
@@ -3870,32 +3839,24 @@ export default function ServiceManagement() {
                 </Text>
               </Box>
             )}
-          </ModalBody>
-          <ModalFooter>
-            <Button
-              variant="outline"
-              mr={3}
-              onClick={closeDeleteModal}
-              isDisabled={isDeleting}
-              size="sm"
-            >
-              Cancel
-            </Button>
-            <Button
-              bg="red.500"
-              _hover={{ bg: "red.600" }}
-              _active={{ bg: "red.700" }}
-              color="white"
-              onClick={handleConfirmDelete}
-              isLoading={isDeleting}
-              loadingText="Deleting..."
-              size="sm"
-            >
-              Delete {deleteType === "category" ? "Category" : "Service"}
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
+
+      <ConfirmActionModal
+        isOpen={isRemovePolygonConfirmOpen}
+        onClose={() => {
+          if (polygonSubmitting) return;
+          setIsRemovePolygonConfirmOpen(false);
+          setRemovePolygonError(null);
+        }}
+        onConfirm={handleConfirmRemoveServicePolygon}
+        title="Remove coverage polygon"
+        description="Removing the polygon makes this service available everywhere. Customers will no longer be limited to the current coverage area."
+        confirmText="Remove polygon"
+        confirmColorScheme="red"
+        isLoading={polygonSubmitting}
+        error={removePolygonError}
+      />
     </Flex>
   );
 }

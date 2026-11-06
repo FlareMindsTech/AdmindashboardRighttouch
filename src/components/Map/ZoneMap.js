@@ -21,14 +21,10 @@ import { detectParentDistrict, findTnDistrict, getTnDistrictBoundary, getDistric
 import { computePlusCode, isPointInPolygon, getSubzonesByDistrict, TAMIL_NADU_SUBZONES } from "../../data/tamilNaduDistrictsData";
 import polygonClipping from "polygon-clipping";
 import {
-  clipPolygonAgainstZones,
-  filterZonesForDistrict,
+  geometriesIntersect,
   getZoneId,
 } from "../../views/utils/zoneGeometry";
-import {
-  fitRadiusInDistrict,
-  serializeZonesForGeometry,
-} from "../../views/utils/zoneGeometryOperations";
+import { fitRadiusInDistrict } from "../../views/utils/zoneGeometryOperations";
 import {
   isGeometryWorkerSupported,
   runGeometryTask,
@@ -47,17 +43,32 @@ if (L?.Canvas?.prototype && !L.Canvas.prototype._safeRedrawPatched) {
 }
 
 export const ZONE_COLOR_PALETTE = [
-  { border: "#059669", fill: "#10b981", name: "Emerald Green" },
-  { border: "#10b981", fill: "#34d399", name: "Mint Green" },
-  { border: "#0d9488", fill: "#14b8a6", name: "Teal Green" },
-  { border: "#16a34a", fill: "#22c55e", name: "Forest Green" },
-  { border: "#047857", fill: "#059669", name: "Deep Emerald" },
-  { border: "#15803d", fill: "#4ade80", name: "Bright Green" },
-  { border: "#0f766e", fill: "#2dd4bf", name: "Cyan Teal" },
-  { border: "#65a30d", fill: "#84cc16", name: "Lime Green" },
-  { border: "#0284c7", fill: "#38bdf8", name: "Sky Green" },
-  { border: "#065f46", fill: "#10b981", name: "Classic Green" },
+  { border: "#059669", fill: "#10b981", name: "Emerald" },
+  { border: "#2563eb", fill: "#3b82f6", name: "Blue" },
+  { border: "#7c3aed", fill: "#8b5cf6", name: "Violet" },
+  { border: "#ea580c", fill: "#f97316", name: "Orange" },
+  { border: "#db2777", fill: "#ec4899", name: "Pink" },
+  { border: "#0891b2", fill: "#06b6d4", name: "Cyan" },
+  { border: "#ca8a04", fill: "#eab308", name: "Amber" },
+  { border: "#dc2626", fill: "#ef4444", name: "Red" },
+  { border: "#4f46e5", fill: "#6366f1", name: "Indigo" },
+  { border: "#0d9488", fill: "#14b8a6", name: "Teal" },
+  { border: "#65a30d", fill: "#84cc16", name: "Lime" },
+  { border: "#c026d3", fill: "#d946ef", name: "Fuchsia" },
+  { border: "#0f766e", fill: "#2dd4bf", name: "Turquoise" },
+  { border: "#b45309", fill: "#d97706", name: "Bronze" },
+  { border: "#1d4ed8", fill: "#60a5fa", name: "Sky" },
+  { border: "#be123c", fill: "#fb7185", name: "Rose" },
 ];
+
+const hashZoneKey = (value) => {
+  const input = String(value || "");
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+};
 
 export const TN_BOUNDS = [
   [8.06, 76.18],
@@ -295,14 +306,6 @@ export default function ZoneMap({
     () => (Array.isArray(zones) && zones.length ? zones : Array.isArray(allZones) ? allZones : []),
     [zones, allZones]
   );
-  const zoneBlockers = useMemo(() => {
-    const scoped = selectedDistrictId
-      ? filterZonesForDistrict(effectiveZones, selectedDistrictId)
-      : effectiveZones;
-    return scoped.filter(
-      (zone) => !selectedZoneId || String(getZoneId(zone)) !== String(selectedZoneId)
-    );
-  }, [effectiveZones, selectedDistrictId, selectedZoneId]);
   const presetCities = useMemo(
     () =>
       Array.isArray(cityOptions) && cityOptions.length
@@ -311,7 +314,38 @@ export default function ZoneMap({
     [cityOptions]
   );
   const cappedZones = useMemo(() => effectiveZones.slice(0, 300), [effectiveZones]);
-  const zoneOverflow = effectiveZones.length - cappedZones.length;
+  const zoneColorAssignments = useMemo(() => {
+    const assignments = new Map();
+    const assigned = [];
+    const sortedZones = [...cappedZones].sort((a, b) => {
+      const aKey = String(getZoneId(a) || a?.zoneCode || a?.name || "");
+      const bKey = String(getZoneId(b) || b?.zoneCode || b?.name || "");
+      return aKey.localeCompare(bKey);
+    });
+
+    for (const zone of sortedZones) {
+      const zoneKey = String(getZoneId(zone) || zone?.zoneCode || zone?.name || "");
+      if (!zoneKey) continue;
+      let index = hashZoneKey(zoneKey) % ZONE_COLOR_PALETTE.length;
+      let attempts = 0;
+      while (attempts < ZONE_COLOR_PALETTE.length) {
+        let hasSameColorOverlap = false;
+        for (const entry of assigned) {
+          if (entry.index !== index || !entry.polygon || !zone?.polygon) continue;
+          if (geometriesIntersect(entry.polygon, zone.polygon)) {
+            hasSameColorOverlap = true;
+            break;
+          }
+        }
+        if (!hasSameColorOverlap) break;
+        index = (index + 1) % ZONE_COLOR_PALETTE.length;
+        attempts += 1;
+      }
+      assignments.set(zoneKey, ZONE_COLOR_PALETTE[index]);
+      assigned.push({ index, polygon: zone.polygon });
+    }
+    return assignments;
+  }, [cappedZones]);
   const selectZone = onSelectZone || onZoneSelect;
 
   const tileLayerRef = useRef(null);
@@ -771,10 +805,6 @@ export default function ZoneMap({
   }, [basemap, tileFallback, onlyTamilNadu]);
 
   // ---- interactions ----
-  const zoneBlockersForGeometry = useMemo(
-    () => serializeZonesForGeometry(zoneBlockers),
-    [zoneBlockers]
-  );
   const radiusRequestRef = useRef(0);
 
   const handleRadiusAt = useCallback(
@@ -789,11 +819,8 @@ export default function ZoneMap({
         radiusKm: requestedKm,
         districtGeometry: activeDistrictFeature?.geometry || null,
         districtRing: activeDistrictRing,
-        zones: zoneBlockersForGeometry,
-        preferPoint: [lng, lat],
         requireInsideDistrict: true,
         fallbackToCircle: false,
-        maxSteps: 16,
       };
 
       let result = null;
@@ -813,39 +840,25 @@ export default function ZoneMap({
       }
 
       setCenter([lat, lng]);
-      const conflictKeys = result.conflictKeys || [];
-      const conflictNames = result.conflictNames || "";
 
-      if (result.polygon && result.compatible) {
+      if (result.polygon) {
         emitPolygon(result.polygon);
-        setConflictZoneKeys(result.adjusted ? conflictKeys : []);
+        setConflictZoneKeys([]);
         setStatus(
-          result.reduced
-            ? `⚠️ Overlap with ${conflictNames || "existing zones"} — radius reduced to ${Number(
-                result.radiusKm
-              ).toFixed(1)} KM to fit the available area`
-            : result.adjusted
-              ? `✂ Boundary trimmed to avoid ${conflictNames || "existing zones"} in ${canonicalActiveDistrict || "the district"}`
-              : `Zone inside ${canonicalActiveDistrict || "district"} • ${requestedKm} KM radius${result.cutToDistrict ? " (cut to district border)" : ""}`
+          `Zone inside ${canonicalActiveDistrict || "district"} • ${requestedKm} KM radius${
+            result.cutToDistrict ? " (cut to district border)" : ""
+          }`
         );
         return;
       }
 
-      setConflictZoneKeys(conflictKeys);
+      setConflictZoneKeys([]);
       emitPolygon(null);
       setStatus(
-        conflictNames
-          ? `⛔ This area is already covered by ${conflictNames}. Click outside existing zones or pick a smaller radius.`
-          : `⚠️ Could not place a zone here. Click inside ${canonicalActiveDistrict || "the district"} and retry.`
+        `⚠️ Could not place a zone here. Click inside ${canonicalActiveDistrict || "the district"} and retry.`
       );
     },
-    [
-      activeDistrictFeature,
-      activeDistrictRing,
-      zoneBlockersForGeometry,
-      emitPolygon,
-      canonicalActiveDistrict,
-    ]
+    [activeDistrictFeature, activeDistrictRing, emitPolygon, canonicalActiveDistrict]
   );
 
   const mapCallbacksRef = useRef({});
@@ -1288,7 +1301,9 @@ export default function ZoneMap({
         const isConflict = conflictKeys.has(zoneKey);
         const sel = selectedZoneId && String(getZoneId(z)) === String(selectedZoneId);
         const isActive = z.active !== false;
-        const colorPair = ZONE_COLOR_PALETTE[idx % ZONE_COLOR_PALETTE.length];
+        const colorPair =
+          zoneColorAssignments.get(zoneKey) ||
+          ZONE_COLOR_PALETTE[hashZoneKey(zoneKey || idx) % ZONE_COLOR_PALETTE.length];
         const strokeColor = isConflict ? "#ef4444" : sel ? "#f59e0b" : isActive ? colorPair.border : "#64748b";
         const fillColor = isConflict ? "#ef4444" : sel ? "#fbbf24" : isActive ? colorPair.fill : "#475569";
         try {
@@ -1445,7 +1460,7 @@ export default function ZoneMap({
           .addTo(g.customers);
       });
     }
-  }, [parsedPolygon, validation.valid, validation.reason, effectiveDistricts, effectiveZones, cappedZones, technicians, customers, layers, center, cityName, districtName, selectedDistrictId, selectedZoneId, editable, drawMode, draftPoints, tnFeatures, selectedTnDistrict, selectedDistrictName, mode, allowRadiusSelect, radius, radiusKm, activeDistrictRing, canonicalActiveDistrict, conflictZoneKeys, conflictDistrictNames]);
+  }, [parsedPolygon, validation.valid, validation.reason, effectiveDistricts, effectiveZones, cappedZones, zoneColorAssignments, technicians, customers, layers, center, cityName, districtName, selectedDistrictId, selectedZoneId, editable, drawMode, draftPoints, tnFeatures, selectedTnDistrict, selectedDistrictName, mode, allowRadiusSelect, radius, radiusKm, activeDistrictRing, canonicalActiveDistrict, conflictZoneKeys, conflictDistrictNames]);
 
   const fitTamilNadu = useCallback(() => {
     const map = leafletMap.current;
@@ -1590,36 +1605,13 @@ export default function ZoneMap({
       }
     }
 
-    const zoneResult = clipPolygonAgainstZones(polygon, zoneBlockers);
-    if (!zoneResult.polygon || !zoneResult.compatible) {
-      const blockedNames = (zoneResult.blockers?.length ? zoneResult.blockers : zoneResult.overlappingZones || [])
-        .map((zone) => `"${zone.name}"`)
-        .filter(Boolean)
-        .join(", ");
-      setConflictZoneKeys(
-        (zoneResult.overlappingZones || []).map((zone) => String(zone.id || zone.name))
-      );
-      setStatus(
-        blockedNames
-          ? `⛔ Boundary overlaps existing zone ${blockedNames}. Adjust the points and finish again.`
-          : "⛔ Boundary overlaps an existing zone in this district. Adjust the points and finish again."
-      );
-      return;
-    }
-
-    emitPolygon(zoneResult.polygon);
-    setConflictZoneKeys(
-      zoneResult.adjusted
-        ? (zoneResult.overlappingZones || []).map((zone) => String(zone.id || zone.name))
-        : []
-    );
+    emitPolygon(polygon);
+    setConflictZoneKeys([]);
     setDraftPoints([]);
     setStatus(
-      zoneResult.adjusted
-        ? "Polygon saved after trimming the area already covered by existing zones."
-        : `Polygon saved: ${zoneResult.polygon.coordinates?.[0]?.length - 1 || ring.length - 1} vertices${
-            cutToDistrict ? " (cut to district border)" : ""
-          }.`
+      `Polygon saved: ${polygon.coordinates?.[0]?.length - 1 || ring.length - 1} vertices${
+        cutToDistrict ? " (cut to district border)" : ""
+      }.`
     );
   };
 

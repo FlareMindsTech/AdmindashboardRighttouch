@@ -1,12 +1,8 @@
 import React, { useState, useEffect } from "react";
+import PropTypes from "prop-types";
+import AppModal from "components/common/AppModal";
+import { useAppToast } from "components/feedback";
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Button,
   VStack,
   HStack,
@@ -23,17 +19,19 @@ import {
   Text,
   Box,
   Badge,
-  useToast,
-  Divider,
   SimpleGrid,
   Flex,
   IconButton,
   Tooltip,
   Icon,
+  useColorMode,
 } from "@chakra-ui/react";
-import { FaCopy, FaUniversity } from "react-icons/fa";
+import {
+  FaCopy,
+  FaUniversity,
+} from "react-icons/fa";
 import { markWithdrawalPaid } from "api/wallet";
-import FinancialBreakdown from "./FinancialBreakdown";
+import { formatInr } from "./FinancialBreakdown";
 
 const UTR_REGEX = /^[A-Za-z0-9_-]{6,50}$/;
 
@@ -43,7 +41,9 @@ export default function RecordBankTransferModal({
   withdrawal,
   onSuccess,
 }) {
-  const toast = useToast();
+  const toast = useAppToast();
+  const { colorMode } = useColorMode();
+  const isDark = colorMode === "dark";
 
   const [utr, setUtr] = useState("");
   const [payoutMode, setPayoutMode] = useState("NEFT");
@@ -90,7 +90,9 @@ export default function RecordBankTransferModal({
       return;
     }
     if (!UTR_REGEX.test(trimmedUtr)) {
-      setErrorMsg("UTR must be 6 to 50 alphanumeric characters (letters, numbers, hyphens, underscores).");
+      setErrorMsg(
+        "UTR must be 6 to 50 alphanumeric characters (letters, numbers, hyphens, underscores)."
+      );
       return;
     }
 
@@ -104,20 +106,18 @@ export default function RecordBankTransferModal({
       setErrorMsg("Invalid transfer date format.");
       return;
     }
-    if (transferDate > new Date()) {
-      setErrorMsg("Transfer date cannot be in the future.");
+
+    // 3. Validate Confirmed Amount
+    const enteredAmt = parseFloat(confirmedAmount);
+    if (isNaN(enteredAmt) || enteredAmt <= 0) {
+      setErrorMsg("Confirmed amount must be a positive number.");
       return;
     }
 
-    // 3. Validate Confirmed Amount
-    const enteredPaise = Math.round(parseFloat(confirmedAmount || 0) * 100);
-    if (isNaN(enteredPaise) || enteredPaise <= 0) {
-      setErrorMsg("Please enter a valid confirmed transfer amount.");
-      return;
-    }
-    if (enteredPaise !== netPaise) {
+    const expectedRupees = netPaise / 100;
+    if (Math.abs(enteredAmt - expectedRupees) > 0.01) {
       setErrorMsg(
-        `Confirmed amount (₹${(enteredPaise / 100).toFixed(2)}) must exactly match the approved net payable amount (₹${netRupees}). Partial or excess payments cannot be recorded.`
+        `Confirmed amount (₹${enteredAmt.toFixed(2)}) does not match net payable amount (₹${expectedRupees.toFixed(2)}).`
       );
       return;
     }
@@ -126,11 +126,10 @@ export default function RecordBankTransferModal({
     try {
       const payload = {
         utr: trimmedUtr,
-        paymentMode: payoutMode,
-        paidAt: transferDate.toISOString(),
-        confirmedAmountPaise: enteredPaise,
-        confirmedAmount: enteredPaise / 100,
-        adminNote: adminNote.trim() || `Manual ${payoutMode} bank transfer recorded by Admin`,
+        payoutMode,
+        transferDate: transferDate.toISOString(),
+        confirmedAmountPaise: netPaise,
+        adminNote: adminNote.trim() || undefined,
       };
 
       const { data, error } = await markWithdrawalPaid(withdrawal._id, payload);
@@ -142,17 +141,17 @@ export default function RecordBankTransferModal({
       }
 
       toast({
-        title: "Payout Marked as Paid",
-        description: `Successfully recorded ${payoutMode} transfer with UTR: ${trimmedUtr}.`,
+        title: "Bank Transfer Recorded",
+        description: `Disbursement #${withdrawal._id} recorded as paid with UTR ${trimmedUtr}. Reserve released & ledger debited.`,
         status: "success",
-        duration: 4000,
+        duration: 5000,
         isClosable: true,
       });
 
       onSuccess && onSuccess(data);
       onClose();
     } catch (err) {
-      setErrorMsg(err.message || "Failed to mark withdrawal as paid.");
+      setErrorMsg(err.message || "Failed to record bank transfer.");
     } finally {
       setIsSubmitting(false);
     }
@@ -172,9 +171,9 @@ export default function RecordBankTransferModal({
   const techName =
     withdrawal?.technician?.name ||
     withdrawal?.technicianName ||
-    withdrawal?.technicianId?.userId?.fname
+    (withdrawal?.technicianId?.userId?.fname
       ? `${withdrawal?.technicianId?.userId?.fname} ${withdrawal?.technicianId?.userId?.lname || ""}`.trim()
-      : "Technician";
+      : "Technician");
 
   const bank =
     withdrawal?.bankDetails ||
@@ -187,319 +186,392 @@ export default function RecordBankTransferModal({
   const bankName = bank.bankName || "";
   const upiId = bank.upiId || "";
 
+  const isUtrValid = UTR_REGEX.test(utr.trim());
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg" isCentered closeOnOverlayClick={!isSubmitting}>
-      <ModalOverlay backdropFilter="blur(4px)" />
-      <ModalContent borderRadius="20px" overflow="hidden" boxShadow="2xl">
-        <ModalHeader bg="teal.700" color="white" py={4} px={6}>
-          <HStack justify="space-between" align="center">
+    <AppModal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="5xl"
+      maxW={{ base: "96vw", md: "960px", lg: "1100px", xl: "1180px" }}
+      bodyMaxH="78vh"
+      isCentered
+      closeOnOverlayClick={!isSubmitting}
+      headerBg="teal.800"
+      headerColor="white"
+      closeButtonColor="white"
+      title={
+        <HStack justify="space-between" align="center" w="full" pr={4}>
+          <HStack spacing={3}>
+            <Flex
+              w="40px"
+              h="40px"
+              borderRadius="10px"
+              bg="teal.700"
+              color="white"
+              align="center"
+              justify="center"
+            >
+              <Icon as={FaUniversity} boxSize={5} />
+            </Flex>
             <Box>
-              <Text fontSize="md" fontWeight="bold">
+              <Text fontSize="lg" fontWeight="800">
                 Record Manual Bank Transfer
               </Text>
-              <Text fontSize="2xs" color="teal.100" fontFamily="mono">
+              <Text fontSize="xs" color="teal.200" fontFamily="mono">
                 Withdrawal #{withdrawal?._id} • {techName}
               </Text>
             </Box>
-            <Badge colorScheme="orange" px={2.5} py={1} borderRadius="full" fontSize="2xs">
-              MANUAL NEFT / IMPS
-            </Badge>
           </HStack>
-        </ModalHeader>
-        <ModalCloseButton color="white" top={4} right={4} isDisabled={isSubmitting} />
+          <Badge
+            colorScheme="orange"
+            px={3}
+            py={1}
+            borderRadius="full"
+            fontSize="2xs"
+            fontWeight="800"
+          >
+            OFFLINE DISBURSEMENT
+          </Badge>
+        </HStack>
+      }
+      footer={
+        <HStack spacing={3} justify="space-between" w="full">
+          <Text fontSize="xs" color="gray.500">
+            Recording UTR releases reserved funds and marks payout as settled.
+          </Text>
+          <HStack spacing={3}>
+            <Button size="md" variant="ghost" onClick={onClose} isDisabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              size="md"
+              colorScheme="teal"
+              bg="teal.600"
+              _hover={{ bg: "teal.700" }}
+              fontWeight="800"
+              px={6}
+              onClick={handleSubmit}
+              isLoading={isSubmitting}
+              loadingText="Recording Payment..."
+              isDisabled={!isUtrValid || isSubmitting}
+            >
+              Confirm & Mark as Paid ({formatInr(netPaise)})
+            </Button>
+          </HStack>
+        </HStack>
+      }
+    >
+      <VStack spacing={5} align="stretch" as="form" onSubmit={handleSubmit} py={1}>
+        {/* Safety Header Alert */}
+        <Alert status="warning" borderRadius="12px" variant="left-accent">
+          <AlertIcon />
+          <Box>
+            <AlertTitle fontWeight="800" fontSize="sm">
+              Bank Portal Execution Required
+            </AlertTitle>
+            <AlertDescription fontSize="xs">
+              Execute the bank or UPI transfer in your banking portal using the beneficiary credentials below. Once completed, enter the authentic Bank Reference / UTR to settle the record.
+            </AlertDescription>
+          </Box>
+        </Alert>
 
-        <ModalBody p={6}>
-          <VStack spacing={4} align="stretch" as="form" onSubmit={handleSubmit}>
-            {/* Critical Financial Safety Alert */}
-            <Alert status="warning" borderRadius="12px" variant="left-accent" fontSize="xs">
-              <AlertIcon />
-              <Box>
-                <AlertTitle fontWeight="700">Bank Portal Transfer Required First</AlertTitle>
-                <AlertDescription>
-                  Transfer funds in your banking portal using the beneficiary details below, then record the bank reference (UTR) here.
-                </AlertDescription>
-              </Box>
-            </Alert>
+        {errorMsg && (
+          <Alert status="error" borderRadius="12px" fontSize="xs">
+            <AlertIcon />
+            <AlertDescription>{errorMsg}</AlertDescription>
+          </Alert>
+        )}
 
-            {/* Quick-Copy Beneficiary Bank Details Card */}
+        {/* 2-Column Responsive Layout */}
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
+          {/* ================= LEFT COLUMN: BENEFICIARY DETAILS ================= */}
+          <VStack spacing={4} align="stretch">
+            {/* Step 1 Pill */}
+            <HStack spacing={2}>
+              <Badge colorScheme="blue" borderRadius="full" px={2.5} py={0.5} fontSize="3xs">
+                STEP 1
+              </Badge>
+              <Text fontSize="xs" fontWeight="800" color="gray.600" textTransform="uppercase" letterSpacing="0.5px">
+                Beneficiary Transfer Details
+              </Text>
+            </HStack>
+
+            {/* Quick-Copy Beneficiary Card */}
             <Box
               p={4}
-              borderRadius="14px"
-              bg="blue.50"
+              borderRadius="16px"
+              bg={isDark ? "gray.800" : "blue.50"}
               border="1.5px solid"
-              borderColor="blue.200"
+              borderColor={isDark ? "gray.700" : "blue.200"}
             >
               <HStack justify="space-between" mb={3}>
                 <HStack spacing={2}>
                   <Icon as={FaUniversity} color="blue.600" boxSize={4} />
-                  <Text fontSize="xs" fontWeight="800" color="blue.900" textTransform="uppercase" letterSpacing="0.05em">
-                    Beneficiary Bank Details (Copy to Bank Portal)
+                  <Text fontSize="xs" fontWeight="800" color={isDark ? "blue.200" : "blue.900"} textTransform="uppercase">
+                    Destination Bank / VPA
                   </Text>
                 </HStack>
-                {bank.bankVerified && (
+                {bank.bankVerified ? (
                   <Badge colorScheme="green" fontSize="2xs" px={2} py={0.5} borderRadius="full">
                     KYC Verified
+                  </Badge>
+                ) : (
+                  <Badge colorScheme="yellow" fontSize="2xs" px={2} py={0.5} borderRadius="full">
+                    Unverified
                   </Badge>
                 )}
               </HStack>
 
-              <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={2.5} fontSize="xs">
-                <Box bg="white" p={2.5} borderRadius="8px" border="1px solid" borderColor="blue.100">
-                  <Text fontSize="2xs" color="gray.500" fontWeight="600">Beneficiary Name</Text>
+              <VStack spacing={2.5} align="stretch" fontSize="xs">
+                {/* Beneficiary Name */}
+                <Box bg={isDark ? "gray.900" : "white"} p={2.5} borderRadius="8px" border="1px solid" borderColor={isDark ? "gray.700" : "blue.100"}>
+                  <Text fontSize="3xs" color="gray.500" fontWeight="600" textTransform="uppercase">Beneficiary Name</Text>
                   <HStack justify="space-between" mt={0.5}>
-                    <Text fontWeight="700" color="gray.800" noOfLines={1}>{beneficiaryName}</Text>
-                    <Tooltip label="Copy Name" hasArrow>
+                    <Text fontWeight="800" color={isDark ? "white" : "gray.800"}>{beneficiaryName}</Text>
+                    <Tooltip label="Copy Name">
                       <IconButton
-                        size="2xs"
+                        size="xs"
                         icon={<FaCopy />}
                         variant="ghost"
                         colorScheme="blue"
-                        aria-label="Copy Name"
                         onClick={() => copyToClipboard(beneficiaryName, "Beneficiary Name")}
+                        aria-label="Copy Name"
                       />
                     </Tooltip>
                   </HStack>
                 </Box>
 
-                <Box bg="white" p={2.5} borderRadius="8px" border="1px solid" borderColor="blue.100">
-                  <Text fontSize="2xs" color="gray.500" fontWeight="600">Bank Name</Text>
+                {/* Account Number */}
+                <Box bg={isDark ? "gray.900" : "white"} p={2.5} borderRadius="8px" border="1px solid" borderColor={isDark ? "gray.700" : "blue.100"}>
+                  <Text fontSize="3xs" color="gray.500" fontWeight="600" textTransform="uppercase">Account Number</Text>
                   <HStack justify="space-between" mt={0.5}>
-                    <Text fontWeight="700" color="gray.800" noOfLines={1}>{bankName || "Bank"}</Text>
-                    {bankName && (
-                      <Tooltip label="Copy Bank Name" hasArrow>
+                    <Text fontWeight="800" fontFamily="mono" fontSize="sm" color={isDark ? "white" : "gray.800"}>
+                      {accountNumber || "Not Linked"}
+                    </Text>
+                    {accountNumber && (
+                      <Tooltip label="Copy Account Number">
                         <IconButton
-                          size="2xs"
+                          size="xs"
                           icon={<FaCopy />}
                           variant="ghost"
                           colorScheme="blue"
-                          aria-label="Copy Bank Name"
-                          onClick={() => copyToClipboard(bankName, "Bank Name")}
-                        />
-                      </Tooltip>
-                    )}
-                  </HStack>
-                </Box>
-
-                <Box bg="white" p={2.5} borderRadius="8px" border="1px solid" borderColor="blue.100">
-                  <Text fontSize="2xs" color="gray.500" fontWeight="600">Account Number</Text>
-                  <HStack justify="space-between" mt={0.5}>
-                    <Text fontWeight="800" fontFamily="mono" color="blue.700" fontSize="sm">
-                      {accountNumber || "N/A"}
-                    </Text>
-                    {accountNumber && (
-                      <Tooltip label="Copy Account Number" hasArrow>
-                        <IconButton
-                          size="2xs"
-                          icon={<FaCopy />}
-                          colorScheme="blue"
-                          variant="solid"
-                          aria-label="Copy Account Number"
                           onClick={() => copyToClipboard(accountNumber, "Account Number")}
+                          aria-label="Copy Account Number"
                         />
                       </Tooltip>
                     )}
                   </HStack>
                 </Box>
 
-                <Box bg="white" p={2.5} borderRadius="8px" border="1px solid" borderColor="blue.100">
-                  <Text fontSize="2xs" color="gray.500" fontWeight="600">IFSC Code</Text>
-                  <HStack justify="space-between" mt={0.5}>
-                    <Text fontWeight="800" fontFamily="mono" color="gray.800">
-                      {ifscCode || "N/A"}
-                    </Text>
-                    {ifscCode && (
-                      <Tooltip label="Copy IFSC Code" hasArrow>
-                        <IconButton
-                          size="2xs"
-                          icon={<FaCopy />}
-                          colorScheme="blue"
-                          variant="solid"
-                          aria-label="Copy IFSC Code"
-                          onClick={() => copyToClipboard(ifscCode, "IFSC Code")}
-                        />
-                      </Tooltip>
-                    )}
-                  </HStack>
-                </Box>
-
-                {upiId && (
-                  <Box bg="white" p={2.5} borderRadius="8px" border="1px solid" borderColor="blue.100" gridColumn={{ sm: "span 2" }}>
-                    <Text fontSize="2xs" color="gray.500" fontWeight="600">UPI ID / VPA</Text>
+                {/* IFSC & Bank Name */}
+                <SimpleGrid columns={2} spacing={2}>
+                  <Box bg={isDark ? "gray.900" : "white"} p={2.5} borderRadius="8px" border="1px solid" borderColor={isDark ? "gray.700" : "blue.100"}>
+                    <Text fontSize="3xs" color="gray.500" fontWeight="600" textTransform="uppercase">IFSC Code</Text>
                     <HStack justify="space-between" mt={0.5}>
-                      <Text fontWeight="700" fontFamily="mono" color="purple.700">{upiId}</Text>
-                      <Tooltip label="Copy UPI ID" hasArrow>
+                      <Text fontWeight="800" fontFamily="mono" color={isDark ? "white" : "gray.800"}>
+                        {ifscCode || "—"}
+                      </Text>
+                      {ifscCode && (
+                        <Tooltip label="Copy IFSC">
+                          <IconButton
+                            size="xs"
+                            icon={<FaCopy />}
+                            variant="ghost"
+                            colorScheme="blue"
+                            onClick={() => copyToClipboard(ifscCode, "IFSC Code")}
+                            aria-label="Copy IFSC"
+                          />
+                        </Tooltip>
+                      )}
+                    </HStack>
+                  </Box>
+                  <Box bg={isDark ? "gray.900" : "white"} p={2.5} borderRadius="8px" border="1px solid" borderColor={isDark ? "gray.700" : "blue.100"}>
+                    <Text fontSize="3xs" color="gray.500" fontWeight="600" textTransform="uppercase">Bank Name</Text>
+                    <Text fontWeight="800" mt={0.5} noOfLines={1} color={isDark ? "white" : "gray.800"}>
+                      {bankName || "NEFT Transfer"}
+                    </Text>
+                  </Box>
+                </SimpleGrid>
+
+                {/* UPI VPA (if present) */}
+                {upiId && (
+                  <Box bg={isDark ? "gray.900" : "white"} p={2.5} borderRadius="8px" border="1px solid" borderColor={isDark ? "gray.700" : "blue.100"}>
+                    <Text fontSize="3xs" color="gray.500" fontWeight="600" textTransform="uppercase">UPI ID (VPA)</Text>
+                    <HStack justify="space-between" mt={0.5}>
+                      <Text fontWeight="800" fontFamily="mono" color={isDark ? "white" : "gray.800"}>{upiId}</Text>
+                      <Tooltip label="Copy UPI ID">
                         <IconButton
-                          size="2xs"
+                          size="xs"
                           icon={<FaCopy />}
-                          colorScheme="purple"
-                          variant="solid"
-                          aria-label="Copy UPI ID"
+                          variant="ghost"
+                          colorScheme="blue"
                           onClick={() => copyToClipboard(upiId, "UPI ID")}
+                          aria-label="Copy UPI ID"
                         />
                       </Tooltip>
                     </HStack>
                   </Box>
                 )}
-              </SimpleGrid>
+              </VStack>
+            </Box>
 
-              {/* Exact Net Payable Highlight with Copy Amount */}
-              <Flex mt={3} p={3} bg="teal.700" color="white" borderRadius="10px" justify="space-between" align="center" flexWrap="wrap" gap={2}>
-                <Box>
-                  <Text fontSize="2xs" textTransform="uppercase" fontWeight="700" letterSpacing="0.05em" opacity={0.9}>
-                    Exact Transfer Amount (Net Payable)
-                  </Text>
-                  <Text fontSize="xl" fontWeight="900" lineHeight="1.2">
-                    ₹{netRupees}
-                  </Text>
-                </Box>
+            {/* Net Amount Callout Card */}
+            <Box
+              p={4}
+              borderRadius="14px"
+              bg="teal.50"
+              border="2px solid"
+              borderColor="teal.300"
+              textAlign="center"
+            >
+              <Text fontSize="2xs" fontWeight="800" color="teal.800" textTransform="uppercase" letterSpacing="0.5px">
+                Exact Transfer Amount
+              </Text>
+              <Text fontSize="3xl" fontWeight="900" color="teal.700" my={1}>
+                {formatInr(netPaise)}
+              </Text>
+              <HStack justify="center" spacing={2}>
                 <Button
-                  size="sm"
-                  bg="white"
-                  color="teal.800"
-                  _hover={{ bg: "teal.50" }}
+                  size="xs"
+                  variant="outline"
+                  colorScheme="teal"
                   leftIcon={<FaCopy />}
-                  fontWeight="bold"
-                  onClick={() => copyToClipboard(netRupees, "Net Payable Amount")}
+                  onClick={() => copyToClipboard(netRupees, "Disbursement Amount")}
                 >
                   Copy ₹{netRupees}
                 </Button>
-              </Flex>
+              </HStack>
             </Box>
+          </VStack>
 
-            {errorMsg && (
-              <Alert status="error" borderRadius="12px" fontSize="xs">
-                <AlertIcon />
-                <AlertDescription>{errorMsg}</AlertDescription>
-              </Alert>
-            )}
-
-            {/* Financial Breakdown Preview */}
-            <FinancialBreakdown
-              financials={{
-                requestedAmountPaise: requestedPaise,
-                commissionDeductionPaise: withdrawal?.commissionDeductionPaise,
-                penaltyDeductionPaise: withdrawal?.penaltyDeductionPaise,
-                penaltyReason: withdrawal?.penaltyReason,
-                otherDeductionsPaise: withdrawal?.otherDeductionsPaise,
-                netPayoutAmountPaise: netPaise,
-              }}
-            />
-
-            <Divider />
-
-            {/* Payout Mode */}
-            <HStack spacing={4} align="flex-start">
-              <FormControl isRequired flex={1}>
-                <FormLabel fontSize="xs" fontWeight="700">
-                  Payout Mode
-                </FormLabel>
-                <Select
-                  size="sm"
-                  borderRadius="8px"
-                  value={payoutMode}
-                  onChange={(e) => setPayoutMode(e.target.value)}
-                  isDisabled={isSubmitting}
-                >
-                  <option value="NEFT">NEFT (National Electronic Funds Transfer)</option>
-                  <option value="IMPS">IMPS (Immediate Payment Service)</option>
-                  <option value="UPI">UPI (Unified Payments Interface)</option>
-                  <option value="RTGS">RTGS (Real Time Gross Settlement)</option>
-                </Select>
-              </FormControl>
-
-              <FormControl isRequired flex={1}>
-                <FormLabel fontSize="xs" fontWeight="700">
-                  Transfer Date & Time
-                </FormLabel>
-                <Input
-                  type="datetime-local"
-                  size="sm"
-                  borderRadius="8px"
-                  value={transferDateTime}
-                  max={new Date().toISOString().slice(0, 16)}
-                  onChange={(e) => setTransferDateTime(e.target.value)}
-                  isDisabled={isSubmitting}
-                />
-                <FormHelperText fontSize="3xs">Must not be a future timestamp</FormHelperText>
-              </FormControl>
+          {/* ================= RIGHT COLUMN: RECORDING FORM ================= */}
+          <VStack spacing={4} align="stretch">
+            {/* Step 2 Pill */}
+            <HStack spacing={2}>
+              <Badge colorScheme="teal" borderRadius="full" px={2.5} py={0.5} fontSize="3xs">
+                STEP 2
+              </Badge>
+              <Text fontSize="xs" fontWeight="800" color="gray.600" textTransform="uppercase" letterSpacing="0.5px">
+                Enter Transfer Reference
+              </Text>
             </HStack>
 
-            {/* UTR Input */}
-            <FormControl isRequired isInvalid={utr.length > 0 && !UTR_REGEX.test(utr.trim())}>
-              <FormLabel fontSize="xs" fontWeight="700">
-                Bank UTR / Transaction Reference Number
-              </FormLabel>
-              <Input
-                size="sm"
-                borderRadius="8px"
-                fontFamily="mono"
-                placeholder="e.g. HDFC202610150912345 or UPI/3284910283"
-                value={utr}
-                onChange={(e) => setUtr(e.target.value.toUpperCase())}
-                isDisabled={isSubmitting}
-                autoFocus
-              />
-              <FormHelperText fontSize="3xs">
-                Unique bank transfer reference issued by your bank after executing the transaction
-              </FormHelperText>
-            </FormControl>
-
-            {/* Confirmed Net Amount */}
-            <FormControl isRequired isInvalid={parseFloat(confirmedAmount || 0) !== parseFloat(netRupees)}>
-              <FormLabel fontSize="xs" fontWeight="700">
-                Confirm Net Amount Transferred (₹)
-              </FormLabel>
-              <Input
-                size="sm"
-                borderRadius="8px"
-                fontFamily="mono"
-                fontWeight="700"
-                value={confirmedAmount}
-                onChange={(e) => setConfirmedAmount(e.target.value)}
-                isDisabled={isSubmitting}
-              />
-              <FormHelperText fontSize="3xs">
-                Must match exact approved net payable: ₹{netRupees}
-              </FormHelperText>
-            </FormControl>
-
-            {/* Admin Notes */}
-            <FormControl>
-              <FormLabel fontSize="xs" fontWeight="700">
-                Audit Notes / Reference (Optional)
-              </FormLabel>
-              <Textarea
-                size="sm"
-                borderRadius="8px"
-                rows={2}
-                placeholder="Optional notes for financial audit (e.g. Bank Account: HDFC Current #9012)"
-                value={adminNote}
-                onChange={(e) => setAdminNote(e.target.value)}
-                isDisabled={isSubmitting}
-              />
-            </FormControl>
-          </VStack>
-        </ModalBody>
-
-        <ModalFooter bg="gray.50" py={3} px={6} borderTop="1px solid" borderColor="gray.200">
-          <HStack spacing={3} justify="flex-end" w="full">
-            <Button size="sm" variant="ghost" onClick={onClose} isDisabled={isSubmitting}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              colorScheme="teal"
-              fontWeight="700"
-              onClick={handleSubmit}
-              isLoading={isSubmitting}
-              loadingText="Recording Payment..."
-              isDisabled={!utr.trim() || !UTR_REGEX.test(utr.trim()) || isSubmitting}
+            <Box
+              p={4}
+              borderRadius="16px"
+              bg={isDark ? "gray.800" : "gray.50"}
+              border="1px solid"
+              borderColor={isDark ? "gray.700" : "gray.200"}
             >
-              Confirm & Mark as Paid
-            </Button>
-          </HStack>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+              {/* UTR Input */}
+              <FormControl isRequired isInvalid={utr.length > 0 && !isUtrValid} mb={4}>
+                <FormLabel fontSize="xs" fontWeight="800" textTransform="uppercase" letterSpacing="0.5px">
+                  Bank Reference Number / UTR
+                </FormLabel>
+                <Input
+                  size="md"
+                  borderRadius="10px"
+                  fontFamily="mono"
+                  fontSize="md"
+                  fontWeight="700"
+                  placeholder="e.g. CMS1234567890 or 202611061234"
+                  value={utr}
+                  onChange={(e) => setUtr(e.target.value.toUpperCase())}
+                  isDisabled={isSubmitting}
+                  autoFocus
+                />
+                <FormHelperText fontSize="3xs">
+                  Must be 6–50 alphanumeric characters provided by your bank receipt.
+                </FormHelperText>
+              </FormControl>
+
+              {/* Payout Mode & Date Grid */}
+              <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3} mb={4}>
+                <FormControl isRequired>
+                  <FormLabel fontSize="xs" fontWeight="700">
+                    Payment Mode
+                  </FormLabel>
+                  <Select
+                    size="md"
+                    borderRadius="10px"
+                    value={payoutMode}
+                    onChange={(e) => setPayoutMode(e.target.value)}
+                    isDisabled={isSubmitting}
+                    fontWeight="600"
+                  >
+                    <option value="NEFT">NEFT (National Electronic Fund)</option>
+                    <option value="IMPS">IMPS (Immediate Payment)</option>
+                    <option value="RTGS">RTGS (Real Time Gross)</option>
+                    <option value="UPI">UPI Transfer</option>
+                    <option value="DIRECT_BANK_TRANSFER">Bank Portal Transfer</option>
+                  </Select>
+                </FormControl>
+
+                <FormControl isRequired>
+                  <FormLabel fontSize="xs" fontWeight="700">
+                    Transfer Date & Time
+                  </FormLabel>
+                  <Input
+                    size="md"
+                    borderRadius="10px"
+                    type="datetime-local"
+                    value={transferDateTime}
+                    onChange={(e) => setTransferDateTime(e.target.value)}
+                    isDisabled={isSubmitting}
+                    fontSize="xs"
+                  />
+                </FormControl>
+              </SimpleGrid>
+
+              {/* Confirmed Amount Verification */}
+              <FormControl isRequired mb={4}>
+                <FormLabel fontSize="xs" fontWeight="700">
+                  Confirmed Disbursed Amount (₹)
+                </FormLabel>
+                <Input
+                  size="md"
+                  borderRadius="10px"
+                  type="number"
+                  step="0.01"
+                  value={confirmedAmount}
+                  onChange={(e) => setConfirmedAmount(e.target.value)}
+                  isDisabled={isSubmitting}
+                  fontWeight="700"
+                  fontSize="md"
+                />
+                <FormHelperText fontSize="3xs">
+                  Must match expected net amount of ₹{netRupees} exactly.
+                </FormHelperText>
+              </FormControl>
+
+              {/* Administrative Accounting Note */}
+              <FormControl>
+                <FormLabel fontSize="xs" fontWeight="700">
+                  Accounting Note / Reference
+                </FormLabel>
+                <Textarea
+                  size="md"
+                  borderRadius="10px"
+                  rows={2}
+                  placeholder="Optional internal remarks (e.g. Processed via HDFC Corporate Banking)..."
+                  value={adminNote}
+                  onChange={(e) => setAdminNote(e.target.value)}
+                  isDisabled={isSubmitting}
+                  fontSize="xs"
+                />
+              </FormControl>
+            </Box>
+          </VStack>
+        </SimpleGrid>
+      </VStack>
+    </AppModal>
   );
 }
+
+RecordBankTransferModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  withdrawal: PropTypes.object,
+  onSuccess: PropTypes.func,
+};

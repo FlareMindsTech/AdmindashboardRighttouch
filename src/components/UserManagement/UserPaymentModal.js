@@ -1,11 +1,6 @@
 import React from "react";
+import AppModal from "components/common/AppModal";
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
   Flex,
   Box,
   Icon,
@@ -32,17 +27,10 @@ export default function UserPaymentModal({
     selectedUserForPayment;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg">
-      <ModalOverlay />
-      <ModalContent maxW="500px">
-        <ModalHeader color="gray.700">
-          <Flex align="center" gap={2}>
+    <AppModal isOpen={isOpen} onClose={onClose} size="lg" headerColor="gray.700" closeButtonColor="gray.700" title={<><Flex align="center" gap={2}>
             <Icon as={FaWallet} color="orange.500" />
             Payment Summary
-          </Flex>
-        </ModalHeader>
-        <ModalCloseButton />
-        <ModalBody>
+          </Flex></>}>
           <VStack spacing={4} align="stretch">
             {/* User Info */}
             <Flex align="center" gap={3} p={3} bg="gray.50" borderRadius="md">
@@ -90,8 +78,7 @@ export default function UserPaymentModal({
               </Box>
             )}
           </VStack>
-        </ModalBody>
-      </ModalContent>
-    </Modal>
+
+</AppModal>
   );
 }

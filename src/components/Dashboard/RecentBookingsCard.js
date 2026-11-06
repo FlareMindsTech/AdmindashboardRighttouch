@@ -13,7 +13,6 @@ import {
   Th,
   Thead,
   Tr,
-  useColorMode,
 } from "@chakra-ui/react";
 import { FaHistory } from "react-icons/fa";
 import SectionCard from "components/common/SectionCard";
@@ -44,11 +43,10 @@ const TYPE_META = {
 };
 
 export default function RecentBookingsCard({ items = [] }) {
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
-  const textColor = isDark ? "gray.100" : "gray.800";
-  const subTextColor = isDark ? "gray.400" : "gray.500";
-  const borderColor = isDark ? "rgba(255,255,255,0.07)" : "rgba(15,23,42,0.07)";
+  const isDark = false;
+  const textColor = "gray.800";
+  const subTextColor = "gray.500";
+  const borderColor = "rgba(15,23,42,0.07)";
 
   return (
     <SectionCard bodyProps={{ p: 0 }}>

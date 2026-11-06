@@ -2,6 +2,9 @@
 // Covers Postman Folder 10
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useAppToast } from "components/feedback";
+import AppModal from "components/common/AppModal";
+import ErrorState from "components/feedback/ErrorState";
 import {
   Box,
   Button,
@@ -14,7 +17,6 @@ import {
   Th,
   Thead,
   Tr,
-  useToast,
   Spinner,
   Center,
   SimpleGrid,
@@ -24,13 +26,6 @@ import {
   Tab,
   TabPanel,
   Badge,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   VStack,
   Divider,
 } from "@chakra-ui/react";
@@ -48,12 +43,13 @@ import {
 const BRAND = "#008080";
 
 export default function ProductInsights() {
-  const toast = useToast();
+  const toast = useAppToast();
   const [tab, setTab] = useState(0);
   const [summary, setSummary] = useState(null);
   const [sales, setSales] = useState([]);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   // Audit Log Detail Modal
   const [selectedLog, setSelectedLog] = useState(null);
@@ -64,7 +60,7 @@ export default function ProductInsights() {
     const { data, error } = await getProductDashboard();
     if (!isMounted.current) return;
     if (error) {
-      toast({ title: "Failed to load product dashboard", description: error, status: "error", duration: 3000, isClosable: true });
+      toast.error(error, { title: "Failed to load product dashboard", duration: 3000, isClosable: true });
       return;
     }
     setSummary(data?.result ?? data?.data ?? data ?? null);
@@ -75,16 +71,22 @@ export default function ProductInsights() {
     if (tab === 0) {
       const { data, error } = await getSalesReport();
       if (!isMounted.current) return;
-      if (error) toast({ title: "Sales report failed", description: error, status: "error", duration: 3000, isClosable: true });
-      else {
+      if (error) {
+        setLoadError(error);
+        toast.error(error, { title: "Sales report failed", duration: 3000, isClosable: true });
+      } else {
+        setLoadError(null);
         const list = data?.result ?? data?.data ?? data ?? [];
         setSales(Array.isArray(list) ? list : list?.rows ?? list?.sales ?? []);
       }
     } else {
       const { data, error } = await listProductAuditLogs();
       if (!isMounted.current) return;
-      if (error) toast({ title: "Audit logs failed", description: error, status: "error", duration: 3000, isClosable: true });
-      else {
+      if (error) {
+        setLoadError(error);
+        toast.error(error, { title: "Audit logs failed", duration: 3000, isClosable: true });
+      } else {
+        setLoadError(null);
         const list = data?.result ?? data?.data ?? data ?? [];
         setLogs(Array.isArray(list) ? list : list?.logs ?? []);
       }
@@ -111,7 +113,7 @@ export default function ProductInsights() {
     const { data, error } = await getProductAuditLogById(id);
     setLogLoading(false);
     if (error) {
-      toast({ title: "Failed to load audit log detail", description: error, status: "error", duration: 3000, isClosable: true });
+      toast.error(error, { title: "Failed to load audit log detail", duration: 3000, isClosable: true });
       return;
     }
     setSelectedLog(data?.result ?? data?.data ?? data ?? null);
@@ -148,7 +150,9 @@ export default function ProductInsights() {
             <TabPanels>
               {/* Tab 1: Sales Performance */}
               <TabPanel px={0} pt={4}>
-                {loading ? (
+                {loadError ? (
+                  <ErrorState compact error={loadError} title="Could not load sales data" onRetry={loadTab} />
+                ) : loading ? (
                   <Center py={10}><Spinner color={BRAND} /></Center>
                 ) : sales.length === 0 ? (
                   <Center py={10}><Text color="gray.500">No sales records found for this period.</Text></Center>
@@ -198,7 +202,9 @@ export default function ProductInsights() {
 
               {/* Tab 2: Catalog Audit Logs */}
               <TabPanel px={0} pt={4}>
-                {loading ? (
+                {loadError ? (
+                  <ErrorState compact error={loadError} title="Could not load audit logs" onRetry={loadTab} />
+                ) : loading ? (
                   <Center py={10}><Spinner color={BRAND} /></Center>
                 ) : logs.length === 0 ? (
                   <Center py={10}><Text color="gray.500">No product audit logs recorded.</Text></Center>
@@ -250,12 +256,14 @@ export default function ProductInsights() {
       </Card>
 
       {/* Audit Log Detail Modal */}
-      <Modal isOpen={logModalOpen} onClose={() => setLogModalOpen(false)} size="lg">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Audit Log Details</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+      <AppModal
+        isOpen={logModalOpen}
+        onClose={() => setLogModalOpen(false)}
+        title="Audit log details"
+        subtitle="Immutable record details and the captured change payload."
+        size="lg"
+        secondaryAction={{ label: "Close", onClick: () => setLogModalOpen(false) }}
+      >
             {logLoading ? (
               <Center py={8}><Spinner color={BRAND} /></Center>
             ) : !selectedLog ? (
@@ -280,19 +288,14 @@ export default function ProductInsights() {
                 </Flex>
                 <Divider />
                 <Heading size="xs">Change Payload / Diff</Heading>
-                <Box p={3} bg="gray.50" _dark={{ bg: "gray.700" }} borderRadius="md" maxH="250px" overflowY="auto">
+                <Box p={3} bg="gray.50" borderRadius="md" maxH="250px" overflowY="auto">
                   <Text fontSize="xs" fontFamily="mono" whiteSpace="pre-wrap">
                     {JSON.stringify(selectedLog.diff || selectedLog.payload || selectedLog.changes || selectedLog, null, 2)}
                   </Text>
                 </Box>
               </VStack>
             )}
-          </ModalBody>
-          <ModalFooter>
-            <Button size="sm" onClick={() => setLogModalOpen(false)}>Close</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      </AppModal>
     </Box>
   );
 }

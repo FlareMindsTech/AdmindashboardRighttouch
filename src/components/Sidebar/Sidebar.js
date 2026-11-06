@@ -1,5 +1,7 @@
 /* eslint-disable */
 import { HamburgerIcon } from "@chakra-ui/icons";
+import { useAppToast } from "components/feedback";
+import ConfirmActionModal from "components/common/ConfirmActionModal";
 import {
   Box,
   Button,
@@ -14,13 +16,6 @@ import {
   useColorMode,
   useColorModeValue,
   useDisclosure,
-  AlertDialog,
-  AlertDialogBody,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogContent,
-  AlertDialogOverlay,
-  useToast,
   Image,
   Badge,
   Link,
@@ -138,9 +133,7 @@ const Sidebar = React.memo(function Sidebar(props) {
   // Desktop logout / signin dialog state
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const [isSigninPromptOpen, setIsSigninPromptOpen] = useState(false);
-  const logoutCancelRef = useRef();
-  const signinCancelRef = useRef();
-  const toast = useToast();
+  const toast = useAppToast();
 
   const openLogout = () => setIsLogoutOpen(true);
   const closeLogout = () => setIsLogoutOpen(false);
@@ -163,13 +156,7 @@ const Sidebar = React.memo(function Sidebar(props) {
       const base = window.location.origin + window.location.pathname;
       window.location.replace(`${base}#/auth/signin`);
     } catch (err) {
-      toast({
-        title: "Logout failed",
-        description: err?.message || "Please try again.",
-        status: "error",
-        duration: 4000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Logout failed", description: "Please try again.", duration: 4000, isClosable: true });
     }
   };
 
@@ -477,15 +464,15 @@ const Sidebar = React.memo(function Sidebar(props) {
             base: "260px",
             sm: "270px",
             md: "295px",
-            lg: "315px",
-            xl: "315px"
+            lg: "360px",
+            xl: "380px"
           }}
           maxW={{
             base: "260px",
             sm: "270px",
             md: "295px",
-            lg: "315px",
-            xl: "315px"
+            lg: "360px",
+            xl: "380px"
           }}
           h={{
             base: "calc(100vh - 60px)",  // 320px - 480px
@@ -584,39 +571,26 @@ const Sidebar = React.memo(function Sidebar(props) {
 
         </Box>
       </Box>
-      {/* Sign-in prompt dialog (when user clicks Logout but not logged in) */}
-      <AlertDialog isOpen={isSigninPromptOpen} leastDestructiveRef={signinCancelRef} onClose={closeSigninPrompt} isCentered>
-        <AlertDialogOverlay>
-          <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#008080">
-              Not signed in
-            </AlertDialogHeader>
-            <AlertDialogBody>
-              You are not signed in yet. Do you want to go to the Sign-in page?
-            </AlertDialogBody>
-            <AlertDialogFooter>
-              <Button ref={signinCancelRef} onClick={closeSigninPrompt} variant="ghost">Cancel</Button>
-              <Button colorScheme="purple" onClick={handleGoToSignIn} ml={3}>Go to Sign In</Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialogOverlay>
-      </AlertDialog>
+      <ConfirmActionModal
+        isOpen={isSigninPromptOpen}
+        onClose={closeSigninPrompt}
+        onConfirm={handleGoToSignIn}
+        title="Not signed in"
+        description="You are not signed in yet. Do you want to go to the Sign-in page?"
+        confirmText="Go to Sign In"
+        confirmColorScheme="teal"
+        icon={undefined}
+      />
 
-      {/* Logout confirmation dialog (desktop) */}
-      <AlertDialog isOpen={isLogoutOpen} leastDestructiveRef={logoutCancelRef} onClose={closeLogout} isCentered>
-        <AlertDialogOverlay>
-          <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#008080">
-              Confirm Logout
-            </AlertDialogHeader>
-            <AlertDialogBody>Are you sure you want to log out?</AlertDialogBody>
-            <AlertDialogFooter>
-              <Button ref={logoutCancelRef} onClick={closeLogout} variant="ghost">Cancel</Button>
-              <Button colorScheme="red" onClick={handleConfirmLogout} ml={3}>Sign Out</Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialogOverlay>
-      </AlertDialog>
+      <ConfirmActionModal
+        isOpen={isLogoutOpen}
+        onClose={closeLogout}
+        onConfirm={handleConfirmLogout}
+        title="Confirm logout"
+        description="Are you sure you want to log out of the admin dashboard?"
+        confirmText="Sign Out"
+        confirmColorScheme="red"
+      />
     </Box>
   );
 });
@@ -648,9 +622,7 @@ export const SidebarResponsive = React.memo(function SidebarResponsive(props) {
   // Logout / signin state for responsive drawer
   const [isLogoutOpenResp, setIsLogoutOpenResp] = useState(false);
   const [isSigninPromptOpenResp, setIsSigninPromptOpenResp] = useState(false);
-  const logoutCancelRefResp = useRef();
-  const signinCancelRefResp = useRef();
-  const toastResp = useToast();
+  const toastResp = useAppToast();
 
   const openLogoutResp = () => setIsLogoutOpenResp(true);
   const closeLogoutResp = () => setIsLogoutOpenResp(false);
@@ -1042,14 +1014,14 @@ export const SidebarResponsive = React.memo(function SidebarResponsive(props) {
         <DrawerOverlay />
         <DrawerContent
           w={{
-            base: "285px",
-            sm: "300px",
-            md: "320px"
+            base: "295px",
+            sm: "320px",
+            md: "340px"
           }}
           maxW={{
-            base: "285px",
-            sm: "300px",
-            md: "320px"
+            base: "295px",
+            sm: "320px",
+            md: "340px"
           }}
           bg={sidebarContainerBg}
           boxShadow={sidebarContainerShadow}
@@ -1169,33 +1141,25 @@ export const SidebarResponsive = React.memo(function SidebarResponsive(props) {
 
             </Box>
           </DrawerBody>
-          {/* Responsive signin prompt dialog */}
-          <AlertDialog isOpen={isSigninPromptOpenResp} leastDestructiveRef={signinCancelRefResp} onClose={closeSigninPromptResp} isCentered>
-            <AlertDialogOverlay>
-              <AlertDialogContent>
-                <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#008080">Not signed in</AlertDialogHeader>
-                <AlertDialogBody>You are not signed in yet. Do you want to go to the Sign-in page?</AlertDialogBody>
-                <AlertDialogFooter>
-                  <Button ref={signinCancelRefResp} onClick={closeSigninPromptResp} variant="ghost">Cancel</Button>
-                  <Button colorScheme="purple" onClick={handleGoToSignInResp} ml={3}>Go to Sign In</Button>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialogOverlay>
-          </AlertDialog>
+          <ConfirmActionModal
+            isOpen={isSigninPromptOpenResp}
+            onClose={closeSigninPromptResp}
+            onConfirm={handleGoToSignInResp}
+            title="Not signed in"
+            description="You are not signed in yet. Do you want to go to the Sign-in page?"
+            confirmText="Go to Sign In"
+            confirmColorScheme="teal"
+          />
 
-          {/* Responsive logout confirmation dialog */}
-          <AlertDialog isOpen={isLogoutOpenResp} leastDestructiveRef={logoutCancelRefResp} onClose={closeLogoutResp} isCentered>
-            <AlertDialogOverlay>
-              <AlertDialogContent>
-                <AlertDialogHeader fontSize="lg" fontWeight="bold" color="#008080">Confirm Logout</AlertDialogHeader>
-                <AlertDialogBody>Are you sure you want to logout?</AlertDialogBody>
-                <AlertDialogFooter>
-                  <Button ref={logoutCancelRefResp} onClick={closeLogoutResp} variant="ghost">Cancel</Button>
-                  <Button colorScheme="red" onClick={handleConfirmLogoutResp} ml={3}>Sign Out</Button>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialogOverlay>
-          </AlertDialog>
+          <ConfirmActionModal
+            isOpen={isLogoutOpenResp}
+            onClose={closeLogoutResp}
+            onConfirm={handleConfirmLogoutResp}
+            title="Confirm logout"
+            description="Are you sure you want to log out of the admin dashboard?"
+            confirmText="Sign Out"
+            confirmColorScheme="red"
+          />
         </DrawerContent>
       </Drawer>
     </Flex>

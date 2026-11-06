@@ -10,7 +10,6 @@ import {
   Flex, Link,
   Switch,
   Text,
-  useColorMode,
   useColorModeValue
 } from "@chakra-ui/react";
 import { HSeparator } from "components/Separator/Separator";
@@ -29,8 +28,6 @@ export default function Configurator(props) {
     ...rest
   } = props;
   const [switched, setSwitched] = useState(props.isChecked);
-
-  const { colorMode, toggleColorMode } = useColorMode();
 
   let bgButton = useColorModeValue(
     "linear-gradient(81.62deg, #313860 2.25%, #151928 79.87%)",

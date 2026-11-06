@@ -1,12 +1,6 @@
 import React from "react";
+import AppModal from "components/common/AppModal";
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Flex,
   Box,
   Heading,
@@ -51,11 +45,7 @@ export default function KYCReviewModal({
   customColor = "#008080",
 }) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside">
-      <ModalOverlay />
-      <ModalContent borderRadius="16px">
-        <ModalHeader borderBottom="1px solid" borderColor="gray.100" pb={3}>
-          <Flex justify="space-between" align="center" pr={6}>
+    <AppModal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside" title={<><Flex justify="space-between" align="center" pr={6}>
             <Box>
               <Heading size="sm">Gate 2: KYC Identity Verification</Heading>
               <Text fontSize="xs" color="gray.500" mt={0.5}>
@@ -90,11 +80,66 @@ export default function KYCReviewModal({
                 </Button>
               )}
             </HStack>
-          </Flex>
-        </ModalHeader>
-        <ModalCloseButton />
+          </Flex></>} footer={<><Flex w="100%" justify="space-between" align="center">
+            {kycData && (
+              <Button
+                size="sm"
+                colorScheme="red"
+                variant="ghost"
+                onClick={onDeleteKYC}
+              >
+                Delete KYC
+              </Button>
+            )}
 
-        <ModalBody py={4}>
+            <HStack spacing={2}>
+              {!showRejectionInput ? (
+                <>
+                  <Button
+                    size="sm"
+                    colorScheme="red"
+                    variant="outline"
+                    onClick={() => setShowRejectionInput(true)}
+                  >
+                    Reject KYC
+                  </Button>
+                  {(() => {
+                    const alreadyVerified = isTechnicianKYCVerified(selectedTechForKYC, allKycRecords);
+                    return (
+                      <Button
+                        size="sm"
+                        colorScheme={alreadyVerified ? "teal" : "green"}
+                        leftIcon={<FaCheckCircle />}
+                        onClick={() => onVerifyKYCAction("approved")}
+                      >
+                        {alreadyVerified ? "Already Verified ✓" : "Approve (Verify Identity)"}
+                      </Button>
+                    );
+                  })()}
+                </>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowRejectionInput(false);
+                      setRejectionInput("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    colorScheme="red"
+                    onClick={() => onVerifyKYCAction("rejected")}
+                  >
+                    Confirm Rejection
+                  </Button>
+                </>
+              )}
+            </HStack>
+          </Flex></>}>
           {kycLoading ? (
             <Flex justify="center" align="center" h="200px">
               <Spinner size="lg" color={customColor} />
@@ -343,71 +388,7 @@ export default function KYCReviewModal({
               No KYC record found.
             </Text>
           )}
-        </ModalBody>
 
-        <ModalFooter borderTop="1px solid" borderColor="gray.100" bg="gray.50">
-          <Flex w="100%" justify="space-between" align="center">
-            {kycData && (
-              <Button
-                size="sm"
-                colorScheme="red"
-                variant="ghost"
-                onClick={onDeleteKYC}
-              >
-                Delete KYC
-              </Button>
-            )}
-
-            <HStack spacing={2}>
-              {!showRejectionInput ? (
-                <>
-                  <Button
-                    size="sm"
-                    colorScheme="red"
-                    variant="outline"
-                    onClick={() => setShowRejectionInput(true)}
-                  >
-                    Reject KYC
-                  </Button>
-                  {(() => {
-                    const alreadyVerified = isTechnicianKYCVerified(selectedTechForKYC, allKycRecords);
-                    return (
-                      <Button
-                        size="sm"
-                        colorScheme={alreadyVerified ? "teal" : "green"}
-                        leftIcon={<FaCheckCircle />}
-                        onClick={() => onVerifyKYCAction("approved")}
-                      >
-                        {alreadyVerified ? "Already Verified ✓" : "Approve (Verify Identity)"}
-                      </Button>
-                    );
-                  })()}
-                </>
-              ) : (
-                <>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setShowRejectionInput(false);
-                      setRejectionInput("");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    colorScheme="red"
-                    onClick={() => onVerifyKYCAction("rejected")}
-                  >
-                    Confirm Rejection
-                  </Button>
-                </>
-              )}
-            </HStack>
-          </Flex>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+</AppModal>
   );
 }

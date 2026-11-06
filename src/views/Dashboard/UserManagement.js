@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useAppToast } from "components/feedback";
 import {
   Box,
   Button,
@@ -6,7 +7,6 @@ import {
   Icon,
   Input,
   useColorModeValue,
-  useToast,
   Heading,
   Text,
   IconButton,
@@ -181,7 +181,7 @@ const UserMobileCard = React.memo(({
 
 export default function UserManagement() {
   const textColor = useColorModeValue("gray.700", "white");
-  const toast = useToast();
+  const toast = useAppToast();
   const dispatch = useAppDispatch();
   // Shared service-bookings collection (TTL-cached; enrichment below now
   // reads the same array the Dashboard KPIs use).
@@ -415,13 +415,7 @@ export default function UserManagement() {
     } catch (err) {
       if (!isMountedRef.current) return;
       console.error("Fetch error:", err);
-      toast({
-        title: "Fetch Error",
-        description: err.message || "Failed to load user data.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Fetch Error", description: "Failed to load user data.", duration: 3000, isClosable: true });
     } finally {
       if (isMountedRef.current) {
         setIsLoading(false);
@@ -516,13 +510,7 @@ export default function UserManagement() {
       await fetchData();
       closeDeleteModal();
     } catch (err) {
-      toast({
-        title: "Delete Error",
-        description: err.message || "Failed to delete user.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Delete Error", description: "Failed to delete user.", duration: 3000, isClosable: true });
     } finally {
       setDeleteLoading(false);
     }

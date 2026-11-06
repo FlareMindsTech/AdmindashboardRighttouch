@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, useColorMode } from "@chakra-ui/react";
+import { Box } from "@chakra-ui/react";
 
 /**
  * Shared modern section container for dashboard panels, tables, and charts.
@@ -15,8 +15,7 @@ export default function SectionCard(props) {
     isInteractive = false,
     ...rest
   } = props;
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
+  const isDark = false;
 
   const defaultBg = isDark
     ? "linear-gradient(145deg, #1A2234 0%, #111C44 100%)"

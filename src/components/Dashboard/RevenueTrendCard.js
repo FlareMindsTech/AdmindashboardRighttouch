@@ -6,7 +6,6 @@ import {
   HStack,
   Icon,
   Text,
-  useColorMode,
 } from "@chakra-ui/react";
 import { FaArrowDown, FaArrowUp } from "react-icons/fa";
 import { FiActivity } from "react-icons/fi";
@@ -42,8 +41,7 @@ export default function RevenueTrendCard({
   serviceLabel = "Services",
   productLabel = "Products",
 }) {
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
+  const isDark = false;
   const bookingsColor = isDark ? "#94A3B8" : "#64748B";
 
   const labels = months.map((month) => month.label);

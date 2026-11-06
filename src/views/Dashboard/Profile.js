@@ -1,11 +1,12 @@
 
 import React, { useEffect, useState } from "react";
+import { useAppToast } from "components/feedback";
+import AppModal from "components/common/AppModal";
 import {
   Avatar, Button, Flex, Grid, Text, VStack, Image, Divider,
   useColorModeValue, Table, Thead, Tbody, Tr, Th, Td, Spinner,
-  Badge, useToast, Input, FormControl, FormLabel,
-  Modal, ModalOverlay, ModalContent, ModalHeader, ModalFooter,
-  ModalBody, ModalCloseButton, useDisclosure, Box, HStack, Heading
+  Badge, Input, FormControl, FormLabel,
+  useDisclosure, Box, HStack, Heading
 } from "@chakra-ui/react";
 import { FaUsers, FaBoxOpen, FaEdit, FaSignOutAlt, FaSave, FaTimes, FaChartPie, FaCrown, FaStar, FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import Card from "components/Card/Card";
@@ -162,7 +163,7 @@ const getTechnicianImage = (tech) => {
 
 const EditOwnerModal = ({ isOpen, onClose, owner, onSave }) => {
   const [editData, setEditData] = useState(owner || {});
-  const toast = useToast();
+  const toast = useAppToast();
 
   useEffect(() => {
     setEditData(owner || {});
@@ -182,12 +183,15 @@ const EditOwnerModal = ({ isOpen, onClose, owner, onSave }) => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="md">
-      <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>Edit Owner</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody>
+    <AppModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Edit owner"
+      subtitle="Update the owner profile details."
+      size="md"
+      primaryAction={{ label: "Save Changes", onClick: handleSave, colorScheme: "purple" }}
+      secondaryAction={{ label: "Cancel", onClick: onClose }}
+    >
           <VStack spacing={4}>
             <FormControl isRequired>
               <FormLabel>Name</FormLabel>
@@ -218,23 +222,7 @@ const EditOwnerModal = ({ isOpen, onClose, owner, onSave }) => {
               />
             </FormControl>
           </VStack>
-        </ModalBody>
-        <ModalFooter>
-          <Button colorScheme="gray" mr={3} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            colorScheme="purple"
-            bg="#5a189a"
-            _hover={{ bg: "#4a147f" }}
-            _active={{ bg: "#3b0f66" }}
-            onClick={handleSave}
-          >
-            Save Changes
-          </Button>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+    </AppModal>
   );
 };
 
@@ -286,7 +274,7 @@ const ProfileEditComponent = ({ ownerData, onSave, onCancel }) => {
 };
 
 export default function OwnerProfile() {
-  const toast = useToast();
+  const toast = useAppToast();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const reduxUser = useAppSelector(selectUser);
@@ -545,7 +533,7 @@ export default function OwnerProfile() {
       toast({ title: "Profile updated", description: res.message || "Changes saved successfully", status: "success", duration: 2000 });
     } catch (err) {
       console.error("Error updating profile:", err);
-      toast({ title: "Update failed", description: err.message || "Failed to update profile", status: "error", duration: 3000 });
+      toast.error(err, { title: "Update failed", description: "Failed to update profile", duration: 3000 });
     }
   };
 

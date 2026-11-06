@@ -125,7 +125,7 @@ export default function PayoutSummaryCards({
             bg={isDark ? "gray.850" : "white"}
             borderRadius="18px"
             border="2px solid"
-            borderColor={isSelected ? card.accentColor : isDark ? "gray.750" : "gray.100"}
+            borderColor={isSelected ? card.accentColor : isDark ? "gray.800" : "gray.100"}
             boxShadow={
               isSelected
                 ? `0 12px 30px -4px ${card.glowColor}, 0 4px 12px -2px rgba(0,0,0,0.06)`

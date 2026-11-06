@@ -1,6 +1,5 @@
 import polygonClipping from "polygon-clipping";
 import {
-  clipPolygonAgainstZones,
   getZoneId,
   getZonePolygon,
   isPointInRing,
@@ -53,8 +52,6 @@ export const buildRadiusCandidate = ({
   radiusKm = 5,
   districtGeometry = null,
   districtRing = null,
-  zones = [],
-  preferPoint = null,
   requireInsideDistrict = true,
   fallbackToCircle = false,
 }) => {
@@ -92,12 +89,15 @@ export const buildRadiusCandidate = ({
     }
   }
 
-  const zoneResult = clipPolygonAgainstZones(circle, zones, {
-    preferPoint: preferPoint || [lng, lat],
-  });
-
+  // Zone-to-zone overlap is allowed inside a district. Only the district
+  // boundary clips a zone; sibling zones are never subtracted here.
   return {
-    ...zoneResult,
+    polygon: circle,
+    adjusted: cutToDistrict,
+    overlappingZones: [],
+    blockers: [],
+    compatible: true,
+    failed: false,
     circle,
     cutToDistrict,
     requestedRadiusKm: radiusKm,
@@ -111,75 +111,28 @@ export const fitRadiusInDistrict = ({
   radiusKm = 5,
   districtGeometry = null,
   districtRing = null,
-  zones = [],
-  preferPoint = null,
   requireInsideDistrict = true,
   fallbackToCircle = false,
-  maxSteps = 16,
 }) => {
   const requestedKm = Number(radiusKm) || 5;
-  const basePayload = {
+  const primary = buildRadiusCandidate({
     lat,
     lng,
     districtGeometry,
     districtRing,
-    zones,
-    preferPoint: preferPoint || [lng, lat],
     requireInsideDistrict,
     fallbackToCircle,
-  };
+    radiusKm: requestedKm,
+  });
 
-  const primary = buildRadiusCandidate({ ...basePayload, radiusKm: requestedKm });
   if (primary.outsideDistrict) return primary;
-
-  const conflicts = primary.overlappingZones || [];
-  const conflictKeys = conflicts.map((zone) => String(zone.id || zone.name));
-  const conflictNames = conflicts
-    .map((zone) => `"${zone.name}"`)
-    .filter(Boolean)
-    .join(", ");
-
-  const resultBase = {
-    requestedRadiusKm: requestedKm,
-    conflictKeys,
-    conflictNames,
-  };
-
-  if (primary.polygon && primary.compatible) {
-    return {
-      ...primary,
-      ...resultBase,
-      radiusKm: requestedKm,
-      reduced: false,
-    };
-  }
-
-  let fallback = primary.polygon ? primary.polygon : null;
-
-  for (let step = 1; step <= maxSteps; step += 1) {
-    const nextKm = Number((requestedKm * (1 - step * 0.06)).toFixed(2));
-    if (nextKm < 0.4) break;
-    const attempt = buildRadiusCandidate({ ...basePayload, radiusKm: nextKm });
-    if (attempt.outsideDistrict) break;
-    if (attempt.polygon && attempt.compatible) {
-      return {
-        ...attempt,
-        ...resultBase,
-        radiusKm: nextKm,
-        reduced: true,
-      };
-    }
-    if (!fallback && attempt.polygon) fallback = attempt.polygon;
-  }
 
   return {
     ...primary,
-    ...resultBase,
-    polygon: null,
-    fallbackPolygon: fallback,
-    adjusted: true,
-    compatible: false,
+    requestedRadiusKm: requestedKm,
+    conflictKeys: [],
+    conflictNames: "",
     radiusKm: requestedKm,
-    reduced: true,
+    reduced: false,
   };
 };

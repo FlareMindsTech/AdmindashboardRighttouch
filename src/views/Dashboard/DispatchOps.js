@@ -1,6 +1,7 @@
 // src/views/Dashboard/DispatchOps.js — Dispatch Queue Ops (Admin)
 // Covers Postman Folder 14: pending/failed/stats/health, retry, worker controls
 import React, { useState, useEffect, useCallback } from "react";
+import { useAppToast } from "components/feedback";
 import {
   Box,
   Button,
@@ -13,7 +14,6 @@ import {
   Th,
   Thead,
   Tr,
-  useToast,
   Spinner,
   Center,
   Badge,
@@ -43,7 +43,7 @@ import {
 const BRAND = "#008080";
 
 export default function DispatchOps() {
-  const toast = useToast();
+  const toast = useAppToast();
   const [tab, setTab] = useState(0);
   const [rows, setRows] = useState([]);
   const [stats, setStats] = useState(null);
@@ -66,7 +66,7 @@ export default function DispatchOps() {
     if (!isMounted.current) return;
     setLoading(false);
     if (error) {
-      toast({ title: "Failed to load dispatch queue", description: error, status: "error", duration: 3000, isClosable: true });
+      toast.error(error, { title: "Failed to load dispatch queue", duration: 3000, isClosable: true });
       return;
     }
     const list = data?.result ?? data?.data ?? data ?? [];
@@ -86,7 +86,7 @@ export default function DispatchOps() {
   }, [loadList]);
 
   const ok = (msg) => toast({ title: msg, status: "success", duration: 2500, isClosable: true });
-  const fail = (e) => toast({ title: "Action failed", description: e, status: "error", duration: 3000, isClosable: true });
+  const fail = (e) => toast.error(e, { title: "Action failed", duration: 3000, isClosable: true });
 
   const doRetryOne = async (row) => {
     const id = row?._id || row?.bookingId || row?.id;

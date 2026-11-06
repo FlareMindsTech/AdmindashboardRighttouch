@@ -16,6 +16,7 @@ import {
   Icon,
   useColorModeValue,
 } from "@chakra-ui/react";
+import FormErrorSummary from "components/feedback/FormErrorSummary";
 
 const globalScrollbarStyles = {
   "&::-webkit-scrollbar": { width: "6px", height: "6px" },
@@ -31,14 +32,23 @@ const globalScrollbarStyles = {
  * Standardizes backdrop blur, skeuomorphic surface styling, header icon badges,
  * viewport-safe body scrolling, and action footers.
  */
+const TONES = {
+  default: { iconBg: "teal.50", iconColor: "#008080" },
+  info: { iconBg: "blue.50", iconColor: "blue.600" },
+  success: { iconBg: "green.50", iconColor: "green.600" },
+  warning: { iconBg: "orange.50", iconColor: "orange.600" },
+  danger: { iconBg: "red.50", iconColor: "red.600" },
+};
+
 export default function AppModal({
   isOpen,
   onClose,
   title,
   subtitle,
   icon,
-  iconBg = "teal.50",
-  iconColor = "#008080",
+  tone = "default",
+  iconBg,
+  iconColor,
   size = "xl",
   isCentered = true,
   children,
@@ -49,32 +59,53 @@ export default function AppModal({
   bodyMaxH = "70vh",
   bodyBg,
   headerBg,
+  headerColor,
+  closeButtonColor,
   footerBg,
   scrollBehavior = "inside",
   closeOnOverlayClick = true,
+  closeOnEsc = true,
+  isBusy = false,
+  error,
+  onRetry,
+  initialFocusRef,
+  returnFocusOnClose = true,
+  ariaLabel,
   zIndex = 1400,
+  maxW,
 }) {
   const defaultHeaderBg = useColorModeValue("white", "gray.800");
   const defaultBodyBg = useColorModeValue("white", "gray.800");
   const defaultFooterBg = useColorModeValue("gray.50", "gray.900");
   const borderColor = useColorModeValue("gray.100", "gray.700");
-  const titleColor = useColorModeValue("gray.800", "white");
-  const subtitleColor = useColorModeValue("gray.500", "gray.400");
+  const defaultTitleColor = useColorModeValue("gray.800", "white");
+  const defaultSubtitleColor = useColorModeValue("gray.500", "gray.400");
+  const titleColor = headerColor || defaultTitleColor;
+  const subtitleColor = headerColor || defaultSubtitleColor;
+  const toneStyle = TONES[tone] || TONES.default;
 
   const effectiveHeaderBg = headerBg || defaultHeaderBg;
   const effectiveBodyBg = bodyBg || defaultBodyBg;
   const effectiveFooterBg = footerBg || defaultFooterBg;
+  const effectiveIconBg = iconBg || toneStyle.iconBg;
+  const effectiveIconColor = iconColor || toneStyle.iconColor;
 
   const hasDefaultFooter = Boolean(primaryAction || secondaryAction !== undefined);
+  const handleClose = () => {
+    if (!isBusy) onClose();
+  };
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       size={size}
       isCentered={isCentered}
       scrollBehavior={scrollBehavior}
-      closeOnOverlayClick={closeOnOverlayClick}
+      closeOnOverlayClick={!isBusy && closeOnOverlayClick}
+      closeOnEsc={!isBusy && closeOnEsc}
+      initialFocusRef={initialFocusRef}
+      returnFocusOnClose={returnFocusOnClose}
     >
       <ModalOverlay
         bg="blackAlpha.700"
@@ -89,7 +120,11 @@ export default function AppModal({
         borderColor={borderColor}
         zIndex={zIndex + 1}
         mx={{ base: 3, md: 4 }}
+        w="full"
+        maxW={maxW}
         overflow="hidden"
+        aria-busy={isBusy}
+        aria-label={!title ? ariaLabel : undefined}
       >
         {/* Standardized Header */}
         {(title || icon) && (
@@ -107,8 +142,8 @@ export default function AppModal({
                   w="38px"
                   h="38px"
                   borderRadius="6px"
-                  bg={iconBg}
-                  color={iconColor}
+                  bg={effectiveIconBg}
+                  color={effectiveIconColor}
                   align="center"
                   justify="center"
                   flexShrink={0}
@@ -151,6 +186,8 @@ export default function AppModal({
             top="16px"
             right="16px"
             borderRadius="full"
+            color={closeButtonColor}
+            isDisabled={isBusy}
             _hover={{ bg: "gray.100" }}
           />
         )}
@@ -164,6 +201,11 @@ export default function AppModal({
           overflowY="auto"
           css={globalScrollbarStyles}
         >
+          {error ? (
+            <Box mb={4}>
+              <FormErrorSummary error={error} onRetry={onRetry} />
+            </Box>
+          ) : null}
           {children}
         </ModalBody>
 
@@ -192,9 +234,11 @@ export default function AppModal({
             <HStack spacing={3}>
               {secondaryAction !== null && (
                 <Button
+                  ref={secondaryAction?.ref}
                   size="sm"
                   variant={secondaryAction?.variant || "ghost"}
                   onClick={secondaryAction?.onClick || onClose}
+                  isDisabled={isBusy || secondaryAction?.isDisabled}
                   borderRadius="6px"
                 >
                   {secondaryAction?.label || "Close"}
@@ -206,6 +250,8 @@ export default function AppModal({
                   colorScheme={primaryAction.colorScheme || "teal"}
                   onClick={primaryAction.onClick}
                   isLoading={primaryAction.isLoading}
+                  loadingText={primaryAction.loadingText}
+                  isDisabled={isBusy || primaryAction.isDisabled}
                   leftIcon={primaryAction.leftIcon}
                   borderRadius="6px"
                   fontWeight="700"
@@ -227,6 +273,7 @@ AppModal.propTypes = {
   title: PropTypes.node,
   subtitle: PropTypes.node,
   icon: PropTypes.elementType,
+  tone: PropTypes.oneOf(["default", "info", "success", "warning", "danger"]),
   iconBg: PropTypes.string,
   iconColor: PropTypes.string,
   size: PropTypes.string,
@@ -237,6 +284,8 @@ AppModal.propTypes = {
     label: PropTypes.node,
     onClick: PropTypes.func,
     isLoading: PropTypes.bool,
+    loadingText: PropTypes.string,
+    isDisabled: PropTypes.bool,
     colorScheme: PropTypes.string,
     leftIcon: PropTypes.node,
   }),
@@ -244,13 +293,25 @@ AppModal.propTypes = {
     label: PropTypes.node,
     onClick: PropTypes.func,
     variant: PropTypes.string,
+    isDisabled: PropTypes.bool,
+    ref: PropTypes.object,
   }),
   showCloseButton: PropTypes.bool,
   bodyMaxH: PropTypes.string,
   bodyBg: PropTypes.string,
   headerBg: PropTypes.string,
+  headerColor: PropTypes.string,
+  closeButtonColor: PropTypes.string,
   footerBg: PropTypes.string,
   scrollBehavior: PropTypes.string,
   closeOnOverlayClick: PropTypes.bool,
+  closeOnEsc: PropTypes.bool,
+  isBusy: PropTypes.bool,
+  error: PropTypes.any,
+  onRetry: PropTypes.func,
+  initialFocusRef: PropTypes.object,
+  returnFocusOnClose: PropTypes.bool,
+  ariaLabel: PropTypes.string,
   zIndex: PropTypes.number,
+  maxW: PropTypes.any,
 };

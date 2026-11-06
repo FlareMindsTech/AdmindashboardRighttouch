@@ -1,51 +1,28 @@
 import React from "react";
-import {
-  AlertDialog,
-  AlertDialogOverlay,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogBody,
-  AlertDialogFooter,
-  Button,
-} from "@chakra-ui/react";
+import ConfirmActionModal from "components/common/ConfirmActionModal";
 
 export default function DeleteTechnicianDialog({
   isOpen,
   onClose,
-  cancelRef,
   adminToDelete,
   allKycRecords,
   getTechnicianName,
   onConfirmDelete,
   isDeleting,
+  error,
 }) {
+  const name = getTechnicianName(adminToDelete, allKycRecords);
   return (
-    <AlertDialog isOpen={isOpen} leastDestructiveRef={cancelRef} onClose={onClose}>
-      <AlertDialogOverlay>
-        <AlertDialogContent borderRadius="14px">
-          <AlertDialogHeader fontSize="lg" fontWeight="bold">
-            Delete Technician
-          </AlertDialogHeader>
-          <AlertDialogBody>
-            Are you sure you want to delete{" "}
-            <strong>{getTechnicianName(adminToDelete, allKycRecords)}</strong>? This action cannot be undone.
-          </AlertDialogBody>
-          <AlertDialogFooter>
-            <Button ref={cancelRef} onClick={onClose} size="sm">
-              Cancel
-            </Button>
-            <Button
-              colorScheme="red"
-              onClick={onConfirmDelete}
-              ml={3}
-              size="sm"
-              isLoading={isDeleting}
-            >
-              Confirm Delete
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialogOverlay>
-    </AlertDialog>
+    <ConfirmActionModal
+      isOpen={isOpen}
+      onClose={onClose}
+      onConfirm={onConfirmDelete}
+      title="Delete technician"
+      description={`This permanently deletes ${name || "this technician"} and their access to the admin dashboard. This action cannot be undone.`}
+      confirmText="Delete technician"
+      confirmColorScheme="red"
+      isLoading={isDeleting}
+      error={error}
+    />
   );
 }

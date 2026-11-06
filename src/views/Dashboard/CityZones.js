@@ -14,17 +14,10 @@
     Thead,
     Tr,
     useColorModeValue,
-    useToast,
     Text,
     Heading,
     IconButton,
     Spinner,
-    AlertDialog,
-    AlertDialogBody,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogContent,
-    AlertDialogOverlay,
     Modal,
     ModalOverlay,
     ModalContent,
@@ -56,6 +49,10 @@
   } from "@chakra-ui/react";
 
 import Card from "components/Card/Card.js";
+import AppModal from "components/common/AppModal";
+import { useAppToast } from "components/feedback";
+import ErrorState from "components/feedback/ErrorState";
+import ConfirmActionModal from "components/common/ConfirmActionModal";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
 import {
@@ -88,14 +85,9 @@ import {
 } from "data/tamilNaduLocations";
 import {
   isPolygonDraftDirty,
-  confirmIfDirty,
   attachBeforeUnload,
 } from "../utils/cityZoneInteraction";
-import { clipPolygonAgainstZones } from "../utils/zoneGeometry";
-import {
-  fitRadiusInDistrict,
-  serializeZonesForGeometry,
-} from "../utils/zoneGeometryOperations";
+import { fitRadiusInDistrict } from "../utils/zoneGeometryOperations";
 import {
   isGeometryWorkerSupported,
   runGeometryTask,
@@ -151,7 +143,6 @@ import {
   import {
     createZone,
     getAllZones,
-    getAllCityZones,
     updateZone,
     deleteZone,
     getAllZoneMappings,
@@ -172,9 +163,6 @@ import {
     addTechnicianDistrictPermission,
     toggleTechnicianDistrictPermission,
     removeTechnicianDistrictPermission,
-    getTechnicianZonePermissions,
-    enableTechnicianZonePermission,
-    disableTechnicianZonePermission,
     listTechniciansGeofenceStatus,
     getTechnicianGeofenceDetails,
     updateTechnicianGeofenceVerification,
@@ -229,7 +217,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
   export default function CityZones() {
     const textColor = useColorModeValue("gray.800", "white");
     const dispatch = useAppDispatch();
-    const rawToast = useToast();
+    const rawToast = useAppToast();
     const toast = useCallback(
       (options) =>
         rawToast({
@@ -247,7 +235,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         isMountedRef.current = false;
       };
     }, []);
-    const cancelRef = React.useRef();
 
     const [districtModalError, setDistrictModalError] = useState("");
     const [districtOverlapWarning, setDistrictOverlapWarning] = useState("");
@@ -275,6 +262,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
     const [isLoading, setIsLoading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [loadError, setLoadError] = useState(null);
 
     const [searchTerm, setSearchTerm] = useState("");
     const [districtFilter, setDistrictFilter] = useState("all"); // 'all' (all created districts) | 'active' (enabled) | 'inactive' (disabled)
@@ -334,8 +322,31 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
     const resumeOpsFromContext = useCallback(() => {}, []);
 
-    const handleCloseDistrictModal = () => {
-      if (!confirmIfDirty(districtModalDirty, "You have unsaved district boundary changes. Close without saving?")) return;
+    const [dirtyConfirm, setDirtyConfirm] = useState(null);
+    const dirtyConfirmResolverRef = useRef(null);
+    const requestDirtyConfirmation = useCallback(
+      ({ title, description, confirmText = "Discard changes" }) =>
+        new Promise((resolve) => {
+          dirtyConfirmResolverRef.current = resolve;
+          setDirtyConfirm({ title, description, confirmText });
+        }),
+      []
+    );
+    const resolveDirtyConfirmation = useCallback((confirmed) => {
+      const resolve = dirtyConfirmResolverRef.current;
+      dirtyConfirmResolverRef.current = null;
+      setDirtyConfirm(null);
+      if (resolve) resolve(confirmed);
+    }, []);
+
+    const handleCloseDistrictModal = async () => {
+      if (districtModalDirty) {
+        const confirmed = await requestDirtyConfirmation({
+          title: "Discard district changes?",
+          description: "You have unsaved district boundary changes. Close without saving?",
+        });
+        if (!confirmed) return;
+      }
       districtFormSnapshot.current = "";
       setDistrictTnName("");
       setDistrictFormData(initialDistrictForm);
@@ -483,8 +494,14 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       isModalOpen &&
       isPolygonDraftDirty(formData.polygonCoordinates || "", zoneFormSnapshot.current || "");
     useEffect(() => attachBeforeUnload(zoneModalDirty), [zoneModalDirty]);
-    const handleCloseZoneModal = () => {
-      if (!confirmIfDirty(zoneModalDirty, "You have unsaved zone boundary changes. Close without saving?")) return;
+    const handleCloseZoneModal = async () => {
+      if (zoneModalDirty) {
+        const confirmed = await requestDirtyConfirmation({
+          title: "Discard zone changes?",
+          description: "You have unsaved zone boundary changes. Close without saving?",
+        });
+        if (!confirmed) return;
+      }
       zoneFormSnapshot.current = "";
       setZoneCityFilterMode("district");
       setIsModalOpen(false);
@@ -502,10 +519,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const [selectedTechForPermission, setSelectedTechForPermission] = useState(null);
     const [techServiceRadius, setTechServiceRadius] = useState(10);
     const [techPermissions, setTechPermissions] = useState(null);
-    const [techZonePermissions, setTechZonePermissions] = useState(null);
     const [selectedDistrictToGrant, setSelectedDistrictToGrant] = useState("");
-    const [districtGrantReason, setDistrictGrantReason] = useState("");
-    const [zoneGrantReason, setZoneGrantReason] = useState("");
 
     // Technician Geofence Verification State
     const [techGeofenceDetail, setTechGeofenceDetail] = useState(null);
@@ -581,8 +595,15 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     useEffect(() => attachBeforeUnload(geoToolDirty), [geoToolDirty]);
     // Replace the draft only with explicit confirmation when dirty; the
     // snapshot advances only on confirmed replace/discard (never on audit).
-    const replaceGeoToolDraft = (next, sourceLabel) => {
-      if (!confirmIfDirty(geoToolDirty, `You have unsaved polygon changes. Replace them with ${sourceLabel || "the new polygon"}?`)) return false;
+    const replaceGeoToolDraft = async (next, sourceLabel) => {
+      if (geoToolDirty) {
+        const confirmed = await requestDirtyConfirmation({
+          title: "Replace polygon draft?",
+          description: `You have unsaved polygon changes. Replace them with ${sourceLabel || "the new polygon"}?`,
+          confirmText: "Replace draft",
+        });
+        if (!confirmed) return false;
+      }
       setGeoToolPolygon(next);
       setGeoToolSavedSnapshot(next);
       setGeoValidationResult(null);
@@ -674,42 +695,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       "&:hover::-webkit-scrollbar-thumb": { background: "#94a3b8" },
     };
 
-    const modalContentProps = {
-      bg: "white",
-      borderRadius: "16px",
-      maxH: "90vh",
-      overflow: "hidden",
-      boxShadow: "2xl",
-      zIndex: 1401,
-    };
-
-    const modalHeaderProps = {
-      bg: "white",
-      color: BRAND,
-      pl: 6,
-      pr: 12,
-      pt: 4,
-      pb: 3,
-      borderBottom: "1px solid",
-      borderColor: "gray.100",
-    };
-
-    const modalBodyProps = {
-      bg: "gray.50",
-      px: 6,
-      py: 4,
-      overflowY: "auto",
-      css: globalScrollbarStyles,
-    };
-
-    const modalFooterProps = {
-      bg: "white",
-      borderTop: "1px solid",
-      borderColor: "gray.100",
-      px: 6,
-      py: 3,
-    };
-
     const getTechPermissionDistricts = (tech) => {
       const seen = new Set();
       return [...(tech?.enabledDistrictIds || []), ...(tech?.allowedCityIds || [])].filter((d) => {
@@ -744,6 +729,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
     const fetchData = useCallback(async () => {
       try {
+        setLoadError(null);
         setIsLoading(true);
         const supportPromise = Promise.all([
           dispatch(fetchServices()).unwrap().then((r) => r.list).catch(() => []),
@@ -791,6 +777,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       } catch (err) {
         if (!isMountedRef.current) return;
         console.error("Fetch error:", err);
+        setLoadError(err);
         toast({
           title: "Fetch Error",
           description: err.message || "Failed to load location data.",
@@ -2012,16 +1999,15 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setIsDistrictModalOpen(true);
     };
 
-    const handleMiniMapSelectDistrict = (tnName) => {
+    const handleMiniMapSelectDistrict = async (tnName) => {
       if (!tnName) return;
-      if (
-        districtModalDirty &&
-        !confirmIfDirty(
-          true,
-          "You have unsaved district boundary changes. Switch districts without saving?"
-        )
-      ) {
-        return;
+      if (districtModalDirty) {
+        const confirmed = await requestDirtyConfirmation({
+          title: "Switch district?",
+          description: "You have unsaved district boundary changes. Switch districts without saving?",
+          confirmText: "Switch district",
+        });
+        if (!confirmed) return;
       }
       const record = findConfiguredDistrictForTnName(tnName, districts);
       if (record) {
@@ -2621,10 +2607,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         setIsLoading(true);
         setSelectedTechForPermission(tech);
         setTechServiceRadius(tech.serviceRadiusKm || 10);
-        const [distRes, zoneRes] = await Promise.all([
-          getTechnicianDistricts(tech._id).catch(() => ({ result: { primaryDistrict: null, additionalPermissions: [] } })),
-          getTechnicianZonePermissions(tech._id).catch(() => null),
-        ]);
+        const distRes = await getTechnicianDistricts(tech._id).catch(() => ({
+          result: { primaryDistrict: null, additionalPermissions: [] },
+        }));
         const rawRes = distRes?.result || distRes?.data || distRes || {};
         const perms = Array.isArray(rawRes?.additionalPermissions)
           ? rawRes.additionalPermissions
@@ -2641,7 +2626,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           additionalPermissions: perms,
           allowedDistrictIds: allowedIds,
         });
-        setTechZonePermissions(zoneRes || null);
         setSelectedDistrictToGrant("");
         setIsPermissionModalOpen(true);
       } catch (err) {
@@ -2652,10 +2636,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     };
 
     const refreshPermissions = async (techId) => {
-      const [distRes, zoneRes] = await Promise.all([
-        getTechnicianDistricts(techId).catch(() => ({ result: { primaryDistrict: null, additionalPermissions: [] } })),
-        getTechnicianZonePermissions(techId).catch(() => null),
-      ]);
+      const distRes = await getTechnicianDistricts(techId).catch(() => ({
+        result: { primaryDistrict: null, additionalPermissions: [] },
+      }));
       const rawRes = distRes?.result || distRes?.data || distRes || {};
       const perms = Array.isArray(rawRes?.additionalPermissions)
         ? rawRes.additionalPermissions
@@ -2672,7 +2655,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         additionalPermissions: perms,
         allowedDistrictIds: allowedIds,
       });
-      setTechZonePermissions(zoneRes || null);
     };
 
     const handleGrantDistrictPermission = async (districtIdOverride) => {
@@ -2866,29 +2848,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       }
     };
 
-    const handleToggleZonePermission = async (zoneId, isCurrentlyEnabled, districtName) => {
-      if (!selectedTechForPermission) return;
-      try {
-        if (isCurrentlyEnabled) {
-          await disableTechnicianZonePermission(selectedTechForPermission._id, zoneId);
-          toast({ title: "Zone Permission Revoked", status: "success", duration: 2000, isClosable: true });
-        } else {
-          await enableTechnicianZonePermission(selectedTechForPermission._id, zoneId);
-          toast({ title: "Zone Permission Enabled", status: "success", duration: 2000, isClosable: true });
-        }
-        const zoneRes = await getTechnicianZonePermissions(selectedTechForPermission._id);
-        setTechZonePermissions(zoneRes || null);
-      } catch (err) {
-        toast({
-          title: "Zone Permission Validation Error",
-          description: err.message || `District permission for "${districtName || "this district"}" must be enabled before granting zone access.`,
-          status: "error",
-          duration: 4000,
-          isClosable: true,
-        });
-      }
-    };
-
     // Zone Helpers — robust id / district / polygon resolution.
     // Backend has returned zones with mixed shapes across versions
     // (_id vs zoneId vs id, operationalCityId vs districtId, polygon as
@@ -3004,9 +2963,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         city.lat,
         city.lng,
         5,
-        targetTnDistrict?.name || city.district || "",
-        isEditing && selectedZone ? resolveZoneId(selectedZone) : null,
-        matchingDistrict?._id || formData.operationalCityId
+        targetTnDistrict?.name || city.district || ""
       );
       if (requestId !== zoneFitRequestRef.current) return;
 
@@ -3021,8 +2978,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
       if (!fitted.geoJson) {
         toast({
-          title: "Area already covered",
-          description: `The area around ${city.name} overlaps an existing zone. Click a clear area on the map or reduce the radius.`,
+          title: "Boundary Not Fitted",
+          description: `The area around ${city.name} could not be fitted inside the district boundary. Click inside the district or reduce the radius.`,
           status: "warning",
           duration: 4000,
           isClosable: true,
@@ -3066,8 +3023,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           lat,
           lng,
           5,
-          zoneParentTnDistrict?.name || query,
-          isEditing && selectedZone ? resolveZoneId(selectedZone) : null
+          zoneParentTnDistrict?.name || query
         );
         if (requestId !== zoneFitRequestRef.current) return;
         setZoneModalError("");
@@ -3079,8 +3035,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         }));
         if (!fitted.geoJson) {
           toast({
-            title: "Area already covered",
-            description: `The area around "${query}" overlaps an existing zone. Click a clear area on the map or reduce the radius.`,
+            title: "Boundary Not Fitted",
+            description: `The area around "${query}" could not be fitted inside the district boundary. Click inside the district or reduce the radius.`,
             status: "warning",
             duration: 4000,
             isClosable: true,
@@ -3156,28 +3112,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setIsModalOpen(true);
     };
 
-    const buildFittedCircleGeoJson = async (
-      lat,
-      lng,
-      radiusKm,
-      targetDistrictName,
-      excludeZoneId = null,
-      districtId = null
-    ) => {
+    const buildFittedCircleGeoJson = async (lat, lng, radiusKm, targetDistrictName) => {
       const requestedKm = Number(radiusKm) || 5;
-      const activeDistrictId = districtId || formData.operationalCityId;
-      const districtZones = (zones || []).filter((zone) => {
-        const zoneDistrictId = resolveZoneDistrictId(zone);
-        return (
-          !zoneDistrictId ||
-          !activeDistrictId ||
-          String(zoneDistrictId) === String(activeDistrictId)
-        );
-      });
-
-      const serializedZones = serializeZonesForGeometry(districtZones).filter(
-        (zone) => !excludeZoneId || String(zone.id) !== String(excludeZoneId)
-      );
 
       const payload = {
         lat,
@@ -3185,11 +3121,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         radiusKm: requestedKm,
         districtGeometry: getTnDistrictBoundary(targetDistrictName),
         districtRing: null,
-        zones: serializedZones,
-        preferPoint: [lng, lat],
         requireInsideDistrict: false,
         fallbackToCircle: true,
-        maxSteps: 16,
       };
 
       let result = null;
@@ -3205,9 +3138,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       const polygon = result.polygon || result.fallbackPolygon || null;
       return {
         geoJson: polygon ? JSON.stringify(polygon) : null,
-        adjusted: Boolean(result.reduced || result.adjusted),
+        adjusted: Boolean(result.adjusted),
         radiusKm: result.polygon ? result.radiusKm : null,
-        conflicts: result.polygon ? result.overlappingZones || [] : [],
+        conflicts: [],
       };
     };
 
@@ -3233,9 +3166,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         sz.lat,
         sz.lng,
         sz.radius_km || 5,
-        distName,
-        isEditing && selectedZone ? resolveZoneId(selectedZone) : null,
-        presetParentId || formData.operationalCityId
+        distName
       );
       if (requestId !== zoneFitRequestRef.current) return;
 
@@ -3250,8 +3181,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
       if (!fitted.geoJson) {
         toast({
-          title: "Area already covered",
-          description: `${sz.name} overlaps an existing zone in ${distName}. Click a clear area on the map or reduce the radius.`,
+          title: "Boundary Not Fitted",
+          description: `${sz.name} could not be fitted inside ${distName}. Click inside the district or reduce the radius.`,
           status: "warning",
           duration: 4000,
           isClosable: true,
@@ -3474,45 +3405,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       try {
         setIsSubmitting(true);
 
-        let districtZones = (zones || []).filter(
-          (zone) => String(resolveZoneDistrictId(zone)) === String(operationalCityId)
-        );
-        try {
-          const zoneRes = await getAllCityZones({ operationalCityId });
-          const zoneList = zoneRes?.result || zoneRes?.data || zoneRes?.zones || zoneRes;
-          if (Array.isArray(zoneList)) {
-            districtZones = zoneList.filter(
-              (zone) => String(resolveZoneDistrictId(zone)) === String(operationalCityId)
-            );
-          }
-        } catch (refreshErr) {
-          console.warn("Could not refresh zones for overlap check:", refreshErr);
-        }
-
-        const zoneResult = clipPolygonAgainstZones(parsedPolygon, districtZones, {
-          excludeZoneId: isEditing && selectedZone ? resolveZoneId(selectedZone) : null,
-        });
-        if (!zoneResult.polygon) {
-          throw new Error(
-            "Zone boundary is entirely covered by an existing zone in this district. Choose a different area."
-          );
-        }
-        if (!zoneResult.compatible) {
-          const blockedNames = (
-            zoneResult.blockers?.length ? zoneResult.blockers : zoneResult.overlappingZones || []
-          )
-            .map((zone) => `"${zone.name}"`)
-            .filter(Boolean)
-            .join(", ");
-          const msg = blockedNames
-            ? `Zone boundary overlaps existing zone ${blockedNames} in this district. Move or resize the boundary on the map and try again.`
-            : "Zone boundary overlaps an existing zone in this district. Move or resize the boundary on the map and try again.";
-          setZoneModalError(msg);
-          toast({ title: "Overlap Detected", description: msg, status: "error", duration: 5000, isClosable: true });
-          return;
-        }
-        const boundaryAdjusted = zoneResult.adjusted;
-        const polygon = zoneResult.polygon;
+        // Overlapping zones are allowed inside the same district. The backend
+        // still enforces full containment inside the parent district.
+        const polygon = parsedPolygon;
 
         const ring = Array.isArray(polygon?.coordinates?.[0]) ? polygon.coordinates[0] : [];
         const centroid = ring.length ? calculatePolygonCentroid(ring.slice(0, -1)) : null;
@@ -3560,9 +3455,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           if (res && res.success === false && res.message) throw new Error(res.message);
           toast({
             title: "Zone Updated",
-            description: `"${name}" updated successfully.${
-              boundaryAdjusted ? " Boundary trimmed to avoid overlapping existing zones." : ""
-            }`,
+            description: `"${name}" updated successfully.`,
             status: "success",
             duration: 3000,
             isClosable: true,
@@ -3577,9 +3470,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
             : `"${name}" created successfully. All active services are enabled by default.`;
           toast({
             title: "Zone Created",
-            description: `${createdMsg}${
-              boundaryAdjusted ? " Boundary trimmed to avoid overlapping existing zones." : ""
-            }`,
+            description: createdMsg,
             status: "success",
             duration: 4000,
             isClosable: true,
@@ -4676,6 +4567,16 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         overflowY={{ base: "auto", md: "hidden" }}
         css={globalScrollbarStyles}
       >
+        {loadError && (
+          <Box mb={3}>
+            <ErrorState
+              compact
+              error={loadError}
+              title="Could not load location data"
+              onRetry={fetchData}
+            />
+          </Box>
+        )}
         {/* ------------------------------------------------------------- */}
         {/* Overview strip — four equal, aligned filter cards              */}
         {/* ------------------------------------------------------------- */}
@@ -6930,7 +6831,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               </Heading>
                             </HStack>
                             <Text fontSize="xs" color="gray.500" mt={1}>
-                              Deep spatial verification of coordinates, ring closure, parent district boundary containment, and micro-zone overlap detection.
+                              Deep spatial verification of coordinates, ring closure, parent district boundary containment, and sibling-zone overlap inspection (overlap is allowed).
                             </Text>
                           </Box>
 
@@ -7089,18 +6990,18 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                   </Text>
                                 </Box>
 
-                                {/* 3. Micro-Zone Overlap Conflict */}
-                                <Box p={3} bg="white" borderRadius="8px" border="1px solid" borderColor={geoValidationResult.overlap?.error ? "red.200" : (geoValidationResult.overlap ? (geoValidationResult.overlap.hasOverlap == null ? "gray.200" : (geoValidationResult.overlap.hasOverlap ? "red.200" : "green.200")) : "gray.200")}>
+                                {/* 3. Micro-Zone Overlap (Allowed) */}
+                                <Box p={3} bg="white" borderRadius="8px" border="1px solid" borderColor={geoValidationResult.overlap?.error ? "red.200" : (geoValidationResult.overlap ? (geoValidationResult.overlap.hasOverlap == null ? "gray.200" : (geoValidationResult.overlap.hasOverlap ? "blue.200" : "green.200")) : "gray.200")}>
                                   <Flex justify="space-between" align="center">
                                     <Text fontSize="xs" fontWeight="700" color="gray.800">
-                                      3. Sibling Zone Overlap Conflict
+                                      3. Sibling Zone Overlap (Allowed)
                                     </Text>
-                                    <Badge colorScheme={geoValidationResult.overlap?.error ? "red" : (!geoToolDistrictId ? "gray" : (geoValidationResult.overlap?.hasOverlap == null ? "gray" : (geoValidationResult.overlap?.hasOverlap ? "red" : "green")))}>
-                                      {geoValidationResult.overlap?.error ? "CHECK FAILED" : (!geoToolDistrictId ? "NOT EVALUATED" : (geoValidationResult.overlap?.hasOverlap == null ? "NOT EVALUATED — FIX GEOMETRY" : (geoValidationResult.overlap?.hasOverlap ? "OVERLAP CONFLICT" : "NO OVERLAP DETECTED")))}
+                                    <Badge colorScheme={geoValidationResult.overlap?.error ? "red" : (!geoToolDistrictId ? "gray" : (geoValidationResult.overlap?.hasOverlap == null ? "gray" : (geoValidationResult.overlap?.hasOverlap ? "blue" : "green")))}>
+                                      {geoValidationResult.overlap?.error ? "CHECK FAILED" : (!geoToolDistrictId ? "NOT EVALUATED" : (geoValidationResult.overlap?.hasOverlap == null ? "NOT EVALUATED — FIX GEOMETRY" : (geoValidationResult.overlap?.hasOverlap ? "OVERLAP (ALLOWED)" : "NO OVERLAP DETECTED")))}
                                     </Badge>
                                   </Flex>
                                   <Text fontSize="11px" color="gray.600" mt={1}>
-                                    {geoValidationResult.overlap?.error || (!geoToolDistrictId ? "Select a parent district to scan for micro-zone conflicts." : (geoValidationResult.overlap?.message || (geoValidationResult.overlap?.hasOverlap == null ? "Overlap not evaluated — fix invalid geometry first." : "No territorial overlaps detected with neighboring micro-zones.")))}
+                                    {geoValidationResult.overlap?.error || (!geoToolDistrictId ? "Select a parent district to scan sibling-zone overlaps." : (geoValidationResult.overlap?.message || (geoValidationResult.overlap?.hasOverlap == null ? "Overlap not evaluated — fix invalid geometry first." : "No sibling-zone overlap detected.")))}
                                   </Text>
                                 </Box>
 
@@ -7569,19 +7470,24 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         </Modal>
 
         {/* VIEW SINGLE DISTRICT LIVE MAP MODAL */}
-        <Modal isOpen={isViewMapModalOpen} onClose={() => setIsViewMapModalOpen(false)} size="xl">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
-          <ModalContent {...modalContentProps}>
-            <ModalHeader {...modalHeaderProps}>
-              Operational Range Map — {viewMapDistrict?.name} ({viewMapDistrict?.city})
-            </ModalHeader>
-            <ModalCloseButton top={4} right={4} />
-            <ModalBody {...modalBodyProps}>
+        <AppModal
+          isOpen={isViewMapModalOpen}
+          onClose={() => setIsViewMapModalOpen(false)}
+          size="5xl"
+          maxW={{ base: "96vw", md: "1050px", lg: "1200px" }}
+          bodyMaxH="85vh"
+          title={<>Operational Range Map — {viewMapDistrict?.name} ({viewMapDistrict?.city})</>}
+          footer={
+            <Button variant="ghost" size="sm" borderRadius="8px" onClick={() => setIsViewMapModalOpen(false)}>
+              Close
+            </Button>
+          }
+        >
               {viewMapDistrict && (
                 <VStack spacing={3} align="stretch">
-                  <HStack justify="space-between" bg="teal.50" p={3} borderRadius="8px">
+                  <HStack justify="space-between" bg="teal.50" p={3.5} borderRadius="10px" border="1px solid" borderColor="teal.200">
                     <Box>
-                      <Text fontSize="xs" fontWeight="700" color={BRAND}>{viewMapDistrict.name}</Text>
+                      <Text fontSize="sm" fontWeight="700" color={BRAND}>{viewMapDistrict.name}</Text>
                       <Text fontSize="xs" color="gray.600">City: {viewMapDistrict.city} | Code: {viewMapDistrict.code || "N/A"}</Text>
                     </Box>
                     <StatusPill tone={viewMapDistrict.active !== false ? "active" : "inactive"}>
@@ -7593,7 +7499,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     cityName={viewMapDistrict.city}
                     districtName={viewMapDistrict.name}
                     polygonCoordinates={viewMapDistrict.polygon ? JSON.stringify(viewMapDistrict.polygon) : ""}
-                    height="350px"
+                    height="520px"
                     mode="view"
                     readOnly={true}
                     showToolbar={true}
@@ -7604,27 +7510,28 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   />
                 </VStack>
               )}
-            </ModalBody>
-            <ModalFooter {...modalFooterProps} justify="flex-end">
-              <Button variant="ghost" size="sm" borderRadius="8px" onClick={() => setIsViewMapModalOpen(false)}>
-                Close
-              </Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
+
+</AppModal>
 
         {/* VIEW DISTRICT TECHNICIANS MODAL */}
-        <Modal isOpen={isDistrictTechModalOpen} onClose={() => setIsDistrictTechModalOpen(false)} size="xl">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
-          <ModalContent {...modalContentProps}>
-            <ModalHeader {...modalHeaderProps}>
-              <HStack spacing={2}>
-                <Icon as={MdPersonAdd} color={BRAND} />
-                <Text fontSize="md" fontWeight="700">Technicians Authorized in {viewingDistrictName}</Text>
-              </HStack>
-            </ModalHeader>
-            <ModalCloseButton top={4} right={4} />
-            <ModalBody {...modalBodyProps}>
+        <AppModal
+          isOpen={isDistrictTechModalOpen}
+          onClose={() => setIsDistrictTechModalOpen(false)}
+          size="4xl"
+          maxW={{ base: "95vw", md: "920px", lg: "1050px" }}
+          bodyMaxH="80vh"
+          title={
+            <HStack spacing={2}>
+              <Icon as={MdPersonAdd} color={BRAND} />
+              <Text fontSize="md" fontWeight="700">Technicians Authorized in {viewingDistrictName}</Text>
+            </HStack>
+          }
+          footer={
+            <Button variant="ghost" borderRadius="8px" size="sm" onClick={() => setIsDistrictTechModalOpen(false)}>
+              Close
+            </Button>
+          }
+        >
               {(!Array.isArray(districtTechList) || districtTechList.length === 0) ? (
                 <Text color="gray.500" py={6} textAlign="center" fontSize="xs">
                   No technicians currently authorized for this district.
@@ -7665,46 +7572,46 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   </Table>
                 </Box>
               )}
-            </ModalBody>
-            <ModalFooter {...modalFooterProps}>
-              <Button variant="ghost" borderRadius="8px" size="sm" onClick={() => setIsDistrictTechModalOpen(false)}>
-                Close
-              </Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
+
+</AppModal>
 
         {/* MANAGE TECHNICIAN DISTRICT & CITY ZONE PERMISSIONS MODAL */}
-        {/* MANAGE TECHNICIAN DISTRICT & CITY ZONE PERMISSIONS MODAL */}
-        <Modal isOpen={isPermissionModalOpen} onClose={() => setIsPermissionModalOpen(false)} size="2xl">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
-          <ModalContent {...modalContentProps}>
-            <ModalHeader {...modalHeaderProps}>
-              <Flex align="center" justify="space-between" pr={6}>
-                <HStack spacing={3}>
-                  <Box p={2} bg="teal.50" color={BRAND} borderRadius="10px">
-                    <Icon as={MdSecurity} boxSize={5} />
-                  </Box>
-                  <Box>
-                    <Text fontSize="lg" fontWeight="700" color={BRAND}>
-                      Technician Permissions — {getTechDisplayName(selectedTechForPermission)}
-                    </Text>
-                    <HStack spacing={2} mt={0.5}>
-                      <Badge colorScheme="teal" fontSize="10px">
-                        Registration District: {getResolvedPrimaryDistrict()?.name || selectedTechForPermission?.city || "Not Assigned"}
-                      </Badge>
-                      {(selectedTechForPermission?.mobileNumber || selectedTechForPermission?.phone || selectedTechForPermission?.userId?.mobileNumber) && (
-                        <Text fontSize="11px" color="gray.500">
-                          📱 {selectedTechForPermission?.mobileNumber || selectedTechForPermission?.phone || selectedTechForPermission?.userId?.mobileNumber}
-                        </Text>
-                      )}
-                    </HStack>
-                  </Box>
-                </HStack>
-              </Flex>
-            </ModalHeader>
-            <ModalCloseButton top={4} right={4} />
-            <ModalBody {...modalBodyProps}>
+        <AppModal
+          isOpen={isPermissionModalOpen}
+          onClose={() => setIsPermissionModalOpen(false)}
+          size="5xl"
+          maxW={{ base: "96vw", md: "1100px", lg: "1220px" }}
+          bodyMaxH="82vh"
+          title={
+            <Flex align="center" justify="space-between" pr={6}>
+              <HStack spacing={3}>
+                <Box p={2} bg="teal.50" color={BRAND} borderRadius="10px">
+                  <Icon as={MdSecurity} boxSize={5} />
+                </Box>
+                <Box>
+                  <Text fontSize="lg" fontWeight="700" color={BRAND}>
+                    Technician Permissions — {getTechDisplayName(selectedTechForPermission)}
+                  </Text>
+                  <HStack spacing={2} mt={0.5}>
+                    <Badge colorScheme="teal" fontSize="10px">
+                      Registration District: {getResolvedPrimaryDistrict()?.name || selectedTechForPermission?.city || "Not Assigned"}
+                    </Badge>
+                    {(selectedTechForPermission?.mobileNumber || selectedTechForPermission?.phone || selectedTechForPermission?.userId?.mobileNumber) && (
+                      <Text fontSize="11px" color="gray.500">
+                        📱 {selectedTechForPermission?.mobileNumber || selectedTechForPermission?.phone || selectedTechForPermission?.userId?.mobileNumber}
+                      </Text>
+                    )}
+                  </HStack>
+                </Box>
+              </HStack>
+            </Flex>
+          }
+          footer={
+            <Button variant="ghost" borderRadius="8px" size="sm" px={6} onClick={() => setIsPermissionModalOpen(false)}>
+              Close
+            </Button>
+          }
+        >
               <VStack spacing={4} align="stretch">
                 <Box p={3.5} bg="teal.50" borderRadius="12px" border="1px solid" borderColor="teal.200">
                   <Flex justify="space-between" align="center" flexWrap="wrap" gap={2}>
@@ -8064,14 +7971,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   </Flex>
                 </Box>
               </VStack>
-            </ModalBody>
-            <ModalFooter {...modalFooterProps}>
-              <Button variant="ghost" borderRadius="8px" size="sm" px={6} onClick={() => setIsPermissionModalOpen(false)}>
-                Close
-              </Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
+
+</AppModal>
 
         {/* CREATE / EDIT ZONE MODAL WITH LEAFLET MAP */}
         <Modal isOpen={isModalOpen} onClose={handleCloseZoneModal} size="full">
@@ -8454,7 +8355,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       mode="radius"
                       radiusKm={5}
                       showSearch={true}
-                      showDrawTools={false}
+                      showDrawTools={true}
                       showNavControls={false}
                       allowRadiusSelect={true}
                       showToolbar={true}
@@ -8528,45 +8429,51 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         </Modal>
 
         {/* SERVICE ZONE MAPPING CHECKLIST & MANAGEMENT MODAL */}
-        <Modal isOpen={isManageServiceModalOpen} onClose={() => setIsManageServiceModalOpen(false)} size="xl">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
-          <ModalContent {...modalContentProps}>
-            <ModalHeader {...modalHeaderProps}>
-              {isServiceDetailLoading ? (
-                <Flex align="center" gap={2}>
-                  <Spinner size="sm" color={BRAND} />
-                  <Text fontSize="md">Loading Service Details...</Text>
-                </Flex>
-              ) : selectedServiceDetail?.service ? (
-                <Flex align="center" justify="space-between" flexWrap="wrap" gap={2} w="100%" pr={8}>
-                  <Box>
-                    <Heading size="md" color={INK}>
-                      {selectedServiceDetail.service.serviceName}
-                    </Heading>
-                    <Text fontSize="xs" color="purple.600" fontWeight="600" mt={0.5}>
-                      Category: {selectedServiceDetail.service.categoryName}
-                    </Text>
-                  </Box>
-                  <HStack spacing={3} bg="gray.50" p={2} borderRadius="10px" border="1px solid" borderColor="gray.200">
-                    <StatusPill tone={selectedServiceDetail.service.isActive !== false ? "active" : "inactive"}>
-                      {selectedServiceDetail.service.isActive !== false ? "Service Active" : "Service Inactive"}
-                    </StatusPill>
-                    <Switch
-                      size="md"
-                      colorScheme="teal"
-                      isChecked={selectedServiceDetail.service.isActive !== false}
-                      onChange={handleToggleGlobalServiceDirect}
-                      isDisabled={isTogglingServiceStatus}
-                    />
-                  </HStack>
-                </Flex>
-              ) : (
-                <Text fontSize="md">Service Zone Mapping</Text>
-              )}
-            </ModalHeader>
-            <ModalCloseButton top={4} right={4} />
-
-            <ModalBody {...modalBodyProps}>
+        <AppModal
+          isOpen={isManageServiceModalOpen}
+          onClose={() => setIsManageServiceModalOpen(false)}
+          size="5xl"
+          maxW={{ base: "96vw", md: "1100px", lg: "1250px" }}
+          bodyMaxH="82vh"
+          title={
+            isServiceDetailLoading ? (
+              <Flex align="center" gap={2}>
+                <Spinner size="sm" color={BRAND} />
+                <Text fontSize="md">Loading Service Details...</Text>
+              </Flex>
+            ) : selectedServiceDetail?.service ? (
+              <Flex align="center" justify="space-between" flexWrap="wrap" gap={3} w="100%" pr={8}>
+                <Box>
+                  <Heading size="md" color={INK}>
+                    {selectedServiceDetail.service.serviceName}
+                  </Heading>
+                  <Text fontSize="xs" color="purple.600" fontWeight="600" mt={0.5}>
+                    Category: {selectedServiceDetail.service.categoryName}
+                  </Text>
+                </Box>
+                <HStack spacing={3} bg="gray.50" p={2} borderRadius="10px" border="1px solid" borderColor="gray.200">
+                  <StatusPill tone={selectedServiceDetail.service.isActive !== false ? "active" : "inactive"}>
+                    {selectedServiceDetail.service.isActive !== false ? "Service Active" : "Service Inactive"}
+                  </StatusPill>
+                  <Switch
+                    size="md"
+                    colorScheme="teal"
+                    isChecked={selectedServiceDetail.service.isActive !== false}
+                    onChange={handleToggleGlobalServiceDirect}
+                    isDisabled={isTogglingServiceStatus}
+                  />
+                </HStack>
+              </Flex>
+            ) : (
+              <Text fontSize="md">Service Zone Mapping</Text>
+            )
+          }
+          footer={
+            <Button variant="brand" borderRadius="8px" size="sm" px={6} onClick={() => setIsManageServiceModalOpen(false)}>
+              Done
+            </Button>
+          }
+        >
               {isServiceDetailLoading || !selectedServiceDetail ? (
                 <Flex justify="center" align="center" py={12}>
                   <Spinner size="lg" color={BRAND} />
@@ -8637,15 +8544,28 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     <Text fontSize="xs" fontWeight="700" color="gray.600" textTransform="uppercase" letterSpacing="0.5px" mb={2}>
                       Screen by District:
                     </Text>
-                    <HStack spacing={2} overflowX="auto" pb={2} css={globalScrollbarStyles}>
+                    <HStack
+                      spacing={2}
+                      overflowX="auto"
+                      pb={2.5}
+                      pt={1}
+                      px={1}
+                      css={globalScrollbarStyles}
+                      align="center"
+                    >
                       <Button
-                        size="xs"
+                        size="sm"
+                        flexShrink={0}
+                        whiteSpace="nowrap"
                         borderRadius="full"
                         variant={!selectedDistrictTab || selectedDistrictTab === "ALL" ? "solid" : "outline"}
                         colorScheme={!selectedDistrictTab || selectedDistrictTab === "ALL" ? "teal" : "gray"}
                         bg={!selectedDistrictTab || selectedDistrictTab === "ALL" ? BRAND : "white"}
                         color={!selectedDistrictTab || selectedDistrictTab === "ALL" ? "white" : "gray.700"}
                         onClick={() => setSelectedDistrictTab("ALL")}
+                        px={4}
+                        h="32px"
+                        boxShadow={!selectedDistrictTab || selectedDistrictTab === "ALL" ? "0 2px 6px rgba(0, 128, 128, 0.25)" : "none"}
                       >
                         All Districts ({(selectedServiceDetail.districts || []).length})
                       </Button>
@@ -8658,7 +8578,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           return (
                             <Button
                               key={dId}
-                              size="xs"
+                              size="sm"
+                              flexShrink={0}
+                              whiteSpace="nowrap"
                               borderRadius="full"
                               variant={isSel ? "solid" : "outline"}
                               colorScheme={isSel ? "teal" : "gray"}
@@ -8666,6 +8588,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               color={isSel ? "white" : "gray.700"}
                               onClick={() => setSelectedDistrictTab(dId)}
                               leftIcon={<Icon as={MdLocationOn} />}
+                              px={3.5}
+                              h="32px"
+                              boxShadow={isSel ? "0 2px 6px rgba(0, 128, 128, 0.25)" : "none"}
                             >
                               {d.name} ({zCount} zones)
                             </Button>
@@ -8772,7 +8697,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               </HStack>
                             </Flex>
 
-                            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={2}>
+                            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr", lg: "repeat(3, 1fr)" }} gap={2.5}>
                               {[...filteredZonesList]
                                 .sort((a, b) => (a.name || a.zoneCode || "").localeCompare(b.name || b.zoneCode || ""))
                                 .map((z) => {
@@ -8792,6 +8717,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                     <Box>
                                       <Text fontSize="xs" fontWeight="600" color={INK}>{z.name}</Text>
                                       <Text fontSize="10px" color="gray.500">Code: {z.zoneCode}</Text>
+                                      {z.source && (
+                                        <Text fontSize="9px" color="gray.400" textTransform="capitalize">
+                                          Effective via {String(z.source).replaceAll("_", " ").toLowerCase()}
+                                        </Text>
+                                      )}
                                     </Box>
 
                                     <HStack spacing={2}>
@@ -8817,25 +8747,55 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   })}
                 </VStack>
               )}
-            </ModalBody>
 
-            <ModalFooter {...modalFooterProps}>
-              <Button variant="brand" borderRadius="8px" size="sm" px={6} onClick={() => setIsManageServiceModalOpen(false)}>
-                Done
-              </Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
+</AppModal>
 
         {/* TECHNICIAN GEOFENCE & GPS VERIFICATION MODAL */}
-        <Modal isOpen={!!techGeofenceDetail || isTechGeofenceLoading} onClose={() => setTechGeofenceDetail(null)} size="lg">
-          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" />
-          <ModalContent {...modalContentProps}>
-            <ModalHeader {...modalHeaderProps}>
-              Technician GPS & Geofence Verification
-            </ModalHeader>
-            <ModalCloseButton top={4} right={4} />
-            <ModalBody {...modalBodyProps}>
+        <AppModal
+          isOpen={!!techGeofenceDetail || isTechGeofenceLoading}
+          onClose={() => setTechGeofenceDetail(null)}
+          size="4xl"
+          maxW={{ base: "95vw", md: "880px", lg: "980px" }}
+          bodyMaxH="80vh"
+          title={<>Technician GPS & Geofence Verification</>}
+          footer={
+            <>
+              <Button
+                colorScheme="purple"
+                variant="outline"
+                size="sm"
+                borderRadius="8px"
+                leftIcon={<MdSpeed />}
+                onClick={() => {
+                  const tech = selectedTechForPermission;
+                  setDiagTechId(tech._id);
+                  setDiagJobLat(String(techGeofenceDetail?.latitude || 11.0168));
+                  setDiagJobLng(String(techGeofenceDetail?.longitude || 76.9558));
+                  setTechGeofenceDetail(null);
+                  setActiveTab(4);
+                  setSubDiagnosticsTab(3);
+                }}
+              >
+                Run 12-Step Test
+              </Button>
+
+              <HStack spacing={2}>
+                <Button variant="ghost" size="sm" borderRadius="8px" onClick={() => setTechGeofenceDetail(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="brand"
+                  size="sm"
+                  borderRadius="8px"
+                  onClick={handleSaveTechGeofenceVerification}
+                  isLoading={isUpdatingVerification}
+                >
+                  Save Verification Status
+                </Button>
+              </HStack>
+            </>
+          }
+        >
               {isTechGeofenceLoading ? (
                 <Flex justify="center" align="center" py={8}>
                   <Spinner size="lg" color={BRAND} />
@@ -8927,110 +8887,47 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   </Box>
                 </VStack>
               ) : null}
-            </ModalBody>
-            <ModalFooter {...modalFooterProps} display="flex" justify="space-between">
-              <Button
-                colorScheme="purple"
-                variant="outline"
-                size="sm"
-                borderRadius="8px"
-                leftIcon={<MdSpeed />}
-                onClick={() => {
-                  const tech = selectedTechForPermission;
-                  setDiagTechId(tech._id);
-                  setDiagJobLat(String(techGeofenceDetail?.latitude || 11.0168));
-                  setDiagJobLng(String(techGeofenceDetail?.longitude || 76.9558));
-                  setTechGeofenceDetail(null);
-                  setActiveTab(4);
-                  setSubDiagnosticsTab(3);
-                }}
-              >
-                Run 12-Step Test
-              </Button>
 
-              <HStack spacing={2}>
-                <Button variant="ghost" size="sm" borderRadius="8px" onClick={() => setTechGeofenceDetail(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="brand"
-                  size="sm"
-                  borderRadius="8px"
-                  onClick={handleSaveTechGeofenceVerification}
-                  isLoading={isUpdatingVerification}
-                >
-                  Save Verification Status
-                </Button>
-              </HStack>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
+</AppModal>
 
-        {/* DELETE CONFIRMATION ALERT DIALOG */}
-        <AlertDialog
+        <ConfirmActionModal
+          isOpen={Boolean(dirtyConfirm)}
+          onClose={() => resolveDirtyConfirmation(false)}
+          onConfirm={() => {
+            resolveDirtyConfirmation(true);
+            return true;
+          }}
+          title={dirtyConfirm?.title || "Discard changes?"}
+          description={dirtyConfirm?.description}
+          confirmText={dirtyConfirm?.confirmText || "Discard changes"}
+          confirmColorScheme="orange"
+        />
+
+        <ConfirmActionModal
           isOpen={isDeleteDialogOpen}
-          leastDestructiveRef={cancelRef}
           onClose={() => setIsDeleteDialogOpen(false)}
-        >
-          <AlertDialogOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400}>
-            <AlertDialogContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401}>
-              <AlertDialogHeader fontSize="lg" fontWeight="bold" color={INK} px={6} pt={5} pb={2}>
-                Delete {deleteType === "district" ? "Operational District" : "City Micro-Zone"}?
-              </AlertDialogHeader>
-              <AlertDialogBody fontSize="sm" color="gray.600" px={6} pb={4}>
-                Are you sure you want to permanently delete <b>"{itemToDelete?.name}"</b>? This action cannot be undone and will invalidate associated spatial caches.
-              </AlertDialogBody>
-              <AlertDialogFooter {...modalFooterProps}>
-                <Button ref={cancelRef} variant="ghost" size="sm" borderRadius="8px" onClick={() => setIsDeleteDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  borderRadius="8px"
-                  onClick={handleConfirmDelete}
-                  ml={3}
-                  isLoading={deleteLoading}
-                >
-                  Delete
-                </Button>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialogOverlay>
-        </AlertDialog>
+          onConfirm={handleConfirmDelete}
+          title={`Delete ${deleteType === "district" ? "Operational District" : "City Micro-Zone"}?`}
+          description={`Are you sure you want to permanently delete "${itemToDelete?.name || ""}"? This action cannot be undone and will invalidate associated spatial caches.`}
+          confirmText="Delete"
+          confirmColorScheme="red"
+          isLoading={deleteLoading}
+        />
 
-        {/* SERVICE ZONE ACTION CONFIRMATION ALERT DIALOG */}
-        <AlertDialog
+        <ConfirmActionModal
           isOpen={isConfirmDialogOpen}
-          leastDestructiveRef={cancelRef}
           onClose={() => setIsConfirmDialogOpen(false)}
-        >
-          <AlertDialogOverlay bg="blackAlpha.700" backdropFilter="blur(4px)" zIndex={1400}>
-            <AlertDialogContent bg="white" borderRadius="16px" boxShadow="2xl" zIndex={1401}>
-              <AlertDialogHeader fontSize="lg" fontWeight="bold" color={INK} px={6} pt={5} pb={2}>
-                {confirmConfig.title}
-              </AlertDialogHeader>
-              <AlertDialogBody fontSize="sm" color="gray.600" px={6} pb={4}>
-                {confirmConfig.description}
-              </AlertDialogBody>
-              <AlertDialogFooter {...modalFooterProps}>
-                <Button ref={cancelRef} variant="ghost" size="sm" borderRadius="8px" onClick={() => setIsConfirmDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant={confirmConfig.type?.includes("DISABLE") || confirmConfig.type === "CLEAR_ALL" ? "danger" : "brand"}
-                  size="sm"
-                  borderRadius="8px"
-                  onClick={handleExecuteConfirmedAction}
-                  ml={3}
-                  isLoading={isConfirmingAction}
-                >
-                  Confirm
-                </Button>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialogOverlay>
-        </AlertDialog>
+          onConfirm={handleExecuteConfirmedAction}
+          title={confirmConfig.title}
+          description={confirmConfig.description}
+          confirmText="Confirm"
+          confirmColorScheme={
+            confirmConfig.type?.includes("DISABLE") || confirmConfig.type === "CLEAR_ALL"
+              ? "red"
+              : "teal"
+          }
+          isLoading={isConfirmingAction}
+        />
       </Flex>
     );
   }

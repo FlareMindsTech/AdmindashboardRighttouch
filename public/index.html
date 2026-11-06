@@ -1,9 +1,19 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="en" dir="ltr" data-theme="light" style="color-scheme: light;">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#008080" />
+    <meta name="color-scheme" content="light" />
+
+    <script>
+      try {
+        localStorage.setItem("chakra-ui-color-mode", "light");
+        document.documentElement.setAttribute("data-theme", "light");
+        document.documentElement.classList.remove("chakra-ui-dark");
+        document.documentElement.classList.add("chakra-ui-light");
+      } catch (e) {}
+    </script>
 
     <!-- React app manifest + icons -->
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />

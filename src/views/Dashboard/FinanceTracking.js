@@ -12,14 +12,11 @@ import {
   Th,
   Thead,
   Tr,
-  useColorModeValue,
-  useToast,
   Heading,
   Text,
   IconButton,
   Spinner,
   Badge,
-  Grid,
   Center,
   VStack,
   HStack,
@@ -29,26 +26,23 @@ import {
   TabPanels,
   Tab,
   TabPanel,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  FormControl,
-  FormLabel,
+  Tag,
+  Divider,
 } from "@chakra-ui/react";
-
-import Card from "components/Card/Card.js";
-import CardBody from "components/Card/CardBody.js";
-import CardHeader from "components/Card/CardHeader.js";
-import SharedStatCard from "components/common/StatCard";
-import { MobileCard } from "components/common/MobileCard";
+import { useAppToast } from "components/feedback";
+import ErrorState from "components/feedback/ErrorState";
+import AppModal from "components/common/AppModal";
 
 import {
   FaChevronLeft,
   FaChevronRight,
   FaSearch,
+  FaDownload,
+  FaWallet,
+  FaMoneyBillWave,
+  FaClock,
+  FaCopy,
+  FaUserTie,
 } from "react-icons/fa";
 import {
   MdAttachMoney,
@@ -58,6 +52,7 @@ import {
   MdRefresh,
   MdVisibility,
   MdAccountBalanceWallet,
+  MdTrendingUp,
 } from "react-icons/md";
 
 import { useAppDispatch, useAppSelector } from "store/hooks";
@@ -76,6 +71,8 @@ import {
   selectTechnicianFinance,
 } from "store/slices/financeSlice";
 
+const BRAND = "#008080";
+
 const formatCurrency = (value) => {
   const num = parseFloat(value || 0);
   if (isNaN(num)) return "₹0";
@@ -83,24 +80,38 @@ const formatCurrency = (value) => {
 };
 
 const formatDate = (value) => {
-  if (!value) return "N/A";
-  return new Date(value).toLocaleString();
+  if (!value) return "—";
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
 };
 
 export default function FinanceTracking() {
-  const textColor = useColorModeValue("gray.700", "white");
-  const toast = useToast();
+  const isDark = false;
+  const toast = useAppToast();
   const dispatch = useAppDispatch();
-  const customColor = "#008080";
-  const goldColor = "#F5B700";
 
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
+  const [loadError, setLoadError] = useState(null);
 
+  // Summary loading state
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
 
+  // Breakdown tab state
   const [isLoadingBreakdown, setIsLoadingBreakdown] = useState(false);
   const [breakdownPage, setBreakdownPage] = useState(1);
+  const [breakdownSearch, setBreakdownSearch] = useState("");
   const [breakdownFilters, setBreakdownFilters] = useState({
     status: "",
     paymentStatus: "",
@@ -109,14 +120,18 @@ export default function FinanceTracking() {
     to: "",
   });
 
+  // Payments ledger tab state
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
   const [paymentsPage, setPaymentsPage] = useState(1);
+  const [paymentsSearch, setPaymentsSearch] = useState("");
   const [paymentsFilters, setPaymentsFilters] = useState({
-    status: "success",
+    status: "",
     from: "",
     to: "",
   });
 
+  // Technicians tab state
+  const [techSearch, setTechSearch] = useState("");
   const [selectedTech, setSelectedTech] = useState(null);
   const [selectedTechId, setSelectedTechId] = useState(null);
   const [isTechDetailOpen, setIsTechDetailOpen] = useState(false);
@@ -124,32 +139,36 @@ export default function FinanceTracking() {
 
   const itemsPerPage = 10;
 
-  // Reactive shared reads: the same cache Billing and other screens use.
-  // Filters/pagination stay local; only the server snapshots come from Redux.
+  // Redux Selectors
   const summary = useAppSelector(selectFinanceSummary());
   const breakdownParams = useMemo(
     () => ({ ...breakdownFilters, page: breakdownPage, limit: itemsPerPage }),
     [breakdownFilters, breakdownPage]
   );
   const breakdownData = useAppSelector(selectFinanceBreakdown(breakdownParams));
-  const breakdown = breakdownData?.list || [];
-  const breakdownTotal = breakdownData?.meta?.total || breakdown.length;
+  const breakdownList = breakdownData?.list;
+  const rawBreakdown = useMemo(() => breakdownList || [], [breakdownList]);
+  const breakdownTotal = breakdownData?.meta?.total || rawBreakdown.length;
   const breakdownPages =
     breakdownData?.meta?.totalPages ||
-    Math.ceil((breakdownData?.meta?.total || breakdown.length) / itemsPerPage) ||
+    Math.ceil((breakdownData?.meta?.total || rawBreakdown.length) / itemsPerPage) ||
     1;
+
   const paymentsParams = useMemo(
     () => ({ ...paymentsFilters, page: paymentsPage, limit: itemsPerPage }),
     [paymentsFilters, paymentsPage]
   );
   const paymentsData = useAppSelector(selectPaymentsLedger(paymentsParams));
-  const payments = paymentsData?.list || [];
-  const paymentsTotal = paymentsData?.meta?.total || payments.length;
+  const paymentsList = paymentsData?.list;
+  const rawPayments = useMemo(() => paymentsList || [], [paymentsList]);
+  const paymentsTotal = paymentsData?.meta?.total || rawPayments.length;
   const paymentsPages =
     paymentsData?.meta?.totalPages ||
-    Math.ceil((paymentsData?.meta?.total || payments.length) / itemsPerPage) ||
+    Math.ceil((paymentsData?.meta?.total || rawPayments.length) / itemsPerPage) ||
     1;
-  const technicians = useAppSelector(selectTechnicians);
+
+  const rawTechnicians = useAppSelector(selectTechnicians);
+  const technicians = useMemo(() => rawTechnicians || [], [rawTechnicians]);
   const selectedTechData = useAppSelector(
     selectTechnicianFinance(selectedTechId || "")
   );
@@ -157,25 +176,55 @@ export default function FinanceTracking() {
     ? { technician: selectedTech, data: selectedTechData }
     : null;
 
-  const globalScrollbarStyles = {
-    "&::-webkit-scrollbar": { width: "6px", height: "6px" },
-    "&::-webkit-scrollbar-track": { background: "transparent" },
-    "&::-webkit-scrollbar-thumb": {
-      background: "transparent",
-      borderRadius: "3px",
-      transition: "background 0.3s ease",
-    },
-    "&:hover::-webkit-scrollbar-thumb": { background: "#cbd5e1" },
-    "&:hover::-webkit-scrollbar-thumb:hover": { background: "#94a3b8" },
-  };
+  // Filter breakdown client-side for instant search if typed
+  const breakdown = useMemo(() => {
+    if (!breakdownSearch.trim()) return rawBreakdown;
+    const q = breakdownSearch.toLowerCase().trim();
+    return rawBreakdown.filter((item) => {
+      const sName = String(item.service || item.serviceName || "").toLowerCase();
+      const tName = String(item.technician || item.technicianName || "").toLowerCase();
+      const bId = String(item.bookingId || item._id || "").toLowerCase();
+      return sName.includes(q) || tName.includes(q) || bId.includes(q);
+    });
+  }, [rawBreakdown, breakdownSearch]);
 
+  // Filter payments client-side for search if typed
+  const payments = useMemo(() => {
+    if (!paymentsSearch.trim()) return rawPayments;
+    const q = paymentsSearch.toLowerCase().trim();
+    return rawPayments.filter((p) => {
+      const oId = String(p.providerOrderId || "").toLowerCase();
+      const pId = String(p.paymentId || p._id || "").toLowerCase();
+      const iType = String(p.itemType || "").toLowerCase();
+      return oId.includes(q) || pId.includes(q) || iType.includes(q);
+    });
+  }, [rawPayments, paymentsSearch]);
+
+  // Filter technicians by search
+  const filteredTechnicians = useMemo(() => {
+    if (!techSearch.trim()) return technicians;
+    const q = techSearch.toLowerCase().trim();
+    return technicians.filter((tech) => {
+      const name = String(
+        tech.name ||
+        tech.userId?.fname ||
+        tech.user?.fname ||
+        tech.mobileNumber ||
+        ""
+      ).toLowerCase();
+      const phone = String(tech.userId?.mobileNumber || tech.mobileNumber || "");
+      return name.includes(q) || phone.includes(q);
+    });
+  }, [technicians, techSearch]);
+
+  // Auth gate check
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem("user"));
+    const storedUser = JSON.parse(localStorage.getItem("user") || "null");
     const role = storedUser?.role?.toLowerCase();
     if (!storedUser || (role !== "owner" && role !== "admin" && role !== "super admin")) {
       toast({
         title: "Access Denied",
-        description: "Only admin, super admin, or owner can access this page.",
+        description: "Only admin, super admin, or owner can access finance tracking.",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -185,21 +234,16 @@ export default function FinanceTracking() {
     setCurrentUser(storedUser);
   }, [toast]);
 
+  // Data fetching functions
   const fetchSummary = useCallback(async () => {
     try {
+      setLoadError(null);
       setIsLoadingSummary(true);
-      // Shared summary cache (TTL, keyed by params — here: default).
-      // Result flows to the selector above; last-good data stays on failure.
       await dispatch(fetchFinanceSummary()).unwrap();
     } catch (err) {
       console.error("Error fetching finance summary:", err);
-      toast({
-        title: "Fetch Error",
-        description: err.message || err || "Failed to load finance summary.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      setLoadError(err);
+      toast.error(err, { title: "Fetch Error", description: "Failed to load finance summary.", duration: 3000, isClosable: true });
     } finally {
       setIsLoadingSummary(false);
     }
@@ -207,23 +251,18 @@ export default function FinanceTracking() {
 
   const fetchBreakdown = useCallback(async () => {
     try {
+      setLoadError(null);
       setIsLoadingBreakdown(true);
       const params = {
         ...breakdownFilters,
         page: breakdownPage,
         limit: itemsPerPage,
       };
-      // Shared breakdown cache keyed by exact filters+page.
       await dispatch(fetchFinanceBreakdown(params)).unwrap();
     } catch (err) {
       console.error("Error fetching finance breakdown:", err);
-      toast({
-        title: "Fetch Error",
-        description: err.message || err || "Failed to load finance breakdown.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      setLoadError(err);
+      toast.error(err, { title: "Fetch Error", description: "Failed to load finance breakdown.", duration: 3000, isClosable: true });
     } finally {
       setIsLoadingBreakdown(false);
     }
@@ -231,23 +270,18 @@ export default function FinanceTracking() {
 
   const fetchPayments = useCallback(async () => {
     try {
+      setLoadError(null);
       setIsLoadingPayments(true);
       const params = {
         ...paymentsFilters,
         page: paymentsPage,
         limit: itemsPerPage,
       };
-      // Shared ledger cache keyed by exact filters+page.
       await dispatch(fetchPaymentsLedger(params)).unwrap();
     } catch (err) {
       console.error("Error fetching payments ledger:", err);
-      toast({
-        title: "Fetch Error",
-        description: err.message || err || "Failed to load payments ledger.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      setLoadError(err);
+      toast.error(err, { title: "Fetch Error", description: "Failed to load payments ledger.", duration: 3000, isClosable: true });
     } finally {
       setIsLoadingPayments(false);
     }
@@ -255,13 +289,13 @@ export default function FinanceTracking() {
 
   const fetchTechnicians = useCallback(async () => {
     try {
-      // Shared technicians cache (TTL); rows flow to the selector above.
       await dispatch(fetchTechniciansShared()).unwrap();
     } catch (err) {
       console.error("Error fetching technicians:", err);
     }
   }, [dispatch]);
 
+  // Trigger loads on mount & active tab changes
   useEffect(() => {
     if (currentUser) {
       fetchSummary();
@@ -283,336 +317,694 @@ export default function FinanceTracking() {
 
   useEffect(() => {
     setBreakdownPage(1);
-  }, [breakdownFilters.status, breakdownFilters.paymentStatus, breakdownFilters.technicianId, breakdownFilters.from, breakdownFilters.to]);
+  }, [
+    breakdownFilters.status,
+    breakdownFilters.paymentStatus,
+    breakdownFilters.technicianId,
+    breakdownFilters.from,
+    breakdownFilters.to,
+  ]);
 
   useEffect(() => {
     setPaymentsPage(1);
   }, [paymentsFilters.status, paymentsFilters.from, paymentsFilters.to]);
-
-  if (!currentUser) return null;
 
   const handleViewTechnicianDetail = async (technician) => {
     const techId = technician._id || technician.userId || technician.id;
     if (!techId) return;
     try {
       setTechLoadingId(techId);
-      // Shared per-technician finance cache (TTL); detail flows to the
-      // selector above. Modal opens only after server confirmation.
       await dispatch(fetchTechnicianFinance(techId)).unwrap();
       setSelectedTech(technician);
       setSelectedTechId(String(techId));
       setIsTechDetailOpen(true);
     } catch (err) {
-      toast({
-        title: "Fetch Error",
-        description: err.message || err || "Failed to load technician finance detail.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Fetch Error", description: "Failed to load technician finance detail.", duration: 3000, isClosable: true });
     } finally {
       setTechLoadingId(null);
     }
   };
 
   const getTechName = (tech) => {
+    if (!tech) return "Technician";
     if (tech.name) return tech.name;
     const user = tech.userId || tech.user;
     if (user) {
       const fname = user.fname || user.firstName || "";
       const lname = user.lname || user.lastName || "";
-      return `${fname} ${lname}`.trim() || user.name || user.mobileNumber || "Technician";
+      const combined = `${fname} ${lname}`.trim();
+      return combined || user.name || user.mobileNumber || "Technician";
     }
     return tech.mobileNumber || "Technician";
   };
 
-  // Shared via components/common/StatCard (variant="mini") — static (no hover lift)
-  const StatCard = (props) => (
-    <SharedStatCard
-      variant="mini"
-      accent={customColor}
-      textColor={textColor}
-      loading={isLoadingSummary}
-      interactive={false}
-      numberSize="md"
-      {...props}
-    />
-  );
-
-  const PaymentMobileCard = ({ payment, idx, type }) => {
-    const serviceName = payment.service || payment.serviceName || payment.itemType || "N/A";
-    const customerName = payment.customerId?.name ||
-      payment.customerId?.profile?.fname ||
-      payment.customerName || payment.customer || "N/A";
-    const technicianName = payment.technician || payment.technicianName || "N/A";
-    const amount = type === "breakdown"
-      ? (payment.totalAmount || payment.serviceAmount + payment.gstAmount + payment.tipAmount || 0)
-      : (payment.totalAmount || payment.amount || 0);
-
-    return (
-      <MobileCard>
-        <Flex justify="space-between" align="center" mb={2}>
-          <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
-            #{idx + 1} {serviceName}
-          </Text>
-          <Badge
-            colorScheme={payment.status === "success" ? "green" : payment.status === "pending" ? "yellow" : "red"}
-            borderRadius="full"
-            px={2}
-            fontSize="3xs"
-          >
-            {payment.status || "N/A"}
-          </Badge>
-        </Flex>
-        <Text fontSize="2xs" color="gray.600" noOfLines={1} mb={1}>
-          {type === "breakdown"
-            ? `Technician: ${technicianName} • ${payment.paymentStatus || "No pay status"}`
-            : `Order: ${payment.providerOrderId || "N/A"}`}
-        </Text>
-        {type === "breakdown" && (
-          <Flex gap={2} wrap="wrap" mb={1}>
-            <Badge colorScheme="blue" variant="subtle" fontSize="3xs">Service: {formatCurrency(payment.serviceAmount)}</Badge>
-            <Badge colorScheme="orange" variant="subtle" fontSize="3xs">GST: {formatCurrency(payment.gstAmount)}</Badge>
-            <Badge colorScheme="purple" variant="subtle" fontSize="3xs">Tip: {formatCurrency(payment.tipAmount)}</Badge>
-            <Badge colorScheme="red" variant="subtle" fontSize="3xs">Commission: {formatCurrency(payment.commissionAmount)}</Badge>
-            <Badge colorScheme="green" variant="subtle" fontSize="3xs">Tech Payable: {formatCurrency(payment.technicianAmount)}</Badge>
-          </Flex>
-        )}
-        <Flex justify="space-between" align="center">
-          <Text fontSize="xs" fontWeight="bold" color={textColor}>
-            {formatCurrency(amount)}
-          </Text>
-          <Text fontSize="3xs" color="gray.500">
-            {formatDate(payment.createdAt)}
-          </Text>
-        </Flex>
-      </MobileCard>
-    );
+  const copyToClipboard = (text, label = "Item") => {
+    if (!text) return;
+    navigator.clipboard?.writeText(String(text));
+    toast({
+      title: `${label} copied`,
+      status: "info",
+      duration: 1800,
+      isClosable: true,
+    });
   };
 
-  return (
-    <Flex
-      flexDirection="column"
-      pt={{ base: "50px", md: "45px" }}
-      height={{ base: "calc(100vh - 20px)", md: "calc(100vh - 40px)" }}
-      overflowY="auto"
-      css={globalScrollbarStyles}
-    >
-      {/* Summary Stats */}
-      <Box flexShrink={0} p={{ base: 1, md: 4 }} pb={0}>
-        <SimpleGrid
-          columns={{ base: 1, sm: 2, md: 4 }}
-          spacing={{ base: 3, md: 4 }}
-          mb={{ base: 3, md: 4 }}
-        >
-          <StatCard
-            label={`Paid Services${summary?.services?.paid?.count ? ` (${summary.services.paid.count})` : ""}`}
-            value={formatCurrency(summary?.services?.paid?.totalAmount || summary?.summary?.totalCollected)}
-            icon={MdAttachMoney}
-            bg="green.600"
-          />
-          <StatCard
-            label={`Unpaid / Pending Services${summary?.services?.unpaid?.count ? ` (${summary.services.unpaid.count})` : ""}`}
-            value={formatCurrency(summary?.services?.unpaid?.totalAmount)}
-            icon={MdPayments}
-            bg="yellow.600"
-          />
-          <StatCard
-            label="Total Commission"
-            value={formatCurrency(summary?.summary?.totalCommission)}
-            icon={MdAttachMoney}
-            bg="purple.600"
-          />
-          <StatCard
-            label="Total GST (Tax)"
-            value={formatCurrency(summary?.summary?.totalGst)}
-            icon={MdPayments}
-            bg="orange.500"
-          />
-          <StatCard
-            label="Service Base Amount"
-            value={formatCurrency(summary?.summary?.totalServiceAmount)}
-            icon={MdPayments}
-            bg="blue.500"
-          />
-          <StatCard
-            label="Technician Payable"
-            value={formatCurrency(summary?.summary?.totalPayableToTechnician)}
-            icon={MdAccountBalanceWallet}
-            bg="teal.600"
-          />
-          <StatCard
-            label="Paid Out to Technicians"
-            value={formatCurrency(summary?.summary?.totalPaidOutToTechnician)}
-            icon={MdHistory}
-            bg="teal.500"
-          />
-          <StatCard
-            label="Held by Platform"
-            value={formatCurrency(summary?.summary?.totalHeldByPlatform)}
-            icon={MdHistory}
-            bg="cyan.600"
-          />
-          <StatCard
-            label={`Approved Withdrawals${summary?.withdrawals?.approved?.count ? ` (${summary.withdrawals.approved.count})` : ""}`}
-            value={formatCurrency(summary?.withdrawals?.approved?.amount)}
-            icon={MdHistory}
-            bg="teal.500"
-          />
-          <StatCard
-            label={`Paid Withdrawals${summary?.withdrawals?.paid?.count ? ` (${summary.withdrawals.paid.count})` : ""}`}
-            value={formatCurrency(summary?.withdrawals?.paid?.amount)}
-            icon={MdHistory}
-            bg="cyan.600"
-          />
-          <StatCard
-            label={`Pending Withdrawals${summary?.withdrawals?.pending?.count ? ` (${summary.withdrawals.pending.count})` : ""}`}
-            value={formatCurrency(summary?.withdrawals?.pending?.amount)}
-            icon={MdHistory}
-            bg="yellow.500"
-          />
-          <StatCard
-            label={`Rejected Withdrawals${summary?.withdrawals?.rejected?.count ? ` (${summary.withdrawals.rejected.count})` : ""}`}
-            value={formatCurrency(summary?.withdrawals?.rejected?.amount)}
-            icon={MdHistory}
-            bg="red.500"
-          />
-        </SimpleGrid>
-      </Box>
+  // CSV Export for the active tab
+  const handleExportCsv = () => {
+    try {
+      let csvContent = "";
+      let filename = `finance_report_${new Date().toISOString().slice(0, 10)}.csv`;
 
-      {/* Main Card with Tabs */}
-      <Box display="flex" flexDirection="column" p={{ base: 1, md: 4 }} pt={0}>
-        <Card shadow="lg" bg="white" display="flex" flexDirection="column">
-          <CardHeader
-            p="8px 12px"
-            pb="6px"
-            bg="white"
-            flexShrink={0}
-            borderBottom="1px solid"
-            borderColor={`${customColor}20`}
+      if (activeTab === 0) {
+        filename = `finance_breakdown_${new Date().toISOString().slice(0, 10)}.csv`;
+        const headers = ["Booking ID", "Service", "Technician", "Service Amount", "GST", "Tip", "Commission", "Tech Payable", "Total", "Payment Status", "Settlement", "Date"];
+        const rows = breakdown.map((item) => [
+          item.bookingId || item._id || "",
+          `"${(item.service || item.serviceName || "").replace(/"/g, '""')}"`,
+          `"${(item.technician || "").replace(/"/g, '""')}"`,
+          item.serviceAmount || 0,
+          item.gstAmount || 0,
+          item.tipAmount || 0,
+          item.commissionAmount || 0,
+          item.technicianAmount || 0,
+          item.totalAmount || (item.serviceAmount + item.gstAmount + item.tipAmount) || 0,
+          item.paymentStatus || "",
+          item.settlementStatus || "",
+          item.createdAt ? new Date(item.createdAt).toISOString() : "",
+        ]);
+        csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+      } else if (activeTab === 1) {
+        filename = `payments_ledger_${new Date().toISOString().slice(0, 10)}.csv`;
+        const headers = ["Order ID", "Payment ID", "Item Type", "Total Amount", "Commission", "Status", "Date"];
+        const rows = payments.map((p) => [
+          p.providerOrderId || "",
+          p.paymentId || p._id || "",
+          `"${(p.itemType || "").replace(/"/g, '""')}"`,
+          p.totalAmount || p.amount || 0,
+          p.commissionAmount || 0,
+          p.status || "",
+          p.createdAt ? new Date(p.createdAt).toISOString() : "",
+        ]);
+        csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+      } else {
+        filename = `technicians_financial_directory_${new Date().toISOString().slice(0, 10)}.csv`;
+        const headers = ["Technician Name", "Contact", "Status", "Wallet Balance"];
+        const rows = technicians.map((tech) => [
+          `"${getTechName(tech).replace(/"/g, '""')}"`,
+          tech.userId?.mobileNumber || tech.mobileNumber || "",
+          tech.workStatus || "",
+          tech.walletBalance || 0,
+        ]);
+        csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+      }
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Report Exported",
+        description: `Downloaded ${filename} successfully.`,
+        status: "success",
+        duration: 2500,
+        isClosable: true,
+      });
+    } catch (err) {
+      console.error("Export error:", err);
+      toast.error(err, { title: "Export Failed", description: "Could not export report." });
+    }
+  };
+
+  const handleRefreshAll = () => {
+    fetchSummary();
+    if (activeTab === 0) fetchBreakdown();
+    if (activeTab === 1) fetchPayments();
+    if (activeTab === 2) fetchTechnicians();
+    toast({
+      title: "Financials refreshed",
+      status: "info",
+      duration: 1500,
+      isClosable: true,
+    });
+  };
+
+  if (!currentUser) return null;
+
+  // Key KPI values
+  const totalRevenue = summary?.services?.paid?.totalAmount || summary?.summary?.totalCollected || 0;
+  const paidOrdersCount = summary?.services?.paid?.count || 0;
+  const totalCommission = summary?.summary?.totalCommission || 0;
+  const totalPaidOut = summary?.summary?.totalPaidOutToTechnician || 0;
+  const totalPayable = summary?.summary?.totalPayableToTechnician || 0;
+  const pendingWithdrawalsAmount = summary?.withdrawals?.pending?.amount || 0;
+  const pendingWithdrawalsCount = summary?.withdrawals?.pending?.count || 0;
+  const unpaidServicesAmount = summary?.services?.unpaid?.totalAmount || 0;
+  const unpaidServicesCount = summary?.services?.unpaid?.count || 0;
+
+  return (
+    <Box pt={{ base: "120px", md: "80px" }} px={{ base: "16px", md: "24px" }} pb="40px">
+      <VStack spacing={6} align="stretch">
+        {/* ================= 1. PAGE HEADER ================= */}
+        <Flex
+          direction={{ base: "column", md: "row" }}
+          justify="space-between"
+          align={{ base: "flex-start", md: "center" }}
+          gap={4}
+        >
+          <Box>
+            <HStack spacing={2} mb={1}>
+              <Tag size="sm" colorScheme="teal" borderRadius="full" fontWeight="bold">
+                FINANCIAL INTELLIGENCE CONSOLE
+              </Tag>
+              <Badge
+                colorScheme="green"
+                variant="subtle"
+                fontSize="xs"
+                px={2}
+                py={0.5}
+                borderRadius="full"
+                display="flex"
+                alignItems="center"
+                gap={1}
+              >
+                <Box as="span" w="6px" h="6px" borderRadius="full" bg="green.500" />
+                Live Balances
+              </Badge>
+            </HStack>
+            <Heading as="h1" size="lg" fontWeight="900" letterSpacing="-0.5px" color={isDark ? "white" : "gray.850"}>
+              Finance & Revenue Tracking
+            </Heading>
+            <Text fontSize="sm" color="gray.500" mt={1}>
+              Platform revenue collection, commission margins, customer payment ledger, and partner payout liabilities.
+            </Text>
+          </Box>
+
+          <HStack spacing={3} flexWrap="wrap">
+            <Button
+              size="sm"
+              variant="outline"
+              borderRadius="10px"
+              fontWeight="700"
+              borderColor={isDark ? "gray.700" : "gray.300"}
+              leftIcon={<FaDownload size={13} />}
+              onClick={handleExportCsv}
+            >
+              Export CSV
+            </Button>
+            <Button
+              size="sm"
+              bg={BRAND}
+              color="white"
+              borderRadius="10px"
+              fontWeight="700"
+              _hover={{ bg: "#006666" }}
+              _active={{ bg: "#004d4d" }}
+              leftIcon={<MdRefresh size={16} />}
+              isLoading={isLoadingSummary || isLoadingBreakdown || isLoadingPayments}
+              onClick={handleRefreshAll}
+            >
+              Refresh Data
+            </Button>
+          </HStack>
+        </Flex>
+
+        {loadError && (
+          <ErrorState
+            compact
+            error={loadError}
+            title="Could not load finance data"
+            onRetry={handleRefreshAll}
+          />
+        )}
+
+        {/* ================= 2. EXECUTIVE HERO KPI CARDS ================= */}
+        <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={4}>
+          {/* Card 1: Gross Inflows */}
+          <Box
+            p={5}
+            bg={isDark ? "gray.850" : "white"}
+            borderRadius="16px"
+            border="1px solid"
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            boxShadow="sm"
+            position="relative"
+            overflow="hidden"
           >
+            <Box position="absolute" top={0} left={0} right={0} h="3px" bg="green.400" />
+            <HStack justify="space-between" align="flex-start" mb={2}>
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
+                Gross Collected Revenue
+              </Text>
+              <Box p={2.5} bg="green.50" color="green.600" borderRadius="10px">
+                <Icon as={FaMoneyBillWave} boxSize={4} />
+              </Box>
+            </HStack>
+            <Text fontSize="2xl" fontWeight="900" color={isDark ? "white" : "gray.850"}>
+              {formatCurrency(totalRevenue)}
+            </Text>
+            <HStack spacing={2} mt={1}>
+              <Badge colorScheme="green" fontSize="2xs" borderRadius="full" px={2}>
+                {paidOrdersCount} Paid Orders
+              </Badge>
+              <Text fontSize="2xs" color="gray.500">
+                Base: {formatCurrency(summary?.summary?.totalServiceAmount)}
+              </Text>
+            </HStack>
+          </Box>
+
+          {/* Card 2: Platform Net Commission */}
+          <Box
+            p={5}
+            bg={isDark ? "gray.850" : "white"}
+            borderRadius="16px"
+            border="1px solid"
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            boxShadow="sm"
+            position="relative"
+            overflow="hidden"
+          >
+            <Box position="absolute" top={0} left={0} right={0} h="3px" bg="purple.400" />
+            <HStack justify="space-between" align="flex-start" mb={2}>
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
+                Platform Commission
+              </Text>
+              <Box p={2.5} bg="purple.50" color="purple.600" borderRadius="10px">
+                <Icon as={MdTrendingUp} boxSize={5} />
+              </Box>
+            </HStack>
+            <Text fontSize="2xl" fontWeight="900" color={isDark ? "white" : "gray.850"}>
+              {formatCurrency(totalCommission)}
+            </Text>
+            <HStack spacing={2} mt={1}>
+              <Badge colorScheme="purple" fontSize="2xs" borderRadius="full" px={2}>
+                Platform Take-Rate
+              </Badge>
+              <Text fontSize="2xs" color="gray.500">
+                Net retained margin
+              </Text>
+            </HStack>
+          </Box>
+
+          {/* Card 3: Technician Disbursed & Payable */}
+          <Box
+            p={5}
+            bg={isDark ? "gray.850" : "white"}
+            borderRadius="16px"
+            border="1px solid"
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            boxShadow="sm"
+            position="relative"
+            overflow="hidden"
+          >
+            <Box position="absolute" top={0} left={0} right={0} h="3px" bg="teal.400" />
+            <HStack justify="space-between" align="flex-start" mb={2}>
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
+                Technician Disbursed
+              </Text>
+              <Box p={2.5} bg="teal.50" color="teal.600" borderRadius="10px">
+                <Icon as={FaWallet} boxSize={4} />
+              </Box>
+            </HStack>
+            <Text fontSize="2xl" fontWeight="900" color={isDark ? "white" : "gray.850"}>
+              {formatCurrency(totalPaidOut)}
+            </Text>
+            <HStack spacing={2} mt={1}>
+              <Badge colorScheme="teal" fontSize="2xs" borderRadius="full" px={2}>
+                Transferred
+              </Badge>
+              <Text fontSize="2xs" color="gray.500">
+                Payable: {formatCurrency(totalPayable)}
+              </Text>
+            </HStack>
+          </Box>
+
+          {/* Card 4: Escrow & Pending Withdrawals */}
+          <Box
+            p={5}
+            bg={isDark ? "gray.850" : "white"}
+            borderRadius="16px"
+            border="1px solid"
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            boxShadow="sm"
+            position="relative"
+            overflow="hidden"
+          >
+            <Box position="absolute" top={0} left={0} right={0} h="3px" bg="orange.400" />
+            <HStack justify="space-between" align="flex-start" mb={2}>
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
+                Pending Liabilities
+              </Text>
+              <Box p={2.5} bg="orange.50" color="orange.600" borderRadius="10px">
+                <Icon as={FaClock} boxSize={4} />
+              </Box>
+            </HStack>
+            <Text fontSize="2xl" fontWeight="900" color="orange.500">
+              {formatCurrency(pendingWithdrawalsAmount)}
+            </Text>
+            <HStack spacing={2} mt={1}>
+              <Badge colorScheme="orange" fontSize="2xs" borderRadius="full" px={2}>
+                {pendingWithdrawalsCount} Requests Pending
+              </Badge>
+              <Text fontSize="2xs" color="gray.500">
+                Unpaid: {formatCurrency(unpaidServicesAmount)}
+              </Text>
+            </HStack>
+          </Box>
+        </SimpleGrid>
+
+        {/* ================= 3. FINANCIAL STREAMS & WITHDRAWAL LIFECYCLE SUMMARY ================= */}
+        <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={4}>
+          {/* Revenue Breakdown Strip */}
+          <Box
+            p={4}
+            bg={isDark ? "gray.850" : "white"}
+            borderRadius="16px"
+            border="1px solid"
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            boxShadow="sm"
+          >
+            <HStack justify="space-between" mb={3}>
+              <HStack spacing={2}>
+                <Icon as={MdAttachMoney} color={BRAND} boxSize={5} />
+                <Text fontWeight="800" fontSize="sm" color={isDark ? "white" : "gray.800"}>
+                  Revenue Breakdown & Tax Accounting
+                </Text>
+              </HStack>
+              <Badge colorScheme="gray" fontSize="3xs" textTransform="uppercase">
+                Platform P&L
+              </Badge>
+            </HStack>
+
+            <SimpleGrid columns={{ base: 2, sm: 4 }} spacing={3} pt={1}>
+              <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                  Base Service Vol.
+                </Text>
+                <Text fontSize="sm" fontWeight="800" color={isDark ? "white" : "gray.800"} mt={0.5}>
+                  {formatCurrency(summary?.summary?.totalServiceAmount)}
+                </Text>
+                <Text fontSize="3xs" color="gray.400" mt={0.5}>Gross order value</Text>
+              </Box>
+
+              <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                  GST / Taxes
+                </Text>
+                <Text fontSize="sm" fontWeight="800" color="orange.600" mt={0.5}>
+                  {formatCurrency(summary?.summary?.totalGst)}
+                </Text>
+                <Text fontSize="3xs" color="gray.400" mt={0.5}>Tax statutory</Text>
+              </Box>
+
+              <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                  Platform Margin
+                </Text>
+                <Text fontSize="sm" fontWeight="800" color="purple.600" mt={0.5}>
+                  {formatCurrency(summary?.summary?.totalCommission)}
+                </Text>
+                <Text fontSize="3xs" color="gray.400" mt={0.5}>Commission cut</Text>
+              </Box>
+
+              <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                  Unpaid Invoices
+                </Text>
+                <Text fontSize="sm" fontWeight="800" color="yellow.600" mt={0.5}>
+                  {formatCurrency(unpaidServicesAmount)}
+                </Text>
+                <Text fontSize="3xs" color="gray.400" mt={0.5}>{unpaidServicesCount} awaiting pay</Text>
+              </Box>
+            </SimpleGrid>
+          </Box>
+
+          {/* Technician Withdrawals Lifecycle Strip */}
+          <Box
+            p={4}
+            bg={isDark ? "gray.850" : "white"}
+            borderRadius="16px"
+            border="1px solid"
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            boxShadow="sm"
+          >
+            <HStack justify="space-between" mb={3}>
+              <HStack spacing={2}>
+                <Icon as={MdAccountBalanceWallet} color="teal.500" boxSize={5} />
+                <Text fontWeight="800" fontSize="sm" color={isDark ? "white" : "gray.800"}>
+                  Partner Withdrawal Desk Lifecycle
+                </Text>
+              </HStack>
+              <Badge colorScheme="teal" fontSize="3xs" textTransform="uppercase">
+                Settlements
+              </Badge>
+            </HStack>
+
+            <SimpleGrid columns={{ base: 2, sm: 4 }} spacing={3} pt={1}>
+              <Box p={3} bg={isDark ? "gray.800" : "yellow.50"} borderRadius="12px" border="1px solid" borderColor={isDark ? "transparent" : "yellow.200"}>
+                <HStack justify="space-between">
+                  <Text fontSize="2xs" color="yellow.700" fontWeight="700" textTransform="uppercase">
+                    Pending
+                  </Text>
+                  <Badge colorScheme="yellow" fontSize="3xs" borderRadius="full">
+                    {summary?.withdrawals?.pending?.count || 0}
+                  </Badge>
+                </HStack>
+                <Text fontSize="sm" fontWeight="800" color="yellow.800" mt={0.5}>
+                  {formatCurrency(summary?.withdrawals?.pending?.amount)}
+                </Text>
+                <Text fontSize="3xs" color="yellow.600" mt={0.5}>Awaiting review</Text>
+              </Box>
+
+              <Box p={3} bg={isDark ? "gray.800" : "blue.50"} borderRadius="12px" border="1px solid" borderColor={isDark ? "transparent" : "blue.200"}>
+                <HStack justify="space-between">
+                  <Text fontSize="2xs" color="blue.700" fontWeight="700" textTransform="uppercase">
+                    Approved
+                  </Text>
+                  <Badge colorScheme="blue" fontSize="3xs" borderRadius="full">
+                    {summary?.withdrawals?.approved?.count || 0}
+                  </Badge>
+                </HStack>
+                <Text fontSize="sm" fontWeight="800" color="blue.800" mt={0.5}>
+                  {formatCurrency(summary?.withdrawals?.approved?.amount)}
+                </Text>
+                <Text fontSize="3xs" color="blue.600" mt={0.5}>Pending transfer</Text>
+              </Box>
+
+              <Box p={3} bg={isDark ? "gray.800" : "green.50"} borderRadius="12px" border="1px solid" borderColor={isDark ? "transparent" : "green.200"}>
+                <HStack justify="space-between">
+                  <Text fontSize="2xs" color="green.700" fontWeight="700" textTransform="uppercase">
+                    Paid Out
+                  </Text>
+                  <Badge colorScheme="green" fontSize="3xs" borderRadius="full">
+                    {summary?.withdrawals?.paid?.count || 0}
+                  </Badge>
+                </HStack>
+                <Text fontSize="sm" fontWeight="800" color="green.800" mt={0.5}>
+                  {formatCurrency(summary?.withdrawals?.paid?.amount)}
+                </Text>
+                <Text fontSize="3xs" color="green.600" mt={0.5}>External UTR logged</Text>
+              </Box>
+
+              <Box p={3} bg={isDark ? "gray.800" : "red.50"} borderRadius="12px" border="1px solid" borderColor={isDark ? "transparent" : "red.200"}>
+                <HStack justify="space-between">
+                  <Text fontSize="2xs" color="red.700" fontWeight="700" textTransform="uppercase">
+                    Rejected
+                  </Text>
+                  <Badge colorScheme="red" fontSize="3xs" borderRadius="full">
+                    {summary?.withdrawals?.rejected?.count || 0}
+                  </Badge>
+                </HStack>
+                <Text fontSize="sm" fontWeight="800" color="red.800" mt={0.5}>
+                  {formatCurrency(summary?.withdrawals?.rejected?.amount)}
+                </Text>
+                <Text fontSize="3xs" color="red.600" mt={0.5}>Reserve refunded</Text>
+              </Box>
+            </SimpleGrid>
+          </Box>
+        </SimpleGrid>
+
+        {/* ================= 4. MAIN WORKSPACE TABS ================= */}
+        <Box
+          bg={isDark ? "gray.850" : "white"}
+          borderRadius="20px"
+          border="1px solid"
+          borderColor={isDark ? "gray.700" : "gray.200"}
+          boxShadow="sm"
+          overflow="hidden"
+        >
+          <Tabs index={activeTab} onChange={setActiveTab} variant="unstyled">
+            {/* Tab navigation headers */}
             <Flex
-              flexDirection={{ base: "column", sm: "row" }}
-              justify="space-between"
-              align={{ base: "stretch", sm: "center" }}
+              borderBottom="1px solid"
+              borderColor={isDark ? "gray.700" : "gray.200"}
+              px={6}
+              pt={4}
+              bg={isDark ? "gray.900" : "gray.50"}
+              overflowX="auto"
               gap={3}
             >
-              <Heading size="sm" flexShrink={0} color="gray.700">
-                <HStack spacing={2}>
-                  <Icon as={MdAttachMoney} color={customColor} />
-                  <Text>Finance Tracking</Text>
-                </HStack>
-              </Heading>
-              <Button
-                leftIcon={<MdRefresh />}
-                size="sm"
-                onClick={() => {
-                  fetchSummary();
-                  if (activeTab === 1) fetchBreakdown();
-                  if (activeTab === 2) fetchPayments();
-                }}
-                bg="white"
-                color={customColor}
-                border="1px"
-                borderColor={customColor}
-                _hover={{ bg: customColor, color: "white" }}
-                _active={{ bg: "#004d4d", color: "white" }}
-              >
-                Refresh
-              </Button>
-            </Flex>
-          </CardHeader>
+              <TabList gap={2}>
+                <Tab
+                  px={4}
+                  py={3}
+                  borderRadius="10px 10px 0 0"
+                  fontWeight="700"
+                  fontSize="sm"
+                  color={activeTab === 0 ? BRAND : "gray.500"}
+                  bg={activeTab === 0 ? (isDark ? "gray.850" : "white") : "transparent"}
+                  borderTop={activeTab === 0 ? "2px solid" : "none"}
+                  borderTopColor={BRAND}
+                  _hover={{ color: BRAND }}
+                  transition="all 0.2s"
+                >
+                  <HStack spacing={2}>
+                    <Icon as={MdHistory} boxSize={4} />
+                    <Text>Service Bookings Breakdown</Text>
+                    <Badge colorScheme={activeTab === 0 ? "teal" : "gray"} borderRadius="full" fontSize="2xs">
+                      {breakdownTotal}
+                    </Badge>
+                  </HStack>
+                </Tab>
 
-          <CardBody bg="white" display="flex" flexDirection="column" p={0} overflow="hidden">
-            <Tabs
-              index={activeTab}
-              onChange={setActiveTab}
-              variant="enclosed"
-              display="flex"
-              flexDirection="column"
-              flex="1"
-              overflow="hidden"
-            >
-              <TabList flexShrink={0} borderColor={`${customColor}30`} px={4} pt={2}>
                 <Tab
-                  _selected={{ bg: customColor, color: "white", fontWeight: "bold" }}
-                  _hover={{ bg: `${customColor}10` }}
+                  px={4}
+                  py={3}
+                  borderRadius="10px 10px 0 0"
+                  fontWeight="700"
                   fontSize="sm"
-                  gap={2}
+                  color={activeTab === 1 ? BRAND : "gray.500"}
+                  bg={activeTab === 1 ? (isDark ? "gray.850" : "white") : "transparent"}
+                  borderTop={activeTab === 1 ? "2px solid" : "none"}
+                  borderTopColor={BRAND}
+                  _hover={{ color: BRAND }}
+                  transition="all 0.2s"
                 >
-                  <Icon as={MdHistory} />
-                  Breakdown
+                  <HStack spacing={2}>
+                    <Icon as={MdPayments} boxSize={4} />
+                    <Text>Payments Ledger</Text>
+                    <Badge colorScheme={activeTab === 1 ? "teal" : "gray"} borderRadius="full" fontSize="2xs">
+                      {paymentsTotal}
+                    </Badge>
+                  </HStack>
                 </Tab>
+
                 <Tab
-                  _selected={{ bg: customColor, color: "white", fontWeight: "bold" }}
-                  _hover={{ bg: `${customColor}10` }}
+                  px={4}
+                  py={3}
+                  borderRadius="10px 10px 0 0"
+                  fontWeight="700"
                   fontSize="sm"
-                  gap={2}
+                  color={activeTab === 2 ? BRAND : "gray.500"}
+                  bg={activeTab === 2 ? (isDark ? "gray.850" : "white") : "transparent"}
+                  borderTop={activeTab === 2 ? "2px solid" : "none"}
+                  borderTopColor={BRAND}
+                  _hover={{ color: BRAND }}
+                  transition="all 0.2s"
                 >
-                  <Icon as={MdPayments} />
-                  Payments Ledger
-                </Tab>
-                <Tab
-                  _selected={{ bg: customColor, color: "white", fontWeight: "bold" }}
-                  _hover={{ bg: `${customColor}10` }}
-                  fontSize="sm"
-                  gap={2}
-                >
-                  <Icon as={MdPerson} />
-                  Technician Finance
+                  <HStack spacing={2}>
+                    <Icon as={MdPerson} boxSize={4} />
+                    <Text>Technician Profiles</Text>
+                    <Badge colorScheme={activeTab === 2 ? "teal" : "gray"} borderRadius="full" fontSize="2xs">
+                      {technicians.length}
+                    </Badge>
+                  </HStack>
                 </Tab>
               </TabList>
+            </Flex>
 
-              <TabPanels flex="1" overflow="hidden">
-                {/* Breakdown Tab */}
-                <TabPanel p={0} display="flex" flexDirection="column" overflow="hidden" h="100%">
-                  <Box px={4} py={3} flexShrink={0}>
-                    <Flex direction={{ base: "column", md: "row" }} gap={3} align={{ base: "stretch", md: "center" }} wrap="wrap">
+            <TabPanels>
+              {/* ================= TAB 1: SERVICE BREAKDOWN ================= */}
+              <TabPanel p={6}>
+                <VStack spacing={5} align="stretch">
+                  {/* Filter Toolbar */}
+                  <Flex
+                    direction={{ base: "column", lg: "row" }}
+                    justify="space-between"
+                    align={{ base: "stretch", lg: "center" }}
+                    gap={3}
+                    p={4}
+                    bg={isDark ? "gray.800" : "gray.50"}
+                    borderRadius="14px"
+                    border="1px solid"
+                    borderColor={isDark ? "gray.700" : "gray.200"}
+                  >
+                    <HStack spacing={3} flex="1" flexWrap="wrap">
+                      {/* Search */}
+                      <Box position="relative" minW={{ base: "100%", sm: "220px" }}>
+                        <Input
+                          size="sm"
+                          borderRadius="8px"
+                          placeholder="Search service, technician, ID..."
+                          value={breakdownSearch}
+                          onChange={(e) => setBreakdownSearch(e.target.value)}
+                          bg={isDark ? "gray.900" : "white"}
+                          borderColor={isDark ? "gray.700" : "gray.300"}
+                          pl={8}
+                        />
+                        <Icon
+                          as={FaSearch}
+                          position="absolute"
+                          left={3}
+                          top="50%"
+                          transform="translateY(-50%)"
+                          color="gray.400"
+                          boxSize={3}
+                        />
+                      </Box>
+
+                      {/* Booking status */}
                       <Select
                         size="sm"
-                        maxW="150px"
+                        borderRadius="8px"
+                        maxW={{ base: "100%", sm: "160px" }}
                         value={breakdownFilters.status}
                         onChange={(e) => setBreakdownFilters({ ...breakdownFilters, status: e.target.value })}
-                        borderColor={`${customColor}50`}
-                        _hover={{ borderColor: customColor }}
-                        _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                        bg="white"
+                        bg={isDark ? "gray.900" : "white"}
+                        borderColor={isDark ? "gray.700" : "gray.300"}
                       >
                         <option value="">Booking: All</option>
-                        <option value="pending">Booking: Pending</option>
-                        <option value="accepted">Booking: Accepted</option>
-                        <option value="on_the_way">Booking: On The Way</option>
-                        <option value="reached">Booking: Reached</option>
-                        <option value="in_progress">Booking: In Progress</option>
-                        <option value="completed">Booking: Completed</option>
-                        <option value="cancelled">Booking: Cancelled</option>
-                        <option value="expired">Booking: Expired</option>
+                        <option value="pending">Pending</option>
+                        <option value="accepted">Accepted</option>
+                        <option value="on_the_way">On The Way</option>
+                        <option value="reached">Reached</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                        <option value="expired">Expired</option>
                       </Select>
+
+                      {/* Payment status */}
                       <Select
                         size="sm"
-                        maxW="150px"
+                        borderRadius="8px"
+                        maxW={{ base: "100%", sm: "160px" }}
                         value={breakdownFilters.paymentStatus}
                         onChange={(e) => setBreakdownFilters({ ...breakdownFilters, paymentStatus: e.target.value })}
-                        borderColor={`${customColor}50`}
-                        _hover={{ borderColor: customColor }}
-                        _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                        bg="white"
+                        bg={isDark ? "gray.900" : "white"}
+                        borderColor={isDark ? "gray.700" : "gray.300"}
                       >
                         <option value="">Payment: All</option>
-                        <option value="paid">Payment: Paid</option>
-                        <option value="pending">Payment: Pending</option>
-                        <option value="failed">Payment: Failed</option>
-                        <option value="refunded">Payment: Refunded</option>
+                        <option value="paid">Paid</option>
+                        <option value="pending">Pending</option>
+                        <option value="failed">Failed</option>
+                        <option value="refunded">Refunded</option>
                       </Select>
+
+                      {/* Technician */}
                       <Select
                         size="sm"
-                        maxW="200px"
+                        borderRadius="8px"
+                        maxW={{ base: "100%", sm: "180px" }}
                         value={breakdownFilters.technicianId}
                         onChange={(e) => setBreakdownFilters({ ...breakdownFilters, technicianId: e.target.value })}
-                        borderColor={`${customColor}50`}
-                        _hover={{ borderColor: customColor }}
-                        _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                        bg="white"
+                        bg={isDark ? "gray.900" : "white"}
+                        borderColor={isDark ? "gray.700" : "gray.300"}
                       >
                         <option value="">All Technicians</option>
                         {technicians.map((tech) => (
@@ -621,708 +1013,836 @@ export default function FinanceTracking() {
                           </option>
                         ))}
                       </Select>
-                      <Input
-                        type="date"
-                        size="sm"
-                        maxW="150px"
-                        value={breakdownFilters.from}
-                        onChange={(e) => setBreakdownFilters({ ...breakdownFilters, from: e.target.value })}
-                        borderColor={`${customColor}50`}
-                        _hover={{ borderColor: customColor }}
-                        _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                        bg="white"
-                      />
-                      <Input
-                        type="date"
-                        size="sm"
-                        maxW="150px"
-                        value={breakdownFilters.to}
-                        onChange={(e) => setBreakdownFilters({ ...breakdownFilters, to: e.target.value })}
-                        borderColor={`${customColor}50`}
-                        _hover={{ borderColor: customColor }}
-                        _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                        bg="white"
-                      />
-                    </Flex>
-                  </Box>
 
-                  <Box display="flex" flexDirection="column" px={4} pb={4}>
-                    {isLoadingBreakdown ? (
-                      <Flex justify="center" align="center" py={10}>
-                        <Spinner size="lg" color={customColor} />
-                        <Text ml={3} fontSize="sm">Loading breakdown...</Text>
-                      </Flex>
-                    ) : (
-                      <Box display="flex" flexDirection="column">
-                        <Box display={{ base: "none", md: "block" }} overflowX="auto" css={globalScrollbarStyles}>
-                          <Table variant="simple" size="sm" bg="transparent">
-                            <Thead>
-                              <Tr>
-                                {["#", "Service", "Technician", "Service Amt", "GST", "Tip", "Commission", "Tech Payable", "Total", "Pay Status", "Settlement", "Date"].map((header) => (
-                                  <Th
-                                    key={header}
-                                    color="gray.100"
-                                    borderColor={`${customColor}30`}
-                                    position="sticky"
-                                    top={0}
-                                    bg={customColor}
-                                    zIndex={10}
-                                    fontWeight="bold"
-                                    fontSize="xs"
-                                    py={1.5}
-                                    borderBottom="2px solid"
-                                    borderBottomColor={`${customColor}50`}
-                                  >
-                                    {header}
-                                  </Th>
-                                ))}
-                              </Tr>
-                            </Thead>
-                            <Tbody bg="transparent">
-                              {breakdown.length > 0 ? (
-                                breakdown.map((payment, idx) => {
-                                  const serviceName = payment.service || payment.serviceName || "N/A";
-                                  const technicianName = payment.technician || "N/A";
-                                  const total = payment.totalAmount ||
-                                    (payment.serviceAmount + payment.gstAmount + payment.tipAmount) || 0;
-                                  return (
-                                    <Tr
-                                      key={payment.bookingId || payment._id || idx}
-                                      bg="transparent"
-                                      _hover={{ bg: `${customColor}10` }}
-                                      borderBottom="1px"
-                                      borderColor={`${customColor}20`}
-                                      height="35px"
-                                    >
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                        {(breakdownPage - 1) * itemsPerPage + idx + 1}
-                                      </Td>
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1} maxW="140px">
-                                        <Text noOfLines={1}>{serviceName}</Text>
-                                      </Td>
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1} maxW="120px">
-                                        <Text noOfLines={1}>{technicianName}</Text>
-                                      </Td>
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                        {formatCurrency(payment.serviceAmount)}
-                                      </Td>
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                        {formatCurrency(payment.gstAmount)}
-                                      </Td>
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                        {formatCurrency(payment.tipAmount)}
-                                      </Td>
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                        {formatCurrency(payment.commissionAmount)}
-                                      </Td>
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1} fontWeight="bold" color="green.600">
-                                        {formatCurrency(payment.technicianAmount)}
-                                      </Td>
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1} fontWeight="bold">
-                                        {formatCurrency(total)}
-                                      </Td>
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                        <Badge
-                                          colorScheme={payment.paymentStatus === "paid" ? "green" : payment.paymentStatus === "pending" ? "yellow" : "gray"}
-                                          fontSize="3xs"
-                                        >
-                                          {payment.paymentStatus || "N/A"}
-                                        </Badge>
-                                      </Td>
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                        <Badge
-                                          colorScheme={payment.settlementStatus === "settled" ? "green" : payment.settlementStatus === "pending" ? "yellow" : "gray"}
-                                          fontSize="3xs"
-                                        >
-                                          {payment.settlementStatus || "N/A"}
-                                        </Badge>
-                                      </Td>
-                                      <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                        {formatDate(payment.createdAt)}
-                                      </Td>
-                                    </Tr>
-                                  );
-                                })
-                              ) : (
-                                <Tr>
-                                  <Td colSpan={12} textAlign="center" py={6}>
-                                    <Text fontSize="xs">No payments found.</Text>
-                                  </Td>
-                                </Tr>
-                              )}
-                            </Tbody>
-                          </Table>
-                        </Box>
+                      {/* Date From & To */}
+                      <HStack spacing={2} minW={{ base: "100%", sm: "auto" }}>
+                        <Input
+                          type="date"
+                          size="sm"
+                          borderRadius="8px"
+                          maxW="140px"
+                          value={breakdownFilters.from}
+                          onChange={(e) => setBreakdownFilters({ ...breakdownFilters, from: e.target.value })}
+                          bg={isDark ? "gray.900" : "white"}
+                          borderColor={isDark ? "gray.700" : "gray.300"}
+                        />
+                        <Text fontSize="xs" color="gray.400">to</Text>
+                        <Input
+                          type="date"
+                          size="sm"
+                          borderRadius="8px"
+                          maxW="140px"
+                          value={breakdownFilters.to}
+                          onChange={(e) => setBreakdownFilters({ ...breakdownFilters, to: e.target.value })}
+                          bg={isDark ? "gray.900" : "white"}
+                          borderColor={isDark ? "gray.700" : "gray.300"}
+                        />
+                      </HStack>
+                    </HStack>
 
-                        <Box
-                          display={{ base: "block", md: "none" }}
-                          overflow="auto"
-                          px={3}
-                          py={1.5}
-                          css={globalScrollbarStyles}
-                        >
-                          {breakdown.length > 0 ? (
-                            breakdown.map((payment, idx) => (
-                              <PaymentMobileCard key={payment._id || idx} payment={payment} idx={idx} type="breakdown" />
-                            ))
-                          ) : (
-                            <Center py={10}>
-                              <VStack spacing={2}>
-                                <Icon as={MdHistory} color="gray.300" boxSize={10} />
-                                <Text fontSize="sm" color="gray.500">No payments found</Text>
-                              </VStack>
-                            </Center>
-                          )}
-                        </Box>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      color="gray.500"
+                      _hover={{ color: "red.500" }}
+                      onClick={() => {
+                        setBreakdownSearch("");
+                        setBreakdownFilters({
+                          status: "",
+                          paymentStatus: "",
+                          technicianId: "",
+                          from: "",
+                          to: "",
+                        });
+                      }}
+                    >
+                      Reset
+                    </Button>
+                  </Flex>
 
-                        {breakdown.length > 0 && (
-                          <Box flexShrink={0} p="10px" borderTop="1px solid" borderColor={`${customColor}20`} bg="transparent">
-                            <Flex justify="flex-end" align="center" gap={3}>
-                              <Button
-                                size="sm"
-                                onClick={() => setBreakdownPage(Math.max(1, breakdownPage - 1))}
-                                isDisabled={breakdownPage === 1}
-                                leftIcon={<FaChevronLeft />}
-                                bg="white"
-                                color={customColor}
-                                border="1px"
-                                borderColor={customColor}
-                                _hover={{ bg: customColor, color: "white" }}
-                                _active={{ bg: "#004d4d", color: "white" }}
-                                _disabled={{
-                                  opacity: 0.5,
-                                  cursor: "not-allowed",
-                                  bg: "gray.100",
-                                  color: "gray.400",
-                                  borderColor: "gray.300",
-                                }}
-                              >
-                                <Text display={{ base: "none", sm: "block" }}>Previous</Text>
-                              </Button>
-                              <Flex align="center" gap={2} bg={`${customColor}10`} px={3} py={1} borderRadius="6px" minW="80px" justify="center">
-                                <Text fontSize="sm" fontWeight="bold" color={customColor}>{breakdownPage}</Text>
-                                <Text fontSize="sm" color="gray.500">/</Text>
-                                <Text fontSize="sm" color="gray.600" fontWeight="medium">{breakdownPages}</Text>
-                              </Flex>
-                              <Button
-                                size="sm"
-                                onClick={() => setBreakdownPage(Math.min(breakdownPages, breakdownPage + 1))}
-                                isDisabled={breakdownPage === breakdownPages}
-                                rightIcon={<FaChevronRight />}
-                                bg="white"
-                                color={customColor}
-                                border="1px"
-                                borderColor={customColor}
-                                _hover={{ bg: customColor, color: "white" }}
-                                _active={{ bg: "#004d4d", color: "white" }}
-                                _disabled={{
-                                  opacity: 0.5,
-                                  cursor: "not-allowed",
-                                  bg: "gray.100",
-                                  color: "gray.400",
-                                  borderColor: "gray.300",
-                                }}
-                              >
-                                <Text display={{ base: "none", sm: "block" }}>Next</Text>
-                              </Button>
-                            </Flex>
-                          </Box>
-                        )}
-                      </Box>
-                    )}
-                  </Box>
-                </TabPanel>
-
-                {/* Payments Ledger Tab */}
-                <TabPanel p={0} display="flex" flexDirection="column" overflow="hidden" h="100%">
-                  <Box px={4} py={3} flexShrink={0}>
-                    <Flex direction={{ base: "column", md: "row" }} gap={3} align={{ base: "stretch", md: "center" }} wrap="wrap">
-                      <Select
-                        size="sm"
-                        maxW="150px"
-                        value={paymentsFilters.status}
-                        onChange={(e) => setPaymentsFilters({ ...paymentsFilters, status: e.target.value })}
-                        borderColor={`${customColor}50`}
-                        _hover={{ borderColor: customColor }}
-                        _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                        bg="white"
-                      >
-                        <option value="success">Success</option>
-                        <option value="pending">Pending</option>
-                        <option value="failed">Failed</option>
-                        <option value="">All</option>
-                      </Select>
-                      <Input
-                        type="date"
-                        size="sm"
-                        maxW="150px"
-                        value={paymentsFilters.from}
-                        onChange={(e) => setPaymentsFilters({ ...paymentsFilters, from: e.target.value })}
-                        borderColor={`${customColor}50`}
-                        _hover={{ borderColor: customColor }}
-                        _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                        bg="white"
-                      />
-                      <Input
-                        type="date"
-                        size="sm"
-                        maxW="150px"
-                        value={paymentsFilters.to}
-                        onChange={(e) => setPaymentsFilters({ ...paymentsFilters, to: e.target.value })}
-                        borderColor={`${customColor}50`}
-                        _hover={{ borderColor: customColor }}
-                        _focus={{ borderColor: customColor, boxShadow: `0 0 0 1px ${customColor}` }}
-                        bg="white"
-                      />
-                    </Flex>
-                  </Box>
-
-                  <Box display="flex" flexDirection="column" px={4} pb={4}>
-                    {isLoadingPayments ? (
-                      <Flex justify="center" align="center" py={10}>
-                        <Spinner size="lg" color={customColor} />
-                        <Text ml={3} fontSize="sm">Loading payments...</Text>
-                      </Flex>
-                    ) : (
-                      <Box display="flex" flexDirection="column">
-                        <Box display={{ base: "none", md: "block" }} overflowX="auto" css={globalScrollbarStyles}>
-                          <Table variant="simple" size="sm" bg="transparent">
-                            <Thead>
-                              <Tr>
-                                {["#", "Order ID", "Type", "Amount", "Status", "Commission", "Date"].map((header) => (
-                                  <Th
-                                    key={header}
-                                    color="gray.100"
-                                    borderColor={`${customColor}30`}
-                                    position="sticky"
-                                    top={0}
-                                    bg={customColor}
-                                    zIndex={10}
-                                    fontWeight="bold"
-                                    fontSize="xs"
-                                    py={1.5}
-                                    borderBottom="2px solid"
-                                    borderBottomColor={`${customColor}50`}
-                                  >
-                                    {header}
-                                  </Th>
-                                ))}
-                              </Tr>
-                            </Thead>
-                            <Tbody bg="transparent">
-                              {payments.length > 0 ? (
-                                payments.map((payment, idx) => (
-                                  <Tr
-                                    key={payment.paymentId || payment._id || idx}
-                                    bg="transparent"
-                                    _hover={{ bg: `${customColor}10` }}
-                                    borderBottom="1px"
-                                    borderColor={`${customColor}20`}
-                                    height="35px"
-                                  >
-                                    <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                      {(paymentsPage - 1) * itemsPerPage + idx + 1}
-                                    </Td>
-                                    <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                      <Text fontSize="xs" noOfLines={1} maxW="200px">
-                                        {payment.providerOrderId || payment.paymentId || "N/A"}
-                                      </Text>
-                                    </Td>
-                                    <Td borderColor={`${customColor}20`} fontSize="xs" py={1} maxW="140px" noOfLines={1}>
-                                      {payment.itemType || "N/A"}
-                                    </Td>
-                                    <Td borderColor={`${customColor}20`} fontSize="xs" py={1} fontWeight="bold">
-                                      {formatCurrency(payment.totalAmount)}
-                                    </Td>
-                                    <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                      <Badge
-                                        colorScheme={payment.status === "success" ? "green" : payment.status === "pending" ? "yellow" : "red"}
-                                        fontSize="3xs"
-                                      >
-                                        {payment.status || "N/A"}
-                                      </Badge>
-                                    </Td>
-                                    <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                      {formatCurrency(payment.commissionAmount)}
-                                    </Td>
-                                    <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                      {formatDate(payment.createdAt)}
-                                    </Td>
-                                  </Tr>
-                                ))
-                              ) : (
-                                <Tr>
-                                  <Td colSpan={7} textAlign="center" py={6}>
-                                    <Text fontSize="xs">No payments found.</Text>
-                                  </Td>
-                                </Tr>
-                              )}
-                            </Tbody>
-                          </Table>
-                        </Box>
-
-                        <Box
-                          display={{ base: "block", md: "none" }}
-                          overflow="auto"
-                          px={3}
-                          py={1.5}
-                          css={globalScrollbarStyles}
-                        >
-                          {payments.length > 0 ? (
-                            payments.map((payment, idx) => (
-                              <PaymentMobileCard key={payment._id || idx} payment={payment} idx={idx} type="payments" />
-                            ))
-                          ) : (
-                            <Center py={10}>
-                              <VStack spacing={2}>
-                                <Icon as={MdPayments} color="gray.300" boxSize={10} />
-                                <Text fontSize="sm" color="gray.500">No payments found</Text>
-                              </VStack>
-                            </Center>
-                          )}
-                        </Box>
-
-                        {payments.length > 0 && (
-                          <Box flexShrink={0} p="10px" borderTop="1px solid" borderColor={`${customColor}20`} bg="transparent">
-                            <Flex justify="flex-end" align="center" gap={3}>
-                              <Button
-                                size="sm"
-                                onClick={() => setPaymentsPage(Math.max(1, paymentsPage - 1))}
-                                isDisabled={paymentsPage === 1}
-                                leftIcon={<FaChevronLeft />}
-                                bg="white"
-                                color={customColor}
-                                border="1px"
-                                borderColor={customColor}
-                                _hover={{ bg: customColor, color: "white" }}
-                                _active={{ bg: "#004d4d", color: "white" }}
-                                _disabled={{
-                                  opacity: 0.5,
-                                  cursor: "not-allowed",
-                                  bg: "gray.100",
-                                  color: "gray.400",
-                                  borderColor: "gray.300",
-                                }}
-                              >
-                                <Text display={{ base: "none", sm: "block" }}>Previous</Text>
-                              </Button>
-                              <Flex align="center" gap={2} bg={`${customColor}10`} px={3} py={1} borderRadius="6px" minW="80px" justify="center">
-                                <Text fontSize="sm" fontWeight="bold" color={customColor}>{paymentsPage}</Text>
-                                <Text fontSize="sm" color="gray.500">/</Text>
-                                <Text fontSize="sm" color="gray.600" fontWeight="medium">{paymentsPages}</Text>
-                              </Flex>
-                              <Button
-                                size="sm"
-                                onClick={() => setPaymentsPage(Math.min(paymentsPages, paymentsPage + 1))}
-                                isDisabled={paymentsPage === paymentsPages}
-                                rightIcon={<FaChevronRight />}
-                                bg="white"
-                                color={customColor}
-                                border="1px"
-                                borderColor={customColor}
-                                _hover={{ bg: customColor, color: "white" }}
-                                _active={{ bg: "#004d4d", color: "white" }}
-                                _disabled={{
-                                  opacity: 0.5,
-                                  cursor: "not-allowed",
-                                  bg: "gray.100",
-                                  color: "gray.400",
-                                  borderColor: "gray.300",
-                                }}
-                              >
-                                <Text display={{ base: "none", sm: "block" }}>Next</Text>
-                              </Button>
-                            </Flex>
-                          </Box>
-                        )}
-                      </Box>
-                    )}
-                  </Box>
-                </TabPanel>
-
-                {/* Technician Finance Tab */}
-                <TabPanel p={0} display="flex" flexDirection="column" overflow="hidden" h="100%">
-                  <Box display="flex" flexDirection="column" px={4} pb={4} pt={3}>
-                    <Box display={{ base: "none", md: "block" }} overflowX="auto" css={globalScrollbarStyles}>
-                      <Table variant="simple" size="sm" bg="transparent">
-                        <Thead>
+                  {/* Table view */}
+                  {isLoadingBreakdown ? (
+                    <Center py={16}>
+                      <VStack spacing={3}>
+                        <Spinner size="lg" color={BRAND} thickness="3px" />
+                        <Text fontSize="sm" color="gray.500" fontWeight="600">
+                          Loading booking financial breakdown...
+                        </Text>
+                      </VStack>
+                    </Center>
+                  ) : breakdown.length === 0 ? (
+                    <Center py={16} bg={isDark ? "gray.800" : "gray.50"} borderRadius="16px">
+                      <VStack spacing={2}>
+                        <Icon as={MdHistory} boxSize={10} color="gray.300" />
+                        <Text fontWeight="700" fontSize="md" color={isDark ? "white" : "gray.700"}>
+                          No booking records found
+                        </Text>
+                        <Text fontSize="xs" color="gray.500">
+                          Try adjusting your filters or date range to see financial statements.
+                        </Text>
+                      </VStack>
+                    </Center>
+                  ) : (
+                    <Box overflowX="auto" borderRadius="14px" border="1px solid" borderColor={isDark ? "gray.700" : "gray.200"}>
+                      <Table variant="simple" size="sm">
+                        <Thead bg={isDark ? "gray.900" : "gray.50"}>
                           <Tr>
-                            {["#", "Technician", "Contact", "Status", "Actions"].map((header) => (
-                              <Th
-                                key={header}
-                                color="gray.100"
-                                borderColor={`${customColor}30`}
-                                position="sticky"
-                                top={0}
-                                bg={customColor}
-                                zIndex={10}
-                                fontWeight="bold"
-                                fontSize="xs"
-                                py={1.5}
-                                borderBottom="2px solid"
-                                borderBottomColor={`${customColor}50`}
-                              >
-                                {header}
-                              </Th>
-                            ))}
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase" py={3.5}>#</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Booking & Service</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Technician</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase" isNumeric>Service Fee</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase" isNumeric>GST / Tip</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase" isNumeric>Platform Cut</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase" isNumeric>Tech Net</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase" isNumeric>Total</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Pay Status</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Settlement</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Date</Th>
                           </Tr>
                         </Thead>
-                        <Tbody bg="transparent">
-                          {technicians.length > 0 ? (
-                            technicians.map((tech, idx) => (
+                        <Tbody>
+                          {breakdown.map((item, idx) => {
+                            const bId = item.bookingId || item._id;
+                            const total = item.totalAmount || (item.serviceAmount + item.gstAmount + item.tipAmount) || 0;
+                            const isPaid = item.paymentStatus === "paid";
+                            const isSettled = item.settlementStatus === "settled";
+
+                            return (
                               <Tr
-                                key={tech._id || idx}
-                                bg="transparent"
-                                _hover={{ bg: `${customColor}10` }}
-                                borderBottom="1px"
-                                borderColor={`${customColor}20`}
-                                height="35px"
+                                key={bId || idx}
+                                _hover={{ bg: isDark ? "gray.800" : "gray.50" }}
+                                transition="background 0.15s ease"
                               >
-                                <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                  {idx + 1}
+                                <Td fontSize="xs" color="gray.500" fontWeight="600">
+                                  {(breakdownPage - 1) * itemsPerPage + idx + 1}
                                 </Td>
-                                <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                  <Flex align="center" gap={2}>
-                                    <Icon as={MdPerson} color={customColor} boxSize={3.5} />
-                                    <Text fontWeight="medium" fontSize="xs" noOfLines={1}>
-                                      {getTechName(tech)}
+
+                                <Td maxW="220px">
+                                  <VStack align="flex-start" spacing={0.5}>
+                                    <Text fontSize="xs" fontWeight="700" color={isDark ? "white" : "gray.800"} noOfLines={1}>
+                                      {item.service || item.serviceName || "Service"}
                                     </Text>
-                                  </Flex>
+                                    {bId && (
+                                      <HStack spacing={1}>
+                                        <Text fontSize="3xs" color="gray.400" fontFamily="mono">
+                                          ID: {String(bId).slice(-8)}
+                                        </Text>
+                                        <IconButton
+                                          aria-label="Copy booking ID"
+                                          icon={<FaCopy size={9} />}
+                                          size="xs"
+                                          h="14px"
+                                          w="14px"
+                                          minW="14px"
+                                          variant="ghost"
+                                          color="gray.400"
+                                          _hover={{ color: BRAND }}
+                                          onClick={() => copyToClipboard(bId, "Booking ID")}
+                                        />
+                                      </HStack>
+                                    )}
+                                  </VStack>
                                 </Td>
-                                <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                  {tech.userId?.mobileNumber || tech.mobileNumber || "-"}
+
+                                <Td maxW="160px">
+                                  <HStack spacing={1.5}>
+                                    <Icon as={FaUserTie} boxSize={3} color="gray.400" />
+                                    <Text fontSize="xs" fontWeight="600" color={isDark ? "gray.200" : "gray.700"} noOfLines={1}>
+                                      {item.technician || "Unassigned"}
+                                    </Text>
+                                  </HStack>
                                 </Td>
-                                <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
+
+                                <Td fontSize="xs" fontWeight="600" isNumeric>
+                                  {formatCurrency(item.serviceAmount)}
+                                </Td>
+
+                                <Td fontSize="xs" isNumeric>
+                                  <VStack align="flex-end" spacing={0}>
+                                    <Text fontSize="2xs" color="orange.600">
+                                      GST: {formatCurrency(item.gstAmount)}
+                                    </Text>
+                                    {item.tipAmount > 0 && (
+                                      <Text fontSize="3xs" color="purple.600">
+                                        Tip: {formatCurrency(item.tipAmount)}
+                                      </Text>
+                                    )}
+                                  </VStack>
+                                </Td>
+
+                                <Td fontSize="xs" fontWeight="700" color="purple.600" isNumeric>
+                                  {formatCurrency(item.commissionAmount)}
+                                </Td>
+
+                                <Td fontSize="xs" fontWeight="800" color="green.600" isNumeric>
+                                  {formatCurrency(item.technicianAmount)}
+                                </Td>
+
+                                <Td fontSize="xs" fontWeight="900" color={isDark ? "white" : "gray.850"} isNumeric>
+                                  {formatCurrency(total)}
+                                </Td>
+
+                                <Td>
                                   <Badge
-                                    bg={tech.workStatus === "approved" ? customColor : "gray.300"}
-                                    color="white"
+                                    colorScheme={isPaid ? "green" : item.paymentStatus === "pending" ? "yellow" : "gray"}
+                                    borderRadius="full"
                                     px={2}
                                     py={0.5}
-                                    borderRadius="full"
-                                    fontSize="2xs"
+                                    fontSize="3xs"
+                                    textTransform="uppercase"
                                   >
-                                    {tech.workStatus || "N/A"}
+                                    {item.paymentStatus || "unknown"}
                                   </Badge>
                                 </Td>
-                                <Td borderColor={`${customColor}20`} fontSize="xs" py={1}>
-                                  <IconButton
-                                    aria-label="View finance detail"
-                                    icon={<MdVisibility />}
-                                    bg="white"
-                                    color="blue.500"
-                                    border="1px"
-                                    borderColor="blue.500"
-                                    _hover={{ bg: "blue.500", color: "white" }}
-                                    _active={{ bg: "blue.600", color: "white" }}
-                                    size="xs"
-                                    isLoading={techLoadingId === (tech._id || tech.userId)}
-                                    onClick={() => handleViewTechnicianDetail(tech)}
-                                  />
+
+                                <Td>
+                                  <Badge
+                                    colorScheme={isSettled ? "green" : "yellow"}
+                                    variant="subtle"
+                                    borderRadius="full"
+                                    px={2}
+                                    py={0.5}
+                                    fontSize="3xs"
+                                    textTransform="uppercase"
+                                  >
+                                    {item.settlementStatus || "pending"}
+                                  </Badge>
+                                </Td>
+
+                                <Td fontSize="2xs" color="gray.500" whiteSpace="nowrap">
+                                  {formatDate(item.createdAt)}
                                 </Td>
                               </Tr>
-                            ))
-                          ) : (
-                            <Tr>
-                              <Td colSpan={5} textAlign="center" py={6}>
-                                <Text fontSize="xs">No technicians found.</Text>
-                              </Td>
-                            </Tr>
-                          )}
+                            );
+                          })}
                         </Tbody>
                       </Table>
                     </Box>
+                  )}
 
-                    <Box
-                      display={{ base: "block", md: "none" }}
-                      overflow="auto"
-                      px={3}
-                      py={1.5}
-                      css={globalScrollbarStyles}
-                    >
-                      {technicians.length > 0 ? (
-                        technicians.map((tech, idx) => (
-                          <Box
-                            key={tech._id || idx}
-                            p={3}
-                            bg="white"
-                            borderWidth="1px"
-                            borderColor={`${customColor}20`}
-                            borderRadius="md"
-                            shadow="sm"
-                            mb={3}
-                          >
-                            <Flex justify="space-between" align="center" mb={1}>
-                              <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
-                                {getTechName(tech)}
-                              </Text>
-                              <IconButton
-                                aria-label="View finance detail"
-                                icon={<MdVisibility />}
-                                size="xs"
-                                colorScheme="blue"
-                                variant="ghost"
-                                isLoading={techLoadingId === (tech._id || tech.userId)}
-                                onClick={() => handleViewTechnicianDetail(tech)}
-                              />
-                            </Flex>
-                            <Text fontSize="2xs" color="gray.600" noOfLines={1}>
-                              {tech.userId?.mobileNumber || tech.mobileNumber || "No contact"}
-                            </Text>
-                          </Box>
-                        ))
-                      ) : (
-                        <Center py={10}>
-                          <VStack spacing={2}>
-                            <Icon as={MdPerson} color="gray.300" boxSize={10} />
-                            <Text fontSize="sm" color="gray.500">No technicians found</Text>
-                          </VStack>
-                        </Center>
-                      )}
-                    </Box>
-                  </Box>
-                </TabPanel>
-              </TabPanels>
-            </Tabs>
-          </CardBody>
-        </Card>
-      </Box>
+                  {/* Pagination */}
+                  {breakdown.length > 0 && (
+                    <Flex justify="space-between" align="center" pt={2} flexWrap="wrap" gap={3}>
+                      <Text fontSize="xs" color="gray.500">
+                        Showing page <strong>{breakdownPage}</strong> of <strong>{breakdownPages}</strong> • Total {breakdownTotal} records
+                      </Text>
 
-      {/* Technician Finance Detail Modal */}
-      <Modal isOpen={isTechDetailOpen} onClose={() => setIsTechDetailOpen(false)} size="lg">
-        <ModalOverlay />
-        <ModalContent maxW="650px">
-          <ModalHeader color="gray.700">
-            <HStack spacing={2}>
-              <Icon as={MdAccountBalanceWallet} color={customColor} />
-              <Text>Technician Finance Details</Text>
-            </HStack>
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody maxH="70vh" overflowY="auto">
-            {selectedTechDetail && (
-              <VStack spacing={4} align="stretch">
-                <Box bg={`${customColor}05`} p={4} borderRadius="md">
-                  <Text fontSize="md" fontWeight="bold" color={customColor}>
-                    {selectedTechDetail.data?.technician?.name || getTechName(selectedTechDetail.technician)}
-                  </Text>
-                  <Text fontSize="xs" color="gray.500">
-                    {selectedTechDetail.data?.technician?.mobile ||
-                      selectedTechDetail.technician.userId?.mobileNumber ||
-                      selectedTechDetail.technician.mobileNumber ||
-                      "No contact"}
-                  </Text>
-                  <Badge
-                    bg={selectedTechDetail.data?.technician?.workStatus === "approved" ? customColor : "gray.300"}
-                    color="white"
-                    mt={1}
-                    borderRadius="full"
-                    px={2}
-                    fontSize="2xs"
+                      <HStack spacing={2}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          borderRadius="8px"
+                          isDisabled={breakdownPage === 1}
+                          onClick={() => setBreakdownPage(Math.max(1, breakdownPage - 1))}
+                          leftIcon={<FaChevronLeft size={10} />}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          borderRadius="8px"
+                          isDisabled={breakdownPage === breakdownPages}
+                          onClick={() => setBreakdownPage(Math.min(breakdownPages, breakdownPage + 1))}
+                          rightIcon={<FaChevronRight size={10} />}
+                        >
+                          Next
+                        </Button>
+                      </HStack>
+                    </Flex>
+                  )}
+                </VStack>
+              </TabPanel>
+
+              {/* ================= TAB 2: PAYMENTS LEDGER ================= */}
+              <TabPanel p={6}>
+                <VStack spacing={5} align="stretch">
+                  {/* Ledger Filters */}
+                  <Flex
+                    direction={{ base: "column", sm: "row" }}
+                    justify="space-between"
+                    align={{ base: "stretch", sm: "center" }}
+                    gap={3}
+                    p={4}
+                    bg={isDark ? "gray.800" : "gray.50"}
+                    borderRadius="14px"
+                    border="1px solid"
+                    borderColor={isDark ? "gray.700" : "gray.200"}
                   >
-                    {selectedTechDetail.data?.technician?.workStatus || "N/A"}
-                  </Badge>
+                    <HStack spacing={3} flex="1" flexWrap="wrap">
+                      <Box position="relative" minW={{ base: "100%", sm: "240px" }}>
+                        <Input
+                          size="sm"
+                          borderRadius="8px"
+                          placeholder="Search order ID or payment ID..."
+                          value={paymentsSearch}
+                          onChange={(e) => setPaymentsSearch(e.target.value)}
+                          bg={isDark ? "gray.900" : "white"}
+                          borderColor={isDark ? "gray.700" : "gray.300"}
+                          pl={8}
+                        />
+                        <Icon
+                          as={FaSearch}
+                          position="absolute"
+                          left={3}
+                          top="50%"
+                          transform="translateY(-50%)"
+                          color="gray.400"
+                          boxSize={3}
+                        />
+                      </Box>
+
+                      <Select
+                        size="sm"
+                        borderRadius="8px"
+                        maxW="140px"
+                        value={paymentsFilters.status}
+                        onChange={(e) => setPaymentsFilters({ ...paymentsFilters, status: e.target.value })}
+                        bg={isDark ? "gray.900" : "white"}
+                        borderColor={isDark ? "gray.700" : "gray.300"}
+                      >
+                        <option value="">Status: All</option>
+                        <option value="success">Success</option>
+                        <option value="pending">Pending</option>
+                        <option value="failed">Failed</option>
+                      </Select>
+
+                      <HStack spacing={2}>
+                        <Input
+                          type="date"
+                          size="sm"
+                          borderRadius="8px"
+                          maxW="140px"
+                          value={paymentsFilters.from}
+                          onChange={(e) => setPaymentsFilters({ ...paymentsFilters, from: e.target.value })}
+                          bg={isDark ? "gray.900" : "white"}
+                          borderColor={isDark ? "gray.700" : "gray.300"}
+                        />
+                        <Text fontSize="xs" color="gray.400">to</Text>
+                        <Input
+                          type="date"
+                          size="sm"
+                          borderRadius="8px"
+                          maxW="140px"
+                          value={paymentsFilters.to}
+                          onChange={(e) => setPaymentsFilters({ ...paymentsFilters, to: e.target.value })}
+                          bg={isDark ? "gray.900" : "white"}
+                          borderColor={isDark ? "gray.700" : "gray.300"}
+                        />
+                      </HStack>
+                    </HStack>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      color="gray.500"
+                      _hover={{ color: "red.500" }}
+                      onClick={() => {
+                        setPaymentsSearch("");
+                        setPaymentsFilters({ status: "", from: "", to: "" });
+                      }}
+                    >
+                      Reset
+                    </Button>
+                  </Flex>
+
+                  {/* Ledger Table */}
+                  {isLoadingPayments ? (
+                    <Center py={16}>
+                      <VStack spacing={3}>
+                        <Spinner size="lg" color={BRAND} thickness="3px" />
+                        <Text fontSize="sm" color="gray.500" fontWeight="600">
+                          Loading transaction ledger...
+                        </Text>
+                      </VStack>
+                    </Center>
+                  ) : payments.length === 0 ? (
+                    <Center py={16} bg={isDark ? "gray.800" : "gray.50"} borderRadius="16px">
+                      <VStack spacing={2}>
+                        <Icon as={MdPayments} boxSize={10} color="gray.300" />
+                        <Text fontWeight="700" fontSize="md" color={isDark ? "white" : "gray.700"}>
+                          No transactions found
+                        </Text>
+                        <Text fontSize="xs" color="gray.500">
+                          Try adjusting status filter or date range.
+                        </Text>
+                      </VStack>
+                    </Center>
+                  ) : (
+                    <Box overflowX="auto" borderRadius="14px" border="1px solid" borderColor={isDark ? "gray.700" : "gray.200"}>
+                      <Table variant="simple" size="sm">
+                        <Thead bg={isDark ? "gray.900" : "gray.50"}>
+                          <Tr>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase" py={3.5}>#</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Order & Gateway Reference</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Item / Service Type</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase" isNumeric>Gross Amount</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase" isNumeric>Platform Cut</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Status</Th>
+                            <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Timestamp</Th>
+                          </Tr>
+                        </Thead>
+                        <Tbody>
+                          {payments.map((p, idx) => {
+                            const orderId = p.providerOrderId || p.paymentId || p._id;
+                            const isSuccess = p.status === "success";
+                            const isPending = p.status === "pending";
+
+                            return (
+                              <Tr
+                                key={p.paymentId || p._id || idx}
+                                _hover={{ bg: isDark ? "gray.800" : "gray.50" }}
+                                transition="background 0.15s ease"
+                              >
+                                <Td fontSize="xs" color="gray.500" fontWeight="600">
+                                  {(paymentsPage - 1) * itemsPerPage + idx + 1}
+                                </Td>
+
+                                <Td maxW="250px">
+                                  <HStack spacing={1.5}>
+                                    <Text fontSize="xs" fontWeight="700" fontFamily="mono" color={isDark ? "white" : "gray.850"} noOfLines={1}>
+                                      {orderId || "N/A"}
+                                    </Text>
+                                    {orderId && (
+                                      <IconButton
+                                        aria-label="Copy reference"
+                                        icon={<FaCopy size={9} />}
+                                        size="xs"
+                                        h="16px"
+                                        w="16px"
+                                        minW="16px"
+                                        variant="ghost"
+                                        color="gray.400"
+                                        _hover={{ color: BRAND }}
+                                        onClick={() => copyToClipboard(orderId, "Reference")}
+                                      />
+                                    )}
+                                  </HStack>
+                                </Td>
+
+                                <Td fontSize="xs" color={isDark ? "gray.300" : "gray.700"} fontWeight="600">
+                                  {p.itemType || "Service Booking"}
+                                </Td>
+
+                                <Td fontSize="xs" fontWeight="900" color={isDark ? "white" : "gray.850"} isNumeric>
+                                  {formatCurrency(p.totalAmount || p.amount)}
+                                </Td>
+
+                                <Td fontSize="xs" fontWeight="700" color="purple.600" isNumeric>
+                                  {formatCurrency(p.commissionAmount)}
+                                </Td>
+
+                                <Td>
+                                  <Badge
+                                    colorScheme={isSuccess ? "green" : isPending ? "yellow" : "red"}
+                                    borderRadius="full"
+                                    px={2}
+                                    py={0.5}
+                                    fontSize="3xs"
+                                    textTransform="uppercase"
+                                    display="inline-flex"
+                                    alignItems="center"
+                                    gap={1}
+                                  >
+                                    <Box
+                                      as="span"
+                                      w="5px"
+                                      h="5px"
+                                      borderRadius="full"
+                                      bg={isSuccess ? "green.500" : isPending ? "yellow.500" : "red.500"}
+                                    />
+                                    {p.status || "unknown"}
+                                  </Badge>
+                                </Td>
+
+                                <Td fontSize="2xs" color="gray.500" whiteSpace="nowrap">
+                                  {formatDate(p.createdAt)}
+                                </Td>
+                              </Tr>
+                            );
+                          })}
+                        </Tbody>
+                      </Table>
+                    </Box>
+                  )}
+
+                  {/* Pagination */}
+                  {payments.length > 0 && (
+                    <Flex justify="space-between" align="center" pt={2} flexWrap="wrap" gap={3}>
+                      <Text fontSize="xs" color="gray.500">
+                        Showing page <strong>{paymentsPage}</strong> of <strong>{paymentsPages}</strong> • Total {paymentsTotal} transactions
+                      </Text>
+
+                      <HStack spacing={2}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          borderRadius="8px"
+                          isDisabled={paymentsPage === 1}
+                          onClick={() => setPaymentsPage(Math.max(1, paymentsPage - 1))}
+                          leftIcon={<FaChevronLeft size={10} />}
+                        >
+                          Previous
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          borderRadius="8px"
+                          isDisabled={paymentsPage === paymentsPages}
+                          onClick={() => setPaymentsPage(Math.min(paymentsPages, paymentsPage + 1))}
+                          rightIcon={<FaChevronRight size={10} />}
+                        >
+                          Next
+                        </Button>
+                      </HStack>
+                    </Flex>
+                  )}
+                </VStack>
+              </TabPanel>
+
+              {/* ================= TAB 3: TECHNICIAN FINANCIAL PROFILES ================= */}
+              <TabPanel p={6}>
+                <VStack spacing={5} align="stretch">
+                  {/* Search Bar */}
+                  <Flex
+                    direction={{ base: "column", sm: "row" }}
+                    justify="space-between"
+                    align={{ base: "stretch", sm: "center" }}
+                    gap={3}
+                    p={4}
+                    bg={isDark ? "gray.800" : "gray.50"}
+                    borderRadius="14px"
+                    border="1px solid"
+                    borderColor={isDark ? "gray.700" : "gray.200"}
+                  >
+                    <Box position="relative" minW={{ base: "100%", sm: "300px" }}>
+                      <Input
+                        size="sm"
+                        borderRadius="8px"
+                        placeholder="Search technician by name or mobile number..."
+                        value={techSearch}
+                        onChange={(e) => setTechSearch(e.target.value)}
+                        bg={isDark ? "gray.900" : "white"}
+                        borderColor={isDark ? "gray.700" : "gray.300"}
+                        pl={8}
+                      />
+                      <Icon
+                        as={FaSearch}
+                        position="absolute"
+                        left={3}
+                        top="50%"
+                        transform="translateY(-50%)"
+                        color="gray.400"
+                        boxSize={3}
+                      />
+                    </Box>
+
+                    <Text fontSize="xs" color="gray.500" fontWeight="600">
+                      Showing {filteredTechnicians.length} technician profiles
+                    </Text>
+                  </Flex>
+
+                  {/* Technicians List / Cards */}
+                  {filteredTechnicians.length === 0 ? (
+                    <Center py={16} bg={isDark ? "gray.800" : "gray.50"} borderRadius="16px">
+                      <VStack spacing={2}>
+                        <Icon as={MdPerson} boxSize={10} color="gray.300" />
+                        <Text fontWeight="700" fontSize="md" color={isDark ? "white" : "gray.700"}>
+                          No technicians found
+                        </Text>
+                        <Text fontSize="xs" color="gray.500">
+                          Try searching with a different name or mobile number.
+                        </Text>
+                      </VStack>
+                    </Center>
+                  ) : (
+                    <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                      {filteredTechnicians.map((tech) => {
+                        const techId = tech._id || tech.userId || tech.id;
+                        const name = getTechName(tech);
+                        const phone = tech.userId?.mobileNumber || tech.mobileNumber || "—";
+                        const isApproved = tech.workStatus === "approved";
+                        const isLoadingThis = techLoadingId === techId;
+
+                        return (
+                          <Box
+                            key={techId}
+                            p={5}
+                            bg={isDark ? "gray.800" : "white"}
+                            borderRadius="16px"
+                            border="1px solid"
+                            borderColor={isDark ? "gray.700" : "gray.200"}
+                            boxShadow="sm"
+                            _hover={{ borderColor: BRAND, boxShadow: "md" }}
+                            transition="all 0.2s"
+                          >
+                            <Flex justify="space-between" align="flex-start" mb={3}>
+                              <HStack spacing={3}>
+                                <Center
+                                  w="42px"
+                                  h="42px"
+                                  borderRadius="12px"
+                                  bg={BRAND}
+                                  color="white"
+                                  fontWeight="900"
+                                  fontSize="sm"
+                                >
+                                  {name.slice(0, 2).toUpperCase()}
+                                </Center>
+                                <Box>
+                                  <Text fontWeight="800" fontSize="sm" color={isDark ? "white" : "gray.850"} noOfLines={1}>
+                                    {name}
+                                  </Text>
+                                  <Text fontSize="xs" color="gray.500">
+                                    {phone}
+                                  </Text>
+                                </Box>
+                              </HStack>
+
+                              <Badge
+                                colorScheme={isApproved ? "teal" : "gray"}
+                                borderRadius="full"
+                                px={2}
+                                py={0.5}
+                                fontSize="3xs"
+                                textTransform="capitalize"
+                              >
+                                {tech.workStatus || "pending"}
+                              </Badge>
+                            </Flex>
+
+                            <Divider my={3} borderColor={isDark ? "gray.700" : "gray.100"} />
+
+                            <Flex justify="space-between" align="center">
+                              <Box>
+                                <Text fontSize="2xs" color="gray.400" fontWeight="700" textTransform="uppercase">
+                                  Wallet Balance
+                                </Text>
+                                <Text fontSize="md" fontWeight="900" color="teal.500">
+                                  {formatCurrency(tech.walletBalance || 0)}
+                                </Text>
+                              </Box>
+
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                borderColor={BRAND}
+                                color={BRAND}
+                                _hover={{ bg: BRAND, color: "white" }}
+                                borderRadius="8px"
+                                fontWeight="700"
+                                fontSize="xs"
+                                leftIcon={<MdVisibility size={14} />}
+                                isLoading={isLoadingThis}
+                                onClick={() => handleViewTechnicianDetail(tech)}
+                              >
+                                Financial Audit
+                              </Button>
+                            </Flex>
+                          </Box>
+                        );
+                      })}
+                    </SimpleGrid>
+                  )}
+                </VStack>
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </Box>
+      </VStack>
+
+      {/* ================= 5. TECHNICIAN FINANCIAL STATEMENT AUDIT MODAL ================= */}
+      <AppModal
+        isOpen={isTechDetailOpen}
+        onClose={() => setIsTechDetailOpen(false)}
+        title="Technician Financial Statement"
+        subtitle="Detailed booking commissions, customer tips, wallet credit ledger, and payout history."
+        icon={MdAccountBalanceWallet}
+        iconColor={BRAND}
+        size="3xl"
+      >
+        {selectedTechDetail && (
+          <VStack spacing={5} align="stretch" py={1}>
+            {/* Header Identity Card */}
+            <Box
+              p={4}
+              bg={isDark ? "gray.800" : "gray.50"}
+              borderRadius="14px"
+              border="1px solid"
+              borderColor={isDark ? "gray.700" : "gray.200"}
+            >
+              <Flex
+                direction={{ base: "column", sm: "row" }}
+                justify="space-between"
+                align={{ base: "flex-start", sm: "center" }}
+                gap={3}
+              >
+                <HStack spacing={3}>
+                  <Center w="48px" h="48px" borderRadius="14px" bg={BRAND} color="white" fontWeight="900" fontSize="md">
+                    {(selectedTechDetail.data?.technician?.name || getTechName(selectedTechDetail.technician))
+                      .slice(0, 2)
+                      .toUpperCase()}
+                  </Center>
+                  <Box>
+                    <HStack spacing={2}>
+                      <Text fontSize="md" fontWeight="800" color={isDark ? "white" : "gray.850"}>
+                        {selectedTechDetail.data?.technician?.name || getTechName(selectedTechDetail.technician)}
+                      </Text>
+                      <Badge
+                        colorScheme={selectedTechDetail.data?.technician?.workStatus === "approved" ? "teal" : "gray"}
+                        borderRadius="full"
+                        px={2}
+                        fontSize="3xs"
+                        textTransform="capitalize"
+                      >
+                        {selectedTechDetail.data?.technician?.workStatus || "Active"}
+                      </Badge>
+                    </HStack>
+                    <Text fontSize="xs" color="gray.500" mt={0.5}>
+                      {selectedTechDetail.data?.technician?.mobile ||
+                        selectedTechDetail.technician.userId?.mobileNumber ||
+                        selectedTechDetail.technician.mobileNumber ||
+                        "No contact registered"}
+                    </Text>
+                  </Box>
+                </HStack>
+
+                <Box
+                  p={3}
+                  bg={isDark ? "gray.900" : "teal.50"}
+                  borderRadius="12px"
+                  border="1px solid"
+                  borderColor={isDark ? "gray.700" : "teal.200"}
+                  textAlign={{ base: "left", sm: "right" }}
+                  minW="150px"
+                >
+                  <Text fontSize="2xs" color="teal.600" fontWeight="700" textTransform="uppercase">
+                    Current Wallet Balance
+                  </Text>
+                  <Text fontSize="xl" fontWeight="900" color="teal.600">
+                    {formatCurrency(selectedTechDetail.data?.technician?.walletBalance)}
+                  </Text>
+                </Box>
+              </Flex>
+            </Box>
+
+            {/* Section 1: Service & Booking Economics */}
+            <Box>
+              <Text fontSize="xs" fontWeight="800" color="gray.500" textTransform="uppercase" mb={3} letterSpacing="0.5px">
+                Booking Revenue & Commissions
+              </Text>
+              <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={3}>
+                <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                  <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">Jobs Completed</Text>
+                  <Text fontSize="md" fontWeight="800" color={isDark ? "white" : "gray.800"} mt={0.5}>
+                    {selectedTechDetail.data?.bookings?.count || 0}
+                  </Text>
                 </Box>
 
-                <Box>
-                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Bookings (Paid & Completed)</Text>
-                  <SimpleGrid columns={{ base: 2, md: 3 }} spacing={3}>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Jobs Completed</Text>
-                      <Text fontSize="lg" fontWeight="bold">
-                        {selectedTechDetail.data?.bookings?.count || 0}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Settled Jobs</Text>
-                      <Text fontSize="lg" fontWeight="bold">
-                        {selectedTechDetail.data?.bookings?.settledCount || 0}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Service Amount</Text>
-                      <Text fontSize="lg" fontWeight="bold">
-                        {formatCurrency(selectedTechDetail.data?.bookings?.serviceAmount)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">GST</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="orange.600">
-                        {formatCurrency(selectedTechDetail.data?.bookings?.gst)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Tips</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="purple.600">
-                        {formatCurrency(selectedTechDetail.data?.bookings?.tip)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Commission</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="red.600">
-                        {formatCurrency(selectedTechDetail.data?.bookings?.commission)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Net Earnings</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="green.600">
-                        {formatCurrency(selectedTechDetail.data?.bookings?.earned)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Wallet Balance</Text>
-                      <Text fontSize="lg" fontWeight="bold" color={customColor}>
-                        {formatCurrency(selectedTechDetail.data?.technician?.walletBalance)}
-                      </Text>
-                    </Box>
-                  </SimpleGrid>
+                <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                  <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">Settled Jobs</Text>
+                  <Text fontSize="md" fontWeight="800" color="green.600" mt={0.5}>
+                    {selectedTechDetail.data?.bookings?.settledCount || 0}
+                  </Text>
                 </Box>
 
-                <Box>
-                  <Text fontWeight="bold" color="gray.600" fontSize="sm" mb={2}>Wallet Ledger</Text>
-                  <SimpleGrid columns={{ base: 2, md: 3 }} spacing={3}>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Job Earnings</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="green.600">
-                        {formatCurrency(selectedTechDetail.data?.ledger?.jobEarnings)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Tips</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="purple.600">
-                        {formatCurrency(selectedTechDetail.data?.ledger?.tips)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Bonuses</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="teal.600">
-                        {formatCurrency(selectedTechDetail.data?.ledger?.bonuses)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Withdrawals</Text>
-                      <Text fontSize="lg" fontWeight="bold">
-                        {formatCurrency(selectedTechDetail.data?.ledger?.withdrawals)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Penalties</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="red.600">
-                        {formatCurrency(selectedTechDetail.data?.ledger?.penalties)}
-                      </Text>
-                    </Box>
-                    <Box>
-                      <Text fontSize="xs" color="gray.500">Total Credited</Text>
-                      <Text fontSize="lg" fontWeight="bold" color="green.600">
-                        {formatCurrency(selectedTechDetail.data?.ledger?.totalCredited)}
-                      </Text>
-                    </Box>
-                  </SimpleGrid>
+                <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                  <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">Service Value</Text>
+                  <Text fontSize="md" fontWeight="800" color={isDark ? "white" : "gray.800"} mt={0.5}>
+                    {formatCurrency(selectedTechDetail.data?.bookings?.serviceAmount)}
+                  </Text>
                 </Box>
-              </VStack>
-            )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
-    </Flex>
+
+                <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                  <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">GST Collected</Text>
+                  <Text fontSize="md" fontWeight="800" color="orange.600" mt={0.5}>
+                    {formatCurrency(selectedTechDetail.data?.bookings?.gst)}
+                  </Text>
+                </Box>
+
+                <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                  <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">Tips Received</Text>
+                  <Text fontSize="md" fontWeight="800" color="purple.600" mt={0.5}>
+                    {formatCurrency(selectedTechDetail.data?.bookings?.tip)}
+                  </Text>
+                </Box>
+
+                <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                  <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">Commission Cut</Text>
+                  <Text fontSize="md" fontWeight="800" color="red.500" mt={0.5}>
+                    {formatCurrency(selectedTechDetail.data?.bookings?.commission)}
+                  </Text>
+                </Box>
+
+                <Box p={3} bg={isDark ? "gray.800" : "green.50"} borderRadius="12px" border="1px solid" borderColor={isDark ? "transparent" : "green.200"}>
+                  <Text fontSize="3xs" color="green.700" fontWeight="700" textTransform="uppercase">Net Earned</Text>
+                  <Text fontSize="md" fontWeight="900" color="green.700" mt={0.5}>
+                    {formatCurrency(selectedTechDetail.data?.bookings?.earned)}
+                  </Text>
+                </Box>
+              </SimpleGrid>
+            </Box>
+
+            <Divider borderColor={isDark ? "gray.700" : "gray.200"} />
+
+            {/* Section 2: Wallet Ledger Credits & Deductions */}
+            <Box>
+              <Text fontSize="xs" fontWeight="800" color="gray.500" textTransform="uppercase" mb={3} letterSpacing="0.5px">
+                Wallet Ledger Inflows & Deductions
+              </Text>
+              <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={3}>
+                <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                  <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">Job Inflow Credited</Text>
+                  <Text fontSize="md" fontWeight="800" color="green.600" mt={0.5}>
+                    {formatCurrency(selectedTechDetail.data?.ledger?.jobEarnings)}
+                  </Text>
+                </Box>
+
+                <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                  <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">Tips Credited</Text>
+                  <Text fontSize="md" fontWeight="800" color="purple.600" mt={0.5}>
+                    {formatCurrency(selectedTechDetail.data?.ledger?.tips)}
+                  </Text>
+                </Box>
+
+                <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                  <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">Bonuses Added</Text>
+                  <Text fontSize="md" fontWeight="800" color="teal.600" mt={0.5}>
+                    {formatCurrency(selectedTechDetail.data?.ledger?.bonuses)}
+                  </Text>
+                </Box>
+
+                <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                  <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">Withdrawals Paid</Text>
+                  <Text fontSize="md" fontWeight="800" color={isDark ? "white" : "gray.800"} mt={0.5}>
+                    {formatCurrency(selectedTechDetail.data?.ledger?.withdrawals)}
+                  </Text>
+                </Box>
+
+                <Box p={3} bg={isDark ? "gray.800" : "red.50"} borderRadius="12px" border="1px solid" borderColor={isDark ? "transparent" : "red.200"}>
+                  <Text fontSize="3xs" color="red.700" fontWeight="700" textTransform="uppercase">Penalties Deducted</Text>
+                  <Text fontSize="md" fontWeight="800" color="red.600" mt={0.5}>
+                    {formatCurrency(selectedTechDetail.data?.ledger?.penalties)}
+                  </Text>
+                </Box>
+
+                <Box p={3} bg={isDark ? "gray.800" : "green.50"} borderRadius="12px" border="1px solid" borderColor={isDark ? "transparent" : "green.200"}>
+                  <Text fontSize="3xs" color="green.700" fontWeight="700" textTransform="uppercase">Total Lifetime Credited</Text>
+                  <Text fontSize="md" fontWeight="900" color="green.700" mt={0.5}>
+                    {formatCurrency(selectedTechDetail.data?.ledger?.totalCredited)}
+                  </Text>
+                </Box>
+              </SimpleGrid>
+            </Box>
+
+            <Flex justify="flex-end" pt={2}>
+              <Button size="sm" variant="outline" onClick={() => setIsTechDetailOpen(false)} borderRadius="8px">
+                Close Statement
+              </Button>
+            </Flex>
+          </VStack>
+        )}
+      </AppModal>
+    </Box>
   );
 }

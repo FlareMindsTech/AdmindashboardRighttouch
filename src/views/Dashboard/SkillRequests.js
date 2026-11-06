@@ -2,6 +2,9 @@
 // Covers Postman folder 8: GET /admin/technician-skill-requests,
 // PUT /admin/technician-skill-requests/:requestId/review
 import React, { useState, useEffect, useCallback } from "react";
+import { useAppToast } from "components/feedback";
+import AppModal from "components/common/AppModal";
+import ErrorState from "components/feedback/ErrorState";
 import {
   Box,
   Button,
@@ -14,19 +17,11 @@ import {
   Th,
   Thead,
   Tr,
-  useToast,
   Spinner,
   Center,
   Badge,
   HStack,
   Select,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Textarea,
   FormControl,
   FormLabel,
@@ -48,9 +43,10 @@ const statusColor = (s) => {
 };
 
 export default function SkillRequests() {
-  const toast = useToast();
+  const toast = useAppToast();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 10;
@@ -68,9 +64,11 @@ export default function SkillRequests() {
     const { data, error } = await listSkillRequests(params);
     setLoading(false);
     if (error) {
-      toast({ title: "Failed to load skill requests", description: error, status: "error", duration: 3000, isClosable: true });
+      setLoadError(error);
+      toast.error(error, { title: "Failed to load skill requests", duration: 3000, isClosable: true });
       return;
     }
+    setLoadError(null);
     const list = data?.result ?? data?.data ?? data ?? [];
     setRows(Array.isArray(list) ? list : list?.requests ?? []);
   }, [statusFilter, toast]);
@@ -105,7 +103,7 @@ export default function SkillRequests() {
     });
     setSubmitting(false);
     if (error) {
-      toast({ title: "Review failed", description: error, status: "error", duration: 3000, isClosable: true });
+      toast.error(error, { title: "Review failed", duration: 3000, isClosable: true });
       return;
     }
     toast({ title: `Request ${action}ed`, status: "success", duration: 2500, isClosable: true });
@@ -138,7 +136,14 @@ export default function SkillRequests() {
           </Flex>
         </CardHeader>
         <CardBody>
-          {loading ? (
+          {loadError ? (
+            <ErrorState
+              compact
+              error={loadError}
+              title="Could not load skill requests"
+              onRetry={fetchList}
+            />
+          ) : loading ? (
             <Center py={10}><Spinner color={BRAND} /></Center>
           ) : pageRows.length === 0 ? (
             <Center py={10}><Text color="gray.500">No skill requests found.</Text></Center>
@@ -190,34 +195,36 @@ export default function SkillRequests() {
         </CardBody>
       </Card>
 
-      <Modal isOpen={!!reviewTarget} onClose={() => setReviewTarget(null)}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Review Skill Request</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <FormControl mb={3}>
-              <FormLabel>Decision</FormLabel>
-              <Select value={action} onChange={(e) => setAction(e.target.value)}>
-                <option value="accept">Accept</option>
-                <option value="reject">Reject</option>
-              </Select>
-            </FormControl>
-            <FormControl mb={3}>
-              <FormLabel>Admin remarks</FormLabel>
-              <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Reason / notes" />
-            </FormControl>
-            <FormControl display="flex" alignItems="center" gap={2}>
-              <FormLabel mb={0}>Auto-enable in zone</FormLabel>
-              <Switch isChecked={autoEnable} onChange={(e) => setAutoEnable(e.target.checked)} colorScheme="teal" />
-            </FormControl>
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={() => setReviewTarget(null)}>Cancel</Button>
-            <Button variant="brand" isLoading={submitting} onClick={submitReview}>Submit</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <AppModal
+        isOpen={Boolean(reviewTarget)}
+        onClose={() => setReviewTarget(null)}
+        title="Review skill request"
+        subtitle="Approve or reject the technician skill request and record your decision."
+        size="md"
+        primaryAction={{
+          label: "Submit",
+          onClick: submitReview,
+          isLoading: submitting,
+          colorScheme: "teal",
+        }}
+        secondaryAction={{ label: "Cancel", onClick: () => setReviewTarget(null) }}
+      >
+        <FormControl mb={3}>
+          <FormLabel>Decision</FormLabel>
+          <Select value={action} onChange={(e) => setAction(e.target.value)}>
+            <option value="accept">Accept</option>
+            <option value="reject">Reject</option>
+          </Select>
+        </FormControl>
+        <FormControl mb={3}>
+          <FormLabel>Admin remarks</FormLabel>
+          <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Reason / notes" />
+        </FormControl>
+        <FormControl display="flex" alignItems="center" gap={2}>
+          <FormLabel mb={0}>Auto-enable in zone</FormLabel>
+          <Switch isChecked={autoEnable} onChange={(e) => setAutoEnable(e.target.checked)} colorScheme="teal" />
+        </FormControl>
+      </AppModal>
     </Box>
   );
 }

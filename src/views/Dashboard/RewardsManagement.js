@@ -9,13 +9,15 @@
 // 7. GET /admin/rewards/reconciliation
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useAppToast } from "components/feedback";
+import ErrorState from "components/feedback/ErrorState";
+import AppModal from "components/common/AppModal";
 import {
   Box,
   Button,
   Flex,
   Heading,
   Text,
-  useToast,
   Spinner,
   Center,
   SimpleGrid,
@@ -37,13 +39,6 @@ import {
   Td,
   Badge,
   Select,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Stat,
   StatLabel,
   StatNumber,
@@ -69,8 +64,9 @@ import {
 const BRAND = "#008080";
 
 export default function RewardsManagement() {
-  const toast = useToast();
+  const toast = useAppToast();
   const [tabIndex, setTabIndex] = useState(0);
+  const [loadError, setLoadError] = useState(null);
 
   // Stats & Policy
   const [policy, setPolicy] = useState(null);
@@ -113,6 +109,7 @@ export default function RewardsManagement() {
 
   // Load KPI & Policy
   const loadOverview = useCallback(async () => {
+    setLoadError(null);
     setLoading(true);
     const [{ data: p, error: pe }, { data: m }] = await Promise.all([
       getRewardPolicy(),
@@ -121,13 +118,8 @@ export default function RewardsManagement() {
     setLoading(false);
 
     if (pe) {
-      toast({
-        title: "Failed to load rewards policy",
-        description: pe,
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      setLoadError(pe);
+      toast.error(pe, { title: "Failed to load rewards policy", duration: 3000, isClosable: true });
       return;
     }
 
@@ -149,6 +141,7 @@ export default function RewardsManagement() {
 
   // Load Wallets
   const loadWallets = useCallback(async () => {
+    setLoadError(null);
     setWalletsLoading(true);
     const params = {};
     if (walletFilter.search) params.search = walletFilter.search;
@@ -157,7 +150,8 @@ export default function RewardsManagement() {
     const { data, error } = await getRewardWallets(params);
     setWalletsLoading(false);
     if (error) {
-      toast({ title: "Failed to load wallets", description: error, status: "error", duration: 3000, isClosable: true });
+      setLoadError(error);
+      toast.error(error, { title: "Failed to load wallets", duration: 3000, isClosable: true });
       return;
     }
     const list = data?.result ?? data?.data ?? data ?? [];
@@ -166,6 +160,7 @@ export default function RewardsManagement() {
 
   // Load Transactions
   const loadTransactions = useCallback(async () => {
+    setLoadError(null);
     setTxLoading(true);
     const params = {};
     if (txTypeFilter) params.type = txTypeFilter;
@@ -173,7 +168,8 @@ export default function RewardsManagement() {
     const { data, error } = await getRewardTransactions(params);
     setTxLoading(false);
     if (error) {
-      toast({ title: "Failed to load transactions", description: error, status: "error", duration: 3000, isClosable: true });
+      setLoadError(error);
+      toast.error(error, { title: "Failed to load transactions", duration: 3000, isClosable: true });
       return;
     }
     const list = data?.result ?? data?.data ?? data ?? [];
@@ -182,6 +178,7 @@ export default function RewardsManagement() {
 
   // Load Redemptions
   const loadRedemptions = useCallback(async () => {
+    setLoadError(null);
     setRedemptionsLoading(true);
     const params = {};
     if (redemptionStatusFilter) params.status = redemptionStatusFilter;
@@ -189,7 +186,8 @@ export default function RewardsManagement() {
     const { data, error } = await getRewardRedemptions(params);
     setRedemptionsLoading(false);
     if (error) {
-      toast({ title: "Failed to load redemptions", description: error, status: "error", duration: 3000, isClosable: true });
+      setLoadError(error);
+      toast.error(error, { title: "Failed to load redemptions", duration: 3000, isClosable: true });
       return;
     }
     const list = data?.result ?? data?.data ?? data ?? [];
@@ -198,11 +196,13 @@ export default function RewardsManagement() {
 
   // Load Reconciliation
   const loadReconciliation = useCallback(async () => {
+    setLoadError(null);
     setReconLoading(true);
     const { data, error } = await getRewardReconciliation();
     setReconLoading(false);
     if (error) {
-      toast({ title: "Failed to load reconciliation", description: error, status: "error", duration: 3000, isClosable: true });
+      setLoadError(error);
+      toast.error(error, { title: "Failed to load reconciliation", duration: 3000, isClosable: true });
       return;
     }
     setReconciliation(data?.result ?? data?.data ?? data ?? null);
@@ -216,7 +216,7 @@ export default function RewardsManagement() {
     const { data, error } = await getCustomerRewardOverview(customerId);
     setCustomerLoading(false);
     if (error) {
-      toast({ title: "Failed to load customer reward overview", description: error, status: "error", duration: 3000, isClosable: true });
+      toast.error(error, { title: "Failed to load customer reward overview", duration: 3000, isClosable: true });
       return;
     }
     setSelectedCustomer(data?.result ?? data?.data ?? data ?? null);
@@ -248,7 +248,7 @@ export default function RewardsManagement() {
     const { error } = await createRewardPolicy(payload);
     setSavingPolicy(false);
     if (error) {
-      toast({ title: "Save failed", description: error, status: "error", duration: 3000, isClosable: true });
+      toast.error(error, { title: "Save failed", duration: 3000, isClosable: true });
       return;
     }
     toast({ title: "Reward policy saved successfully", status: "success", duration: 2500, isClosable: true });
@@ -259,6 +259,16 @@ export default function RewardsManagement() {
 
   return (
     <Box pt={{ base: "120px", md: "75px" }}>
+      {loadError && (
+        <Box mb={4}>
+          <ErrorState
+            compact
+            error={loadError}
+            title="Could not load rewards data"
+            onRetry={tabIndex === 0 ? loadOverview : tabIndex === 1 ? loadWallets : tabIndex === 2 ? loadTransactions : tabIndex === 3 ? loadRedemptions : loadReconciliation}
+          />
+        </Box>
+      )}
       {/* Top Standardized KPI Cards (105px height) */}
       <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={{ base: 3, md: 4 }} mb={{ base: 3, md: 4 }}>
         <SharedStatCard kpi title="Coins Issued" value={String(metrics?.issued ?? metrics?.totalIssued ?? "—")} />
@@ -643,7 +653,7 @@ export default function RewardsManagement() {
                     </SimpleGrid>
 
                     {reconciliation?.details && (
-                      <Box mt={4} p={4} bg="gray.50" _dark={{ bg: "gray.700" }} borderRadius="md">
+                      <Box mt={4} p={4} bg="gray.50" borderRadius="md">
                         <Text fontSize="xs" fontFamily="mono" whiteSpace="pre-wrap">
                           {JSON.stringify(reconciliation.details, null, 2)}
                         </Text>
@@ -658,19 +668,21 @@ export default function RewardsManagement() {
       </Card>
 
       {/* Customer Wallet Modal Details */}
-      <Modal isOpen={customerModalOpen} onClose={() => setCustomerModalOpen(false)} size="xl">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Customer Reward Breakdown</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+      <AppModal
+        isOpen={customerModalOpen}
+        onClose={() => setCustomerModalOpen(false)}
+        title="Customer reward breakdown"
+        subtitle="Available coins, reserved coins, and active FIFO lots."
+        size="xl"
+        secondaryAction={{ label: "Close", onClick: () => setCustomerModalOpen(false) }}
+      >
             {customerLoading ? (
               <Center py={8}><Spinner color={BRAND} /></Center>
             ) : !selectedCustomer ? (
               <Text>No customer overview details found.</Text>
             ) : (
               <VStack align="stretch" spacing={4}>
-                <SimpleGrid columns={2} spacing={3} p={3} bg="gray.50" _dark={{ bg: "gray.700" }} borderRadius="md">
+                <SimpleGrid columns={2} spacing={3} p={3} bg="gray.50" borderRadius="md">
                   <Box>
                     <Text fontSize="xs" color="gray.500">Available Coins</Text>
                     <Text fontSize="lg" fontWeight="bold" color="teal.600">
@@ -711,12 +723,7 @@ export default function RewardsManagement() {
                 )}
               </VStack>
             )}
-          </ModalBody>
-          <ModalFooter>
-            <Button size="sm" onClick={() => setCustomerModalOpen(false)}>Close</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      </AppModal>
     </Box>
   );
 }

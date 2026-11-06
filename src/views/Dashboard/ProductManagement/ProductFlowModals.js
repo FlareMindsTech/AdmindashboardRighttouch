@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useAppToast } from "components/feedback";
 import {
   Badge,
   Box,
@@ -12,7 +13,6 @@ import {
   Select,
   Text,
   Textarea,
-  useToast,
   VStack,
 } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
@@ -386,7 +386,7 @@ export function BookingDetailModal({
 }
 
 export function ManualPaymentModal({ isOpen, onClose, booking, onSaved }) {
-  const toast = useToast();
+  const toast = useAppToast();
   const [form, setForm] = useState({
     amount: "",
     paymentMode: "cash",
@@ -442,7 +442,7 @@ export function ManualPaymentModal({ isOpen, onClose, booking, onSaved }) {
     );
     setSaving(false);
     if (error) {
-      toast({ title: "Payment not recorded", description: error, status: "error", duration: 4000, isClosable: true });
+      toast.error(error, { title: "Payment not recorded", duration: 4000, isClosable: true });
       return;
     }
     const result = unwrapResult(data);

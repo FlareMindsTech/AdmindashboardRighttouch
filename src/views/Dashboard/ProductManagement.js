@@ -1,5 +1,6 @@
 // ProductManagement.js
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import AppModal from "components/common/AppModal";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
@@ -87,7 +88,6 @@ import {
   Badge,
   Heading,
   Text,
-  useToast,
   Icon,
   Button,
   IconButton,
@@ -95,13 +95,7 @@ import {
   Input,
   FormControl,
   FormLabel,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
   ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Select,
   Image,
   Textarea,
@@ -200,6 +194,9 @@ import { MdCategory, MdWarning } from "react-icons/md";
 import QuoteRequestsView from "./ProductManagement/QuoteRequestsView";
 import QuotationsView from "./ProductManagement/QuotationsView";
 import BookingsView from "./ProductManagement/BookingsView";
+import ConfirmActionModal from "components/common/ConfirmActionModal";
+import { useAppToast } from "components/feedback";
+import ErrorState from "components/feedback/ErrorState";
 import { ADMIN_PRODUCT_FLOW_EVENT } from "hooks/useAdminSocket";
 import {
   listProductBookings,
@@ -456,7 +453,7 @@ export default function ProductManagement() {
   };
 
   const textColor = useColorModeValue("gray.700", "white");
-  const toast = useToast();
+  const toast = useAppToast();
   const navigate = useNavigate();
 
   // Standardized toast helper with close button & deduplication
@@ -477,6 +474,41 @@ export default function ProductManagement() {
       });
     },
     [toast]
+  );
+
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const confirmResolverRef = useRef(null);
+
+  const closeConfirmDialog = useCallback((result) => {
+    const resolver = confirmResolverRef.current;
+    confirmResolverRef.current = null;
+    setConfirmDialog(null);
+    if (resolver) resolver(result);
+  }, []);
+
+  const requestConfirmation = useCallback(
+    (options) =>
+      new Promise((resolve) => {
+        confirmResolverRef.current = resolve;
+        setConfirmDialog({ ...options, resolve });
+      }),
+    []
+  );
+
+  const handleCancelConfirmDialog = useCallback(() => {
+    closeConfirmDialog({ confirmed: false, reason: "" });
+  }, [closeConfirmDialog]);
+
+  const handleConfirmDialog = useCallback(
+    async ({ reason } = {}) => {
+      if (!confirmDialog) return false;
+      if (confirmDialog.onConfirm) {
+        await confirmDialog.onConfirm(reason);
+      }
+      closeConfirmDialog({ confirmed: true, reason: reason || "" });
+      return true;
+    },
+    [confirmDialog, closeConfirmDialog]
   );
 
   const formatExpiryDate = (dateInput) => {
@@ -571,6 +603,7 @@ export default function ProductManagement() {
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   // Delete modal states
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -711,7 +744,7 @@ export default function ProductManagement() {
       setIsManualPaymentModalOpen(false);
       fetchProductBookings();
     } catch (err) {
-      toast({ title: "Payment Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Payment Error" });
     } finally {
       setIsSubmittingPayment(false);
     }
@@ -723,7 +756,7 @@ export default function ProductManagement() {
       toast({ title: "Booking Status Updated", description: `Order status changed to ${newStatus}`, status: "success" });
       fetchProductBookings();
     } catch (err) {
-      toast({ title: "Status Update Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Status Update Error" });
     }
   };
 
@@ -786,7 +819,7 @@ export default function ProductManagement() {
       fetchInventoryData();
       fetchProducts();
     } catch (err) {
-      toast({ title: "Stock Update Failed", description: err.message, status: "error" });
+      toast.error(err, { title: "Stock Update Failed" });
     } finally {
       setIsSubmittingStock(false);
     }
@@ -900,7 +933,7 @@ export default function ProductManagement() {
       setReconcileModalOpen(false);
       fetchReconciliationData();
     } catch (err) {
-      toast({ title: "Reconciliation Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Reconciliation Error" });
     } finally {
       setIsSubmittingReconcile(false);
     }
@@ -944,7 +977,7 @@ export default function ProductManagement() {
       document.body.removeChild(link);
       toast({ title: "Report Exported", description: "Sales report CSV downloaded successfully.", status: "success" });
     } catch (err) {
-      toast({ title: "Export Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Export Error" });
     } finally {
       setIsExportingCSV(false);
     }
@@ -1026,7 +1059,7 @@ export default function ProductManagement() {
       });
     } catch (e) {
       console.error("Refresh error:", e);
-      toast({ title: "Refresh Failed", description: e.message, status: "error" });
+      toast.error(e, { title: "Refresh Failed" });
     } finally {
       setIsRefreshingData(false);
     }
@@ -1366,7 +1399,7 @@ export default function ProductManagement() {
       setIsQuotationModalOpen(false);
       fetchQuotationsData();
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     } finally {
       setIsSubmittingQuotation(false);
     }
@@ -1466,7 +1499,7 @@ export default function ProductManagement() {
       setIsQuotationModalOpen(false);
       fetchQuotationsData();
     } catch (err) {
-      toast({ title: "Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Error" });
     } finally {
       setIsSubmittingQuotation(false);
     }
@@ -1628,7 +1661,7 @@ export default function ProductManagement() {
       setRevisingQuotationItem(null);
       fetchQuotationsData();
     } catch (err) {
-      toast({ title: "Revise Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Revise Error" });
     } finally {
       setIsSubmittingRevise(false);
     }
@@ -1646,7 +1679,13 @@ export default function ProductManagement() {
       });
       return;
     }
-    if (!window.confirm("Are you sure you want to delete this quote request?")) return;
+    const decision = await requestConfirmation({
+      title: "Delete quote request",
+      description: "This permanently removes the quote request and its history. This cannot be undone.",
+      confirmText: "Delete request",
+      confirmColorScheme: "red",
+    });
+    if (!decision.confirmed) return;
     try {
       await deleteAdminQuoteRequest(id);
       toast({
@@ -1657,13 +1696,7 @@ export default function ProductManagement() {
       });
       fetchQuotationsData();
     } catch (err) {
-      toast({
-        title: "Delete failed",
-        description: err.response?.data?.message || err.message || "Failed to delete quote request",
-        status: "error",
-        duration: 4000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Delete failed", description: "Failed to delete quote request", duration: 4000, isClosable: true });
     }
   };
 
@@ -1679,7 +1712,13 @@ export default function ProductManagement() {
       });
       return;
     }
-    if (!window.confirm("Are you sure you want to delete this quotation?")) return;
+    const decision = await requestConfirmation({
+      title: "Delete quotation",
+      description: "This permanently deletes the quotation. Accepted or converted quotations cannot be deleted.",
+      confirmText: "Delete quotation",
+      confirmColorScheme: "red",
+    });
+    if (!decision.confirmed) return;
     try {
       await deleteAdminQuotation(id);
       toast({
@@ -1690,13 +1729,7 @@ export default function ProductManagement() {
       });
       fetchQuotationsData();
     } catch (err) {
-      toast({
-        title: "Delete failed",
-        description: err.response?.data?.message || err.message || "Failed to delete quotation",
-        status: "error",
-        duration: 4000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Delete failed", description: "Failed to delete quotation", duration: 4000, isClosable: true });
     }
   };
 
@@ -1706,7 +1739,7 @@ export default function ProductManagement() {
       toast({ title: "Request Assigned", description: "Moved to under_review status", status: "success" });
       fetchQuotationsData();
     } catch (err) {
-      toast({ title: "Assign Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Assign Error" });
     }
   };
 
@@ -1719,7 +1752,7 @@ export default function ProductManagement() {
       toast({ title: "Status Updated", status: "success" });
       fetchQuotationsData();
     } catch (err) {
-      toast({ title: "Update Error", description: err.message, status: "error" });
+      toast.error(err, { title: "Update Error" });
     }
   };
 
@@ -1981,7 +2014,7 @@ export default function ProductManagement() {
         setSelectedCategory(prev => ({ ...prev, image: "", url: "" }));
         toast({ title: "Image Removed", status: "success", duration: 3000, isClosable: true });
       } catch (e) {
-        toast({ title: "Error Removing Image", description: e.message, status: "error", duration: 3000, isClosable: true });
+        toast.error(e, { title: "Error Removing Image", duration: 3000, isClosable: true });
       } finally {
         setIsSubmitting(false);
       }
@@ -2120,6 +2153,7 @@ export default function ProductManagement() {
   // Fetch data (CRUD page: force fresh reads, identical to legacy behavior)
   const fetchData = useCallback(async () => {
     try {
+      setLoadError(null);
       setIsLoadingData(true);
       setIsLoadingCategories(true);
       setIsLoadingProducts(true);
@@ -2131,13 +2165,8 @@ export default function ProductManagement() {
 
     } catch (err) {
       console.error("Fetch error:", err);
-      toast({
-        title: "Fetch Error",
-        description: err.message || "Failed to load dashboard data.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      setLoadError(err);
+      toast.error(err, { title: "Fetch Error", description: "Failed to load dashboard data.", duration: 3000, isClosable: true });
     } finally {
       if (isMountedRef.current) {
         setIsLoadingData(false);
@@ -2161,13 +2190,7 @@ export default function ProductManagement() {
       setProductBookings(unwrapList(res.data, ["bookings"]));
     } catch (err) {
       console.error("Error fetching product bookings:", err);
-      toast({
-        title: "Bookings Error",
-        description: err.message || "Failed to load product bookings.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Bookings Error", description: "Failed to load product bookings.", duration: 3000, isClosable: true });
     } finally {
       setBookingsLoading(false);
     }
@@ -2212,7 +2235,7 @@ export default function ProductManagement() {
         toast({ title: "Booking Completed", status: "success", description: "Product booking marked as completed." });
         fetchProductBookings();
       } catch (err2) {
-        toast({ title: "Update Error", description: err2.message || err.message, status: "error", duration: 3000, isClosable: true });
+        toast.error(err2, { title: "Update Error", duration: 3000, isClosable: true });
       }
     } finally {
       setBookingsActionId(null);
@@ -2220,8 +2243,19 @@ export default function ProductManagement() {
   };
 
   const handleCancelProductBooking = async (booking) => {
-    const reason = window.prompt("Cancel reason:", "Admin cancelled");
-    if (reason === null) return;
+    const decision = await requestConfirmation({
+      title: "Cancel product booking",
+      description: "The booking will be marked cancelled and the customer will be notified.",
+      confirmText: "Cancel booking",
+      confirmColorScheme: "orange",
+      requireReason: true,
+      reasonLabel: "Cancellation reason",
+      reasonPlaceholder: "Explain why this booking is being cancelled",
+      reasonValue: "Admin cancelled",
+      minReasonLength: 1,
+    });
+    if (!decision.confirmed) return;
+    const reason = (decision.reason || "Admin cancelled").trim() || "Admin cancelled";
     const bId = booking._id || booking.id;
     setBookingsActionId(bId);
     try {
@@ -2234,7 +2268,7 @@ export default function ProductManagement() {
         toast({ title: "Booking Cancelled", status: "info", description: "Product booking has been cancelled." });
         fetchProductBookings();
       } catch (err2) {
-        toast({ title: "Cancel Error", description: err2.message || err.message, status: "error", duration: 3000, isClosable: true });
+        toast.error(err2, { title: "Cancel Error", duration: 3000, isClosable: true });
       }
     } finally {
       setBookingsActionId(null);
@@ -2348,13 +2382,7 @@ export default function ProductManagement() {
       handleBack();
 
     } catch (err) {
-      toast({
-        title: "Error Creating Category",
-        description: err.message || "Failed to create category",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Error Creating Category", description: "Failed to create category", duration: 3000, isClosable: true });
     } finally {
       setIsSubmitting(false);
     }
@@ -2421,13 +2449,7 @@ export default function ProductManagement() {
       await fetchData();
       handleBack();
     } catch (error) {
-      toast({
-        title: "Error Updating Category",
-        description: error.message || "Failed to update category",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(error, { title: "Error Updating Category", description: "Failed to update category", duration: 3000, isClosable: true });
     } finally {
       setIsSubmitting(false);
     }
@@ -2515,13 +2537,7 @@ export default function ProductManagement() {
           closeDeleteModal();
           return;
         } catch (archiveErr) {
-          toast({
-            title: "Archive Failed",
-            description: archiveErr.message || "Could not deactivate product.",
-            status: "error",
-            duration: 4000,
-            isClosable: true,
-          });
+          toast.error(archiveErr, { title: "Archive Failed", description: "Could not deactivate product.", duration: 4000, isClosable: true });
           return;
         } finally {
           setIsDeleting(false);
@@ -3515,6 +3531,16 @@ export default function ProductManagement() {
       overflow="hidden"
       css={globalScrollbarStyles}
     >
+      {loadError && (
+        <Box px={{ base: 1, md: 4 }} pt={{ base: 1, md: 2 }}>
+          <ErrorState
+            compact
+            error={loadError}
+            title="Could not load product data"
+            onRetry={fetchData}
+          />
+        </Box>
+      )}
       {/* Fixed Statistics Cards */}
       <Box flexShrink={0} p={{ base: 1, md: 4 }} pb={0}>
           <Grid
@@ -6513,14 +6539,7 @@ export default function ProductManagement() {
       </Box>
 
       {/* View Modal */}
-      <Modal isOpen={isViewModalOpen} onClose={closeModal} size="lg">
-        <ModalOverlay />
-        <ModalContent maxW="600px">
-          <ModalHeader color="gray.700">
-            {viewModalType === "category" ? "Category Details" : "Product Details"}
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody maxH="70vh" overflowY="auto">
+      <AppModal isOpen={isViewModalOpen} onClose={closeModal} size="lg" headerColor="gray.700" closeButtonColor="gray.700" bodyMaxH="70vh" title={<>{viewModalType === "category" ? "Category Details" : "Product Details"}</>}>
             {viewModalType === "category" && selectedCategory && (
               <VStack spacing={4} align="stretch">
                 {(selectedCategory.image || selectedCategory.url) && (
@@ -6733,22 +6752,34 @@ export default function ProductManagement() {
                 })()}
               </VStack>
             )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* Delete Confirmation Modal */}
-      <Modal isOpen={isDeleteModalOpen} onClose={closeDeleteModal} size="md">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader color="gray.700">
-            <Flex align="center" gap={2}>
+      <AppModal isOpen={isDeleteModalOpen} onClose={closeDeleteModal} size="md" headerColor="gray.700" closeButtonColor="gray.700" title={<><Flex align="center" gap={2}>
               <Icon as={FaExclamationTriangle} color="red.500" />
               Confirm Delete
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+            </Flex></>} footer={<><Button
+              variant="outline"
+              mr={3}
+              onClick={closeDeleteModal}
+              isDisabled={isDeleting}
+              size="sm"
+            >
+              Cancel
+            </Button>
+            <Button
+              bg="red.500"
+              _hover={{ bg: "red.600" }}
+              _active={{ bg: "red.700" }}
+              color="white"
+              onClick={handleConfirmDelete}
+              isLoading={isDeleting}
+              loadingText="Deleting..."
+              size="sm"
+            >
+              Delete {deleteType === "category" ? "Category" : "Product"}
+            </Button></>}>
             <Text fontSize="md" mb={4}>
               Are you sure you want to delete{" "}
               <Text as="span" fontWeight="bold" color={customColor}>
@@ -6776,49 +6807,21 @@ export default function ProductManagement() {
                 </Text>
               </Box>
             )}
-          </ModalBody>
-          <ModalFooter>
-            <Button
-              variant="outline"
-              mr={3}
-              onClick={closeDeleteModal}
-              isDisabled={isDeleting}
-              size="sm"
-            >
-              Cancel
-            </Button>
-            <Button
-              bg="red.500"
-              _hover={{ bg: "red.600" }}
-              _active={{ bg: "red.700" }}
-              color="white"
-              onClick={handleConfirmDelete}
-              isLoading={isDeleting}
-              loadingText="Deleting..."
-              size="sm"
-            >
-              Delete {deleteType === "category" ? "Category" : "Product"}
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
 
 
       {/* MANUAL PAYMENT MODAL */}
-      <Modal isOpen={isManualPaymentModalOpen} onClose={() => setIsManualPaymentModalOpen(false)} size="md">
-        <ModalOverlay />
-        <ModalContent borderRadius="16px">
-          <ModalHeader borderBottom="1px solid" borderColor="gray.100" bg="green.50">
-            <Flex align="center" gap={2}>
+      <AppModal isOpen={isManualPaymentModalOpen} onClose={() => setIsManualPaymentModalOpen(false)} size="md" headerBg="green.50" title={<><Flex align="center" gap={2}>
               <Icon as={FaMoneyBillWave} color="green.600" boxSize={5} />
               <Text fontSize="md" fontWeight="bold" color="green.800">
                 Mark Product Order Payment Received
               </Text>
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody py={4}>
+            </Flex></>} footer={<><Button size="sm" mr={3} onClick={() => setIsManualPaymentModalOpen(false)}>Cancel</Button>
+            <Button size="sm" colorScheme="green" isLoading={isSubmittingPayment} onClick={handleRecordManualPayment}>
+              Confirm & Log Payment
+            </Button></>}>
             <VStack spacing={3} align="stretch">
               <Box bg="gray.50" p={3} borderRadius="md" border="1px solid" borderColor="gray.200">
                 <Text fontSize="2xs" color="gray.500" textTransform="uppercase">Target Booking</Text>
@@ -6876,22 +6879,11 @@ export default function ProductManagement() {
                 />
               </FormControl>
             </VStack>
-          </ModalBody>
-          <ModalFooter borderTop="1px solid" borderColor="gray.100">
-            <Button size="sm" mr={3} onClick={() => setIsManualPaymentModalOpen(false)}>Cancel</Button>
-            <Button size="sm" colorScheme="green" isLoading={isSubmittingPayment} onClick={handleRecordManualPayment}>
-              Confirm & Log Payment
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* QUOTE REQUEST DETAILS MODAL WITH EXPANDABLE / COLLAPSIBLE ACCORDION SECTIONS */}
-      <Modal isOpen={isReqDetailModalOpen} onClose={() => setIsReqDetailModalOpen(false)} size="2xl" scrollBehavior="inside">
-        <ModalOverlay backdropFilter="blur(4px)" />
-        <ModalContent borderRadius="20px" overflow="hidden" boxShadow="2xl">
-          <ModalHeader bg={customColor} color="white" p="20px 24px">
-            <Flex align="center" justify="space-between" flexWrap="wrap" gap="10px" pr="48px">
+      <AppModal isOpen={isReqDetailModalOpen} onClose={() => setIsReqDetailModalOpen(false)} size="2xl" scrollBehavior="inside" headerBg={customColor} headerColor="white" closeButtonColor="white" title={<><Flex align="center" justify="space-between" flexWrap="wrap" gap="10px" pr="48px">
               <HStack spacing="12px">
                 <Flex w="42px" h="42px" bg="whiteAlpha.300" color="white" borderRadius="12px" align="center" justify="center" shadow="sm">
                   <Icon as={FaFileContract} w="22px" h="22px" />
@@ -6908,11 +6900,23 @@ export default function ProductManagement() {
               <Badge colorScheme="teal" bg="whiteAlpha.300" color="white" px="12px" py="5px" borderRadius="10px" fontSize="xs" fontWeight="bold">
                 {(selectedReqDetail?.status || "quote_requested").replace(/_/g, " ").toUpperCase()}
               </Badge>
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton color="white" top="18px" right="20px" />
-
-          <ModalBody p="24px" bg="gray.50">
+            </Flex></>} footer={<><Button size="sm" variant="ghost" mr={3} onClick={() => setIsReqDetailModalOpen(false)}>
+              Close
+            </Button>
+            <Button
+              size="sm"
+              colorScheme="teal"
+              bg={customColor}
+              _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+              _active={{ bg: "#004d4d" }}
+              leftIcon={<FaFileContract />}
+              onClick={() => {
+                setIsReqDetailModalOpen(false);
+                if (selectedReqDetail) handleOpenQuotationForRequest(selectedReqDetail);
+              }}
+            >
+              Prepare Quotation Now
+            </Button></>}>
             {selectedReqDetail && (() => {
               const cust = getQuoteCustomerDetails(selectedReqDetail);
               const prod = getQuoteProductDetails(selectedReqDetail);
@@ -7089,34 +7093,12 @@ export default function ProductManagement() {
                 </VStack>
               );
             })()}
-          </ModalBody>
-          <ModalFooter borderTop="1px solid" borderColor="gray.200" bg="gray.100" p="14px 24px">
-            <Button size="sm" variant="ghost" mr={3} onClick={() => setIsReqDetailModalOpen(false)}>
-              Close
-            </Button>
-            <Button
-              size="sm"
-              colorScheme="teal"
-              bg={customColor}
-              _hover={{ bg: customColor, filter: "brightness(0.9)" }}
-              _active={{ bg: "#004d4d" }}
-              leftIcon={<FaFileContract />}
-              onClick={() => {
-                setIsReqDetailModalOpen(false);
-                if (selectedReqDetail) handleOpenQuotationForRequest(selectedReqDetail);
-              }}
-            >
-              Prepare Quotation Now
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* COMPREHENSIVE ROW-CLICK QUOTATION DETAIL MODAL */}
-      <Modal isOpen={isQuotationDetailModalOpen} onClose={() => setIsQuotationDetailModalOpen(false)} size="3xl" scrollBehavior="inside">
-        <ModalOverlay backdropFilter="blur(4px)" />
-        <ModalContent borderRadius="20px" overflow="hidden" boxShadow="2xl">
-          {selectedQuotationForDetail && (() => {
+
+          {isQuotationDetailModalOpen && selectedQuotationForDetail && (() => {
             const q = selectedQuotationForDetail;
             const qId = q._id || q.id || "QT-UNKNOWN";
             const displayQId = q.quotationNumber || (qId.length > 12 ? `QT-${qId.slice(-8)}` : qId);
@@ -7157,9 +7139,7 @@ export default function ProductManagement() {
             const expiryInfo = getExpiryInfo(q.validUntil, status);
 
             return (
-              <>
-                <ModalHeader bg={customColor} color="white" p="20px 24px">
-                  <Flex align="center" justify="space-between" flexWrap="wrap" gap="10px" pr="48px">
+              <AppModal isOpen={isQuotationDetailModalOpen} onClose={() => setIsQuotationDetailModalOpen(false)} size="3xl" scrollBehavior="inside" headerBg={customColor} headerColor="white" closeButtonColor="white" title={<><Flex align="center" justify="space-between" flexWrap="wrap" gap="10px" pr="48px">
                     <HStack spacing="12px">
                       <Flex w="42px" h="42px" bg="whiteAlpha.300" color="white" borderRadius="12px" align="center" justify="center" shadow="sm">
                         <Icon as={FaFileContract} w="22px" h="22px" />
@@ -7181,11 +7161,52 @@ export default function ProductManagement() {
                         {payStatus === "paid" ? "✓ PAID" : "✕ UNPAID"}
                       </Badge>
                     </HStack>
-                  </Flex>
-                </ModalHeader>
-                <ModalCloseButton color="white" top="18px" right="20px" />
-
-                <ModalBody p="24px" bg="gray.50">
+                  </Flex></>} footer={<><Button size="sm" variant="ghost" mr={3} onClick={() => setIsQuotationDetailModalOpen(false)}>
+                    Close Dossier
+                  </Button>
+                  {status === "draft" && (
+                    <Button
+                      size="sm"
+                      colorScheme="teal"
+                      bg={customColor}
+                      _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+                      _active={{ bg: "#004d4d" }}
+                      leftIcon={<FaPaperPlane />}
+                      onClick={() => {
+                        setIsQuotationDetailModalOpen(false);
+                        handleSendQuotation(qId, q);
+                      }}
+                    >
+                      Send Quotation
+                    </Button>
+                  )}
+                  {["sent", "viewed", "delivered", "quotation_sent"].includes(status) && (
+                    <Button
+                      size="sm"
+                      colorScheme="blue"
+                      variant="outline"
+                      leftIcon={<FaRedo />}
+                      mr="8px"
+                      onClick={() => {
+                        handleResendQuotation(qId, q);
+                      }}
+                    >
+                      Resend Notification
+                    </Button>
+                  )}
+                  {["sent", "viewed", "delivered", "quotation_sent", "rejected"].includes(status) && (
+                    <Button
+                      size="sm"
+                      colorScheme="orange"
+                      variant="solid"
+                      onClick={() => {
+                        setIsQuotationDetailModalOpen(false);
+                        handleOpenReviseModal(q);
+                      }}
+                    >
+                      Revise Quotation
+                    </Button>
+                  )}</>}>
                   <VStack spacing="18px" align="stretch">
                     {/* CUSTOMER REJECTION REASON CARD */}
                     {status === "rejected" && (
@@ -7374,74 +7395,23 @@ export default function ProductManagement() {
                       </SimpleGrid>
                     </Box>
                   </VStack>
-                </ModalBody>
 
-                <ModalFooter borderTop="1px solid" borderColor="gray.200" bg="gray.100" p="14px 24px">
-                  <Button size="sm" variant="ghost" mr={3} onClick={() => setIsQuotationDetailModalOpen(false)}>
-                    Close Dossier
-                  </Button>
-                  {status === "draft" && (
-                    <Button
-                      size="sm"
-                      colorScheme="teal"
-                      bg={customColor}
-                      _hover={{ bg: customColor, filter: "brightness(0.9)" }}
-                      _active={{ bg: "#004d4d" }}
-                      leftIcon={<FaPaperPlane />}
-                      onClick={() => {
-                        setIsQuotationDetailModalOpen(false);
-                        handleSendQuotation(qId, q);
-                      }}
-                    >
-                      Send Quotation
-                    </Button>
-                  )}
-                  {["sent", "viewed", "delivered", "quotation_sent"].includes(status) && (
-                    <Button
-                      size="sm"
-                      colorScheme="blue"
-                      variant="outline"
-                      leftIcon={<FaRedo />}
-                      mr="8px"
-                      onClick={() => {
-                        handleResendQuotation(qId, q);
-                      }}
-                    >
-                      Resend Notification
-                    </Button>
-                  )}
-                  {["sent", "viewed", "delivered", "quotation_sent", "rejected"].includes(status) && (
-                    <Button
-                      size="sm"
-                      colorScheme="orange"
-                      variant="solid"
-                      onClick={() => {
-                        setIsQuotationDetailModalOpen(false);
-                        handleOpenReviseModal(q);
-                      }}
-                    >
-                      Revise Quotation
-                    </Button>
-                  )}
-                </ModalFooter>
-              </>
+              </AppModal>
             );
           })()}
-        </ModalContent>
-      </Modal>
+
 
       {/* QUOTATION PREVIEW MODAL */}
-      <Modal isOpen={isPreviewModalOpen} onClose={() => setIsPreviewModalOpen(false)} size="xl">
-        <ModalOverlay />
-        <ModalContent borderRadius="16px">
-          <ModalHeader bg={customColor} color="white" borderTopRadius="16px">
-            <Flex justify="space-between" align="center" pr="48px">
+      <AppModal isOpen={isPreviewModalOpen} onClose={() => setIsPreviewModalOpen(false)} size="xl" headerBg={customColor} headerColor="white" closeButtonColor="white" title={<><Flex justify="space-between" align="center" pr="48px">
               <Text fontSize="md" fontWeight="bold">RightTouch Official Quotation Preview</Text>
               <Badge colorScheme="teal" bg="whiteAlpha.300" color="white" fontSize="2xs">{previewQuotation?._id || previewQuotation?.id}</Badge>
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton color="white" />
-          <ModalBody py={6}>
+            </Flex></>} footer={<><Button size="sm" mr={3} onClick={() => setIsPreviewModalOpen(false)}>Close</Button>
+            <Button size="sm" variant="brand" leftIcon={<FaPaperPlane />} onClick={() => {
+              setIsPreviewModalOpen(false);
+              if (previewQuotation) handleSendQuotation(previewQuotation._id || previewQuotation.id);
+            }}>
+              Send Quotation to Customer
+            </Button></>}>
             {previewQuotation && (
               <VStack spacing={4} align="stretch">
                 <Flex justify="space-between" align="center" borderBottom="2px solid" borderColor="teal.600" pb={3}>
@@ -7504,25 +7474,11 @@ export default function ProductManagement() {
                 </Box>
               </VStack>
             )}
-          </ModalBody>
-          <ModalFooter borderTop="1px solid" borderColor="gray.100">
-            <Button size="sm" mr={3} onClick={() => setIsPreviewModalOpen(false)}>Close</Button>
-            <Button size="sm" variant="brand" leftIcon={<FaPaperPlane />} onClick={() => {
-              setIsPreviewModalOpen(false);
-              if (previewQuotation) handleSendQuotation(previewQuotation._id || previewQuotation.id);
-            }}>
-              Send Quotation to Customer
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* CREATE / PREPARE QUOTATION MODAL */}
-      <Modal isOpen={isQuotationModalOpen} onClose={() => setIsQuotationModalOpen(false)} size="xl" scrollBehavior="inside">
-        <ModalOverlay backdropFilter="blur(6px)" bg="blackAlpha.600" />
-        <ModalContent borderRadius="18px" overflow="hidden" boxShadow="2xl" border="1px solid" borderColor="teal.100">
-          <ModalHeader bg="teal.700" color="white" p="18px 24px" position="relative" borderTopRadius="18px">
-            <Flex align="center" justify="space-between" pr="48px">
+      <AppModal isOpen={isQuotationModalOpen} onClose={() => setIsQuotationModalOpen(false)} size="xl" scrollBehavior="inside" headerBg="teal.700" headerColor="white" closeButtonColor="white" title={<><Flex align="center" justify="space-between" pr="48px">
               <HStack spacing="12px">
                 <Flex w="40px" h="40px" bg="teal.500" color="white" borderRadius="12px" align="center" justify="center" shadow="md">
                   <Icon as={FaFileContract} w="20px" h="20px" />
@@ -7540,10 +7496,32 @@ export default function ProductManagement() {
                 ADMIN BUILDER
               </Badge>
             </Flex>
-            <ModalCloseButton color="white" position="absolute" top="18px" right="18px" zIndex={10} borderRadius="8px" />
-          </ModalHeader>
-
-          <ModalBody p="20px" bg="gray.50">
+            <ModalCloseButton color="white" position="absolute" top="18px" right="18px" zIndex={10} borderRadius="8px" /></>} footer={<><Button size="sm" borderRadius="10px" variant="ghost" mr={3} onClick={() => setIsQuotationModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              borderRadius="10px"
+              colorScheme="gray"
+              mr={2}
+              isLoading={isSubmittingQuotation}
+              onClick={handleSaveQuotation}
+            >
+              Save Draft
+            </Button>
+            <Button
+              size="sm"
+              borderRadius="10px"
+              colorScheme="teal"
+              bg={customColor}
+              _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+              _active={{ bg: "#004d4d" }}
+              leftIcon={<FaPaperPlane />}
+              isLoading={isSubmittingQuotation}
+              onClick={handleSaveAndSendQuotation}
+            >
+              Save & Send to Customer
+            </Button></>}>
             <VStack spacing={4} align="stretch">
               
               {/* REQUESTED PRODUCT & CUSTOMER REQUIREMENT DOSSIER */}
@@ -7998,45 +7976,11 @@ export default function ProductManagement() {
               </Box>
 
             </VStack>
-          </ModalBody>
 
-          <ModalFooter borderTop="1px solid" borderColor="gray.200" bg="gray.50" p="16px 24px" borderBottomRadius="18px">
-            <Button size="sm" borderRadius="10px" variant="ghost" mr={3} onClick={() => setIsQuotationModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              borderRadius="10px"
-              colorScheme="gray"
-              mr={2}
-              isLoading={isSubmittingQuotation}
-              onClick={handleSaveQuotation}
-            >
-              Save Draft
-            </Button>
-            <Button
-              size="sm"
-              borderRadius="10px"
-              colorScheme="teal"
-              bg={customColor}
-              _hover={{ bg: customColor, filter: "brightness(0.9)" }}
-              _active={{ bg: "#004d4d" }}
-              leftIcon={<FaPaperPlane />}
-              isLoading={isSubmittingQuotation}
-              onClick={handleSaveAndSendQuotation}
-            >
-              Save & Send to Customer
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+</AppModal>
 
       {/* REVISE QUOTATION MODAL */}
-      <Modal isOpen={isReviseModalOpen} onClose={() => setIsReviseModalOpen(false)} isCentered size="3xl" scrollBehavior="inside">
-        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <ModalContent borderRadius="0px" overflow="hidden" boxShadow="2xl">
-          <ModalHeader bg={customColor} color="white" py={4} px={6} fontSize="md" fontWeight="extrabold" borderRadius="0px">
-            <Flex justify="space-between" align="center">
+      <AppModal isOpen={isReviseModalOpen} onClose={() => setIsReviseModalOpen(false)} isCentered size="3xl" scrollBehavior="inside" headerBg={customColor} headerColor="white" closeButtonColor="white" title={<><Flex justify="space-between" align="center">
               <HStack spacing={2}>
                 <Icon as={FaRedo} />
                 <Text>Revise Quotation #{revisingQuotationItem?.quotationNumber || revisingQuotationItem?._id?.slice?.(-6) || ""}</Text>
@@ -8044,11 +7988,22 @@ export default function ProductManagement() {
               <Badge colorScheme="whiteAlpha" fontSize="xs" px={2} py={0.5} borderRadius="2px">
                 Revision Draft
               </Badge>
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton color="white" top={4} right={4} />
-
-          <ModalBody py={5} px={6} bg="gray.50">
+            </Flex></>} footer={<><Button size="sm" borderRadius="2px" variant="ghost" mr={3} onClick={() => setIsReviseModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              borderRadius="2px"
+              colorScheme="teal"
+              bg={customColor}
+              _hover={{ bg: customColor, filter: "brightness(0.9)" }}
+              _active={{ bg: "#004d4d" }}
+              leftIcon={<FaPaperPlane />}
+              isLoading={isSubmittingRevise}
+              onClick={handleConfirmRevise}
+            >
+              Create Revised Quotation
+            </Button></>}>
             <VStack spacing={5} align="stretch">
 
               {/* REQUESTED PRODUCT & CUSTOMER REQUIREMENT DOSSIER */}
@@ -8469,39 +8424,16 @@ export default function ProductManagement() {
               </Box>
 
             </VStack>
-          </ModalBody>
-          <ModalFooter bg="gray.100" py={3.5} px={6} borderTop="1px solid" borderColor="gray.200" borderRadius="0px">
-            <Button size="sm" borderRadius="2px" variant="ghost" mr={3} onClick={() => setIsReviseModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              borderRadius="2px"
-              colorScheme="teal"
-              bg={customColor}
-              _hover={{ bg: customColor, filter: "brightness(0.9)" }}
-              _active={{ bg: "#004d4d" }}
-              leftIcon={<FaPaperPlane />}
-              isLoading={isSubmittingRevise}
-              onClick={handleConfirmRevise}
-            >
-              Create Revised Quotation
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* ------------------------------------------------------------- */}
       {/* STOCK ADJUSTMENT MODAL */}
       {/* ------------------------------------------------------------- */}
-      <Modal isOpen={stockModalOpen} onClose={() => setStockModalOpen(false)} isCentered size="md">
-        <ModalOverlay />
-        <ModalContent borderRadius="xl">
-          <ModalHeader bg={customColor} color="white" py={3} borderTopRadius="xl" fontSize="sm">
-            📦 Stock Inventory Adjustment — {selectedStockProduct?.name}
-          </ModalHeader>
-          <ModalCloseButton color="white" />
-          <ModalBody py={4}>
+      <AppModal isOpen={stockModalOpen} onClose={() => setStockModalOpen(false)} isCentered size="md" headerBg={customColor} headerColor="white" closeButtonColor="white" title={<>📦 Stock Inventory Adjustment — {selectedStockProduct?.name}</>} footer={<><Button size="sm" variant="ghost" mr={2} onClick={() => setStockModalOpen(false)}>Cancel</Button>
+            <Button size="sm" variant="brand" isLoading={isSubmittingStock} onClick={handleSaveStockAdjustment}>
+              Save Adjustment
+            </Button></>}>
             <VStack spacing={4} align="stretch">
               <FormControl>
                 <FormLabel fontSize="xs" fontWeight="bold">Adjustment Mode</FormLabel>
@@ -8538,27 +8470,13 @@ export default function ProductManagement() {
                 />
               </FormControl>
             </VStack>
-          </ModalBody>
-          <ModalFooter bg="gray.50" py={3} borderBottomRadius="xl">
-            <Button size="sm" variant="ghost" mr={2} onClick={() => setStockModalOpen(false)}>Cancel</Button>
-            <Button size="sm" variant="brand" isLoading={isSubmittingStock} onClick={handleSaveStockAdjustment}>
-              Save Adjustment
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* ------------------------------------------------------------- */}
       {/* STOCK HISTORY MODAL */}
       {/* ------------------------------------------------------------- */}
-      <Modal isOpen={stockHistoryModalOpen} onClose={() => setStockHistoryModalOpen(false)} isCentered size="lg">
-        <ModalOverlay />
-        <ModalContent borderRadius="xl">
-          <ModalHeader bg={customColor} color="white" py={3} borderTopRadius="xl" fontSize="sm">
-            📜 Stock Movement Logs — {selectedStockProduct?.name}
-          </ModalHeader>
-          <ModalCloseButton color="white" />
-          <ModalBody py={4}>
+      <AppModal isOpen={stockHistoryModalOpen} onClose={() => setStockHistoryModalOpen(false)} isCentered size="lg" headerBg={customColor} headerColor="white" closeButtonColor="white" title={<>📜 Stock Movement Logs — {selectedStockProduct?.name}</>} footer={<><Button size="sm" colorScheme="teal" onClick={() => setStockHistoryModalOpen(false)}>Close</Button></>}>
             {isLoadingStockHistory ? (
               <Center p={6}><Spinner color={customColor} /></Center>
             ) : stockHistoryLogs.length === 0 ? (
@@ -8587,24 +8505,13 @@ export default function ProductManagement() {
                 </Tbody>
               </Table>
             )}
-          </ModalBody>
-          <ModalFooter bg="gray.50" py={3} borderBottomRadius="xl">
-            <Button size="sm" colorScheme="teal" onClick={() => setStockHistoryModalOpen(false)}>Close</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
       {/* ------------------------------------------------------------- */}
       {/* PAYMENT DETAILS & ATTEMPTS MODAL */}
       {/* ------------------------------------------------------------- */}
-      <Modal isOpen={paymentDetailModalOpen} onClose={() => setPaymentDetailModalOpen(false)} isCentered size="lg">
-        <ModalOverlay />
-        <ModalContent borderRadius="xl">
-          <ModalHeader bg="purple.600" color="white" py={3} borderTopRadius="xl" fontSize="sm">
-            💳 Payment Details & Gateways Log
-          </ModalHeader>
-          <ModalCloseButton color="white" />
-          <ModalBody py={4}>
+      <AppModal isOpen={paymentDetailModalOpen} onClose={() => setPaymentDetailModalOpen(false)} isCentered size="lg" headerBg="purple.600" headerColor="white" closeButtonColor="white" title={<>💳 Payment Details & Gateways Log</>} footer={<><Button size="sm" colorScheme="purple" onClick={() => setPaymentDetailModalOpen(false)}>Close</Button></>}>
             {isLoadingPaymentDetail ? (
               <Center p={6}><Spinner color="purple.500" /></Center>
             ) : (
@@ -8625,24 +8532,31 @@ export default function ProductManagement() {
                 )}
               </VStack>
             )}
-          </ModalBody>
-          <ModalFooter bg="gray.50" py={3} borderBottomRadius="xl">
-            <Button size="sm" colorScheme="purple" onClick={() => setPaymentDetailModalOpen(false)}>Close</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
+
+      <ConfirmActionModal
+        isOpen={Boolean(confirmDialog)}
+        onClose={handleCancelConfirmDialog}
+        onConfirm={handleConfirmDialog}
+        title={confirmDialog?.title || "Confirm action"}
+        description={confirmDialog?.description}
+        confirmText={confirmDialog?.confirmText}
+        confirmColorScheme={confirmDialog?.confirmColorScheme}
+        requireReason={confirmDialog?.requireReason}
+        reasonLabel={confirmDialog?.reasonLabel}
+        reasonPlaceholder={confirmDialog?.reasonPlaceholder}
+        reasonValue={confirmDialog?.reasonValue}
+        minReasonLength={confirmDialog?.minReasonLength}
+      />
 
       {/* ------------------------------------------------------------- */}
       {/* RECONCILE MODAL */}
       {/* ------------------------------------------------------------- */}
-      <Modal isOpen={reconcileModalOpen} onClose={() => setReconcileModalOpen(false)} isCentered size="md">
-        <ModalOverlay />
-        <ModalContent borderRadius="xl">
-          <ModalHeader bg="teal.600" color="white" py={3} borderTopRadius="xl" fontSize="sm">
-            ⚖️ Manual Payment Reconciliation
-          </ModalHeader>
-          <ModalCloseButton color="white" />
-          <ModalBody py={4}>
+      <AppModal isOpen={reconcileModalOpen} onClose={() => setReconcileModalOpen(false)} isCentered size="md" headerBg="teal.600" headerColor="white" closeButtonColor="white" title={<>⚖️ Manual Payment Reconciliation</>} footer={<><Button size="sm" variant="ghost" mr={2} onClick={() => setReconcileModalOpen(false)}>Cancel</Button>
+            <Button size="sm" colorScheme="teal" isLoading={isSubmittingReconcile} onClick={handleExecuteReconcile}>
+              Execute Reconcile
+            </Button></>}>
             <VStack spacing={3} align="stretch">
               <FormControl>
                 <FormLabel fontSize="xs" fontWeight="bold">Target Booking ID</FormLabel>
@@ -8663,15 +8577,8 @@ export default function ProductManagement() {
                 />
               </FormControl>
             </VStack>
-          </ModalBody>
-          <ModalFooter bg="gray.50" py={3} borderBottomRadius="xl">
-            <Button size="sm" variant="ghost" mr={2} onClick={() => setReconcileModalOpen(false)}>Cancel</Button>
-            <Button size="sm" colorScheme="teal" isLoading={isSubmittingReconcile} onClick={handleExecuteReconcile}>
-              Execute Reconcile
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+
+</AppModal>
 
     </Flex>
   );

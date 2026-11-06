@@ -38,59 +38,12 @@ export const claymorphicCardProps = skeuomorphicCardProps;
  * @param {string} accentColor - Active border or accent tint
  */
 export const getSkeuomorphicCardStyle = (
-  isDark = false,
+  _isDark = false,
   isActive = false,
   accentColor = "#008080",
   isInteractive = false
 ) => {
-  if (isDark) {
-    return {
-      bg: "linear-gradient(180deg, #253347 0%, #1D2635 50%, #151D28 100%)",
-      borderRadius: "10px",
-      borderTop: isActive ? `2px solid ${accentColor}` : "1.5px solid rgba(255, 255, 255, 0.22)",
-      borderLeft: isActive ? `2px solid ${accentColor}` : "1.5px solid rgba(255, 255, 255, 0.12)",
-      borderRight: isActive ? `2px solid ${accentColor}` : "1.5px solid rgba(0, 0, 0, 0.45)",
-      borderBottom: isActive ? `3.5px solid ${accentColor}` : "3px solid rgba(0, 0, 0, 0.75)",
-      boxShadow: "none",
-      position: "relative",
-      transition: "all 0.24s cubic-bezier(0.34, 1.56, 0.64, 1)",
-      _before: {
-        content: '""',
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        height: "38%",
-        background: "linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%)",
-        borderTopLeftRadius: "inherit",
-        borderTopRightRadius: "inherit",
-        pointerEvents: "none",
-      },
-      _hover: isInteractive
-        ? {
-            transform: "translateY(-3px)",
-            boxShadow: "none",
-            borderBottom: isActive ? `4px solid ${accentColor}` : "4px solid rgba(0, 0, 0, 0.9)",
-            borderTopColor: isActive ? accentColor : "rgba(255, 255, 255, 0.32)",
-          }
-        : {
-            transform: "none",
-            boxShadow: "none",
-          },
-      _active: isInteractive
-        ? {
-            transform: "translateY(1.5px)",
-            boxShadow: "none",
-            borderBottom: isActive ? `1.5px solid ${accentColor}` : "1.5px solid rgba(0, 0, 0, 0.6)",
-          }
-        : {
-            transform: "none",
-            boxShadow: "none",
-          },
-    };
-  }
-
-  // Light Mode (Tactile ceramic surface with directional bevel edges & specular sheen, NO BOX-SHADOW)
+  // Always consistent Light Mode (Tactile ceramic surface with directional bevel edges & specular sheen, NO BOX-SHADOW)
   return {
     bg: "linear-gradient(180deg, #FFFFFF 0%, #F9FBFC 40%, #EEF2F6 100%)",
     borderRadius: "10px",
@@ -195,24 +148,7 @@ export const claymorphicIconFilter = skeuomorphicIconFilter;
  * Helper for skeuomorphic debossed/grooved inner items (NO BOX-SHADOW)
  * Creates physical sunken tray appearance using top dark groove + bottom white highlight rim
  */
-export const getSkeuomorphicItemStyle = (isDark = false) => {
-  if (isDark) {
-    return {
-      bg: "linear-gradient(180deg, #131A24 0%, #1A2330 100%)",
-      borderRadius: "6px",
-      borderTop: "1.5px solid rgba(0, 0, 0, 0.65)",
-      borderLeft: "1px solid rgba(0, 0, 0, 0.45)",
-      borderRight: "1px solid rgba(255, 255, 255, 0.08)",
-      borderBottom: "1.5px solid rgba(255, 255, 255, 0.12)",
-      boxShadow: "none",
-      transition: "all 0.2s ease",
-      _hover: {
-        bg: "linear-gradient(180deg, #161E2A 0%, #202B3B 100%)",
-        transform: "translateY(-1px)",
-        boxShadow: "none",
-      },
-    };
-  }
+export const getSkeuomorphicItemStyle = (_isDark = false) => {
   return {
     bg: "linear-gradient(180deg, #EAEFF5 0%, #F5F8FA 100%)",
     borderRadius: "6px",

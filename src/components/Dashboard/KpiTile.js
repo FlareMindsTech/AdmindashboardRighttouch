@@ -6,7 +6,6 @@ import {
   HStack,
   Icon,
   Text,
-  useColorMode,
 } from "@chakra-ui/react";
 import { FaArrowDown, FaArrowUp } from "react-icons/fa";
 
@@ -17,8 +16,7 @@ export default function KpiTile({
   subValue,
   trend,
 }) {
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
+  const isDark = false;
   const hasTrend = typeof trend === "number" && Number.isFinite(trend);
   const isPositive = hasTrend && trend >= 0;
 

@@ -1,11 +1,6 @@
 import React from "react";
+import AppModal from "components/common/AppModal";
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
   Flex,
   Box,
   Icon,
@@ -26,11 +21,7 @@ const AllocateTechnicianModal = React.memo(function AllocateTechnicianModal({
   if (!selectedUserForTech) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl">
-      <ModalOverlay backdropFilter="blur(2px)" bg="blackAlpha.500" />
-      <ModalContent maxW="700px" borderRadius="xl" overflow="hidden" shadow="2xl">
-        <ModalHeader bg="gray.900" color="white" py={4} px={6}>
-          <Flex align="center" gap={3}>
+    <AppModal isOpen={isOpen} onClose={onClose} size="xl" headerBg="gray.900" headerColor="white" closeButtonColor="white" bodyMaxH="75vh" title={<><Flex align="center" gap={3}>
             <Box p={2} bg={`${customColor}30`} borderRadius="md">
               <Icon as={FaUserCog} color="teal.300" boxSize={5} />
             </Box>
@@ -42,10 +33,7 @@ const AllocateTechnicianModal = React.memo(function AllocateTechnicianModal({
                 Assigned technicians per booking
               </Text>
             </Box>
-          </Flex>
-        </ModalHeader>
-        <ModalCloseButton color="white" mt={1} />
-        <ModalBody p={5} maxH="75vh" overflowY="auto" bg="gray.50">
+          </Flex></>}>
           <VStack spacing={4} align="stretch">
             {selectedUserForTech.bookings && selectedUserForTech.bookings.length > 0 ? (
               selectedUserForTech.bookings.map((booking, idx) => {
@@ -208,9 +196,8 @@ const AllocateTechnicianModal = React.memo(function AllocateTechnicianModal({
               </Center>
             )}
           </VStack>
-        </ModalBody>
-      </ModalContent>
-    </Modal>
+
+</AppModal>
   );
 });
 

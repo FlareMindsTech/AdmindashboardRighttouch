@@ -1,4 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import AppModal from "components/common/AppModal";
+import { useAppToast } from "components/feedback";
+import ErrorState from "components/feedback/ErrorState";
+import ConfirmActionModal from "components/common/ConfirmActionModal";
 import {
   Box,
   Flex,
@@ -13,27 +17,11 @@ import {
   Td,
   Badge,
   IconButton,
-  useToast,
   Input,
   InputGroup,
   InputLeftElement,
   Select,
-  Skeleton,
-  SkeletonText,
   SimpleGrid,
-  AlertDialog,
-  AlertDialogBody,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogContent,
-  AlertDialogOverlay,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Heading,
   VStack,
   HStack,
@@ -41,22 +29,11 @@ import {
   Spinner,
   Textarea,
   Image,
-  useColorModeValue,
   Icon,
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverHeader,
-  PopoverBody,
-  PopoverArrow,
-  Tooltip,
+  Tag,
+  Divider,
 } from "@chakra-ui/react";
 
-import Card from "components/Card/Card.js";
-import CardBody from "components/Card/CardBody.js";
-import CardHeader from "components/Card/CardHeader.js";
-import SharedStatCard from "components/common/StatCard";
-import { MobileCard, MobileCardActions } from "components/common/MobileCard";
 import StatusBadge from "components/common/StatusBadge";
 
 import {
@@ -64,15 +41,10 @@ import {
   MdStarBorder,
   MdReport,
   MdCheckCircle,
-  MdDelete,
-  MdVisibility,
-  MdFilterList,
   MdRefresh,
   MdSearch,
   MdRateReview,
-  MdWarning,
-  MdThumbUp,
-  MdAttachMoney,
+  MdOutlineRateReview,
 } from "react-icons/md";
 import {
   FaChevronLeft,
@@ -88,16 +60,15 @@ import {
   FaGavel,
   FaClock,
   FaHourglassHalf,
-  FaStickyNote,
   FaClipboardList,
+  FaDownload,
+  FaCopy,
 } from "react-icons/fa";
 
 import {
   getAllReports,
-  getReportById,
   resolveReport,
   getAllRatings,
-  getRatingById,
   updateRating,
   deleteRating,
   adminCreateRefund,
@@ -106,37 +77,32 @@ import {
   getComplaintById,
   updateComplaintStatus,
   rejectComplaint,
-  getReportCategories,
 } from "../utils/axiosInstance";
 import { rebuildRatingAggregate } from "api/bookingsReports";
-import { useAppDispatch, useAppSelector } from "store/hooks";
-import { selectUser, selectIsOwner } from "store/slices/authSlice";
-import { fetchServiceBookings, selectServiceBookings } from "store/slices/bookingsSlice";
+import { useAppSelector } from "store/hooks";
+import { selectUser } from "store/slices/authSlice";
+
+const BRAND = "#008080";
+const GOLD = "#F5B700";
 
 export default function ReportsManagement() {
-  const textColor = useColorModeValue("gray.700", "white");
-  const toast = useToast();
-  const dispatch = useAppDispatch();
+  const isDark = false;
+  const toast = useAppToast();
   const reduxUser = useAppSelector(selectUser);
-  const isOwner = useAppSelector(selectIsOwner);
-  const cachedBookings = useAppSelector(selectServiceBookings);
-
-  const customColor = "#008080";
-  const goldColor = "#F5B700";
 
   const [currentUser, setCurrentUser] = useState(reduxUser || null);
   const [activeTab, setActiveTab] = useState("reports");
 
   const [reports, setReports] = useState([]);
   const [ratings, setRatings] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
-  const [itemsPerPage] = useState(10);
+  const itemsPerPage = 10;
 
   const [selectedItem, setSelectedItem] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -163,6 +129,386 @@ export default function ReportsManagement() {
     colorScheme: "blue",
     onConfirm: null,
   });
+
+  useEffect(() => {
+    if (reduxUser) {
+      setCurrentUser(reduxUser);
+      return;
+    }
+    const storedUser = JSON.parse(localStorage.getItem("user") || "null");
+    if (storedUser) {
+      setCurrentUser(storedUser);
+    }
+  }, [reduxUser]);
+
+  const copyToClipboard = (text, label = "Item") => {
+    if (!text) return;
+    navigator.clipboard?.writeText(String(text));
+    toast({
+      title: `${label} copied`,
+      status: "info",
+      duration: 1800,
+      isClosable: true,
+    });
+  };
+
+  const getCategoryMeta = (cat) => {
+    const key = (cat || "").toLowerCase();
+    const meta = {
+      quality_dispute: { label: "Quality Dispute", color: "blue" },
+      damage: { label: "Property Damage", color: "red" },
+      incomplete_work: { label: "Incomplete Work", color: "orange" },
+      technician_misconduct: { label: "Technician Misconduct", color: "purple" },
+      goodwill: { label: "Goodwill / Courtesy", color: "teal" },
+      product_issue: { label: "Product Defect", color: "pink" },
+      other: { label: "Other Issue", color: "gray" },
+    };
+    return meta[key] || { label: cat ? cat.replace(/_/g, " ").toUpperCase() : "General Issue", color: "gray" };
+  };
+
+  const formatCleanComplaintText = (text) => {
+    if (!text) return "No detailed complaint statement provided.";
+    let str = String(text).trim();
+    while (
+      (str.startsWith('"') && str.endsWith('"')) ||
+      (str.startsWith("'") && str.endsWith("'"))
+    ) {
+      str = str.slice(1, -1).trim();
+    }
+    return str || "No detailed complaint statement provided.";
+  };
+
+  const getItemDetails = (item) => {
+    if (!item) return { name: "N/A", type: "SERVICE", ref: "N/A", price: null };
+    
+    let name = "Service / Product Booking";
+    if (typeof item.serviceId === "object" && item.serviceId?.serviceName) {
+      name = item.serviceId.serviceName;
+    } else if (typeof item.productId === "object" && item.productId?.productName) {
+      name = item.productId.productName;
+    } else if (item.serviceName) {
+      name = item.serviceName;
+    } else if (item.productName) {
+      name = item.productName;
+    } else if (item.relatedItemName) {
+      name = item.relatedItemName;
+    } else if (typeof item.bookingId === "object" && item.bookingId) {
+      name = item.bookingId?.serviceId?.serviceName || item.bookingId?.productId?.productName || item.bookingId?.title || name;
+    }
+
+    let type = "SERVICE";
+    if (item.productId || item.productName || item.bookingType === "product" || item.bookingId?.bookingType === "product") {
+      type = "PRODUCT";
+    }
+
+    let price = item.serviceId?.servicePrice || item.productId?.price || item.bookingId?.totalAmount || item.amount || item.totalAmount || null;
+
+    let ref = "N/A";
+    if (typeof item.bookingId === "object" && item.bookingId) {
+      ref = item.bookingId.bookingNumber || item.bookingId._id || item.bookingId.id || "N/A";
+    } else if (item.bookingId) {
+      ref = String(item.bookingId);
+    }
+
+    return { name, type, ref, price };
+  };
+
+  const getTechnicianDetails = (item) => {
+    if (!item) return { name: "Not Assigned", phone: "N/A", email: "N/A", assigned: false };
+    
+    let techObj = item.technicianId || item.technicianDetails || item.assignedTechnician;
+    if (techObj && typeof techObj === "object") {
+      let u = techObj.userId || techObj;
+      let fname = u.fname || u.firstName || techObj.fname || "";
+      let lname = u.lname || u.lastName || techObj.lname || "";
+      let fullName = `${fname} ${lname}`.trim() || u.name || techObj.name || "Assigned Technician";
+      let phone = u.mobileNumber || u.phone || u.mobile || techObj.mobileNumber || techObj.phone || "N/A";
+      let email = u.email || techObj.email || "N/A";
+      return { name: fullName, phone, email, assigned: true };
+    }
+
+    if (item.techName || item.technicianName) {
+      return {
+        name: item.techName || item.technicianName,
+        phone: item.techMobile || item.technicianPhone || "N/A",
+        email: item.techEmail || "N/A",
+        assigned: true,
+      };
+    }
+
+    return { name: "Platform / Direct Delivery", phone: "N/A", email: "N/A", assigned: false };
+  };
+
+  const getCustomerDetails = (item) => {
+    if (!item) return { name: "N/A", phone: "N/A", email: "N/A" };
+
+    let custObj = item.customerId || item.customerDetails;
+    if (custObj && typeof custObj === "object") {
+      let fname = custObj.fname || custObj.firstName || "";
+      let lname = custObj.lname || custObj.lastName || "";
+      let fullName = `${fname} ${lname}`.trim() || custObj.name || item.reportedBy || "Customer";
+      let phone = custObj.mobileNumber || custObj.phone || custObj.mobile || "N/A";
+      let email = custObj.email || "N/A";
+      return { name: fullName, phone, email };
+    }
+
+    return {
+      name: item.reportedBy || item.customerName || "Customer",
+      phone: item.customerPhone || "N/A",
+      email: item.customerEmail || "N/A",
+    };
+  };
+
+  const getFinancialBreakdown = (item) => {
+    if (!item) {
+      return {
+        customerPays: 0,
+        serviceAmount: 0,
+        techCommissionPct: 15,
+        techPayout: 0,
+        platformFee: 0,
+        itemName: "Service / Product Item",
+        bookingRef: "N/A"
+      };
+    }
+
+    const itemDetails = getItemDetails(item);
+    let customerPays = 0;
+
+    if (item.bookingId && typeof item.bookingId === "object") {
+      customerPays = item.bookingId.totalAmount || item.bookingId.grandTotal || item.bookingId.finalCost || item.bookingId.serviceCost || item.bookingId.price || 0;
+    }
+    if (!customerPays) {
+      customerPays = item.totalAmount || item.amount || itemDetails.price || item.serviceCost || item.price || 0;
+    }
+
+    let serviceAmount = item.serviceId?.serviceCost || item.productId?.price || item.serviceCost || customerPays;
+    let commissionPct = item.commissionPercentage || item.bookingId?.commissionPercentage || 15;
+    
+    let techPayout = item.bookingId?.technicianPayout || item.technicianPayout || Math.round(customerPays * (1 - commissionPct / 100));
+    let platformFee = Math.max(0, customerPays - techPayout);
+
+    return {
+      customerPays,
+      serviceAmount,
+      techCommissionPct: commissionPct,
+      techPayout,
+      platformFee,
+      itemName: itemDetails.name,
+      bookingRef: itemDetails.ref
+    };
+  };
+
+  const extractReportsList = (res) => {
+    if (!res) return [];
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res.reports)) return res.reports;
+    if (Array.isArray(res.complaints)) return res.complaints;
+    if (Array.isArray(res.data)) return res.data;
+    if (Array.isArray(res.result)) return res.result;
+    if (res.data && typeof res.data === "object") {
+      if (Array.isArray(res.data.reports)) return res.data.reports;
+      if (Array.isArray(res.data.complaints)) return res.data.complaints;
+      if (Array.isArray(res.data.data)) return res.data.data;
+      if (Array.isArray(res.data.result)) return res.data.result;
+    }
+    if (res.result && typeof res.result === "object") {
+      if (Array.isArray(res.result.reports)) return res.result.reports;
+      if (Array.isArray(res.result.complaints)) return res.result.complaints;
+    }
+    return [];
+  };
+
+  const fetchReports = useCallback(async () => {
+    try {
+      let reportsList = [];
+      let totalP = 1;
+      let totalI = 0;
+      try {
+        const response = await getComplaintsList({
+          status: selectedStatusFilter !== "all" ? selectedStatusFilter : "all",
+          search: searchTerm || undefined,
+          page: currentPage,
+          limit: itemsPerPage,
+        });
+        reportsList = extractReportsList(response);
+        const dataObj = response.data && typeof response.data === "object" && !Array.isArray(response.data) ? response.data : response;
+        totalP = dataObj?.totalPages || response?.totalPages || Math.ceil(reportsList.length / itemsPerPage) || 1;
+        totalI = dataObj?.total || response?.total || reportsList.length;
+      } catch (err) {
+        console.warn("New engine complaints fetch fallback:", err.message);
+        const legacyRes = await getAllReports(currentPage, itemsPerPage);
+        reportsList = extractReportsList(legacyRes);
+        const dataObj = legacyRes.data && typeof legacyRes.data === "object" && !Array.isArray(legacyRes.data) ? legacyRes.data : legacyRes;
+        totalP = dataObj?.totalPages || legacyRes?.totalPages || Math.ceil(reportsList.length / itemsPerPage) || 1;
+        totalI = dataObj?.total || legacyRes?.total || reportsList.length;
+      }
+
+      setReports(reportsList);
+      setTotalPages(totalP);
+      setTotalItems(totalI);
+      return reportsList;
+    } catch (err) {
+      console.error("Error fetching reports:", err);
+      setLoadError(err);
+      toast.error(err, { title: "Fetch Error", description: "Failed to load reports.", duration: 3000, isClosable: true });
+      return [];
+    }
+  }, [currentPage, itemsPerPage, selectedStatusFilter, searchTerm, toast]);
+
+  const fetchRatings = useCallback(async () => {
+    try {
+      const response = await getAllRatings(currentPage, itemsPerPage);
+      const data = response.result || response.data || response;
+      const ratingsList = Array.isArray(data?.ratings)
+        ? data.ratings
+        : Array.isArray(data)
+        ? data
+        : [];
+      setRatings(ratingsList);
+      setTotalPages(data?.totalPages || Math.ceil(ratingsList.length / itemsPerPage) || 1);
+      setTotalItems(data?.total || ratingsList.length);
+      return ratingsList;
+    } catch (err) {
+      console.error("Error fetching ratings:", err);
+      setLoadError(err);
+      toast.error(err, { title: "Fetch Error", description: "Failed to load ratings.", duration: 3000, isClosable: true });
+      return [];
+    }
+  }, [currentPage, itemsPerPage, toast]);
+
+  const fetchData = useCallback(async () => {
+    if (!currentUser) return;
+    setLoadError(null);
+    setIsLoading(true);
+    try {
+      if (activeTab === "reports") {
+        await fetchReports();
+      } else {
+        await fetchRatings();
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentUser, activeTab, fetchReports, fetchRatings]);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser, fetchData]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
+
+  // Client-side filtering when searching/category filtering
+  const filteredData = useMemo(() => {
+    const data = activeTab === "reports" ? reports : ratings;
+    let filtered = data;
+
+    if (activeTab === "reports") {
+      if (selectedCategoryFilter !== "all") {
+        filtered = filtered.filter((r) => (r.category || r.reason || "other") === selectedCategoryFilter);
+      }
+      if (selectedStatusFilter !== "all") {
+        filtered = filtered.filter((r) => r.status === selectedStatusFilter);
+      }
+    }
+
+    if (searchTerm.trim()) {
+      const searchLower = searchTerm.toLowerCase().trim();
+      filtered = filtered.filter((item) => {
+        if (activeTab === "reports") {
+          const cName = item.customerId ? `${item.customerId.fname || ''} ${item.customerId.lname || ''}` : (item.reportedBy || '');
+          const tName = item.technicianId?.userId ? `${item.technicianId.userId.fname || ''} ${item.technicianId.userId.lname || ''}` : (item.technicianId?.fname || '');
+          const sName = item.serviceId?.serviceName || '';
+          const pName = item.productId?.productName || '';
+          const categoryName = getCategoryMeta(item.category || item.reason).label;
+          return (
+            categoryName.toLowerCase().includes(searchLower) ||
+            (item.category && item.category.toLowerCase().includes(searchLower)) ||
+            (item.complaint && item.complaint.toLowerCase().includes(searchLower)) ||
+            (item.description && item.description.toLowerCase().includes(searchLower)) ||
+            (item.reason && item.reason.toLowerCase().includes(searchLower)) ||
+            (item.status && item.status.toLowerCase().includes(searchLower)) ||
+            cName.toLowerCase().includes(searchLower) ||
+            tName.toLowerCase().includes(searchLower) ||
+            sName.toLowerCase().includes(searchLower) ||
+            pName.toLowerCase().includes(searchLower) ||
+            String(item.bookingId || '').toLowerCase().includes(searchLower)
+          );
+        } else {
+          return (
+            (item.comment || '').toLowerCase().includes(searchLower) ||
+            (item.status || '').toLowerCase().includes(searchLower) ||
+            (item.ratedBy || '').toLowerCase().includes(searchLower)
+          );
+        }
+      });
+    }
+
+    return filtered;
+  }, [activeTab, reports, ratings, selectedCategoryFilter, selectedStatusFilter, searchTerm]);
+
+  // Overall statistics
+  const stats = useMemo(() => {
+    const totalReports = reports.length;
+    const resolvedReports = reports.filter(
+      (r) => r.status?.toLowerCase().includes("resolved")
+    ).length;
+    const openReports = reports.filter(
+      (r) => r.status?.toLowerCase() === "open" || r.status?.toLowerCase() === "under_review"
+    ).length;
+    const totalRatings = ratings.length;
+    const avgRating =
+      ratings.length > 0
+        ? (ratings.reduce((sum, r) => sum + (r.rates || 0), 0) / ratings.length).toFixed(1)
+        : "0.0";
+
+    return {
+      totalReports,
+      resolvedReports,
+      openReports,
+      totalRatings,
+      avgRating,
+    };
+  }, [reports, ratings]);
+
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+    setCurrentPage(1);
+  };
+
+  const handleClearFilters = () => {
+    setSearchTerm("");
+    setSelectedCategoryFilter("all");
+    setSelectedStatusFilter("all");
+    setCurrentPage(1);
+  };
+
+  const handleViewDetails = async (item) => {
+    setSelectedItem(item);
+    setResolutionNoteInput(item.resolutionNote || "");
+    setSelectedStatusAction(
+      item.status === "open"
+        ? "under_review"
+        : ["resolved_refunded", "resolved_no_refund", "under_review"].includes(item.status)
+        ? item.status
+        : "resolved_refunded"
+    );
+    setIsDetailModalOpen(true);
+
+    try {
+      const detailedRes = await getComplaintById(item._id || item.id);
+      const dossier = detailedRes.data || detailedRes.result || detailedRes.report || detailedRes.complaint || detailedRes;
+      if (dossier && (dossier._id || dossier.id)) {
+        setSelectedItem((prev) => ({ ...prev, ...dossier }));
+      }
+    } catch {
+      // Keep item from list
+    }
+  };
 
   const triggerConfirmation = (type) => {
     if (type === "reject" && !resolutionNoteInput.trim()) {
@@ -246,420 +592,6 @@ export default function ReportsManagement() {
     setIsConfirmModalOpen(false);
   };
 
-  const cancelRef = useRef();
-
-  const getCategoryMeta = (cat) => {
-    const key = (cat || "").toLowerCase();
-    const meta = {
-      quality_dispute: { label: "Quality Dispute", color: "blue" },
-      damage: { label: "Property Damage", color: "red" },
-      incomplete_work: { label: "Incomplete Work", color: "orange" },
-      technician_misconduct: { label: "Technician Misconduct", color: "purple" },
-      goodwill: { label: "Goodwill / Courtesy", color: "teal" },
-      product_issue: { label: "Product Defect", color: "pink" },
-      other: { label: "Other Issue", color: "gray" },
-    };
-    return meta[key] || { label: cat ? cat.replace(/_/g, " ").toUpperCase() : "General Issue", color: "gray" };
-  };
-
-  // Shared via components/common/StatusBadge (preset="report") — mapping preserved
-  const renderStatusBadge = (status) => (
-    <StatusBadge preset="report" status={status} />
-  );
-
-  const formatCleanComplaintText = (text) => {
-    if (!text) return "No detailed complaint statement provided.";
-    let str = String(text).trim();
-    while (
-      (str.startsWith('"') && str.endsWith('"')) ||
-      (str.startsWith("'") && str.endsWith("'"))
-    ) {
-      str = str.slice(1, -1).trim();
-    }
-    return str || "No detailed complaint statement provided.";
-  };
-
-  const getItemDetails = (item) => {
-    if (!item) return { name: "N/A", type: "SERVICE", ref: "N/A", price: null };
-    
-    let name = "Service / Product Booking";
-    if (typeof item.serviceId === "object" && item.serviceId?.serviceName) {
-      name = item.serviceId.serviceName;
-    } else if (typeof item.productId === "object" && item.productId?.productName) {
-      name = item.productId.productName;
-    } else if (item.serviceName) {
-      name = item.serviceName;
-    } else if (item.productName) {
-      name = item.productName;
-    } else if (item.relatedItemName) {
-      name = item.relatedItemName;
-    } else if (typeof item.bookingId === "object" && item.bookingId) {
-      name = item.bookingId?.serviceId?.serviceName || item.bookingId?.productId?.productName || item.bookingId?.title || name;
-    }
-
-    let type = "SERVICE";
-    if (item.productId || item.productName || item.bookingType === "product" || item.bookingId?.bookingType === "product") {
-      type = "PRODUCT";
-    }
-
-    let price = item.serviceId?.servicePrice || item.productId?.price || item.bookingId?.totalAmount || item.amount || item.totalAmount || null;
-
-    let ref = "N/A";
-    if (typeof item.bookingId === "object" && item.bookingId) {
-      ref = item.bookingId.bookingNumber || item.bookingId._id || item.bookingId.id || "N/A";
-    } else if (item.bookingId) {
-      ref = String(item.bookingId);
-    }
-
-    return { name, type, ref, price };
-  };
-
-  const getTechnicianDetails = (item) => {
-    if (!item) return { name: "Not Assigned", phone: "N/A", email: "N/A", assigned: false };
-    
-    let techObj = item.technicianId || item.technicianDetails || item.assignedTechnician;
-    if (techObj && typeof techObj === "object") {
-      let u = techObj.userId || techObj;
-      let fname = u.fname || u.firstName || techObj.fname || "";
-      let lname = u.lname || u.lastName || techObj.lname || "";
-      let fullName = `${fname} ${lname}`.trim() || u.name || techObj.name || "Assigned Technician";
-      let phone = u.mobileNumber || u.phone || u.mobile || techObj.mobileNumber || techObj.phone || "N/A";
-      let email = u.email || techObj.email || "N/A";
-      return { name: fullName, phone, email, assigned: true };
-    }
-
-    if (item.techName || item.technicianName) {
-      return {
-        name: item.techName || item.technicianName,
-        phone: item.techMobile || item.technicianPhone || "N/A",
-        email: item.techEmail || "N/A",
-        assigned: true,
-      };
-    }
-
-    return { name: "Platform / Direct Order (No Technician)", phone: "N/A", email: "N/A", assigned: false };
-  };
-
-  const getCustomerDetails = (item) => {
-    if (!item) return { name: "N/A", phone: "N/A", email: "N/A" };
-
-    let custObj = item.customerId || item.customerDetails;
-    if (custObj && typeof custObj === "object") {
-      let fname = custObj.fname || custObj.firstName || "";
-      let lname = custObj.lname || custObj.lastName || "";
-      let fullName = `${fname} ${lname}`.trim() || custObj.name || item.reportedBy || "Customer";
-      let phone = custObj.mobileNumber || custObj.phone || custObj.mobile || "N/A";
-      let email = custObj.email || "N/A";
-      return { name: fullName, phone, email };
-    }
-
-    return {
-      name: item.reportedBy || item.customerName || "Customer",
-      phone: item.customerPhone || "N/A",
-      email: item.customerEmail || "N/A",
-    };
-  };
-
-  const getFinancialBreakdown = (item) => {
-    if (!item) {
-      return {
-        customerPays: 0,
-        serviceAmount: 0,
-        techCommissionPct: 15,
-        techPayout: 0,
-        platformFee: 0,
-        itemName: "Service / Product Item",
-        bookingRef: "N/A"
-      };
-    }
-
-    const itemDetails = getItemDetails(item);
-    let customerPays = 0;
-
-    if (item.bookingId && typeof item.bookingId === "object") {
-      customerPays = item.bookingId.totalAmount || item.bookingId.grandTotal || item.bookingId.finalCost || item.bookingId.serviceCost || item.bookingId.price || 0;
-    }
-    if (!customerPays) {
-      customerPays = item.totalAmount || item.amount || itemDetails.price || item.serviceCost || item.price || 0;
-    }
-
-    let serviceAmount = item.serviceId?.serviceCost || item.productId?.price || item.serviceCost || customerPays;
-    let commissionPct = item.commissionPercentage || item.bookingId?.commissionPercentage || 15;
-    
-    let techPayout = item.bookingId?.technicianPayout || item.technicianPayout || Math.round(customerPays * (1 - commissionPct / 100));
-    let platformFee = Math.max(0, customerPays - techPayout);
-
-    return {
-      customerPays,
-      serviceAmount,
-      techCommissionPct: commissionPct,
-      techPayout,
-      platformFee,
-      itemName: itemDetails.name,
-      bookingRef: itemDetails.ref
-    };
-  };
-
-  const globalScrollbarStyles = {
-    "&::-webkit-scrollbar": {
-      width: "6px",
-      height: "6px",
-    },
-    "&::-webkit-scrollbar-track": {
-      background: "transparent",
-    },
-    "&::-webkit-scrollbar-thumb": {
-      background: "transparent",
-      borderRadius: "3px",
-      transition: "background 0.3s ease",
-    },
-    "&:hover::-webkit-scrollbar-thumb": {
-      background: "#cbd5e1",
-    },
-    "&:hover::-webkit-scrollbar-thumb:hover": {
-      background: "#94a3b8",
-    },
-  };
-
-  const stats = {
-    totalReports: reports.length,
-    resolvedReports: reports.filter(
-      (r) => r.status?.toLowerCase().includes("resolved")
-    ).length,
-    totalRatings: ratings.length,
-    averageRating:
-      ratings.length > 0
-        ? (
-            ratings.reduce((sum, r) => sum + (r.rates || 0), 0) / ratings.length
-          ).toFixed(1)
-        : 0,
-  };
-
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
-
-  useEffect(() => {
-    if (reduxUser) {
-      setCurrentUser(reduxUser);
-      return;
-    }
-    const storedUser = JSON.parse(localStorage.getItem("user") || "null");
-    if (storedUser) {
-      setCurrentUser(storedUser);
-    }
-  }, [reduxUser]);
-
-  const extractReportsList = (res) => {
-    if (!res) return [];
-    if (Array.isArray(res)) return res;
-    if (Array.isArray(res.reports)) return res.reports;
-    if (Array.isArray(res.complaints)) return res.complaints;
-    if (Array.isArray(res.data)) return res.data;
-    if (Array.isArray(res.result)) return res.result;
-    if (res.data && typeof res.data === "object") {
-      if (Array.isArray(res.data.reports)) return res.data.reports;
-      if (Array.isArray(res.data.complaints)) return res.data.complaints;
-      if (Array.isArray(res.data.data)) return res.data.data;
-      if (Array.isArray(res.data.result)) return res.data.result;
-    }
-    if (res.result && typeof res.result === "object") {
-      if (Array.isArray(res.result.reports)) return res.result.reports;
-      if (Array.isArray(res.result.complaints)) return res.result.complaints;
-    }
-    return [];
-  };
-
-  const fetchReports = useCallback(async () => {
-    try {
-      let reportsList = [];
-      let totalP = 1;
-      let totalI = 0;
-      try {
-        const response = await getComplaintsList({
-          status: selectedStatusFilter !== "all" ? selectedStatusFilter : "all",
-          search: searchTerm || undefined,
-          page: currentPage,
-          limit: itemsPerPage,
-        });
-        reportsList = extractReportsList(response);
-        const dataObj = response.data && typeof response.data === "object" && !Array.isArray(response.data) ? response.data : response;
-        totalP = dataObj?.totalPages || response?.totalPages || Math.ceil(reportsList.length / itemsPerPage) || 1;
-        totalI = dataObj?.total || response?.total || reportsList.length;
-      } catch (err) {
-        console.warn("New engine complaints fetch fallback:", err.message);
-        const legacyRes = await getAllReports(currentPage, itemsPerPage);
-        reportsList = extractReportsList(legacyRes);
-        const dataObj = legacyRes.data && typeof legacyRes.data === "object" && !Array.isArray(legacyRes.data) ? legacyRes.data : legacyRes;
-        totalP = dataObj?.totalPages || legacyRes?.totalPages || Math.ceil(reportsList.length / itemsPerPage) || 1;
-        totalI = dataObj?.total || legacyRes?.total || reportsList.length;
-      }
-
-      setReports(reportsList);
-      setTotalPages(totalP);
-      setTotalItems(totalI);
-      return reportsList;
-    } catch (err) {
-      console.error("Error fetching reports:", err);
-      toast({
-        title: "Fetch Error",
-        description: err.message || "Failed to load reports.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-      return [];
-    }
-  }, [currentPage, itemsPerPage, selectedStatusFilter, searchTerm, toast]);
-
-  const fetchRatings = useCallback(async () => {
-    try {
-      const response = await getAllRatings(currentPage, itemsPerPage);
-      const data = response.result || response.data || response;
-      const ratingsList = Array.isArray(data?.ratings)
-        ? data.ratings
-        : Array.isArray(data)
-        ? data
-        : [];
-      setRatings(ratingsList);
-      setTotalPages(data?.totalPages || Math.ceil(ratingsList.length / itemsPerPage));
-      setTotalItems(data?.total || ratingsList.length);
-      return ratingsList;
-    } catch (err) {
-      console.error("Error fetching ratings:", err);
-      toast({
-        title: "Fetch Error",
-        description: err.message || "Failed to load ratings.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-      return [];
-    }
-  }, [currentPage, itemsPerPage, toast]);
-
-  const fetchData = useCallback(async () => {
-    if (!currentUser) return;
-    setIsLoading(true);
-    try {
-      if (activeTab === "reports") {
-        const reportsList = await fetchReports();
-        setFilteredData(reportsList);
-      } else {
-        const ratingsList = await fetchRatings();
-        setFilteredData(ratingsList);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentUser, activeTab, fetchReports, fetchRatings]);
-
-  useEffect(() => {
-    if (currentUser) {
-      fetchData();
-    }
-  }, [currentUser, fetchData]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab]);
-
-  useEffect(() => {
-    const data = activeTab === "reports" ? reports : ratings;
-    let filtered = data;
-
-    if (activeTab === "reports") {
-      if (selectedCategoryFilter !== "all") {
-        filtered = filtered.filter((r) => (r.category || r.reason || "other") === selectedCategoryFilter);
-      }
-      if (selectedStatusFilter !== "all") {
-        filtered = filtered.filter((r) => r.status === selectedStatusFilter);
-      }
-    }
-
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      filtered = filtered.filter((item) => {
-        if (activeTab === "reports") {
-          const cName = item.customerId ? `${item.customerId.fname || ''} ${item.customerId.lname || ''}` : (item.reportedBy || '');
-          const tName = item.technicianId?.userId ? `${item.technicianId.userId.fname || ''} ${item.technicianId.userId.lname || ''}` : (item.technicianId?.fname || '');
-          const sName = item.serviceId?.serviceName || '';
-          const pName = item.productId?.productName || '';
-          const categoryName = getCategoryMeta(item.category || item.reason).label;
-          return (
-            categoryName.toLowerCase().includes(searchLower) ||
-            (item.category && item.category.toLowerCase().includes(searchLower)) ||
-            (item.complaint && item.complaint.toLowerCase().includes(searchLower)) ||
-            (item.description && item.description.toLowerCase().includes(searchLower)) ||
-            (item.reason && item.reason.toLowerCase().includes(searchLower)) ||
-            (item.status && item.status.toLowerCase().includes(searchLower)) ||
-            cName.toLowerCase().includes(searchLower) ||
-            tName.toLowerCase().includes(searchLower) ||
-            sName.toLowerCase().includes(searchLower) ||
-            pName.toLowerCase().includes(searchLower) ||
-            String(item.bookingId || '').toLowerCase().includes(searchLower)
-          );
-        } else {
-          return (
-            item.comment?.toLowerCase().includes(searchLower) ||
-            item.status?.toLowerCase().includes(searchLower) ||
-            item.ratedBy?.toLowerCase().includes(searchLower)
-          );
-        }
-      });
-    }
-    setFilteredData(filtered);
-    setTotalPages(Math.ceil(filtered.length / itemsPerPage) || 1);
-  }, [searchTerm, selectedCategoryFilter, selectedStatusFilter, reports, ratings, activeTab, itemsPerPage]);
-
-  const handleSearchChange = (e) => {
-    setSearchTerm(e.target.value);
-    setCurrentPage(1);
-  };
-
-  const handleClearSearch = () => {
-    setSearchTerm("");
-    setSelectedCategoryFilter("all");
-    setSelectedStatusFilter("all");
-    setCurrentPage(1);
-  };
-
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-    }
-  };
-
-  const handlePrevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
-  };
-
-  const handleViewDetails = async (item) => {
-    setSelectedItem(item);
-    setResolutionNoteInput(item.resolutionNote || "");
-    setSelectedStatusAction(
-      item.status === "open"
-        ? "under_review"
-        : ["resolved_refunded", "resolved_no_refund", "under_review"].includes(item.status)
-        ? item.status
-        : "resolved_refunded"
-    );
-    setIsDetailModalOpen(true);
-
-    // Fetch full dossier details from GET /api/admin/complaints/:id
-    try {
-      const detailedRes = await getComplaintById(item._id || item.id);
-      const dossier = detailedRes.data || detailedRes.result || detailedRes.report || detailedRes.complaint || detailedRes;
-      if (dossier && (dossier._id || dossier.id)) {
-        setSelectedItem(prev => ({ ...prev, ...dossier }));
-      }
-    } catch (e) {
-      console.log("Single complaint dossier detail loaded from list state.");
-    }
-  };
-
   const handleExecuteResolve = async () => {
     if (!selectedItem) return;
     setActionLoading(true);
@@ -672,7 +604,6 @@ export default function ReportsManagement() {
       try {
         await updateComplaintStatus(selectedItem._id || selectedItem.id, payload);
       } catch (e) {
-        console.warn("Status update fallback to legacy resolveReport:", e.message);
         await resolveReport(selectedItem._id || selectedItem.id, payload);
       }
 
@@ -686,13 +617,7 @@ export default function ReportsManagement() {
       await fetchData();
       setIsDetailModalOpen(false);
     } catch (err) {
-      toast({
-        title: "Action Failed",
-        description: err.message || "Failed to update report status.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Action Failed", description: "Failed to update report status.", duration: 3000, isClosable: true });
     } finally {
       setActionLoading(false);
     }
@@ -714,8 +639,7 @@ export default function ReportsManagement() {
     try {
       try {
         await rejectComplaint(selectedItem._id || selectedItem.id, { reason: resolutionNoteInput.trim() });
-      } catch (e) {
-        console.warn("Reject complaint fallback:", e.message);
+      } catch {
         await updateComplaintStatus(selectedItem._id || selectedItem.id, {
           status: "resolved_no_refund",
           resolutionNote: `Rejected: ${resolutionNoteInput.trim()}`,
@@ -732,13 +656,7 @@ export default function ReportsManagement() {
       await fetchData();
       setIsDetailModalOpen(false);
     } catch (err) {
-      toast({
-        title: "Rejection Failed",
-        description: err.message || "Failed to reject complaint.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Rejection Failed", description: "Failed to reject complaint.", duration: 3000, isClosable: true });
     } finally {
       setActionLoading(false);
     }
@@ -757,7 +675,7 @@ export default function ReportsManagement() {
 
       try {
         await updateComplaintStatus(selectedItem._id || selectedItem.id, payload);
-      } catch (e) {
+      } catch {
         await resolveReport(selectedItem._id || selectedItem.id, payload);
       }
 
@@ -771,13 +689,7 @@ export default function ReportsManagement() {
       await fetchData();
       setIsDetailModalOpen(false);
     } catch (err) {
-      toast({
-        title: "Freeze Failed",
-        description: err.message || "Failed to freeze payout.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Freeze Failed", description: "Failed to freeze payout.", duration: 3000, isClosable: true });
     } finally {
       setActionLoading(false);
     }
@@ -796,8 +708,8 @@ export default function ReportsManagement() {
             amount: refundAmt,
             reason: resolutionNoteInput.trim() || `Complaint Refund (₹${refundAmt}): ${selectedItem.complaint || "Quality dispute"}`,
           });
-        } catch (e) {
-          console.warn("Direct refund API fallback:", e.message);
+        } catch {
+          // Fallback to update complaint directly
         }
       }
       const refundId = refundRes?.refund?._id || refundRes?._id || refundRes?.id;
@@ -810,13 +722,13 @@ export default function ReportsManagement() {
 
       try {
         await updateComplaintStatus(selectedItem._id || selectedItem.id, statusPayload);
-      } catch (e) {
+      } catch {
         await resolveReport(selectedItem._id || selectedItem.id, statusPayload);
       }
 
       toast({
         title: `Customer Refund Processed (₹${refundAmt})`,
-        description: "Complaint resolved in customer's favor and refund created.",
+        description: "Complaint resolved in customer's favor and refund record logged.",
         status: "success",
         duration: 3000,
         isClosable: true,
@@ -824,13 +736,7 @@ export default function ReportsManagement() {
       await fetchData();
       setIsDetailModalOpen(false);
     } catch (err) {
-      toast({
-        title: "Refund Action Failed",
-        description: err.message || "Failed to process customer refund.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Refund Action Failed", description: "Failed to process customer refund.", duration: 3000, isClosable: true });
     } finally {
       setActionLoading(false);
     }
@@ -847,8 +753,8 @@ export default function ReportsManagement() {
             penaltyAmount: penaltyAmt,
             reason: `Penalty ₹${penaltyAmt} for complaint #${selectedItem._id}: ${resolutionNoteInput || "Technician misconduct/quality failure"}`,
           });
-        } catch (e) {
-          console.warn("Commission override penalty fallback:", e.message);
+        } catch {
+          // Fallback
         }
       }
       await resolveReport(selectedItem._id, {
@@ -868,13 +774,7 @@ export default function ReportsManagement() {
       await fetchData();
       setIsDetailModalOpen(false);
     } catch (err) {
-      toast({
-        title: "Penalty Action Failed",
-        description: err.message || "Failed to penalize technician.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Penalty Action Failed", description: "Failed to penalize technician.", duration: 3000, isClosable: true });
     } finally {
       setActionLoading(false);
     }
@@ -897,7 +797,7 @@ export default function ReportsManagement() {
       });
       toast({
         title: "Rating Updated",
-        description: "Rating has been updated successfully.",
+        description: "Rating and feedback comment updated successfully.",
         status: "success",
         duration: 3000,
         isClosable: true,
@@ -905,13 +805,7 @@ export default function ReportsManagement() {
       await fetchData();
       setIsEditModalOpen(false);
     } catch (err) {
-      toast({
-        title: "Error",
-        description: err.message || "Failed to update rating.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Error", description: "Failed to update rating.", duration: 3000, isClosable: true });
     } finally {
       setActionLoading(false);
     }
@@ -922,8 +816,6 @@ export default function ReportsManagement() {
     setIsDeleteDialogOpen(true);
   };
 
-  // Rebuild the denormalized rating aggregate for a rating's target
-  // POST /user/admin/ratings/rebuild/:targetType/:targetId
   const handleRebuildAggregate = async (item) => {
     const target = item?.technicianId || item?.technician || null;
     const service = item?.serviceId || item?.service || null;
@@ -944,7 +836,7 @@ export default function ReportsManagement() {
       toast({ title: "Aggregate Rebuilt", description: `${targetType} ratings recalculated.`, status: "success", duration: 3000, isClosable: true });
       await fetchData();
     } catch (err) {
-      toast({ title: "Rebuild failed", description: err.message, status: "error", duration: 3000, isClosable: true });
+      toast.error(err, { title: "Rebuild failed", duration: 3000, isClosable: true });
     } finally {
       setActionLoading(false);
     }
@@ -957,7 +849,7 @@ export default function ReportsManagement() {
       await deleteRating(itemToDelete._id);
       toast({
         title: "Rating Deleted",
-        description: "Rating has been deleted successfully.",
+        description: "The rating has been deleted permanently.",
         status: "success",
         duration: 3000,
         isClosable: true,
@@ -965,138 +857,89 @@ export default function ReportsManagement() {
       await fetchData();
       setIsDeleteDialogOpen(false);
     } catch (err) {
-      toast({
-        title: "Error",
-        description: err.message || "Failed to delete rating.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
+      toast.error(err, { title: "Delete Failed", description: "Failed to delete rating.", duration: 3000, isClosable: true });
     } finally {
       setActionLoading(false);
+      setItemToDelete(null);
     }
   };
 
   const renderStars = (rating, size = "sm") => {
     return (
-      <Flex gap={0.5}>
+      <Flex gap={0.5} align="center">
         {[1, 2, 3, 4, 5].map((star) => (
           <Icon
             key={star}
-            as={star <= rating ? MdStar : MdStarBorder}
-            color={star <= rating ? goldColor : "gray.300"}
-            boxSize={size === "xs" ? 3 : 4}
+            as={star <= (rating || 0) ? MdStar : MdStarBorder}
+            color={star <= (rating || 0) ? GOLD : "gray.300"}
+            boxSize={size === "xs" ? 3.5 : 4}
           />
         ))}
       </Flex>
     );
   };
 
-  // Shared via components/common/StatCard (variant="mini") — Reports hover-lift preserved
-  const StatCard = (props) => (
-    <SharedStatCard
-      variant="mini"
-      accent={customColor}
-      textColor={textColor}
-      loading={isLoading}
-      interactive
-      numberSize="lg"
-      {...props}
-    />
-  );
+  // CSV Export for active tab
+  const handleExportCsv = () => {
+    try {
+      let csvContent = "";
+      const dateStr = new Date().toISOString().slice(0, 10);
+      let filename = `dispute_reports_${dateStr}.csv`;
 
-  const ReportMobileCard = ({ item, idx }) => {
-    const categoryMeta = getCategoryMeta(item.category || item.reason);
-    const reporterName = item.customerId
-      ? `${item.customerId.fname || ''} ${item.customerId.lname || ''}`.trim() || item.customerId.email
-      : (item.reportedBy || "Customer");
-    const targetName = item.technicianId?.userId
-      ? `${item.technicianId.userId.fname || ''} ${item.technicianId.userId.lname || ''}`.trim()
-      : (item.technicianId?.fname || "Platform");
-    const relatedItem = item.serviceId?.serviceName || item.productId?.productName || "Service Order";
+      if (activeTab === "reports") {
+        const headers = ["Case ID", "Category", "Customer Name", "Customer Phone", "Technician", "Related Item", "Status", "Complaint", "Created At"];
+        const rows = filteredData.map((item) => {
+          const cust = getCustomerDetails(item);
+          const tech = getTechnicianDetails(item);
+          const details = getItemDetails(item);
+          return [
+            item._id || item.id || "",
+            `"${(item.category || item.reason || "").replace(/"/g, '""')}"`,
+            `"${cust.name.replace(/"/g, '""')}"`,
+            cust.phone || "",
+            `"${tech.name.replace(/"/g, '""')}"`,
+            `"${details.name.replace(/"/g, '""')}"`,
+            item.status || "",
+            `"${(item.complaint || item.description || "").replace(/"/g, '""')}"`,
+            item.createdAt ? new Date(item.createdAt).toISOString() : "",
+          ];
+        });
+        csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+      } else {
+        filename = `customer_ratings_${dateStr}.csv`;
+        const headers = ["Rating ID", "Stars", "Comment", "Rated By", "Created At"];
+        const rows = filteredData.map((r) => [
+          r._id || r.id || "",
+          r.rates || 0,
+          `"${(r.comment || "").replace(/"/g, '""')}"`,
+          `"${(r.ratedBy || "").replace(/"/g, '""')}"`,
+          r.createdAt ? new Date(r.createdAt).toISOString() : "",
+        ]);
+        csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+      }
 
-    return (
-      <MobileCard>
-        <Flex justify="space-between" align="center" mb={2}>
-          <HStack spacing={2}>
-            <Text fontWeight="bold" color={customColor} fontSize="sm">
-              #{indexOfFirstItem + idx + 1}
-            </Text>
-            <Badge colorScheme={categoryMeta.color} fontSize="3xs" borderRadius="md" px={1.5}>
-              {categoryMeta.label}
-            </Badge>
-          </HStack>
-          {renderStatusBadge(item.status)}
-        </Flex>
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
-        <VStack align="stretch" spacing={1} fontSize="xs" mb={2}>
-          <Text color="gray.600">
-            <strong>Reporter:</strong> {reporterName}
-          </Text>
-          <Text color="gray.600">
-            <strong>Against:</strong> {targetName}
-          </Text>
-          <Text color="gray.600" noOfLines={1}>
-            <strong>Related:</strong> {relatedItem}
-          </Text>
-          {(item.complaint || item.description || item.reason) && (
-            <Text color="gray.500" fontSize="2xs" noOfLines={2} bg="gray.50" p={1.5} borderRadius="xs">
-              "{item.complaint || item.description || item.reason}"
-            </Text>
-          )}
-        </VStack>
-
-        <Flex gap={2} justify="space-between" align="center" pt={1} borderTop="1px solid" borderColor="gray.100">
-          <Text fontSize="3xs" color="gray.400">
-            {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "N/A"}
-          </Text>
-          <Button
-            aria-label="View details"
-            leftIcon={<FaEye />}
-            size="xs"
-            colorScheme="blue"
-            variant="outline"
-            onClick={() => handleViewDetails(item)}
-          >
-            Review & Resolve
-          </Button>
-        </Flex>
-      </MobileCard>
-    );
+      toast({
+        title: "Data Exported",
+        description: `Exported ${filename} successfully.`,
+        status: "success",
+        duration: 2500,
+        isClosable: true,
+      });
+    } catch (err) {
+      console.error("Export error:", err);
+      toast.error(err, { title: "Export Failed" });
+    }
   };
-
-  const RatingMobileCard = ({ item, idx }) => (
-    <MobileCard>
-      <Flex justify="space-between" align="center" mb={2}>
-        <HStack spacing={2}>
-          <Text fontWeight="bold" color={customColor} fontSize="sm" noOfLines={1}>
-            #{indexOfFirstItem + idx + 1}
-          </Text>
-          {renderStars(item.rates, "xs")}
-        </HStack>
-        <Text fontSize="xs" color="gray.500">
-          {item.createdAt
-            ? new Date(item.createdAt).toLocaleDateString()
-            : "N/A"}
-        </Text>
-      </Flex>
-
-      {item.comment && (
-        <Text fontSize="xs" color="gray.600" noOfLines={2} mb={2}>
-          "{item.comment}"
-        </Text>
-      )}
-
-      <MobileCardActions
-        actions={[
-          { label: "View details", icon: <FaEye />, colorScheme: "blue", onClick: () => handleViewDetails(item) },
-          { label: "Edit rating", icon: <FaEdit />, colorScheme: "orange", onClick: () => handleEditRating(item) },
-          { label: "Rebuild aggregate", icon: <FaHistory />, colorScheme: "purple", onClick: () => handleRebuildAggregate(item) },
-          { label: "Delete rating", icon: <FaTrash />, colorScheme: "red", onClick: () => handleDeleteClick(item) },
-        ]}
-      />
-    </MobileCard>
-  );
 
   if (!currentUser) return null;
 
@@ -1105,185 +948,333 @@ export default function ReportsManagement() {
   const modalCustDetails = selectedItem ? getCustomerDetails(selectedItem) : {};
 
   return (
-    <Flex
-      flexDirection="column"
-      pt={{ base: "50px", md: "45px" }}
-      height={{ base: "calc(100vh - 20px)", md: "calc(100vh - 40px)" }}
-      overflow="hidden"
-      css={globalScrollbarStyles}
-    >
-      {/* Fixed Statistics Cards */}
-      <Box flexShrink={0} p={{ base: 1, md: 4 }} pb={0}>
-        <SimpleGrid
-          columns={{ base: 1, sm: 2, md: 4 }}
-          spacing={{ base: 3, md: 4 }}
-          mb={{ base: 3, md: 4 }}
+    <Box pt={{ base: "120px", md: "80px" }} px={{ base: "16px", md: "24px" }} pb="40px">
+      <VStack spacing={6} align="stretch">
+        {/* ================= 1. PAGE HEADER ================= */}
+        <Flex
+          direction={{ base: "column", md: "row" }}
+          justify="space-between"
+          align={{ base: "flex-start", md: "center" }}
+          gap={4}
         >
-          <StatCard
-            label="Total Reports"
-            value={stats.totalReports}
-            icon={MdReport}
-            bg={customColor}
-          />
-          <StatCard
-            label="Resolved Reports"
-            value={stats.resolvedReports}
-            icon={MdCheckCircle}
-            bg="green.500"
-          />
-          <StatCard
-            label="Total Ratings"
-            value={stats.totalRatings}
-            icon={MdRateReview}
-            bg="blue.500"
-          />
-          <StatCard
-            label="Average Rating"
-            value={`${stats.averageRating} / 5`}
-            icon={MdStar}
-            bg={goldColor}
-          />
-        </SimpleGrid>
-      </Box>
+          <Box>
+            <HStack spacing={2} mb={1}>
+              <Tag size="sm" colorScheme="teal" borderRadius="full" fontWeight="bold">
+                QUALITY ASSURANCE & DISPUTE DESK
+              </Tag>
+              <Badge
+                colorScheme="purple"
+                variant="subtle"
+                fontSize="xs"
+                px={2}
+                py={0.5}
+                borderRadius="full"
+                display="flex"
+                alignItems="center"
+                gap={1}
+              >
+                <Box as="span" w="6px" h="6px" borderRadius="full" bg="purple.500" />
+                Live Review Stream
+              </Badge>
+            </HStack>
+            <Heading as="h1" size="lg" fontWeight="900" letterSpacing="-0.5px" color={isDark ? "white" : "gray.850"}>
+              Reported Issues & Customer Ratings
+            </Heading>
+            <Text fontSize="sm" color="gray.500" mt={1}>
+              Investigate customer dispute claims, review counter-evidence, enforce SLA penalties, and monitor service rating scores.
+            </Text>
+          </Box>
 
-      {/* Tab Buttons */}
-      <Box flexShrink={0} px={{ base: 1, md: 4 }} pb={2}>
-        <Flex gap={2}>
-          <Button
-            size="sm"
-            leftIcon={<MdReport />}
-            onClick={() => setActiveTab("reports")}
-            bg={activeTab === "reports" ? customColor : "white"}
-            color={activeTab === "reports" ? "white" : customColor}
-            border="1px"
-            borderColor={customColor}
-            _hover={{
-              bg: activeTab === "reports" ? customColor : `${customColor}10`,
-            }}
-            _active={{
-              bg: activeTab === "reports" ? "#004d4d" : "brand.100",
-            }}
-            borderRadius="md"
-            fontWeight="bold"
-            fontSize="xs"
-          >
-            Reports
-          </Button>
-          <Button
-            size="sm"
-            leftIcon={<MdStar />}
-            onClick={() => setActiveTab("ratings")}
-            bg={activeTab === "ratings" ? customColor : "white"}
-            color={activeTab === "ratings" ? "white" : customColor}
-            border="1px"
-            borderColor={customColor}
-            _hover={{
-              bg: activeTab === "ratings" ? customColor : `${customColor}10`,
-            }}
-            _active={{
-              bg: activeTab === "ratings" ? "#004d4d" : "brand.100",
-            }}
-            borderRadius="md"
-            fontWeight="bold"
-            fontSize="xs"
-          >
-            Ratings
-          </Button>
+          <HStack spacing={3} flexWrap="wrap">
+            <Button
+              size="sm"
+              variant="outline"
+              borderRadius="10px"
+              fontWeight="700"
+              borderColor={isDark ? "gray.700" : "gray.300"}
+              leftIcon={<FaDownload size={13} />}
+              onClick={handleExportCsv}
+            >
+              Export CSV
+            </Button>
+            <Button
+              size="sm"
+              bg={BRAND}
+              color="white"
+              borderRadius="10px"
+              fontWeight="700"
+              _hover={{ bg: "#006666" }}
+              _active={{ bg: "#004d4d" }}
+              leftIcon={<MdRefresh size={16} />}
+              isLoading={isLoading}
+              onClick={fetchData}
+            >
+              Refresh Desk
+            </Button>
+          </HStack>
         </Flex>
-      </Box>
 
-      {/* Scrollable Table Container */}
-      <Box
-        display="flex"
-        flexDirection="column"
-        p={{ base: 1, md: 4 }}
-        pt={0}
-        flex="1"
-        overflow="hidden"
-      >
-        <Card
-          shadow="lg"
-          bg="white"
-          display="flex"
-          flexDirection="column"
-          maxH="100%"
+        {loadError && (
+          <ErrorState
+            compact
+            error={loadError}
+            title="Could not load reports or ratings"
+            onRetry={fetchData}
+          />
+        )}
+
+        {/* ================= 2. EXECUTIVE KPI CARDS ================= */}
+        <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={4}>
+          {/* Card 1: Total Reports */}
+          <Box
+            p={5}
+            bg={isDark ? "gray.850" : "white"}
+            borderRadius="16px"
+            border="1px solid"
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            boxShadow="sm"
+            position="relative"
+            overflow="hidden"
+          >
+            <Box position="absolute" top={0} left={0} right={0} h="3px" bg="purple.400" />
+            <HStack justify="space-between" align="flex-start" mb={2}>
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
+                Total Dispute Reports
+              </Text>
+              <Box p={2.5} bg="purple.50" color="purple.600" borderRadius="10px">
+                <Icon as={MdReport} boxSize={5} />
+              </Box>
+            </HStack>
+            <Text fontSize="2xl" fontWeight="900" color={isDark ? "white" : "gray.850"}>
+              {stats.totalReports}
+            </Text>
+            <HStack spacing={2} mt={1}>
+              <Badge colorScheme="purple" fontSize="2xs" borderRadius="full" px={2}>
+                {stats.openReports} Active Cases
+              </Badge>
+              <Text fontSize="2xs" color="gray.500">
+                Logged disputes
+              </Text>
+            </HStack>
+          </Box>
+
+          {/* Card 2: Resolved Cases */}
+          <Box
+            p={5}
+            bg={isDark ? "gray.850" : "white"}
+            borderRadius="16px"
+            border="1px solid"
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            boxShadow="sm"
+            position="relative"
+            overflow="hidden"
+          >
+            <Box position="absolute" top={0} left={0} right={0} h="3px" bg="green.400" />
+            <HStack justify="space-between" align="flex-start" mb={2}>
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
+                Resolved Disputes
+              </Text>
+              <Box p={2.5} bg="green.50" color="green.600" borderRadius="10px">
+                <Icon as={MdCheckCircle} boxSize={5} />
+              </Box>
+            </HStack>
+            <Text fontSize="2xl" fontWeight="900" color="green.600">
+              {stats.resolvedReports}
+            </Text>
+            <HStack spacing={2} mt={1}>
+              <Badge colorScheme="green" fontSize="2xs" borderRadius="full" px={2}>
+                {stats.totalReports > 0 ? `${Math.round((stats.resolvedReports / stats.totalReports) * 100)}% Rate` : "100% Rate"}
+              </Badge>
+              <Text fontSize="2xs" color="gray.500">
+                Closed cases
+              </Text>
+            </HStack>
+          </Box>
+
+          {/* Card 3: Average Rating */}
+          <Box
+            p={5}
+            bg={isDark ? "gray.850" : "white"}
+            borderRadius="16px"
+            border="1px solid"
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            boxShadow="sm"
+            position="relative"
+            overflow="hidden"
+          >
+            <Box position="absolute" top={0} left={0} right={0} h="3px" bg="yellow.400" />
+            <HStack justify="space-between" align="flex-start" mb={2}>
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
+                Overall Rating Score
+              </Text>
+              <Box p={2.5} bg="yellow.50" color="yellow.600" borderRadius="10px">
+                <Icon as={MdStar} boxSize={5} />
+              </Box>
+            </HStack>
+            <HStack spacing={2} align="baseline">
+              <Text fontSize="2xl" fontWeight="900" color={isDark ? "white" : "gray.850"}>
+                {stats.avgRating}
+              </Text>
+              <Text fontSize="sm" color="gray.400" fontWeight="bold">/ 5.0</Text>
+            </HStack>
+            <HStack spacing={1.5} mt={1}>
+              {renderStars(Number(stats.avgRating), "xs")}
+              <Text fontSize="2xs" color="gray.500" ml={1}>
+                Platform satisfaction
+              </Text>
+            </HStack>
+          </Box>
+
+          {/* Card 4: Total Ratings */}
+          <Box
+            p={5}
+            bg={isDark ? "gray.850" : "white"}
+            borderRadius="16px"
+            border="1px solid"
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            boxShadow="sm"
+            position="relative"
+            overflow="hidden"
+          >
+            <Box position="absolute" top={0} left={0} right={0} h="3px" bg="teal.400" />
+            <HStack justify="space-between" align="flex-start" mb={2}>
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
+                Verified Reviews
+              </Text>
+              <Box p={2.5} bg="teal.50" color="teal.600" borderRadius="10px">
+                <Icon as={MdOutlineRateReview} boxSize={5} />
+              </Box>
+            </HStack>
+            <Text fontSize="2xl" fontWeight="900" color={isDark ? "white" : "gray.850"}>
+              {stats.totalRatings}
+            </Text>
+            <HStack spacing={2} mt={1}>
+              <Badge colorScheme="teal" fontSize="2xs" borderRadius="full" px={2}>
+                Customer Submissions
+              </Badge>
+              <Text fontSize="2xs" color="gray.500">
+                Audited feedback
+              </Text>
+            </HStack>
+          </Box>
+        </SimpleGrid>
+
+        {/* ================= 3. WORKSPACE CONTAINER WITH SEGMENTED TABS ================= */}
+        <Box
+          bg={isDark ? "gray.850" : "white"}
+          borderRadius="20px"
+          border="1px solid"
+          borderColor={isDark ? "gray.700" : "gray.200"}
+          boxShadow="sm"
           overflow="hidden"
         >
-          {/* Fixed Table Header */}
-          <CardHeader
-            p="14px 18px"
-            pb="12px"
-            bg="white"
-            flexShrink={0}
+          {/* Top Segmented Navigation Header */}
+          <Flex
             borderBottom="1px solid"
-            borderColor={`${customColor}20`}
-            display="flex"
-            flexDirection="column"
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            px={6}
+            pt={4}
+            bg={isDark ? "gray.900" : "gray.50"}
+            justify="space-between"
+            align="center"
+            flexWrap="wrap"
             gap={3}
           >
-            <Flex
-              flexDirection={{ base: "column", lg: "row" }}
-              justify="space-between"
-              align={{ base: "stretch", lg: "center" }}
-              gap={3}
-            >
-              <Heading size="sm" flexShrink={0} color="gray.800" fontWeight="bold">
-                {activeTab === "reports"
-                  ? "Reports & Complaints Management"
-                  : "Ratings & Reviews Management"}
-              </Heading>
-
-              <Flex
-                align="center"
-                flexWrap="wrap"
-                gap={2.5}
-                justify={{ base: "flex-start", lg: "flex-end" }}
+            <HStack spacing={2}>
+              <Button
+                size="md"
+                variant="ghost"
+                borderRadius="10px 10px 0 0"
+                fontWeight="800"
+                fontSize="sm"
+                px={5}
+                py={3}
+                color={activeTab === "reports" ? BRAND : "gray.500"}
+                bg={activeTab === "reports" ? (isDark ? "gray.850" : "white") : "transparent"}
+                borderTop={activeTab === "reports" ? "3px solid" : "none"}
+                borderTopColor={BRAND}
+                _hover={{ color: BRAND }}
+                leftIcon={<MdReport size={18} />}
+                onClick={() => setActiveTab("reports")}
               >
-                <InputGroup size="sm" maxW={{ base: "100%", sm: "240px" }} minW="190px">
-                  <InputLeftElement pointerEvents="none">
-                    <Icon as={MdSearch} color="gray.400" boxSize={4} />
-                  </InputLeftElement>
-                  <Input
-                    placeholder={
-                      activeTab === "reports"
-                        ? "Search reporter, tech, issue..."
-                        : "Search ratings..."
-                    }
-                    value={searchTerm}
-                    onChange={handleSearchChange}
-                    borderColor="gray.200"
-                    _hover={{ borderColor: customColor }}
-                    _focus={{
-                      borderColor: customColor,
-                      boxShadow: `0 0 0 1px ${customColor}`,
-                    }}
-                    bg="gray.50"
-                    fontSize="xs"
-                    borderRadius="md"
-                    h="36px"
-                  />
-                </InputGroup>
+                Dispute Reports & Complaints
+                <Badge ml={2} colorScheme={activeTab === "reports" ? "teal" : "gray"} borderRadius="full" fontSize="2xs">
+                  {reports.length}
+                </Badge>
+              </Button>
 
-                {activeTab === "reports" && (
-                  <HStack spacing={2} align="center">
+              <Button
+                size="md"
+                variant="ghost"
+                borderRadius="10px 10px 0 0"
+                fontWeight="800"
+                fontSize="sm"
+                px={5}
+                py={3}
+                color={activeTab === "ratings" ? BRAND : "gray.500"}
+                bg={activeTab === "ratings" ? (isDark ? "gray.850" : "white") : "transparent"}
+                borderTop={activeTab === "ratings" ? "3px solid" : "none"}
+                borderTopColor={BRAND}
+                _hover={{ color: BRAND }}
+                leftIcon={<MdStar size={18} />}
+                onClick={() => setActiveTab("ratings")}
+              >
+                Customer Ratings & Feedback
+                <Badge ml={2} colorScheme={activeTab === "ratings" ? "teal" : "gray"} borderRadius="full" fontSize="2xs">
+                  {ratings.length}
+                </Badge>
+              </Button>
+            </HStack>
+
+            <Text fontSize="xs" color="gray.400" display={{ base: "none", md: "block" }}>
+              {activeTab === "reports" ? "Case Management Matrix" : "Ratings Quality Audit"}
+            </Text>
+          </Flex>
+
+          {/* Filter Toolbar */}
+          <Box p={5} borderBottom="1px solid" borderColor={isDark ? "gray.700" : "gray.200"}>
+            <VStack spacing={3} align="stretch">
+              <Flex
+                direction={{ base: "column", lg: "row" }}
+                justify="space-between"
+                align={{ base: "stretch", lg: "center" }}
+                gap={3}
+              >
+                <HStack spacing={3} flex="1" flexWrap="wrap">
+                  {/* Search box */}
+                  <InputGroup size="sm" maxW={{ base: "100%", sm: "300px" }}>
+                    <InputLeftElement pointerEvents="none">
+                      <Icon as={MdSearch} color="gray.400" boxSize={4} />
+                    </InputLeftElement>
+                    <Input
+                      placeholder={
+                        activeTab === "reports"
+                          ? "Search customer, technician, booking..."
+                          : "Search comments, customer name..."
+                      }
+                      value={searchTerm}
+                      onChange={handleSearchChange}
+                      borderRadius="8px"
+                      bg={isDark ? "gray.900" : "white"}
+                      borderColor={isDark ? "gray.700" : "gray.300"}
+                      fontSize="xs"
+                    />
+                  </InputGroup>
+
+                  {/* Status Filter for Reports */}
+                  {activeTab === "reports" && (
                     <Select
                       size="sm"
-                      minW="140px"
-                      w="auto"
-                      h="36px"
+                      borderRadius="8px"
+                      maxW="170px"
                       value={selectedStatusFilter}
                       onChange={(e) => {
                         setSelectedStatusFilter(e.target.value);
                         setCurrentPage(1);
                       }}
-                      borderColor="gray.200"
-                      _hover={{ borderColor: customColor }}
-                      _focus={{ borderColor: customColor }}
-                      bg="gray.50"
+                      bg={isDark ? "gray.900" : "white"}
+                      borderColor={isDark ? "gray.700" : "gray.300"}
                       fontSize="xs"
-                      borderRadius="md"
-                      fontWeight="medium"
-                      color="gray.700"
                     >
                       <option value="all">All Statuses</option>
                       <option value="open">Open</option>
@@ -1293,1907 +1284,931 @@ export default function ReportsManagement() {
                       <option value="withdrawn">Withdrawn</option>
                       <option value="expired">Expired</option>
                     </Select>
+                  )}
 
+                  {/* Category Filter for Reports */}
+                  {activeTab === "reports" && (
                     <Select
                       size="sm"
-                      minW="165px"
-                      w="auto"
-                      h="36px"
+                      borderRadius="8px"
+                      maxW="180px"
                       value={selectedCategoryFilter}
                       onChange={(e) => {
                         setSelectedCategoryFilter(e.target.value);
                         setCurrentPage(1);
                       }}
-                      borderColor="gray.200"
-                      _hover={{ borderColor: customColor }}
-                      _focus={{ borderColor: customColor }}
-                      bg="gray.50"
+                      bg={isDark ? "gray.900" : "white"}
+                      borderColor={isDark ? "gray.700" : "gray.300"}
                       fontSize="xs"
-                      borderRadius="md"
-                      fontWeight="medium"
-                      color="gray.700"
                     >
                       <option value="all">All Categories</option>
                       <option value="quality_dispute">Quality Dispute</option>
                       <option value="damage">Property Damage</option>
                       <option value="incomplete_work">Incomplete Work</option>
-                      <option value="technician_misconduct">Technician Misconduct</option>
+                      <option value="technician_misconduct">Tech Misconduct</option>
                       <option value="goodwill">Goodwill / Courtesy</option>
-                      <option value="product_issue">Product Defect / Issue</option>
+                      <option value="product_issue">Product Defect</option>
                       <option value="other">Other Issue</option>
                     </Select>
-                  </HStack>
-                )}
+                  )}
+                </HStack>
 
                 {(searchTerm || selectedCategoryFilter !== "all" || selectedStatusFilter !== "all") && (
                   <Button
                     size="sm"
-                    h="36px"
-                    onClick={handleClearSearch}
                     variant="ghost"
-                    color="red.600"
-                    bg="red.50"
-                    _hover={{ bg: "red.100", color: "red.700" }}
-                    _active={{ bg: "red.200" }}
+                    color="red.500"
+                    _hover={{ bg: "red.50" }}
+                    onClick={handleClearFilters}
+                    borderRadius="8px"
                     fontSize="xs"
-                    fontWeight="semibold"
-                    px={3}
-                    borderRadius="md"
-                    leftIcon={<Icon as={MdRefresh} boxSize={4} />}
-                    flexShrink={0}
                   >
                     Reset Filters
                   </Button>
                 )}
               </Flex>
-            </Flex>
 
-            {/* Quick Category Filter Pills Bar */}
-            {activeTab === "reports" && (
-              <Flex
-                align="center"
-                gap={2}
-                pt={1}
-                overflowX="auto"
-                css={{
-                  ...globalScrollbarStyles,
-                  "&::-webkit-scrollbar": { display: "none" },
-                  scrollbarWidth: "none",
-                }}
-              >
-                <Flex align="center" gap={1.5} flexShrink={0} mr={1}>
-                  <Icon as={MdFilterList} color={customColor} boxSize={4} />
-                  <Text
-                    fontSize="2xs"
-                    color="gray.500"
-                    fontWeight="bold"
-                    letterSpacing="wider"
-                    textTransform="uppercase"
-                  >
-                    Quick Filter:
+              {/* Quick Category Filter Pills Bar (For Reports) */}
+              {activeTab === "reports" && (
+                <Flex align="center" gap={2} pt={1} overflowX="auto">
+                  <Text fontSize="2xs" color="gray.400" fontWeight="700" textTransform="uppercase" flexShrink={0}>
+                    Quick Categories:
                   </Text>
+                  {[
+                    { id: "all", label: "All" },
+                    { id: "quality_dispute", label: "Quality Dispute" },
+                    { id: "damage", label: "Property Damage" },
+                    { id: "incomplete_work", label: "Incomplete Work" },
+                    { id: "technician_misconduct", label: "Tech Misconduct" },
+                    { id: "goodwill", label: "Goodwill" },
+                    { id: "product_issue", label: "Product Defect" },
+                    { id: "other", label: "Other" },
+                  ].map((cat) => {
+                    const isSelected = selectedCategoryFilter === cat.id;
+                    return (
+                      <Button
+                        key={cat.id}
+                        size="xs"
+                        h="24px"
+                        px={3}
+                        borderRadius="full"
+                        bg={isSelected ? BRAND : isDark ? "gray.800" : "gray.100"}
+                        color={isSelected ? "white" : isDark ? "gray.300" : "gray.600"}
+                        _hover={{ bg: isSelected ? BRAND : isDark ? "gray.700" : "gray.200" }}
+                        onClick={() => {
+                          setSelectedCategoryFilter(cat.id);
+                          setCurrentPage(1);
+                        }}
+                        fontSize="3xs"
+                        fontWeight={isSelected ? "700" : "500"}
+                        flexShrink={0}
+                      >
+                        {cat.label}
+                      </Button>
+                    );
+                  })}
                 </Flex>
-                {[
-                  { id: "all", label: "All Categories" },
-                  { id: "quality_dispute", label: "Quality Dispute" },
-                  { id: "damage", label: "Property Damage" },
-                  { id: "incomplete_work", label: "Incomplete Work" },
-                  { id: "technician_misconduct", label: "Tech Misconduct" },
-                  { id: "goodwill", label: "Goodwill / Courtesy" },
-                  { id: "product_issue", label: "Product Defect" },
-                  { id: "other", label: "Other Issue" },
-                ].map((cat) => {
-                  const isSelected = selectedCategoryFilter === cat.id;
-                  return (
-                    <Button
-                      key={cat.id}
-                      size="xs"
-                      h="28px"
-                      px={3.5}
-                      borderRadius="full"
-                      bg={isSelected ? customColor : "gray.100"}
-                      color={isSelected ? "white" : "gray.600"}
-                      border="1px solid"
-                      borderColor={isSelected ? customColor : "gray.200"}
-                      _hover={{
-                        bg: isSelected ? customColor : "gray.200",
-                        color: isSelected ? "white" : "gray.800",
-                        borderColor: isSelected ? customColor : "gray.300",
-                      }}
-                      _active={{
-                        bg: isSelected ? customColor : "gray.300",
-                      }}
-                      _focus={{ boxShadow: "none" }}
-                      onClick={() => {
-                        setSelectedCategoryFilter(cat.id);
-                        setCurrentPage(1);
-                      }}
-                      fontSize="xs"
-                      fontWeight={isSelected ? "semibold" : "medium"}
-                      flexShrink={0}
-                      transition="all 0.15s ease-in-out"
-                      shadow={isSelected ? "xs" : "none"}
-                    >
-                      {cat.label}
-                    </Button>
-                  );
-                })}
-              </Flex>
-            )}
-          </CardHeader>
+              )}
+            </VStack>
+          </Box>
 
-          {/* Scrollable Content Area */}
-          <CardBody
-            bg="white"
-            display="flex"
-            flexDirection="column"
-            p={0}
-            overflow="hidden"
-          >
+          {/* Table / List Workspace */}
+          <Box p={6}>
             {isLoading ? (
-              <Flex
-                justify="center"
-                align="center"
-                py={6}
-                flex="1"
-                direction="column"
-                gap={3}
-              >
-                <Spinner size="lg" color={customColor} />
-                <Text fontSize="sm" color="gray.500">
-                  Loading data...
-                </Text>
-              </Flex>
-            ) : (
-              <Box
-                display="flex"
-                flexDirection="column"
-                overflow="hidden"
-              >
-                {/* Desktop Table View */}
-                <Box
-                  display={{ base: "none", md: "block" }}
-                  overflow="auto"
-                  css={globalScrollbarStyles}
-                >
-                  <Table variant="simple" size="sm" bg="transparent">
-                    <Thead>
+              <Center py={16}>
+                <VStack spacing={3}>
+                  <Spinner size="lg" color={BRAND} thickness="3px" />
+                  <Text fontSize="sm" color="gray.500" fontWeight="600">
+                    Loading {activeTab === "reports" ? "dispute records" : "customer reviews"}...
+                  </Text>
+                </VStack>
+              </Center>
+            ) : filteredData.length === 0 ? (
+              <Center py={16} bg={isDark ? "gray.800" : "gray.50"} borderRadius="16px">
+                <VStack spacing={2}>
+                  <Icon as={activeTab === "reports" ? MdReport : MdStar} boxSize={10} color="gray.300" />
+                  <Text fontWeight="700" fontSize="md" color={isDark ? "white" : "gray.700"}>
+                    No records found
+                  </Text>
+                  <Text fontSize="xs" color="gray.500">
+                    Try adjusting search keywords or changing category filters.
+                  </Text>
+                </VStack>
+              </Center>
+            ) : activeTab === "reports" ? (
+              /* ================= TAB 1: REPORTS TABLE ================= */
+              <VStack spacing={4} align="stretch">
+                <Box overflowX="auto" borderRadius="14px" border="1px solid" borderColor={isDark ? "gray.700" : "gray.200"}>
+                  <Table variant="simple" size="sm">
+                    <Thead bg={isDark ? "gray.900" : "gray.50"}>
                       <Tr>
-                        <Th
-                          color="gray.100"
-                          borderColor={`${customColor}30`}
-                          position="sticky"
-                          top={0}
-                          bg={customColor}
-                          zIndex={10}
-                          fontWeight="bold"
-                          fontSize="xs"
-                          py={2.5}
-                          verticalAlign="middle"
-                        >
-                          #
-                        </Th>
-                        {activeTab === "reports" ? (
-                          <>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Category
-                            </Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Reported By
-                            </Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Against
-                            </Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Related Item
-                            </Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Complaint Summary
-                            </Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Status
-                            </Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Date
-                            </Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Actions
-                            </Th>
-                          </>
-                        ) : (
-                          <>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Rating
-                            </Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Comment
-                            </Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Date
-                            </Th>
-                            <Th
-                              color="gray.100"
-                              borderColor={`${customColor}30`}
-                              position="sticky"
-                              top={0}
-                              bg={customColor}
-                              zIndex={10}
-                              fontWeight="bold"
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                            >
-                              Actions
-                            </Th>
-                          </>
-                        )}
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase" py={3.5}>#</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Case ID & Category</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Customer (Reporter)</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Subject (Technician)</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Booked Item & Ref</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Complaint Statement</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Status</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Date</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase" textAlign="center">Actions</Th>
                       </Tr>
                     </Thead>
+                    <Tbody>
+                      {filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((item, idx) => {
+                        const cust = getCustomerDetails(item);
+                        const tech = getTechnicianDetails(item);
+                        const details = getItemDetails(item);
+                        const catMeta = getCategoryMeta(item.category || item.reason);
+                        const caseId = item._id || item.id;
 
-                    <Tbody bg="transparent">
-                      {currentItems.length > 0 ? (
-                        currentItems.map((item, idx) => (
+                        return (
                           <Tr
-                            key={item._id || idx}
-                            bg="transparent"
-                            _hover={{ bg: `${customColor}10` }}
-                            borderBottom="1px"
-                            borderColor={`${customColor}20`}
+                            key={caseId || idx}
+                            _hover={{ bg: isDark ? "gray.800" : "gray.50" }}
+                            transition="background 0.15s ease"
                           >
-                            <Td
-                              borderColor={`${customColor}20`}
-                              fontSize="xs"
-                              py={2.5}
-                              verticalAlign="middle"
-                              fontWeight="bold"
-                              color="gray.600"
-                            >
-                              {indexOfFirstItem + idx + 1}
+                            <Td fontSize="xs" color="gray.500" fontWeight="600">
+                              {(currentPage - 1) * itemsPerPage + idx + 1}
                             </Td>
 
-                            {activeTab === "reports" ? (
-                              <>
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                >
-                                  <Badge
-                                    colorScheme={getCategoryMeta(item.category || item.reason).color}
-                                    px={2.5}
-                                    py={0.5}
-                                    borderRadius="full"
-                                    fontSize="2xs"
-                                  >
-                                    {getCategoryMeta(item.category || item.reason).label}
-                                  </Badge>
-                                </Td>
-
-                                {/* Reported By with Hover Popover */}
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                  fontWeight="medium"
-                                  maxW="140px"
-                                >
-                                  <Popover trigger="hover" placement="right-start" openDelay={150} closeDelay={100}>
-                                    <PopoverTrigger>
-                                      <Box cursor="pointer" _hover={{ color: customColor, textDecoration: "underline" }}>
-                                        <Text noOfLines={1} fontWeight="semibold" color="gray.800">
-                                          {item.customerId
-                                            ? `${item.customerId.fname || ''} ${item.customerId.lname || ''}`.trim() || item.customerId.email
-                                            : (item.reportedBy || "Customer")}
-                                        </Text>
-                                      </Box>
-                                    </PopoverTrigger>
-                                    <PopoverContent bg="white" borderColor="gray.200" shadow="2xl" borderRadius="lg" p={3.5} w="320px" zIndex={999}>
-                                      <PopoverArrow />
-                                      <PopoverHeader fontWeight="bold" fontSize="xs" color="gray.800" borderBottom="1px solid" borderColor="gray.100" pb={1.5} mb={2}>
-                                        <Flex align="center" gap={1.5}>
-                                          <Icon as={FaUser} color="blue.500" boxSize={3.5} />
-                                          <Text textTransform="uppercase" letterSpacing="wide">Diagnostic Report Summary</Text>
-                                        </Flex>
-                                      </PopoverHeader>
-                                      <PopoverBody p={0} fontSize="xs">
-                                        <VStack align="stretch" spacing={2}>
-                                          <Box bg="blue.50" p={2.5} borderRadius="md" borderLeft="3px solid" borderColor="blue.400">
-                                            <Text fontWeight="bold" color="blue.800" fontSize="2xs" textTransform="uppercase">Reporter Context</Text>
-                                            <Text color="gray.800" fontWeight="semibold" mt={0.5}>
-                                              {item.customerId
-                                                ? `${item.customerId.fname || ''} ${item.customerId.lname || ''}`.trim() || item.customerId.email
-                                                : (item.reportedBy || "Customer")}
-                                            </Text>
-                                            <Text color="gray.600" fontSize="2xs">
-                                              Phone: {item.customerId?.mobileNumber || "N/A"}
-                                            </Text>
-                                          </Box>
-
-                                          <Box bg="orange.50" p={2.5} borderRadius="md" borderLeft="3px solid" borderColor="orange.400">
-                                            <Text fontWeight="bold" color="orange.800" fontSize="2xs" textTransform="uppercase">Target Party (Against)</Text>
-                                            <Text color="gray.800" fontWeight="semibold" mt={0.5}>
-                                              {item.technicianId?.userId
-                                                ? `${item.technicianId.userId.fname || ''} ${item.technicianId.userId.lname || ''}`.trim()
-                                                : (item.technicianId?.fname || "Platform / Direct Delivery")}
-                                            </Text>
-                                            <Text color="gray.600" fontSize="2xs">
-                                              Phone: {item.technicianId?.userId?.mobileNumber || "N/A"}
-                                            </Text>
-                                          </Box>
-
-                                          <Box bg="purple.50" p={2.5} borderRadius="md" borderLeft="3px solid" borderColor="purple.400">
-                                            <Text fontWeight="bold" color="purple.800" fontSize="2xs" textTransform="uppercase">Why Reported ({getCategoryMeta(item.category || item.reason).label})</Text>
-                                            <Text color="gray.700" mt={0.5} noOfLines={3}>
-                                              {item.complaint || item.description || item.reason || "N/A"}
-                                            </Text>
-                                          </Box>
-
-                                          <Box bg="teal.50" p={2.5} borderRadius="md" borderLeft="3px solid" borderColor="teal.400">
-                                            <Text fontWeight="bold" color="teal.800" fontSize="2xs" textTransform="uppercase">Related Booking</Text>
-                                            <Text color="gray.800" fontWeight="semibold" mt={0.5}>
-                                              {item.serviceId?.serviceName || item.productId?.productName || "Service"} #{item.bookingId || "N/A"}
-                                            </Text>
-                                          </Box>
-                                        </VStack>
-                                      </PopoverBody>
-                                    </PopoverContent>
-                                  </Popover>
-                                </Td>
-
-                                {/* Target Party (Against) */}
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                  maxW="140px"
-                                >
-                                  <Text noOfLines={1} color="gray.800" fontWeight="medium">
-                                    {item.technicianId?.userId
-                                      ? `${item.technicianId.userId.fname || ''} ${item.technicianId.userId.lname || ''}`.trim()
-                                      : (item.technicianId?.fname || item.reportedAgainst || "Platform")}
-                                  </Text>
-                                </Td>
-
-                                {/* Related Item */}
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                  maxW="150px"
-                                >
-                                  <Text noOfLines={1} color="gray.700">
-                                    {item.serviceId?.serviceName || item.productId?.productName || "Service"}
-                                  </Text>
-                                </Td>
-
-                                {/* Complaint Summary with Hover Tooltip/Popover */}
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                  maxW="200px"
-                                >
-                                  <Tooltip label={item.complaint || item.description || item.reason || "N/A"} placement="top" hasArrow bg="gray.800" color="white" borderRadius="md" px={3} py={1.5} fontSize="xs">
-                                    <Text noOfLines={1} cursor="help" color="gray.700" fontWeight="medium">
-                                      {item.complaint || item.description || item.reason || "N/A"}
+                            <Td>
+                              <VStack align="flex-start" spacing={1}>
+                                <Badge colorScheme={catMeta.color} borderRadius="full" px={2} py={0.5} fontSize="3xs">
+                                  {catMeta.label}
+                                </Badge>
+                                {caseId && (
+                                  <HStack spacing={1}>
+                                    <Text fontSize="3xs" color="gray.400" fontFamily="mono">
+                                      #{String(caseId).slice(-6).toUpperCase()}
                                     </Text>
-                                  </Tooltip>
-                                </Td>
-
-                                {/* Status */}
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                >
-                                  {renderStatusBadge(item.status)}
-                                </Td>
-
-                                {/* Date */}
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                  color="gray.600"
-                                >
-                                  {item.createdAt
-                                    ? new Date(
-                                        item.createdAt
-                                      ).toLocaleDateString()
-                                    : "N/A"}
-                                </Td>
-
-                                {/* Actions */}
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                >
-                                  <Flex gap={2}>
-                                    <Button
-                                      leftIcon={<FaEye />}
-                                      bg="white"
-                                      color="blue.500"
-                                      border="1px"
-                                      borderColor="blue.500"
-                                      _hover={{
-                                        bg: "blue.500",
-                                        color: "white",
-                                      }}
-                                      _active={{
-                                        bg: "blue.600",
-                                        color: "white",
-                                      }}
+                                    <IconButton
+                                      aria-label="Copy case ID"
+                                      icon={<FaCopy size={9} />}
                                       size="xs"
-                                      borderRadius="full"
-                                      px={3}
-                                      onClick={() => handleViewDetails(item)}
-                                    >
-                                      Review
-                                    </Button>
-                                  </Flex>
-                                </Td>
-                              </>
-                            ) : (
-                              <>
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                >
-                                  {renderStars(item.rates)}
-                                </Td>
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                  maxW="200px"
-                                >
-                                  <Text noOfLines={1} color="gray.700">
-                                    {item.comment || "N/A"}
+                                      h="14px"
+                                      w="14px"
+                                      minW="14px"
+                                      variant="ghost"
+                                      color="gray.400"
+                                      _hover={{ color: BRAND }}
+                                      onClick={() => copyToClipboard(caseId, "Case ID")}
+                                    />
+                                  </HStack>
+                                )}
+                              </VStack>
+                            </Td>
+
+                            <Td maxW="160px">
+                              <HStack spacing={1.5}>
+                                <Icon as={FaUser} boxSize={3} color="blue.500" />
+                                <Box>
+                                  <Text fontSize="xs" fontWeight="700" color={isDark ? "white" : "gray.800"} noOfLines={1}>
+                                    {cust.name}
                                   </Text>
-                                </Td>
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                  color="gray.600"
-                                >
-                                  {item.createdAt
-                                    ? new Date(
-                                        item.createdAt
-                                      ).toLocaleDateString()
-                                    : "N/A"}
-                                </Td>
-                                <Td
-                                  borderColor={`${customColor}20`}
-                                  fontSize="xs"
-                                  py={2.5}
-                                  verticalAlign="middle"
-                                >
-                                  <Flex gap={2}>
-                                    <IconButton
-                                      aria-label="View details"
-                                      icon={<FaEye />}
-                                      bg="white"
-                                      color="blue.500"
-                                      border="1px"
-                                      borderColor="blue.500"
-                                      _hover={{
-                                        bg: "blue.500",
-                                        color: "white",
-                                      }}
-                                      _active={{
-                                        bg: "blue.600",
-                                        color: "white",
-                                      }}
-                                      size="xs"
-                                      onClick={() => handleViewDetails(item)}
-                                    />
-                                    <IconButton
-                                      aria-label="Edit rating"
-                                      icon={<FaEdit />}
-                                      bg="white"
-                                      color="orange.500"
-                                      border="1px"
-                                      borderColor="orange.500"
-                                      _hover={{
-                                        bg: "orange.500",
-                                        color: "white",
-                                      }}
-                                      _active={{
-                                        bg: "orange.600",
-                                        color: "white",
-                                      }}
-                                      size="xs"
-                                      onClick={() => handleEditRating(item)}
-                                    />
-                                    <IconButton
-                                      aria-label="Delete rating"
-                                      icon={<FaTrash />}
-                                      bg="white"
-                                      color="red.500"
-                                      border="1px"
-                                      borderColor="red.500"
-                                      _hover={{
-                                        bg: "red.500",
-                                        color: "white",
-                                      }}
-                                      _active={{
-                                        bg: "red.600",
-                                        color: "white",
-                                      }}
-                                      size="xs"
-                                      onClick={() => handleDeleteClick(item)}
-                                    />
-                                    <IconButton
-                                      aria-label="Rebuild aggregate"
-                                      icon={<FaHistory />}
-                                      bg="white"
-                                      color="purple.500"
-                                      border="1px"
-                                      borderColor="purple.500"
-                                      _hover={{
-                                        bg: "purple.500",
-                                        color: "white",
-                                      }}
-                                      _active={{
-                                        bg: "purple.600",
-                                        color: "white",
-                                      }}
-                                      size="xs"
-                                      onClick={() => handleRebuildAggregate(item)}
-                                    />
-                                  </Flex>
-                                </Td>
-                              </>
-                            )}
-                          </Tr>
-                        ))
-                      ) : (
-                        <Tr>
-                          <Td
-                            colSpan={activeTab === "reports" ? 6 : 5}
-                            textAlign="center"
-                            py={6}
-                          >
-                            <VStack spacing={2}>
-                              <Icon
-                                as={
-                                  activeTab === "reports"
-                                    ? MdReport
-                                    : MdStarBorder
-                                }
-                                color="gray.300"
-                                boxSize={10}
-                              />
-                              <Text fontSize="sm" color="gray.500">
-                                {searchTerm
-                                  ? "No results found."
-                                  : activeTab === "reports"
-                                  ? "No reports found."
-                                  : "No ratings found."}
+                                  <Text fontSize="3xs" color="gray.400">
+                                    {cust.phone}
+                                  </Text>
+                                </Box>
+                              </HStack>
+                            </Td>
+
+                            <Td maxW="160px">
+                              <HStack spacing={1.5}>
+                                <Icon as={FaTools} boxSize={3} color="orange.500" />
+                                <Box>
+                                  <Text fontSize="xs" fontWeight="600" color={isDark ? "gray.200" : "gray.700"} noOfLines={1}>
+                                    {tech.name}
+                                  </Text>
+                                  <Text fontSize="3xs" color="gray.400">
+                                    {tech.assigned ? tech.phone : "No Tech"}
+                                  </Text>
+                                </Box>
+                              </HStack>
+                            </Td>
+
+                            <Td maxW="160px">
+                              <VStack align="flex-start" spacing={0}>
+                                <Text fontSize="xs" fontWeight="600" color={isDark ? "white" : "gray.800"} noOfLines={1}>
+                                  {details.name}
+                                </Text>
+                                <Text fontSize="3xs" color="gray.400" fontFamily="mono">
+                                  Ref: #{details.ref}
+                                </Text>
+                              </VStack>
+                            </Td>
+
+                            <Td maxW="200px">
+                              <Text fontSize="xs" color="gray.600" noOfLines={2}>
+                                {item.complaint || item.description || item.reason || "No statement"}
                               </Text>
-                            </VStack>
-                          </Td>
-                        </Tr>
-                      )}
+                            </Td>
+
+                            <Td>
+                              <StatusBadge preset="report" status={item.status} />
+                            </Td>
+
+                            <Td fontSize="2xs" color="gray.500" whiteSpace="nowrap">
+                              {item.createdAt ? new Date(item.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                            </Td>
+
+                            <Td textAlign="center">
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                colorScheme="teal"
+                                borderRadius="8px"
+                                fontWeight="700"
+                                leftIcon={<FaEye size={11} />}
+                                onClick={() => handleViewDetails(item)}
+                              >
+                                Review Dossier
+                              </Button>
+                            </Td>
+                          </Tr>
+                        );
+                      })}
                     </Tbody>
                   </Table>
                 </Box>
 
-                {/* Mobile Card View */}
-                <Box
-                  display={{ base: "block", md: "none" }}
-                  overflow="auto"
-                  px={3}
-                  py={1.5}
-                  css={globalScrollbarStyles}
-                >
-                  {currentItems.length > 0 ? (
-                    currentItems.map((item, idx) =>
-                      activeTab === "reports" ? (
-                        <ReportMobileCard key={item._id || idx} item={item} idx={idx} />
-                      ) : (
-                        <RatingMobileCard key={item._id || idx} item={item} idx={idx} />
-                      )
-                    )
-                  ) : (
-                    <Center py={10}>
-                      <VStack spacing={2}>
-                        <Icon
-                          as={activeTab === "reports" ? MdReport : MdStarBorder}
-                          color="gray.300"
-                          boxSize={10}
-                        />
-                        <Text fontSize="sm" color="gray.500">
-                          {searchTerm
-                            ? "No results found."
-                            : activeTab === "reports"
-                            ? "No reports found."
-                            : "No ratings found."}
-                        </Text>
-                      </VStack>
-                    </Center>
-                  )}
-                </Box>
-
-                {/* Pagination Controls */}
-                {filteredData.length > 0 && (
-                  <Box
-                    flexShrink={0}
-                    p="10px"
-                    borderTop="1px solid"
-                    borderColor={`${customColor}20`}
-                    bg="transparent"
-                  >
-                    <Flex justify="flex-end" align="center" gap={3}>
-                      <Flex align="center" gap={2}>
-                        <Button
-                          size="sm"
-                          onClick={handlePrevPage}
-                          isDisabled={currentPage === 1}
-                          leftIcon={<FaChevronLeft />}
-                          bg="white"
-                          color={customColor}
-                          border="1px"
-                          borderColor={customColor}
-                          _hover={{ bg: customColor, color: "white" }}
-                          _active={{ bg: "#004d4d", color: "white" }}
-                          _disabled={{
-                            opacity: 0.5,
-                            cursor: "not-allowed",
-                            bg: "gray.100",
-                            color: "gray.400",
-                            borderColor: "gray.300",
-                          }}
-                        >
-                          <Text display={{ base: "none", sm: "block" }}>
-                            Previous
-                          </Text>
-                        </Button>
-
-                        <Flex
-                          align="center"
-                          gap={2}
-                          bg={`${customColor}10`}
-                          px={3}
-                          py={1}
-                          borderRadius="6px"
-                          minW="80px"
-                          justify="center"
-                        >
-                          <Text
-                            fontSize="sm"
-                            fontWeight="bold"
-                            color={customColor}
-                          >
-                            {currentPage}
-                          </Text>
-                          <Text fontSize="sm" color="gray.500">
-                            /
-                          </Text>
-                          <Text
-                            fontSize="sm"
-                            color="gray.600"
-                            fontWeight="medium"
-                          >
-                            {totalPages}
-                          </Text>
-                        </Flex>
-
-                        <Button
-                          size="sm"
-                          onClick={handleNextPage}
-                          isDisabled={currentPage === totalPages}
-                          rightIcon={<FaChevronRight />}
-                          bg="white"
-                          color={customColor}
-                          border="1px"
-                          borderColor={customColor}
-                          _hover={{ bg: customColor, color: "white" }}
-                          _active={{ bg: "#004d4d", color: "white" }}
-                          _disabled={{
-                            opacity: 0.5,
-                            cursor: "not-allowed",
-                            bg: "gray.100",
-                            color: "gray.400",
-                            borderColor: "gray.300",
-                          }}
-                        >
-                          <Text display={{ base: "none", sm: "block" }}>
-                            Next
-                          </Text>
-                        </Button>
-                      </Flex>
-                    </Flex>
-                  </Box>
-                )}
-              </Box>
-            )}
-          </CardBody>
-        </Card>
-      </Box>
-
-      {/* Detail Modal */}
-      {/* Detail Modal */}
-      <Modal
-        isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
-        size="xl"
-      >
-        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <ModalContent maxW="780px" borderRadius="2xl" overflow="hidden" shadow="2xl">
-          <ModalHeader bg="gray.900" color="white" py={4} px={6}>
-            <Flex justify="space-between" align="center" pr={6}>
-              <HStack spacing={3}>
-                <Box p={2} bg={`${customColor}30`} borderRadius="lg">
-                  <Icon as={MdReport} color={goldColor} boxSize={5} />
-                </Box>
-                <Box>
-                  <Text fontSize="md" fontWeight="bold" color="white">
-                    {activeTab === "reports" ? "Report Audit & Action Matrix" : "Rating Details"}
+                {/* Pagination */}
+                <Flex justify="space-between" align="center" pt={2} flexWrap="wrap" gap={3}>
+                  <Text fontSize="xs" color="gray.500">
+                    Showing page <strong>{currentPage}</strong> of <strong>{totalPages}</strong> • Total {totalItems} records
                   </Text>
-                  {selectedItem && activeTab === "reports" && (
-                    <Text fontSize="2xs" color="gray.400">
-                      CASE #{String(selectedItem._id || selectedItem.id || "").slice(-8).toUpperCase()}
-                    </Text>
-                  )}
-                </Box>
-              </HStack>
-              {selectedItem && activeTab === "reports" && (
-                <HStack spacing={2}>
-                  <Badge colorScheme={getCategoryMeta(selectedItem.category || selectedItem.reason).color} px={2.5} py={1} borderRadius="md" fontSize="2xs">
-                    {getCategoryMeta(selectedItem.category || selectedItem.reason).label}
-                  </Badge>
-                  {renderStatusBadge(selectedItem.status)}
-                </HStack>
-              )}
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton color="white" mt={1} />
-          <ModalBody p={5} maxH="80vh" overflowY="auto" bg="gray.50">
-            {selectedItem && (
-              <VStack spacing={4} align="stretch">
-                {activeTab === "reports" ? (
-                  <>
-                    {/* Top Grid: Key Entity Highlights (Product/Service, Technician, Customer) with Hover Detail Popovers */}
-                    <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
-                      {/* 1. Related Product / Service Card */}
-                      <Popover trigger="hover" placement="bottom-start" gutter={8}>
-                        <PopoverTrigger>
-                          <Box
-                            bg="white"
-                            p={3.5}
-                            borderRadius="xl"
-                            border="1px solid"
-                            borderColor="teal.200"
-                            shadow="sm"
-                            position="relative"
-                            cursor="pointer"
-                            transition="all 0.2s ease"
-                            _hover={{
-                              shadow: "md",
-                              borderColor: "teal.400",
-                              transform: "translateY(-2px)",
-                              bg: "teal.50",
-                            }}
-                          >
-                            <Flex align="center" justify="space-between" mb={2}>
-                              <Flex align="center" gap={2}>
-                                <Icon as={FaBoxOpen} color="teal.500" boxSize={4} />
-                                <Text fontWeight="bold" color="teal.800" fontSize="2xs" textTransform="uppercase" letterSpacing="wide">
-                                  Related Item & Booking
-                                </Text>
-                              </Flex>
-                              <Badge fontSize="3xs" colorScheme="teal" variant="subtle" borderRadius="full" px={1.5}>
-                                Hover Info
-                              </Badge>
-                            </Flex>
-                            <Text fontWeight="bold" color="gray.800" fontSize="sm" noOfLines={2} title={modalItemDetails.name}>
-                              {modalItemDetails.name}
-                            </Text>
-                            <HStack spacing={1.5} mt={2} wrap="wrap">
-                              <Badge colorScheme={modalItemDetails.type === "PRODUCT" ? "purple" : "teal"} fontSize="2xs" px={2} py={0.5} borderRadius="md">
-                                {modalItemDetails.type}
-                              </Badge>
-                              <Badge colorScheme={selectedItem.frozeReserve ? "red" : "green"} fontSize="2xs" px={2} py={0.5} borderRadius="md">
-                                {selectedItem.frozeReserve ? "🔒 Frozen" : "Payout Ready"}
-                              </Badge>
-                            </HStack>
-                            <Box mt={2.5} pt={2} borderTop="1px dashed" borderColor="gray.200" fontSize="2xs">
-                              <Text color="gray.500">Booking Ref: <Text as="span" fontWeight="bold" color="gray.700">#{modalItemDetails.ref}</Text></Text>
-                              {modalItemDetails.price && (
-                                <Text color="gray.500">Price: <Text as="span" fontWeight="bold" color="teal.600">₹{modalItemDetails.price}</Text></Text>
-                              )}
-                            </Box>
-                          </Box>
-                        </PopoverTrigger>
-                        <PopoverContent bg="gray.900" color="white" borderColor="teal.400" shadow="xl" borderRadius="xl" p={3.5} w="290px" _focus={{ boxShadow: "none" }}>
-                          <PopoverArrow bg="gray.900" />
-                          <PopoverHeader borderBottom="1px solid" borderColor="gray.700" fontWeight="bold" fontSize="xs" color="teal.300" pb={2} mb={2.5}>
-                            <Flex align="center" gap={2}>
-                              <Icon as={FaBoxOpen} color="teal.400" boxSize={4} />
-                              Item & Booking Details
-                            </Flex>
-                          </PopoverHeader>
-                          <PopoverBody p={0} fontSize="xs">
-                            <VStack align="stretch" spacing={2}>
-                              <Flex justify="space-between" align="start">
-                                <Text color="gray.400" fontSize="2xs">Item Name:</Text>
-                                <Text fontWeight="semibold" color="white" textAlign="right" maxW="170px" fontSize="2xs">
-                                  {modalItemDetails.name}
-                                </Text>
-                              </Flex>
-                              <Flex justify="space-between" align="center">
-                                <Text color="gray.400" fontSize="2xs">Category Type:</Text>
-                                <Badge colorScheme={modalItemDetails.type === "PRODUCT" ? "purple" : "teal"} fontSize="3xs">
-                                  {modalItemDetails.type}
-                                </Badge>
-                              </Flex>
-                              <Flex justify="space-between" align="center">
-                                <Text color="gray.400" fontSize="2xs">Booking Ref ID:</Text>
-                                <Text fontFamily="mono" color="teal.200" fontWeight="bold" fontSize="2xs">
-                                  #{modalItemDetails.ref}
-                                </Text>
-                              </Flex>
-                              {modalItemDetails.price && (
-                                <Flex justify="space-between" align="center">
-                                  <Text color="gray.400" fontSize="2xs">Booking Amount:</Text>
-                                  <Text fontWeight="bold" color="green.300" fontSize="2xs">
-                                    ₹{modalItemDetails.price}
-                                  </Text>
-                                </Flex>
-                              )}
-                              <Flex justify="space-between" align="center">
-                                <Text color="gray.400" fontSize="2xs">Payout Status:</Text>
-                                <Badge colorScheme={selectedItem.frozeReserve ? "red" : "green"} fontSize="3xs">
-                                  {selectedItem.frozeReserve ? "Payout Frozen" : "Ready for Transfer"}
-                                </Badge>
-                              </Flex>
-                            </VStack>
-                          </PopoverBody>
-                        </PopoverContent>
-                      </Popover>
 
-                      {/* 2. Assigned Technician Card */}
-                      <Popover trigger="hover" placement="bottom" gutter={8}>
-                        <PopoverTrigger>
-                          <Box
-                            bg="white"
-                            p={3.5}
-                            borderRadius="xl"
-                            border="1px solid"
-                            borderColor="orange.200"
-                            shadow="sm"
-                            position="relative"
-                            cursor="pointer"
-                            transition="all 0.2s ease"
-                            _hover={{
-                              shadow: "md",
-                              borderColor: "orange.400",
-                              transform: "translateY(-2px)",
-                              bg: "orange.50",
-                            }}
-                          >
-                            <Flex align="center" justify="space-between" mb={2}>
-                              <Flex align="center" gap={2}>
-                                <Icon as={FaTools} color="orange.500" boxSize={4} />
-                                <Text fontWeight="bold" color="orange.800" fontSize="2xs" textTransform="uppercase" letterSpacing="wide">
-                                  Assigned Technician
-                                </Text>
-                              </Flex>
-                              <Badge fontSize="3xs" colorScheme="orange" variant="subtle" borderRadius="full" px={1.5}>
-                                Hover Info
-                              </Badge>
-                            </Flex>
-                            <Text fontWeight="bold" color="gray.800" fontSize="sm" noOfLines={1} title={modalTechDetails.name}>
-                              {modalTechDetails.name}
-                            </Text>
-                            <HStack spacing={1.5} mt={2}>
-                              <Badge colorScheme={modalTechDetails.assigned ? "orange" : "gray"} fontSize="2xs" px={2} py={0.5} borderRadius="md">
-                                {modalTechDetails.assigned ? "Field Specialist" : "No Technician"}
-                              </Badge>
-                            </HStack>
-                            <Box mt={2.5} pt={2} borderTop="1px dashed" borderColor="gray.200" fontSize="2xs">
-                              <Text color="gray.500">Phone: <Text as="span" fontWeight="bold" color="gray.700">{modalTechDetails.phone}</Text></Text>
-                              <Text color="gray.500" noOfLines={1}>Email: <Text as="span" fontWeight="bold" color="gray.700">{modalTechDetails.email}</Text></Text>
-                            </Box>
-                          </Box>
-                        </PopoverTrigger>
-                        <PopoverContent bg="gray.900" color="white" borderColor="orange.400" shadow="xl" borderRadius="xl" p={3.5} w="290px" _focus={{ boxShadow: "none" }}>
-                          <PopoverArrow bg="gray.900" />
-                          <PopoverHeader borderBottom="1px solid" borderColor="gray.700" fontWeight="bold" fontSize="xs" color="orange.300" pb={2} mb={2.5}>
-                            <Flex align="center" gap={2}>
-                              <Icon as={FaTools} color="orange.400" boxSize={4} />
-                              Technician Details & Profile
-                            </Flex>
-                          </PopoverHeader>
-                          <PopoverBody p={0} fontSize="xs">
-                            <VStack align="stretch" spacing={2}>
-                              <Flex justify="space-between" align="center">
-                                <Text color="gray.400" fontSize="2xs">Technician Name:</Text>
-                                <Text fontWeight="semibold" color="white" fontSize="2xs">
-                                  {modalTechDetails.name}
-                                </Text>
-                              </Flex>
-                              <Flex justify="space-between" align="center">
-                                <Text color="gray.400" fontSize="2xs">Assignment:</Text>
-                                <Badge colorScheme={modalTechDetails.assigned ? "orange" : "gray"} fontSize="3xs">
-                                  {modalTechDetails.assigned ? "Assigned Specialist" : "Unassigned"}
-                                </Badge>
-                              </Flex>
-                              <Flex justify="space-between" align="center">
-                                <Text color="gray.400" fontSize="2xs">Mobile Phone:</Text>
-                                <Text fontWeight="bold" color="orange.200" fontSize="2xs">
-                                  {modalTechDetails.phone}
-                                </Text>
-                              </Flex>
-                              <Flex justify="space-between" align="center">
-                                <Text color="gray.400" fontSize="2xs">Email Address:</Text>
-                                <Text fontSize="2xs" color="gray.300" maxW="160px" isTruncated>
-                                  {modalTechDetails.email}
-                                </Text>
-                              </Flex>
-                            </VStack>
-                          </PopoverBody>
-                        </PopoverContent>
-                      </Popover>
-
-                      {/* 3. Customer / Reporter Card */}
-                      <Popover trigger="hover" placement="bottom-end" gutter={8}>
-                        <PopoverTrigger>
-                          <Box
-                            bg="white"
-                            p={3.5}
-                            borderRadius="xl"
-                            border="1px solid"
-                            borderColor="blue.200"
-                            shadow="sm"
-                            position="relative"
-                            cursor="pointer"
-                            transition="all 0.2s ease"
-                            _hover={{
-                              shadow: "md",
-                              borderColor: "blue.400",
-                              transform: "translateY(-2px)",
-                              bg: "blue.50",
-                            }}
-                          >
-                            <Flex align="center" justify="space-between" mb={2}>
-                              <Flex align="center" gap={2}>
-                                <Icon as={FaUser} color="blue.500" boxSize={4} />
-                                <Text fontWeight="bold" color="blue.800" fontSize="2xs" textTransform="uppercase" letterSpacing="wide">
-                                  Reported By (Customer)
-                                </Text>
-                              </Flex>
-                              <Badge fontSize="3xs" colorScheme="blue" variant="subtle" borderRadius="full" px={1.5}>
-                                Hover Info
-                              </Badge>
-                            </Flex>
-                            <Text fontWeight="bold" color="gray.800" fontSize="sm" noOfLines={1} title={modalCustDetails.name}>
-                              {modalCustDetails.name}
-                            </Text>
-                            <HStack spacing={1.5} mt={2}>
-                              <Badge colorScheme="blue" fontSize="2xs" px={2} py={0.5} borderRadius="md">
-                                Registered User
-                              </Badge>
-                            </HStack>
-                            <Box mt={2.5} pt={2} borderTop="1px dashed" borderColor="gray.200" fontSize="2xs">
-                              <Text color="gray.500">Phone: <Text as="span" fontWeight="bold" color="gray.700">{modalCustDetails.phone}</Text></Text>
-                              <Text color="gray.500" noOfLines={1}>Email: <Text as="span" fontWeight="bold" color="gray.700">{modalCustDetails.email}</Text></Text>
-                            </Box>
-                          </Box>
-                        </PopoverTrigger>
-                        <PopoverContent bg="gray.900" color="white" borderColor="blue.400" shadow="xl" borderRadius="xl" p={3.5} w="290px" _focus={{ boxShadow: "none" }}>
-                          <PopoverArrow bg="gray.900" />
-                          <PopoverHeader borderBottom="1px solid" borderColor="gray.700" fontWeight="bold" fontSize="xs" color="blue.300" pb={2} mb={2.5}>
-                            <Flex align="center" gap={2}>
-                              <Icon as={FaUser} color="blue.400" boxSize={4} />
-                              Customer Details & Account
-                            </Flex>
-                          </PopoverHeader>
-                          <PopoverBody p={0} fontSize="xs">
-                            <VStack align="stretch" spacing={2}>
-                              <Flex justify="space-between" align="center">
-                                <Text color="gray.400" fontSize="2xs">Customer Name:</Text>
-                                <Text fontWeight="semibold" color="white" fontSize="2xs">
-                                  {modalCustDetails.name}
-                                </Text>
-                              </Flex>
-                              <Flex justify="space-between" align="center">
-                                <Text color="gray.400" fontSize="2xs">User Status:</Text>
-                                <Badge colorScheme="blue" fontSize="3xs">
-                                  Registered User
-                                </Badge>
-                              </Flex>
-                              <Flex justify="space-between" align="center">
-                                <Text color="gray.400" fontSize="2xs">Phone Number:</Text>
-                                <Text fontWeight="bold" color="blue.200" fontSize="2xs">
-                                  {modalCustDetails.phone}
-                                </Text>
-                              </Flex>
-                              <Flex justify="space-between" align="center">
-                                <Text color="gray.400" fontSize="2xs">Email Address:</Text>
-                                <Text fontSize="2xs" color="gray.300" maxW="160px" isTruncated>
-                                  {modalCustDetails.email}
-                                </Text>
-                              </Flex>
-                            </VStack>
-                          </PopoverBody>
-                        </PopoverContent>
-                      </Popover>
-                    </SimpleGrid>
-
-                    {/* Section: Customer Complaint & Justification */}
-                    <Box bg="white" p={4} borderRadius="xl" border="1px solid" borderColor="purple.200" shadow="sm">
-                      <Flex align="center" justify="space-between" mb={3}>
-                        <HStack spacing={2}>
-                          <Icon as={FaExclamationTriangle} color="purple.600" boxSize={4} />
-                          <Text fontWeight="bold" color="purple.900" fontSize="xs" textTransform="uppercase" letterSpacing="wide">
-                            Customer Complaint & Issue Justification
-                          </Text>
-                        </HStack>
-                        <Badge colorScheme={getCategoryMeta(selectedItem.category || selectedItem.reason).color} fontSize="2xs" px={2.5} py={0.5} borderRadius="full">
-                          {getCategoryMeta(selectedItem.category || selectedItem.reason).label}
-                        </Badge>
-                      </Flex>
-                      <Box
-                        bg="purple.50"
-                        p={4}
-                        borderRadius="xl"
-                        borderLeft="4px solid"
-                        borderColor="purple.500"
-                        shadow="xs"
-                      >
-                        <Text color="gray.900" whiteSpace="pre-wrap" fontSize="sm" lineHeight="relaxed" fontWeight="semibold">
-                          {formatCleanComplaintText(selectedItem.complaint || selectedItem.description || selectedItem.reason)}
-                        </Text>
-                      </Box>
-                        {selectedItem.image && (
-                          <Box mt={3}>
-                            <Text color="gray.600" mb={1.5} fontSize="2xs" fontWeight="bold" textTransform="uppercase">
-                              Attached Evidence Photo:
-                            </Text>
-                            <Image
-                              src={selectedItem.image}
-                              alt="Complaint Evidence"
-                              maxH="160px"
-                              borderRadius="lg"
-                              border="1px solid"
-                              borderColor="gray.200"
-                              objectFit="contain"
-                              shadow="xs"
-                            />
-                          </Box>
-                        )}
-                      </Box>
-
-                      {/* Section: Technician Defense & Counter Evidence Dossier (If present) */}
-                      {(selectedItem.technicianResponse || selectedItem.technicianExplanation || (selectedItem.technicianImages && selectedItem.technicianImages.length > 0)) && (
-                        <Box bg="white" p={4} borderRadius="xl" border="1px solid" borderColor="orange.300" shadow="sm">
-                          <HStack spacing={2} mb={2.5}>
-                            <Icon as={FaTools} color="orange.600" boxSize={4} />
-                            <Text fontWeight="bold" color="orange.900" fontSize="xs" textTransform="uppercase" letterSpacing="wide">
-                              Technician Evidence & Response Dossier
-                            </Text>
-                          </HStack>
-                          {(selectedItem.technicianResponse || selectedItem.technicianExplanation) && (
-                            <Box bg="orange.50" p={3} borderRadius="lg" borderLeft="4px solid" borderColor="orange.400" mb={2}>
-                              <Text color="orange.900" fontSize="2xs" fontWeight="bold" textTransform="uppercase" mb={0.5}>
-                                Technician Written Defense:
-                              </Text>
-                              <Text color="gray.800" fontSize="xs" whiteSpace="pre-wrap" lineHeight="relaxed">
-                                "{selectedItem.technicianResponse || selectedItem.technicianExplanation}"
-                              </Text>
-                            </Box>
-                          )}
-                          {selectedItem.technicianImages && selectedItem.technicianImages.length > 0 && (
-                            <Box mt={2}>
-                              <Text color="gray.600" mb={1.5} fontSize="2xs" fontWeight="bold" textTransform="uppercase">
-                                Technician Evidence Photos:
-                              </Text>
-                              <Flex gap={2} wrap="wrap">
-                                {selectedItem.technicianImages.map((img, i) => (
-                                  <Image
-                                    key={i}
-                                    src={img}
-                                    alt={`Tech Evidence ${i + 1}`}
-                                    maxH="130px"
-                                    borderRadius="lg"
-                                    border="1px solid"
-                                    borderColor="gray.200"
-                                    objectFit="contain"
-                                    shadow="xs"
-                                  />
-                                ))}
-                              </Flex>
-                            </Box>
-                          )}
-                        </Box>
-                      )}
-
-                      {/* Section: Historical Context & Timeline */}
-                      <Box bg="white" p={4} borderRadius="xl" border="1px solid" borderColor="gray.200" shadow="sm">
-                        <Flex justify="space-between" align="center" mb={3}>
-                          <HStack spacing={2} align="center">
-                            <Flex w="30px" h="30px" bg={`${customColor}15`} color={customColor} borderRadius="lg" justify="center" align="center">
-                              <Icon as={FaHistory} boxSize={4} />
-                            </Flex>
-                            <Box>
-                              <Text fontWeight="extrabold" color="gray.800" fontSize="xs" textTransform="uppercase" letterSpacing="wide">
-                                Historical Audit & Timeline
-                              </Text>
-                              <Text fontSize="3xs" color="gray.500">
-                                Event timestamps & admin resolution history
-                              </Text>
-                            </Box>
-                          </HStack>
-                          <Badge colorScheme="teal" fontSize="3xs" px={2.5} py={0.5} borderRadius="full">
-                            Audited Record
-                          </Badge>
-                        </Flex>
-
-                        <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3} mb={3}>
-                          {/* Report Date */}
-                          <Box bg="blue.50" p={3} borderRadius="xl" border="1px solid" borderColor="blue.100">
-                            <HStack spacing={1.5} mb={1} color="blue.700">
-                              <Icon as={FaClock} boxSize={3.5} />
-                              <Text color="blue.700" fontSize="2xs" fontWeight="bold" textTransform="uppercase" letterSpacing="wider">
-                                Report Date
-                              </Text>
-                            </HStack>
-                            <Text fontWeight="extrabold" fontSize="xs" color="blue.900">
-                              {selectedItem.createdAt ? new Date(selectedItem.createdAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'medium' }) : "N/A"}
-                            </Text>
-                          </Box>
-
-                          {/* SLA Resolution Deadline */}
-                          <Box bg="amber.50" p={3} borderRadius="xl" border="1px solid" borderColor="amber.200">
-                            <HStack spacing={1.5} mb={1} color="amber.800">
-                              <Icon as={FaHourglassHalf} boxSize={3.5} />
-                              <Text color="amber.800" fontSize="2xs" fontWeight="bold" textTransform="uppercase" letterSpacing="wider">
-                                SLA Resolution Deadline
-                              </Text>
-                            </HStack>
-                            <Text fontWeight="extrabold" fontSize="xs" color="amber.950">
-                              {selectedItem.slaDeadline ? new Date(selectedItem.slaDeadline).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'medium' }) : "Standard 24h Resolution Window"}
-                            </Text>
-                          </Box>
-                        </SimpleGrid>
-
-                        {/* Previous Admin Resolution Notes */}
-                        {selectedItem.resolutionNote && (
-                          <Box bg="red.50" p={3.5} borderRadius="xl" border="1px solid" borderColor="red.200" borderLeft="4px solid" borderLeftColor="red.500">
-                            <HStack spacing={2} mb={1.5} align="center">
-                              <Icon as={FaClipboardList} color="red.600" boxSize={4} />
-                              <Text fontSize="2xs" color="red.800" fontWeight="extrabold" textTransform="uppercase" letterSpacing="wider">
-                                Previous Admin Resolution Notes:
-                              </Text>
-                            </HStack>
-                            <Box bg="white" p={3} borderRadius="lg" border="1px solid" borderColor="red.150" shadow="2xs">
-                              <Text fontSize="xs" color="gray.900" fontWeight="semibold" lineHeight="relaxed">
-                                {selectedItem.resolutionNote}
-                              </Text>
-                            </Box>
-                          </Box>
-                        )}
-                      </Box>
-
-                      {/* Section: Admin Investigation & Action Controls */}
-                      <Box bg="white" p={4} borderRadius="xl" border="2px solid" borderColor={`${customColor}50`} shadow="md">
-                        <HStack spacing={2} mb={3}>
-                          <Icon as={FaGavel} color={customColor} boxSize={4} />
-                          <Text fontWeight="bold" color="gray.900" fontSize="xs" textTransform="uppercase" letterSpacing="wide">
-                            Admin Investigation & Recommended Enforcement Controls
-                          </Text>
-                        </HStack>
-                        <VStack align="stretch" spacing={3} fontSize="xs">
-                          <Box>
-                            <Text color="gray.700" fontWeight="semibold" mb={1}>Select Target Status / Action:</Text>
-                            <Select
-                              size="sm"
-                              bg="gray.50"
-                              value={selectedStatusAction}
-                              onChange={(e) => setSelectedStatusAction(e.target.value)}
-                              borderColor={`${customColor}60`}
-                              borderRadius="md"
-                              fontWeight="medium"
-                            >
-                              <option value="under_review">🔍 Mark Under Review (Active Investigation)</option>
-                              <option value="resolved_refunded">✅ Resolve & Issue Refund (Customer Favor)</option>
-                              <option value="resolved_no_refund">🛑 Reject Complaint / No Refund (Technician Favor)</option>
-                            </Select>
-                          </Box>
-
-                          <Box>
-                            <Text color="gray.700" fontWeight="semibold" mb={1}>Admin Investigation Note / Reason:</Text>
-                            <Textarea
-                              size="sm"
-                              bg="gray.50"
-                              placeholder="Enter detailed investigation findings, reason for approval/rejection, or penalty rationale..."
-                              value={resolutionNoteInput}
-                              onChange={(e) => setResolutionNoteInput(e.target.value)}
-                              rows={2.5}
-                              borderColor={`${customColor}60`}
-                              borderRadius="md"
-                            />
-                          </Box>
-
-                          {/* Quick Direct Actions Matrix */}
-                          <Box pt={1}>
-                            <Text color="gray.600" fontWeight="bold" fontSize="2xs" mb={1.5} textTransform="uppercase" letterSpacing="wider">
-                              Direct Enforcement Actions:
-                            </Text>
-                            <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={2}>
-                              <Button
-                                leftIcon={<MdWarning />}
-                                colorScheme="blue"
-                                variant="solid"
-                                size="xs"
-                                onClick={() => triggerConfirmation("freeze")}
-                                isLoading={actionLoading}
-                                shadow="xs"
-                                borderRadius="md"
-                              >
-                                🧊 Freeze Payout
-                              </Button>
-                              <Button
-                                leftIcon={<MdCheckCircle />}
-                                colorScheme="green"
-                                variant="solid"
-                                size="xs"
-                                onClick={() => triggerConfirmation("refund")}
-                                isLoading={actionLoading}
-                                shadow="xs"
-                                borderRadius="md"
-                              >
-                                💸 Refund Customer
-                              </Button>
-                              <Button
-                                leftIcon={<FaExclamationTriangle />}
-                                colorScheme="orange"
-                                variant="solid"
-                                size="xs"
-                                onClick={() => triggerConfirmation("penalize")}
-                                isLoading={actionLoading}
-                                shadow="xs"
-                                borderRadius="md"
-                              >
-                                ⚠️ Penalize Tech
-                              </Button>
-                              <Button
-                                leftIcon={<FaTrash />}
-                                colorScheme="red"
-                                variant="solid"
-                                size="xs"
-                                onClick={() => triggerConfirmation("reject")}
-                                isLoading={actionLoading}
-                                shadow="xs"
-                                borderRadius="md"
-                              >
-                                ❌ Reject Complaint
-                              </Button>
-                            </SimpleGrid>
-                          </Box>
-
-                          <Button
-                            leftIcon={<MdCheckCircle />}
-                            bg={selectedStatusAction === "resolved_no_refund" ? "red.600" : selectedStatusAction === "under_review" ? "blue.600" : customColor}
-                            color="white"
-                            _hover={{
-                              bg: selectedStatusAction === "resolved_no_refund" ? "red.700" : selectedStatusAction === "under_review" ? "blue.700" : "#006666",
-                            }}
-                            _active={{
-                              bg: selectedStatusAction === "resolved_no_refund" ? "red.800" : selectedStatusAction === "under_review" ? "blue.800" : "#004d4d",
-                            }}
-                            onClick={() => triggerConfirmation("execute")}
-                            isLoading={actionLoading}
-                            size="md"
-                            w="100%"
-                            mt={2}
-                            borderRadius="lg"
-                            fontWeight="bold"
-                            shadow="md"
-                          >
-                            Execute Resolution & Update Report
-                          </Button>
-                        </VStack>
-                      </Box>
-                    </>
-                  ) : (
-                  <>
-                    <Box
-                      bg={`${customColor}05`}
-                      p={4}
-                      borderRadius="md"
-                      border="1px solid"
-                      borderColor={`${customColor}20`}
-                    >
-                      <Text
-                        fontWeight="bold"
-                        color={customColor}
-                        fontSize="sm"
-                        mb={2}
-                      >
-                        Rating Information
-                      </Text>
-                      <SimpleGrid columns={2} spacing={3}>
-                        <Box>
-                          <Text fontSize="xs" color="gray.500">
-                            Rating
-                          </Text>
-                          <Box mt={1}>{renderStars(selectedItem.rates)}</Box>
-                        </Box>
-                        <Box>
-                          <Text fontSize="xs" color="gray.500">
-                            Date
-                          </Text>
-                          <Text fontSize="sm">
-                            {selectedItem.createdAt
-                              ? new Date(
-                                  selectedItem.createdAt
-                                ).toLocaleString()
-                              : "N/A"}
-                          </Text>
-                        </Box>
-                      </SimpleGrid>
-                    </Box>
-
-                    <Box>
-                      <Text
-                        fontWeight="bold"
-                        color="gray.600"
-                        fontSize="sm"
-                        mb={2}
-                      >
-                        Comment
-                      </Text>
-                      <Text fontSize="sm" color="gray.700">
-                        {selectedItem.comment || "No comment provided."}
-                      </Text>
-                    </Box>
-
-                    {selectedItem.ratedBy && (
-                      <Box>
-                        <Text
-                          fontWeight="bold"
-                          color="gray.600"
-                          fontSize="sm"
-                          mb={2}
-                        >
-                          Rated By
-                        </Text>
-                        <Text fontSize="sm" color="gray.700">
-                          {selectedItem.ratedBy}
-                        </Text>
-                      </Box>
-                    )}
-
-                    {selectedItem.serviceId && (
-                      <Box>
-                        <Text
-                          fontWeight="bold"
-                          color="gray.600"
-                          fontSize="sm"
-                          mb={2}
-                        >
-                          Service
-                        </Text>
-                        <Text fontSize="sm" color="gray.700">
-                          {typeof selectedItem.serviceId === "object"
-                            ? selectedItem.serviceId.serviceName || "N/A"
-                            : selectedItem.serviceId}
-                        </Text>
-                      </Box>
-                    )}
-
+                  <HStack spacing={2}>
                     <Button
-                      leftIcon={<FaHistory />}
-                      colorScheme="purple"
-                      variant="outline"
                       size="sm"
-                      w="100%"
-                      onClick={() => handleRebuildAggregate(selectedItem)}
-                      isLoading={actionLoading}
+                      variant="outline"
+                      borderRadius="8px"
+                      isDisabled={currentPage === 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      leftIcon={<FaChevronLeft size={10} />}
                     >
-                      Rebuild Rating Aggregate
+                      Previous
                     </Button>
-                  </>
-                )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      borderRadius="8px"
+                      isDisabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      rightIcon={<FaChevronRight size={10} />}
+                    >
+                      Next
+                    </Button>
+                  </HStack>
+                </Flex>
+              </VStack>
+            ) : (
+              /* ================= TAB 2: RATINGS TABLE ================= */
+              <VStack spacing={4} align="stretch">
+                <Box overflowX="auto" borderRadius="14px" border="1px solid" borderColor={isDark ? "gray.700" : "gray.200"}>
+                  <Table variant="simple" size="sm">
+                    <Thead bg={isDark ? "gray.900" : "gray.50"}>
+                      <Tr>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase" py={3.5}>#</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Rating & Stars</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Customer Comment</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Customer (Rated By)</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Associated Service</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase">Date</Th>
+                        <Th color="gray.500" fontSize="2xs" textTransform="uppercase" textAlign="center">Actions</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((r, idx) => {
+                        const serviceName = typeof r.serviceId === "object" ? r.serviceId?.serviceName : r.serviceId || "Service Order";
+
+                        return (
+                          <Tr
+                            key={r._id || idx}
+                            _hover={{ bg: isDark ? "gray.800" : "gray.50" }}
+                            transition="background 0.15s ease"
+                          >
+                            <Td fontSize="xs" color="gray.500" fontWeight="600">
+                              {(currentPage - 1) * itemsPerPage + idx + 1}
+                            </Td>
+
+                            <Td>
+                              <HStack spacing={2}>
+                                {renderStars(r.rates)}
+                                <Text fontSize="xs" fontWeight="800" color={isDark ? "white" : "gray.850"}>
+                                  {r.rates || 0}.0
+                                </Text>
+                              </HStack>
+                            </Td>
+
+                            <Td maxW="280px">
+                              <Text fontSize="xs" color="gray.700" fontStyle="italic" noOfLines={2}>
+                                "{r.comment || "No feedback text provided."}"
+                              </Text>
+                            </Td>
+
+                            <Td fontSize="xs" fontWeight="600" color={isDark ? "gray.200" : "gray.700"}>
+                              {r.ratedBy || "Customer"}
+                            </Td>
+
+                            <Td fontSize="xs" color="gray.600">
+                              {serviceName}
+                            </Td>
+
+                            <Td fontSize="2xs" color="gray.500" whiteSpace="nowrap">
+                              {r.createdAt ? new Date(r.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                            </Td>
+
+                            <Td textAlign="center">
+                              <HStack spacing={1} justify="center">
+                                <IconButton
+                                  aria-label="View rating"
+                                  icon={<FaEye size={12} />}
+                                  size="xs"
+                                  variant="ghost"
+                                  colorScheme="blue"
+                                  onClick={() => handleViewDetails(r)}
+                                />
+                                <IconButton
+                                  aria-label="Edit rating"
+                                  icon={<FaEdit size={12} />}
+                                  size="xs"
+                                  variant="ghost"
+                                  colorScheme="orange"
+                                  onClick={() => handleEditRating(r)}
+                                />
+                                <IconButton
+                                  aria-label="Rebuild aggregate"
+                                  icon={<FaHistory size={12} />}
+                                  size="xs"
+                                  variant="ghost"
+                                  colorScheme="purple"
+                                  isLoading={actionLoading}
+                                  onClick={() => handleRebuildAggregate(r)}
+                                />
+                                <IconButton
+                                  aria-label="Delete rating"
+                                  icon={<FaTrash size={12} />}
+                                  size="xs"
+                                  variant="ghost"
+                                  colorScheme="red"
+                                  onClick={() => handleDeleteClick(r)}
+                                />
+                              </HStack>
+                            </Td>
+                          </Tr>
+                        );
+                      })}
+                    </Tbody>
+                  </Table>
+                </Box>
+
+                {/* Pagination */}
+                <Flex justify="space-between" align="center" pt={2} flexWrap="wrap" gap={3}>
+                  <Text fontSize="xs" color="gray.500">
+                    Showing page <strong>{currentPage}</strong> of <strong>{totalPages}</strong> • Total {totalItems} reviews
+                  </Text>
+
+                  <HStack spacing={2}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      borderRadius="8px"
+                      isDisabled={currentPage === 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      leftIcon={<FaChevronLeft size={10} />}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      borderRadius="8px"
+                      isDisabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      rightIcon={<FaChevronRight size={10} />}
+                    >
+                      Next
+                    </Button>
+                  </HStack>
+                </Flex>
               </VStack>
             )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+          </Box>
+        </Box>
+      </VStack>
 
-      {/* Edit Rating Modal */}
-      <Modal
+      {/* ================= 4. INVESTIGATION & RESOLUTION DOSSIER MODAL ================= */}
+      <AppModal
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        size="3xl"
+        title={activeTab === "reports" ? "Dispute Investigation Dossier" : "Rating Details"}
+        subtitle={
+          activeTab === "reports"
+            ? `Case #${String(selectedItem?._id || selectedItem?.id || "").slice(-8).toUpperCase()} • Full evidence claims, counter-defense, and SLA enforcement desk.`
+            : "Customer rating review and aggregate score."
+        }
+        icon={activeTab === "reports" ? MdReport : MdStar}
+        iconColor={BRAND}
+      >
+        {selectedItem && (
+          <VStack spacing={5} align="stretch" py={1}>
+            {activeTab === "reports" ? (
+              <>
+                {/* 3 Entity Cards: Item, Technician, Customer */}
+                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
+                  {/* Entity 1: Related Item */}
+                  <Box p={3.5} bg={isDark ? "gray.800" : "teal.50"} borderRadius="14px" border="1px solid" borderColor={isDark ? "gray.700" : "teal.200"}>
+                    <Flex justify="space-between" align="center" mb={1.5}>
+                      <HStack spacing={1.5}>
+                        <Icon as={FaBoxOpen} color="teal.500" boxSize={3.5} />
+                        <Text fontSize="3xs" fontWeight="800" color="teal.800" textTransform="uppercase">
+                          Booked Item
+                        </Text>
+                      </HStack>
+                      <Badge colorScheme={modalItemDetails.type === "PRODUCT" ? "purple" : "teal"} fontSize="3xs">
+                        {modalItemDetails.type}
+                      </Badge>
+                    </Flex>
+                    <Text fontSize="xs" fontWeight="800" color={isDark ? "white" : "gray.850"} noOfLines={2}>
+                      {modalItemDetails.name}
+                    </Text>
+                    <HStack justify="space-between" mt={2} pt={1.5} borderTop="1px dashed" borderColor={isDark ? "gray.700" : "teal.200"} fontSize="3xs">
+                      <Text color="gray.500">Ref: #{modalItemDetails.ref}</Text>
+                      {modalItemDetails.price && (
+                        <Text fontWeight="800" color="teal.600">₹{modalItemDetails.price}</Text>
+                      )}
+                    </HStack>
+                  </Box>
+
+                  {/* Entity 2: Technician */}
+                  <Box p={3.5} bg={isDark ? "gray.800" : "orange.50"} borderRadius="14px" border="1px solid" borderColor={isDark ? "gray.700" : "orange.200"}>
+                    <Flex justify="space-between" align="center" mb={1.5}>
+                      <HStack spacing={1.5}>
+                        <Icon as={FaTools} color="orange.500" boxSize={3.5} />
+                        <Text fontSize="3xs" fontWeight="800" color="orange.800" textTransform="uppercase">
+                          Technician
+                        </Text>
+                      </HStack>
+                      <Badge colorScheme={modalTechDetails.assigned ? "orange" : "gray"} fontSize="3xs">
+                        {modalTechDetails.assigned ? "Assigned" : "Unassigned"}
+                      </Badge>
+                    </Flex>
+                    <Text fontSize="xs" fontWeight="800" color={isDark ? "white" : "gray.850"} noOfLines={1}>
+                      {modalTechDetails.name}
+                    </Text>
+                    <HStack justify="space-between" mt={2} pt={1.5} borderTop="1px dashed" borderColor={isDark ? "gray.700" : "orange.200"} fontSize="3xs">
+                      <Text color="gray.500">Ph: {modalTechDetails.phone}</Text>
+                    </HStack>
+                  </Box>
+
+                  {/* Entity 3: Customer */}
+                  <Box p={3.5} bg={isDark ? "gray.800" : "blue.50"} borderRadius="14px" border="1px solid" borderColor={isDark ? "gray.700" : "blue.200"}>
+                    <Flex justify="space-between" align="center" mb={1.5}>
+                      <HStack spacing={1.5}>
+                        <Icon as={FaUser} color="blue.500" boxSize={3.5} />
+                        <Text fontSize="3xs" fontWeight="800" color="blue.800" textTransform="uppercase">
+                          Customer
+                        </Text>
+                      </HStack>
+                      <Badge colorScheme="blue" fontSize="3xs">
+                        Reporter
+                      </Badge>
+                    </Flex>
+                    <Text fontSize="xs" fontWeight="800" color={isDark ? "white" : "gray.850"} noOfLines={1}>
+                      {modalCustDetails.name}
+                    </Text>
+                    <HStack justify="space-between" mt={2} pt={1.5} borderTop="1px dashed" borderColor={isDark ? "gray.700" : "blue.200"} fontSize="3xs">
+                      <Text color="gray.500">Ph: {modalCustDetails.phone}</Text>
+                    </HStack>
+                  </Box>
+                </SimpleGrid>
+
+                {/* Customer Complaint Statement */}
+                <Box p={4} bg={isDark ? "gray.800" : "purple.50"} borderRadius="14px" border="1px solid" borderColor={isDark ? "gray.700" : "purple.200"}>
+                  <HStack justify="space-between" mb={2}>
+                    <HStack spacing={2}>
+                      <Icon as={FaExclamationTriangle} color="purple.600" boxSize={4} />
+                      <Text fontWeight="800" fontSize="xs" color="purple.900" textTransform="uppercase">
+                        Customer Complaint Statement
+                      </Text>
+                    </HStack>
+                    <Badge colorScheme={getCategoryMeta(selectedItem.category || selectedItem.reason).color} fontSize="3xs">
+                      {getCategoryMeta(selectedItem.category || selectedItem.reason).label}
+                    </Badge>
+                  </HStack>
+                  <Text fontSize="xs" color={isDark ? "gray.200" : "gray.800"} whiteSpace="pre-wrap" lineHeight="relaxed">
+                    {formatCleanComplaintText(selectedItem.complaint || selectedItem.description || selectedItem.reason)}
+                  </Text>
+
+                  {selectedItem.image && (
+                    <Box mt={3}>
+                      <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase" mb={1}>
+                        Attached Customer Evidence:
+                      </Text>
+                      <Image
+                        src={selectedItem.image}
+                        alt="Evidence"
+                        maxH="140px"
+                        borderRadius="10px"
+                        border="1px solid"
+                        borderColor="gray.200"
+                        objectFit="contain"
+                      />
+                    </Box>
+                  )}
+                </Box>
+
+                {/* Technician Written Defense (if present) */}
+                {(selectedItem.technicianResponse || selectedItem.technicianExplanation) && (
+                  <Box p={4} bg={isDark ? "gray.800" : "orange.50"} borderRadius="14px" border="1px solid" borderColor={isDark ? "gray.700" : "orange.200"}>
+                    <HStack spacing={2} mb={2}>
+                      <Icon as={FaTools} color="orange.600" boxSize={4} />
+                      <Text fontWeight="800" fontSize="xs" color="orange.900" textTransform="uppercase">
+                        Technician Counter Defense
+                      </Text>
+                    </HStack>
+                    <Text fontSize="xs" color={isDark ? "gray.200" : "gray.800"} whiteSpace="pre-wrap" lineHeight="relaxed">
+                      "{selectedItem.technicianResponse || selectedItem.technicianExplanation}"
+                    </Text>
+                  </Box>
+                )}
+
+                {/* Timeline & Previous Notes */}
+                <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+                  <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                    <HStack spacing={1.5} mb={0.5}>
+                      <Icon as={FaClock} color="gray.500" boxSize={3.5} />
+                      <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                        Reported Date
+                      </Text>
+                    </HStack>
+                    <Text fontSize="xs" fontWeight="800" color={isDark ? "white" : "gray.800"}>
+                      {selectedItem.createdAt ? new Date(selectedItem.createdAt).toLocaleString("en-IN") : "N/A"}
+                    </Text>
+                  </Box>
+
+                  <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                    <HStack spacing={1.5} mb={0.5}>
+                      <Icon as={FaHourglassHalf} color="amber.600" boxSize={3.5} />
+                      <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                        SLA Window
+                      </Text>
+                    </HStack>
+                    <Text fontSize="xs" fontWeight="800" color={isDark ? "white" : "gray.800"}>
+                      {selectedItem.slaDeadline ? new Date(selectedItem.slaDeadline).toLocaleString("en-IN") : "Standard 24h Window"}
+                    </Text>
+                  </Box>
+                </SimpleGrid>
+
+                {selectedItem.resolutionNote && (
+                  <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px" borderLeft="4px solid" borderColor="teal.500">
+                    <HStack spacing={1.5} mb={1}>
+                      <Icon as={FaClipboardList} color="teal.500" boxSize={3.5} />
+                      <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                        Previous Investigation Note
+                      </Text>
+                    </HStack>
+                    <Text fontSize="xs" color={isDark ? "gray.200" : "gray.800"} fontWeight="600">
+                      {selectedItem.resolutionNote}
+                    </Text>
+                  </Box>
+                )}
+
+                <Divider borderColor={isDark ? "gray.700" : "gray.200"} />
+
+                {/* Enforcement Controls */}
+                <Box p={4} bg={isDark ? "gray.800" : "white"} borderRadius="14px" border="2px solid" borderColor={`${BRAND}40`}>
+                  <HStack spacing={2} mb={3}>
+                    <Icon as={FaGavel} color={BRAND} boxSize={4} />
+                    <Text fontWeight="800" fontSize="xs" color={isDark ? "white" : "gray.850"} textTransform="uppercase">
+                      Enforcement Actions & Resolution Desk
+                    </Text>
+                  </HStack>
+
+                  <VStack spacing={3} align="stretch">
+                    <Box>
+                      <Text fontSize="2xs" color="gray.500" fontWeight="700" mb={1} textTransform="uppercase">
+                        Investigation Findings / Note
+                      </Text>
+                      <Textarea
+                        size="sm"
+                        borderRadius="8px"
+                        rows={2}
+                        placeholder="Enter investigation findings, reason for customer refund or penalty rationale..."
+                        value={resolutionNoteInput}
+                        onChange={(e) => setResolutionNoteInput(e.target.value)}
+                        bg={isDark ? "gray.900" : "white"}
+                      />
+                    </Box>
+
+                    {/* Quick Direct Actions Matrix */}
+                    <SimpleGrid columns={{ base: 2, sm: 4 }} spacing={2}>
+                      <Button
+                        size="xs"
+                        colorScheme="blue"
+                        borderRadius="8px"
+                        fontWeight="700"
+                        onClick={() => triggerConfirmation("freeze")}
+                        isLoading={actionLoading}
+                      >
+                        🧊 Freeze Payout
+                      </Button>
+                      <Button
+                        size="xs"
+                        colorScheme="green"
+                        borderRadius="8px"
+                        fontWeight="700"
+                        onClick={() => triggerConfirmation("refund")}
+                        isLoading={actionLoading}
+                      >
+                        💸 Refund Customer
+                      </Button>
+                      <Button
+                        size="xs"
+                        colorScheme="orange"
+                        borderRadius="8px"
+                        fontWeight="700"
+                        onClick={() => triggerConfirmation("penalize")}
+                        isLoading={actionLoading}
+                      >
+                        ⚠️ Penalize Tech
+                      </Button>
+                      <Button
+                        size="xs"
+                        colorScheme="red"
+                        borderRadius="8px"
+                        fontWeight="700"
+                        onClick={() => triggerConfirmation("reject")}
+                        isLoading={actionLoading}
+                      >
+                        ❌ Reject Complaint
+                      </Button>
+                    </SimpleGrid>
+
+                    <HStack spacing={2} pt={1}>
+                      <Select
+                        size="sm"
+                        borderRadius="8px"
+                        value={selectedStatusAction}
+                        onChange={(e) => setSelectedStatusAction(e.target.value)}
+                        bg={isDark ? "gray.900" : "white"}
+                        maxW="260px"
+                      >
+                        <option value="under_review">🔍 Under Review</option>
+                        <option value="resolved_refunded">✅ Resolve (Refund Customer)</option>
+                        <option value="resolved_no_refund">🛑 Resolve (No Refund)</option>
+                      </Select>
+                      <Button
+                        size="sm"
+                        flex="1"
+                        bg={BRAND}
+                        color="white"
+                        borderRadius="8px"
+                        fontWeight="700"
+                        _hover={{ bg: "#006666" }}
+                        isLoading={actionLoading}
+                        onClick={() => triggerConfirmation("execute")}
+                      >
+                        Execute Status Update
+                      </Button>
+                    </HStack>
+                  </VStack>
+                </Box>
+              </>
+            ) : (
+              /* Rating details */
+              <VStack spacing={4} align="stretch">
+                <Box p={4} bg={isDark ? "gray.800" : "yellow.50"} borderRadius="14px" border="1px solid" borderColor={isDark ? "gray.700" : "yellow.200"}>
+                  <HStack justify="space-between">
+                    <HStack spacing={2}>
+                      {renderStars(selectedItem.rates)}
+                      <Text fontSize="lg" fontWeight="900" color={isDark ? "white" : "gray.850"}>
+                        {selectedItem.rates || 0}.0 / 5.0
+                      </Text>
+                    </HStack>
+                    <Text fontSize="xs" color="gray.500">
+                      {selectedItem.createdAt ? new Date(selectedItem.createdAt).toLocaleString("en-IN") : ""}
+                    </Text>
+                  </HStack>
+                </Box>
+
+                <Box p={4} bg={isDark ? "gray.800" : "gray.50"} borderRadius="14px">
+                  <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase" mb={1}>
+                    Review Comment
+                  </Text>
+                  <Text fontSize="sm" color={isDark ? "gray.200" : "gray.800"} fontStyle="italic">
+                    "{selectedItem.comment || "No comment provided."}"
+                  </Text>
+                </Box>
+
+                <SimpleGrid columns={2} spacing={3}>
+                  <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                    <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                      Customer (Reviewer)
+                    </Text>
+                    <Text fontSize="xs" fontWeight="700" color={isDark ? "white" : "gray.800"} mt={0.5}>
+                      {selectedItem.ratedBy || "Customer"}
+                    </Text>
+                  </Box>
+                  <Box p={3} bg={isDark ? "gray.800" : "gray.50"} borderRadius="12px">
+                    <Text fontSize="3xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                      Service
+                    </Text>
+                    <Text fontSize="xs" fontWeight="700" color={isDark ? "white" : "gray.800"} mt={0.5}>
+                      {typeof selectedItem.serviceId === "object" ? selectedItem.serviceId?.serviceName : selectedItem.serviceId || "Service Order"}
+                    </Text>
+                  </Box>
+                </SimpleGrid>
+
+                <Button
+                  leftIcon={<FaHistory />}
+                  colorScheme="purple"
+                  variant="outline"
+                  size="sm"
+                  borderRadius="8px"
+                  fontWeight="700"
+                  onClick={() => handleRebuildAggregate(selectedItem)}
+                  isLoading={actionLoading}
+                >
+                  Recalculate Rating Aggregate
+                </Button>
+              </VStack>
+            )}
+
+            <Flex justify="flex-end" pt={2}>
+              <Button size="sm" variant="outline" borderRadius="8px" onClick={() => setIsDetailModalOpen(false)}>
+                Close Dossier
+              </Button>
+            </Flex>
+          </VStack>
+        )}
+      </AppModal>
+
+      {/* ================= 5. EDIT RATING MODAL ================= */}
+      <AppModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         size="md"
+        title="Edit Customer Rating"
+        subtitle="Modify score rating and review feedback statement."
+        icon={MdRateReview}
+        iconColor={BRAND}
       >
-        <ModalOverlay />
-        <ModalContent maxW="450px">
-          <ModalHeader color="gray.700">Edit Rating</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <VStack spacing={4} align="stretch">
-              <Box>
-                <Text fontSize="sm" fontWeight="bold" color="gray.600" mb={2}>
-                  Rating
-                </Text>
-                <HStack spacing={2}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <IconButton
-                      key={star}
-                      aria-label={`Rate ${star} stars`}
-                      icon={<MdStar />}
-                      size="lg"
-                      color={star <= editRates ? goldColor : "gray.300"}
-                      bg="transparent"
-                      _hover={{ bg: "transparent", transform: "scale(1.1)" }}
-                      _active={{ bg: "transparent", transform: "scale(0.95)" }}
-                      onClick={() => setEditRates(star)}
-                    />
-                  ))}
-                </HStack>
-              </Box>
-
-              <Box>
-                <Text fontSize="sm" fontWeight="bold" color="gray.600" mb={2}>
-                  Comment
-                </Text>
-                <Textarea
-                  value={editComment}
-                  onChange={(e) => setEditComment(e.target.value)}
-                  placeholder="Enter comment..."
-                  size="sm"
-                  borderColor={`${customColor}50`}
-                  _hover={{ borderColor: customColor }}
-                  _focus={{
-                    borderColor: customColor,
-                    boxShadow: `0 0 0 1px ${customColor}`,
-                  }}
+        <VStack spacing={4} align="stretch" py={2}>
+          <Box>
+            <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" mb={2}>
+              Star Rating
+            </Text>
+            <HStack spacing={2}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <IconButton
+                  key={star}
+                  aria-label={`Rate ${star} stars`}
+                  icon={<MdStar size={24} />}
+                  size="md"
+                  color={star <= editRates ? GOLD : "gray.300"}
+                  bg="transparent"
+                  _hover={{ transform: "scale(1.15)" }}
+                  _active={{ transform: "scale(0.95)" }}
+                  onClick={() => setEditRates(star)}
                 />
-              </Box>
-            </VStack>
-          </ModalBody>
-          <ModalFooter>
-            <Button
-              variant="ghost"
-              mr={3}
-              onClick={() => setIsEditModalOpen(false)}
+              ))}
+              <Text fontSize="md" fontWeight="800" color={isDark ? "white" : "gray.800"} ml={2}>
+                {editRates} of 5
+              </Text>
+            </HStack>
+          </Box>
+
+          <Box>
+            <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" mb={1}>
+              Review Comment
+            </Text>
+            <Textarea
+              value={editComment}
+              onChange={(e) => setEditComment(e.target.value)}
+              placeholder="Enter customer review comment..."
               size="sm"
-            >
+              borderRadius="8px"
+              rows={3}
+              bg={isDark ? "gray.900" : "white"}
+            />
+          </Box>
+
+          <Flex justify="flex-end" gap={2} pt={2}>
+            <Button size="sm" variant="ghost" onClick={() => setIsEditModalOpen(false)}>
               Cancel
             </Button>
             <Button
-              bg={customColor}
-              color="white"
-              _hover={{ bg: `${customColor}dd` }}
-              _active={{ bg: "#004d4d" }}
-              onClick={handleUpdateRating}
-              isLoading={actionLoading}
               size="sm"
+              bg={BRAND}
+              color="white"
+              _hover={{ bg: "#006666" }}
+              borderRadius="8px"
+              fontWeight="700"
+              isLoading={actionLoading}
+              onClick={handleUpdateRating}
             >
               Update Rating
             </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+          </Flex>
+        </VStack>
+      </AppModal>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog
+      {/* ================= 6. DELETE RATING CONFIRM MODAL ================= */}
+      <ConfirmActionModal
         isOpen={isDeleteDialogOpen}
-        leastDestructiveRef={cancelRef}
         onClose={() => setIsDeleteDialogOpen(false)}
-      >
-        <AlertDialogOverlay>
-          <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold">
-              Delete Rating
-            </AlertDialogHeader>
+        onConfirm={handleConfirmDelete}
+        title="Delete Rating"
+        description="Are you sure you want to delete this rating permanently? This action cannot be reversed."
+        confirmText="Yes, Delete Rating"
+        confirmColorScheme="red"
+        isLoading={actionLoading}
+      />
 
-            <AlertDialogBody>
-              Are you sure you want to delete this rating? This action cannot be
-              undone.
-            </AlertDialogBody>
-
-            <AlertDialogFooter>
-              <Button
-                ref={cancelRef}
-                onClick={() => setIsDeleteDialogOpen(false)}
-                size="sm"
-              >
-                Cancel
-              </Button>
-              <Button
-                colorScheme="red"
-                onClick={handleConfirmDelete}
-                ml={3}
-                isLoading={actionLoading}
-                size="sm"
-              >
-                Delete
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialogOverlay>
-      </AlertDialog>
-
-      {/* Enforcement Action Confirmation Modal */}
-      <Modal
+      {/* ================= 7. ENFORCEMENT ACTION CONFIRMATION MODAL ================= */}
+      <AppModal
         isOpen={isConfirmModalOpen}
         onClose={() => setIsConfirmModalOpen(false)}
-        isCentered
         size="lg"
+        title={confirmModalData.title || "Confirm Enforcement Action"}
+        subtitle="Review action parameters and execute financial/status modification."
+        icon={FaExclamationTriangle}
+        iconColor={confirmModalData.colorScheme === "red" ? "red.500" : BRAND}
       >
-        <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(5px)" />
-        <ModalContent borderRadius="2xl" overflow="hidden" shadow="2xl" border="1px solid" borderColor="gray.200">
-          <ModalHeader bg={`${confirmModalData.colorScheme}.600`} color="white" py={4} px={5}>
-            <Flex justify="space-between" align="center" pr={6}>
-              <HStack spacing={2.5}>
-                <Icon as={FaExclamationTriangle} boxSize={5} />
-                <Text fontSize="md" fontWeight="extrabold">
-                  {confirmModalData.title || "Confirm Action"}
-                </Text>
-              </HStack>
-              <Badge bg="whiteAlpha.300" color="white" borderRadius="full" px={2.5} py={0.5} fontSize="3xs" textTransform="uppercase">
-                {confirmModalData.actionType} Action
-              </Badge>
-            </Flex>
-          </ModalHeader>
-          <ModalCloseButton color="white" />
+        <VStack align="stretch" spacing={4} py={2}>
+          <Box p={3.5} bg={`${confirmModalData.colorScheme}.50`} borderRadius="12px" border="1px solid" borderColor={`${confirmModalData.colorScheme}.200`}>
+            <Text fontSize="xs" color={`${confirmModalData.colorScheme}.900`} fontWeight="600" lineHeight="relaxed">
+              {confirmModalData.description}
+            </Text>
+          </Box>
 
-          <ModalBody p={5} bg="gray.50">
-            <VStack align="stretch" spacing={4}>
-              {/* Description Alert Banner */}
-              <Box bg={`${confirmModalData.colorScheme}.50`} p={3.5} borderRadius="xl" border="1px solid" borderColor={`${confirmModalData.colorScheme}.200`}>
-                <Text fontSize="xs" color={`${confirmModalData.colorScheme}.900`} fontWeight="medium" lineHeight="relaxed">
-                  {confirmModalData.description}
+          {selectedItem && (() => {
+            const fin = getFinancialBreakdown(selectedItem);
+            return (
+              <Box p={4} bg={isDark ? "gray.800" : "gray.50"} borderRadius="14px">
+                <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase" mb={2}>
+                  Order Financial Context
                 </Text>
+                <Grid templateColumns="repeat(3, 1fr)" gap={2}>
+                  <Box p={2.5} bg={isDark ? "gray.900" : "white"} borderRadius="10px">
+                    <Text fontSize="3xs" color="gray.500">Customer Paid</Text>
+                    <Text fontSize="sm" fontWeight="800" color="green.600">₹{fin.customerPays}</Text>
+                  </Box>
+                  <Box p={2.5} bg={isDark ? "gray.900" : "white"} borderRadius="10px">
+                    <Text fontSize="3xs" color="gray.500">Tech Payout</Text>
+                    <Text fontSize="sm" fontWeight="800" color="purple.600">₹{fin.techPayout}</Text>
+                  </Box>
+                  <Box p={2.5} bg={isDark ? "gray.900" : "white"} borderRadius="10px">
+                    <Text fontSize="3xs" color="gray.500">Platform Fee</Text>
+                    <Text fontSize="sm" fontWeight="800" color="teal.600">₹{fin.platformFee}</Text>
+                  </Box>
+                </Grid>
+
+                {(confirmModalData.actionType === "refund" ||
+                  confirmModalData.actionType === "penalize" ||
+                  confirmModalData.actionType === "freeze") && (
+                  <Box mt={3} pt={3} borderTop="1px solid" borderColor={isDark ? "gray.700" : "gray.200"}>
+                    <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase" mb={1}>
+                      Action Amount (₹)
+                    </Text>
+                    <InputGroup size="sm">
+                      <InputLeftElement pointerEvents="none">
+                        <Text fontWeight="bold" color="gray.500">₹</Text>
+                      </InputLeftElement>
+                      <Input
+                        type="number"
+                        value={customAmountInput}
+                        onChange={(e) => setCustomAmountInput(e.target.value)}
+                        borderRadius="8px"
+                        fontWeight="800"
+                        bg={isDark ? "gray.900" : "white"}
+                      />
+                    </InputGroup>
+                  </Box>
+                )}
               </Box>
+            );
+          })()}
 
-              {/* Financial & Booking Details Summary Card */}
-              {selectedItem && (() => {
-                const fin = getFinancialBreakdown(selectedItem);
-                const techDetails = getTechnicianDetails(selectedItem);
-                const custDetails = getCustomerDetails(selectedItem);
-
-                return (
-                  <Card bg="white" shadow="sm" borderRadius="xl" p={4} border="1px solid" borderColor="blue.100">
-                    <Flex justify="space-between" align="center" mb={3} pb={2} borderBottom="1px solid" borderColor="gray.100">
-                      <HStack spacing={2}>
-                        <Flex w="30px" h="30px" bg="blue.50" color="blue.600" borderRadius="lg" justify="center" align="center">
-                          <Icon as={MdAttachMoney} boxSize={5} />
-                        </Flex>
-                        <Box>
-                          <Text fontWeight="extrabold" fontSize="xs" color="gray.800" textTransform="uppercase" letterSpacing="wide">
-                            Financial Breakdown & Order Details
-                          </Text>
-                          <Text fontSize="3xs" color="gray.500">
-                            Ref: #{fin.bookingRef} | Case #{String(selectedItem._id || selectedItem.id || "").slice(-8).toUpperCase()}
-                          </Text>
-                        </Box>
-                      </HStack>
-                      <Badge colorScheme="blue" borderRadius="full" px={2.5} py={0.5} fontSize="3xs">
-                        Verified Order
-                      </Badge>
-                    </Flex>
-
-                    {/* Service / Product Item Name */}
-                    <Box bg="gray.50" p={2.5} borderRadius="lg" mb={3} border="1px solid" borderColor="gray.200">
-                      <Text fontSize="3xs" color="gray.500" fontWeight="bold" textTransform="uppercase">
-                        Booked Service / Product:
-                      </Text>
-                      <Text fontSize="xs" fontWeight="extrabold" color="gray.800" noOfLines={1} mt={0.5}>
-                        📦 {fin.itemName}
-                      </Text>
-                      <HStack spacing={4} mt={1} fontSize="3xs" color="gray.600">
-                        <Text>👤 Customer: <Text as="span" fontWeight="bold" color="gray.800">{custDetails.name}</Text></Text>
-                        <Text>🛠️ Technician: <Text as="span" fontWeight="bold" color="gray.800">{techDetails.name}</Text></Text>
-                      </HStack>
-                    </Box>
-
-                    {/* Financial Metrics Grid */}
-                    <Grid templateColumns="repeat(3, 1fr)" gap={2.5} mb={3}>
-                      {/* Customer Pays */}
-                      <Box bg="green.50" p={2.5} borderRadius="xl" border="1px solid" borderColor="green.200">
-                        <Text fontSize="3xs" color="green.700" fontWeight="extrabold" textTransform="uppercase" letterSpacing="wider">
-                          Customer Paid
-                        </Text>
-                        <Text fontSize="md" fontWeight="extrabold" color="green.800" mt={0.5}>
-                          ₹{fin.customerPays.toLocaleString()}
-                        </Text>
-                        <Text fontSize="4xs" color="green.600">Total Billed Amount</Text>
-                      </Box>
-
-                      {/* Service / Product Base Cost */}
-                      <Box bg="blue.50" p={2.5} borderRadius="xl" border="1px solid" borderColor="blue.200">
-                        <Text fontSize="3xs" color="blue.700" fontWeight="extrabold" textTransform="uppercase" letterSpacing="wider">
-                          Service Base
-                        </Text>
-                        <Text fontSize="md" fontWeight="extrabold" color="blue.800" mt={0.5}>
-                          ₹{fin.serviceAmount.toLocaleString()}
-                        </Text>
-                        <Text fontSize="4xs" color="blue.600">Catalog Base Price</Text>
-                      </Box>
-
-                      {/* Tech Payout & Commission */}
-                      <Box bg="purple.50" p={2.5} borderRadius="xl" border="1px solid" borderColor="purple.200">
-                        <Text fontSize="3xs" color="purple.700" fontWeight="extrabold" textTransform="uppercase" letterSpacing="wider">
-                          Tech Payout
-                        </Text>
-                        <Text fontSize="md" fontWeight="extrabold" color="purple.800" mt={0.5}>
-                          ₹{fin.techPayout.toLocaleString()}
-                        </Text>
-                        <Text fontSize="4xs" color="purple.600">
-                          ({100 - fin.techCommissionPct}% Payout | {fin.techCommissionPct}% Fee)
-                        </Text>
-                      </Box>
-                    </Grid>
-
-                    {/* Editable Amount Control Section */}
-                    {(confirmModalData.actionType === "refund" ||
-                      confirmModalData.actionType === "penalize" ||
-                      confirmModalData.actionType === "freeze" ||
-                      confirmModalData.actionType === "execute") && (
-                      <Box bg="white" p={3.5} borderRadius="xl" border="2px solid" borderColor={`${confirmModalData.colorScheme}.400`} shadow="sm">
-                        <Flex justify="space-between" align="center" mb={2}>
-                          <HStack spacing={1.5}>
-                            <Icon as={FaEdit} color={`${confirmModalData.colorScheme}.600`} boxSize={4} />
-                            <Text fontSize="xs" fontWeight="extrabold" color="gray.800" textTransform="uppercase" letterSpacing="wider">
-                              {confirmModalData.actionType === "refund"
-                                ? "Editable Refund Amount (₹)"
-                                : confirmModalData.actionType === "penalize"
-                                ? "Editable Penalty Amount (₹)"
-                                : confirmModalData.actionType === "freeze"
-                                ? "Editable Freeze Reserve (₹)"
-                                : "Custom Execution Amount (₹)"}
-                            </Text>
-                          </HStack>
-                          <Badge colorScheme={confirmModalData.colorScheme} fontSize="3xs" borderRadius="full" px={2} py={0.5}>
-                            Editable Input
-                          </Badge>
-                        </Flex>
-
-                        <InputGroup size="md" mb={2.5}>
-                          <InputLeftElement pointerEvents="none">
-                            <Text fontWeight="extrabold" color={`${confirmModalData.colorScheme}.600`}>
-                              ₹
-                            </Text>
-                          </InputLeftElement>
-                          <Input
-                            type="number"
-                            value={customAmountInput}
-                            onChange={(e) => setCustomAmountInput(e.target.value)}
-                            fontSize="md"
-                            fontWeight="extrabold"
-                            color="gray.900"
-                            borderRadius="xl"
-                            bg="gray.50"
-                            borderColor={`${confirmModalData.colorScheme}.300`}
-                            _focus={{ bg: "white", borderColor: `${confirmModalData.colorScheme}.500`, boxShadow: `0 0 0 1px ${confirmModalData.colorScheme}` }}
-                          />
-                        </InputGroup>
-
-                        {/* Quick Preset Buttons */}
-                        <HStack spacing={2} justify="flex-start" wrap="wrap">
-                          <Text fontSize="3xs" fontWeight="extrabold" color="gray.500" textTransform="uppercase">
-                            Quick Presets:
-                          </Text>
-                          <Button
-                            size="xs"
-                            h="24px"
-                            colorScheme="teal"
-                            variant="solid"
-                            borderRadius="md"
-                            fontSize="3xs"
-                            onClick={() => setCustomAmountInput(fin.customerPays)}
-                          >
-                            100% Full (₹{fin.customerPays})
-                          </Button>
-                          <Button
-                            size="xs"
-                            h="24px"
-                            colorScheme="blue"
-                            variant="outline"
-                            borderRadius="md"
-                            fontSize="3xs"
-                            onClick={() => setCustomAmountInput(Math.round(fin.customerPays * 0.5))}
-                          >
-                            50% Half (₹{Math.round(fin.customerPays * 0.5)})
-                          </Button>
-                          <Button
-                            size="xs"
-                            h="24px"
-                            colorScheme="purple"
-                            variant="outline"
-                            borderRadius="md"
-                            fontSize="3xs"
-                            onClick={() => setCustomAmountInput(Math.round(fin.customerPays * 0.25))}
-                          >
-                            25% (₹{Math.round(fin.customerPays * 0.25)})
-                          </Button>
-                        </HStack>
-                      </Box>
-                    )}
-                  </Card>
-                );
-              })()}
-
-              {resolutionNoteInput.trim() && (
-                <Box bg="white" p={3} borderRadius="xl" border="1px solid" borderColor="gray.200">
-                  <Text color="gray.500" fontSize="3xs" fontWeight="bold" textTransform="uppercase">
-                    Recorded Investigation Note:
-                  </Text>
-                  <Text color="gray.800" fontSize="xs" fontStyle="italic" noOfLines={2} mt={0.5}>
-                    "{resolutionNoteInput.trim()}"
-                  </Text>
-                </Box>
-              )}
-            </VStack>
-          </ModalBody>
-
-          <ModalFooter bg="white" py={3} px={5} borderTop="1px solid" borderColor="gray.200">
-            <Button
-              variant="outline"
-              size="sm"
-              borderRadius="lg"
-              onClick={() => setIsConfirmModalOpen(false)}
-              isDisabled={actionLoading}
-            >
-              Cancel / Back
+          <Flex justify="flex-end" gap={2} pt={2}>
+            <Button size="sm" variant="ghost" onClick={() => setIsConfirmModalOpen(false)}>
+              Cancel
             </Button>
             <Button
+              size="sm"
               colorScheme={confirmModalData.colorScheme}
-              size="sm"
-              borderRadius="lg"
-              ml={3}
-              onClick={handleProceedConfirmAction}
+              borderRadius="8px"
+              fontWeight="700"
               isLoading={actionLoading}
-              leftIcon={<MdCheckCircle />}
-              fontWeight="bold"
-              shadow="md"
+              onClick={handleProceedConfirmAction}
             >
-              Yes, Proceed & Execute (₹{Number(customAmountInput || 0).toLocaleString()})
+              Confirm & Execute
             </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-    </Flex>
+          </Flex>
+        </VStack>
+      </AppModal>
+    </Box>
   );
 }

@@ -13,7 +13,6 @@ import {
   MenuList,
   MenuItem,
   SimpleGrid,
-  useColorMode,
   Spinner,
 } from "@chakra-ui/react";
 import {
@@ -152,8 +151,7 @@ export default function ServiceCategoryPerformance({
   title = "Service Category Performance",
   subtitle = "Compare revenue and total bookings across service categories",
 }) {
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
+  const isDark = false;
   const sourceBookings = Array.isArray(bookings) ? bookings : serviceBookings;
 
   // Date range filter state

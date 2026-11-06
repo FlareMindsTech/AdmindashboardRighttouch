@@ -6,7 +6,6 @@ import {
   SimpleGrid,
   Stack,
   Text,
-  useColorMode,
 } from "@chakra-ui/react";
 import {
   FaBoxOpen,
@@ -63,10 +62,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(!hasExistingData);
   const [insights, setInsights] = useState(null);
 
-  const { colorMode } = useColorMode();
-  const isDark = colorMode === "dark";
-  const textColor = isDark ? "gray.50" : "gray.800";
-  const subTextColor = isDark ? "gray.400" : "gray.500";
+  const textColor = "gray.800";
+  const subTextColor = "gray.500";
 
   const dispatchDashboardData = useCallback(
     (force = false) =>

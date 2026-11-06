@@ -1,12 +1,6 @@
 import React from "react";
+import AppModal from "components/common/AppModal";
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalCloseButton,
-  ModalBody,
-  ModalFooter,
   Flex,
   Box,
   Text,
@@ -24,7 +18,6 @@ import {
   FaFileInvoice,
   FaCheckCircle,
   FaLock,
-  FaRobot,
 } from "react-icons/fa";
 
 export default function PayoutDetailsModal({
@@ -40,11 +33,16 @@ export default function PayoutDetailsModal({
   brandColor = "#008080",
 }) {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside">
-      <ModalOverlay backdropFilter="blur(4px)" />
-      <ModalContent borderRadius="20px" boxShadow="2xl">
-        <ModalHeader bg="teal.800" color="white" borderTopRadius="20px" p="16px 24px">
-          <Flex justify="space-between" align="center" pr="20px">
+    <AppModal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="3xl"
+      maxW={{ base: "95vw", md: "820px" }}
+      bodyMaxH="75vh"
+      scrollBehavior="inside"
+      headerBg="teal.800"
+      headerColor="white"
+      closeButtonColor="white" title={<><Flex justify="space-between" align="center" pr="20px">
             <HStack spacing="10px">
               <Icon as={FaFileInvoice} boxSize={5} color="teal.200" />
               <Box>
@@ -57,10 +55,7 @@ export default function PayoutDetailsModal({
             <Badge colorScheme={selectedDetailsWd?.status === "paid" ? "green" : "orange"} px="10px" py="4px" borderRadius="full">
               {selectedDetailsWd?.status?.toUpperCase()}
             </Badge>
-          </Flex>
-        </ModalHeader>
-        <ModalCloseButton color="white" top="18px" right="20px" />
-        <ModalBody p="24px">
+          </Flex></>} footer={<><Button size="sm" colorScheme="teal" onClick={onClose}>Close Details</Button></>}>
           {detailsLoading ? (
             <Center p="40px"><Spinner color={brandColor} /></Center>
           ) : (
@@ -146,11 +141,7 @@ export default function PayoutDetailsModal({
               </Box>
             </VStack>
           )}
-        </ModalBody>
-        <ModalFooter borderTop="1px solid" borderColor="gray.100">
-          <Button size="sm" colorScheme="teal" onClick={onClose}>Close Details</Button>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+
+</AppModal>
   );
 }

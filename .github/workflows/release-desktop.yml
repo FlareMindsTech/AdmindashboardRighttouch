@@ -15,33 +15,32 @@ jobs:
       matrix:
         include:
           - platform: "windows-latest"
-            target: "x86_64-pc-windows-msvc"
           - platform: "ubuntu-22.04"
-            target: "x86_64-unknown-linux-gnu"
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: "npm"
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
 
       - name: Install Node dependencies
-        run: npm ci || npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build React frontend
         run: npm run build
@@ -56,4 +55,3 @@ jobs:
           releaseBody: "Automated desktop build for RightTouch Admin Console (Windows and Linux)."
           releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }}

@@ -6,9 +6,9 @@ import axios from "axios";
 import { getToken, clearAuth, handleSessionExpiry } from "views/utils/axiosInstance";
 import { normalizeError } from "errors/normalizeError";
 
-const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL ||
-  "http://localhost:7372";
+const API_BASE_URL = (
+  process.env.REACT_APP_API_BASE_URL || "http://localhost:7372"
+).replace(/\/+$/, "");
 
 export const apiClient = axios.create({
   baseURL: `${API_BASE_URL}/api`,

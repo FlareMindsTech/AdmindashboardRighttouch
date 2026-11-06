@@ -63,7 +63,9 @@ if (typeof window !== "undefined" && window.fetch) {
 }
 
 // --- Configuration ---
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:7372";
+const API_BASE_URL = (
+  process.env.REACT_APP_API_BASE_URL || "http://localhost:7372"
+).replace(/\/+$/, "");
 const BASE_URL = `${API_BASE_URL}/api`;
 const TIMEOUT_MS = 10000;
 

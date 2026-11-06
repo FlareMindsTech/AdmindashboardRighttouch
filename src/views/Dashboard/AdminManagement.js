@@ -507,7 +507,8 @@ const getImageUrl = (urlData) => {
   const url = Array.isArray(urlData) ? urlData[0] : urlData;
   if (typeof url !== "string") return "";
   if (url.startsWith("http") || url.startsWith("data:")) return url;
-  return `${process.env.REACT_APP_API_BASE_URL || "http://localhost:7372"}/${url}`;
+  const origin = (process.env.REACT_APP_API_BASE_URL || "http://localhost:7372").replace(/\/+$/, "");
+  return `${origin}/${url.replace(/^\/+/, "")}`;
 };
 
 const isTechnicianKYCVerified = (admin, kycRecords = []) => {

@@ -11,7 +11,9 @@ import { getToken, handleSessionExpiry } from "views/utils/axiosInstance";
 
 const API_ORIGIN = (
   process.env.REACT_APP_API_BASE_URL || "http://localhost:7372"
-).replace(/\/api\/?$/, "");
+)
+  .replace(/\/api\/?$/, "")
+  .replace(/\/+$/, "");
 
 export const ADMIN_PRODUCT_FLOW_EVENT = "admin_product_flow_updated";
 

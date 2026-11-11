@@ -16,6 +16,7 @@ import {
   VStack,
   HStack,
   Center,
+  Tooltip,
 } from "@chakra-ui/react";
 
 import Card from "components/Card/Card.js";
@@ -38,6 +39,7 @@ import {
   FaWallet,
   FaUserCog,
   FaTrash,
+  FaSyncAlt,
 } from "react-icons/fa";
 import {
   getAllCurrentTechJob,
@@ -592,6 +594,21 @@ export default function UserManagement() {
                 minW={{ base: "0", sm: "200px" }}
                 w="100%"
               >
+                <Tooltip label="Refresh Users & Bookings" hasArrow placement="top">
+                  <IconButton
+                    icon={<Icon as={FaSyncAlt} boxSize={3.5} />}
+                    aria-label="Refresh Users"
+                    size="sm"
+                    mr={2}
+                    variant="outline"
+                    color={customColor}
+                    borderColor={`${customColor}50`}
+                    _hover={{ bg: `${customColor}10`, borderColor: customColor }}
+                    _active={{ bg: `${customColor}20`, borderColor: customColor }}
+                    isLoading={isLoading}
+                    onClick={fetchData}
+                  />
+                </Tooltip>
                 <Input
                   placeholder="Search users..."
                   value={searchTerm}

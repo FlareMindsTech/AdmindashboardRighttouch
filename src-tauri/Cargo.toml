@@ -1,6 +1,6 @@
 [package]
 name = "right-touch-admin"
-version = "1.0.5"
+version = "1.0.6"
 description = "RightTouch Admin Console"
 authors = ["RightTouch"]
 license = ""

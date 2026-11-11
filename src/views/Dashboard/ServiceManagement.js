@@ -105,6 +105,7 @@ import {
   FaFilter,
   FaRedo,
   FaTrophy,
+  FaSyncAlt,
 } from "react-icons/fa";
 import { MdCategory, MdInventory, MdWarning, MdAttachMoney } from "react-icons/md";
 
@@ -2465,6 +2466,21 @@ export default function ServiceManagement() {
                   minW={{ base: "0", sm: "200px" }}
                   w="100%"
                 >
+                  <Tooltip label="Refresh Services & Categories" hasArrow placement="top">
+                    <IconButton
+                      icon={<Icon as={FaSyncAlt} boxSize={3.5} />}
+                      aria-label="Refresh Services"
+                      size="sm"
+                      mr={2}
+                      variant="outline"
+                      color={customColor}
+                      borderColor={`${customColor}50`}
+                      _hover={{ bg: `${customColor}10`, borderColor: customColor }}
+                      _active={{ bg: `${customColor}20`, borderColor: customColor }}
+                      isLoading={isLoadingData}
+                      onClick={fetchData}
+                    />
+                  </Tooltip>
                   <Input
                     placeholder={
                       currentView === "categories"

@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
+  Button,
   Flex,
   Heading,
+  Icon,
   SimpleGrid,
   Stack,
   Text,
@@ -12,6 +14,7 @@ import {
   FaCalendarCheck,
   FaCheckCircle,
   FaRupeeSign,
+  FaSyncAlt,
   FaTools,
 } from "react-icons/fa";
 import { useAppDispatch, useAppSelector } from "store/hooks";
@@ -61,6 +64,22 @@ export default function Dashboard() {
     (productBookings && productBookings.length > 0);
   const [loading, setLoading] = useState(!hasExistingData);
   const [insights, setInsights] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const [, insightData] = await Promise.all([
+        dispatchDashboardData(true),
+        fetchDashboardInsights(true),
+      ]);
+      setInsights(insightData);
+    } catch (err) {
+      console.error("Dashboard refresh error:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const textColor = "gray.800";
   const subTextColor = "gray.500";
@@ -275,6 +294,37 @@ export default function Dashboard() {
       px={{ base: 2, md: 4, lg: 6 }}
     >
       <Stack spacing={{ base: 5, md: 6 }} maxW="1600px" mx="auto">
+        <Flex
+          justify="space-between"
+          align="center"
+          flexWrap="wrap"
+          gap={3}
+          mb={1}
+        >
+          <Box>
+            <Heading size="md" color={textColor} fontWeight="700">
+              Dashboard Overview
+            </Heading>
+            <Text fontSize="sm" color={subTextColor}>
+              Real-time business performance, service metrics & recent activity
+            </Text>
+          </Box>
+          <Button
+            size="sm"
+            variant="outline"
+            color="#008080"
+            borderColor="#00808050"
+            _hover={{ bg: "#00808010", borderColor: "#008080" }}
+            _active={{ bg: "#00808020", borderColor: "#008080" }}
+            leftIcon={<Icon as={FaSyncAlt} />}
+            isLoading={isRefreshing}
+            loadingText="Refreshing..."
+            onClick={handleRefresh}
+          >
+            Refresh Dashboard
+          </Button>
+        </Flex>
+
         <SimpleGrid
           columns={{ base: 1, sm: 2, lg: 3, xl: 5 }}
           spacing={{ base: 3, md: 4 }}

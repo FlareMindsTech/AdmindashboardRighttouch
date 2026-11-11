@@ -14,6 +14,7 @@ import {
   SimpleGrid,
   Textarea,
   Tooltip,
+  Image,
 } from "@chakra-ui/react";
 import {
   FaLock,
@@ -291,10 +292,20 @@ export default function KYCReviewModal({
                       </Text>
                       {docs.aadhaarUrl ? (
                         <Box borderRadius="6px" overflow="hidden" border="1px solid #eee">
-                          <img
+                          <Image
                             src={getImageUrl(docs.aadhaarUrl)}
                             alt="Aadhaar"
-                            style={{ width: "100%", height: "130px", objectFit: "cover", cursor: "pointer" }}
+                            w="100%"
+                            h="130px"
+                            objectFit="cover"
+                            cursor="pointer"
+                            fallback={
+                              <Flex h="130px" bg="gray.100" align="center" justify="center" p={2} textAlign="center">
+                                <Text fontSize="2xs" color="gray.500" fontWeight="medium">
+                                  Image file not found on server
+                                </Text>
+                              </Flex>
+                            }
                             onClick={() => window.open(getImageUrl(docs.aadhaarUrl), "_blank")}
                           />
                           <Button
@@ -329,10 +340,20 @@ export default function KYCReviewModal({
                       </Text>
                       {docs.panUrl ? (
                         <Box borderRadius="6px" overflow="hidden" border="1px solid #eee">
-                          <img
+                          <Image
                             src={getImageUrl(docs.panUrl)}
                             alt="PAN"
-                            style={{ width: "100%", height: "130px", objectFit: "cover", cursor: "pointer" }}
+                            w="100%"
+                            h="130px"
+                            objectFit="cover"
+                            cursor="pointer"
+                            fallback={
+                              <Flex h="130px" bg="gray.100" align="center" justify="center" p={2} textAlign="center">
+                                <Text fontSize="2xs" color="gray.500" fontWeight="medium">
+                                  Image file not found on server
+                                </Text>
+                              </Flex>
+                            }
                             onClick={() => window.open(getImageUrl(docs.panUrl), "_blank")}
                           />
                           <Button
@@ -367,10 +388,20 @@ export default function KYCReviewModal({
                       </Text>
                       {docs.dlUrl ? (
                         <Box borderRadius="6px" overflow="hidden" border="1px solid #eee">
-                          <img
+                          <Image
                             src={getImageUrl(docs.dlUrl)}
                             alt="Driving License"
-                            style={{ width: "100%", height: "130px", objectFit: "cover", cursor: "pointer" }}
+                            w="100%"
+                            h="130px"
+                            objectFit="cover"
+                            cursor="pointer"
+                            fallback={
+                              <Flex h="130px" bg="gray.100" align="center" justify="center" p={2} textAlign="center">
+                                <Text fontSize="2xs" color="gray.500" fontWeight="medium">
+                                  Image file not found on server
+                                </Text>
+                              </Flex>
+                            }
                             onClick={() => window.open(getImageUrl(docs.dlUrl), "_blank")}
                           />
                           <Button

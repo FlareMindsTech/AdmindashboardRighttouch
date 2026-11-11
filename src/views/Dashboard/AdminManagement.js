@@ -1236,7 +1236,19 @@ function AdminManagement() {
       setIsKYCModalOpen(false);
       await fetchData();
     } catch (e) {
-      toast.error(e, { title: "Verification Error", description: "Failed to submit KYC verification.", duration: 3000, isClosable: true });
+      const serverReason =
+        (typeof e === "string" ? e : e?.message || e?.data?.message || "")
+          .replace(/^Error:\s*/i, "")
+          .trim();
+      const description = serverReason || "Failed to submit KYC verification.";
+
+      toast({
+        title: "Verification Error",
+        description: description,
+        status: "error",
+        duration: 4500,
+        isClosable: true,
+      });
     } finally {
       setKYcLoading(false);
     }
@@ -1322,7 +1334,17 @@ function AdminManagement() {
       setIsBankModalOpen(false);
       await fetchData();
     } catch (e) {
-      toast.error(e, { title: "Bank Verification Error", description: "Failed to update bank verification status.", duration: 3000, isClosable: true });
+      const serverReason =
+        (typeof e === "string" ? e : e?.message || e?.data?.message || "")
+          .replace(/^Error:\s*/i, "")
+          .trim();
+      toast({
+        title: "Bank Verification Error",
+        description: serverReason || "Failed to update bank verification status.",
+        status: "error",
+        duration: 4500,
+        isClosable: true,
+      });
     } finally {
       setLoading(false);
     }

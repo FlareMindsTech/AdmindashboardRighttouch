@@ -44,12 +44,15 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Build React frontend
+        env:
+          REACT_APP_API_BASE_URL: http://13.206.118.180:7372
         run: npm run build
 
       - name: Build Tauri Desktop Application & Publish Release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REACT_APP_API_BASE_URL: http://13.206.118.180:7372
         with:
           tagName: v__VERSION__
           releaseName: "RightTouch Desktop v__VERSION__"

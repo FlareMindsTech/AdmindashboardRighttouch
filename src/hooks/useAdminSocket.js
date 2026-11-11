@@ -10,7 +10,7 @@ import { applySocketCounts } from "store/slices/notificationsSlice";
 import { getToken, handleSessionExpiry } from "views/utils/axiosInstance";
 
 const API_ORIGIN = (
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:7372"
+  process.env.REACT_APP_API_BASE_URL || "http://13.206.118.180:7372"
 )
   .replace(/\/api\/?$/, "")
   .replace(/\/+$/, "");

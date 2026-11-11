@@ -64,8 +64,10 @@ if (typeof window !== "undefined" && window.fetch) {
 
 // --- Configuration ---
 const API_BASE_URL = (
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:7372"
-).replace(/\/+$/, "");
+  process.env.REACT_APP_API_BASE_URL || "http://13.206.118.180:7372"
+)
+  .replace(/\/api\/?$/, "")
+  .replace(/\/+$/, "");
 const BASE_URL = `${API_BASE_URL}/api`;
 const TIMEOUT_MS = 10000;
 
@@ -463,7 +465,7 @@ export const verifyKYC = async (verificationData) => {
       }
     }
 
-    if (!response || !response.ok) {
+    if (!response || response.status === 404) {
       response = await fetch(`${BASE_URL}/technician/kyc/verify`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },

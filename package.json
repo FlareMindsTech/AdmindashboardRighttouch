@@ -56,7 +56,7 @@
   "scripts": {
     "start": "react-scripts start",
     "dev": "react-scripts start",
-    "build": "cross-env CI=false PUBLIC_URL=/ react-scripts build && gulp licenses",
+    "build": "cross-env CI=false PUBLIC_URL=/ REACT_APP_API_BASE_URL=http://13.206.118.180:7372 react-scripts build && gulp licenses",
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",

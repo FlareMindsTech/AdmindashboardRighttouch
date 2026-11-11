@@ -13,6 +13,7 @@ import {
   Badge,
   SimpleGrid,
   Textarea,
+  Tooltip,
 } from "@chakra-ui/react";
 import {
   FaLock,
@@ -20,6 +21,7 @@ import {
   FaEdit,
   FaCheckCircle,
   FaTimesCircle,
+  FaExclamationTriangle,
 } from "react-icons/fa";
 import { MdOutlinePending } from "react-icons/md";
 
@@ -105,15 +107,32 @@ export default function KYCReviewModal({
                   </Button>
                   {(() => {
                     const alreadyVerified = isTechnicianKYCVerified(selectedTechForKYC, allKycRecords);
+                    let rec = Array.isArray(kycData)
+                      ? kycData.find((d) => (d.technicianId?._id || d.technicianId) === selectedTechForKYC?._id) || kycData[0]
+                      : kycData;
+                    const docs = rec?.documents || {};
+                    const hasIdentityDocs = Boolean(docs.aadhaarUrl || docs.panUrl || docs.dlUrl || docs.idUrl || docs.profileUrl);
+
                     return (
-                      <Button
-                        size="sm"
-                        colorScheme={alreadyVerified ? "teal" : "green"}
-                        leftIcon={<FaCheckCircle />}
-                        onClick={() => onVerifyKYCAction("approved")}
+                      <Tooltip
+                        label={
+                          !hasIdentityDocs && !alreadyVerified
+                            ? "Cannot approve: Missing required identity documents (Aadhaar, PAN, or DL)"
+                            : ""
+                        }
+                        hasArrow
+                        isDisabled={hasIdentityDocs || alreadyVerified}
                       >
-                        {alreadyVerified ? "Already Verified ✓" : "Approve (Verify Identity)"}
-                      </Button>
+                        <Button
+                          size="sm"
+                          colorScheme={alreadyVerified ? "teal" : "green"}
+                          leftIcon={<FaCheckCircle />}
+                          isDisabled={!hasIdentityDocs && !alreadyVerified}
+                          onClick={() => onVerifyKYCAction("approved")}
+                        >
+                          {alreadyVerified ? "Already Verified ✓" : "Approve (Verify Identity)"}
+                        </Button>
+                      </Tooltip>
                     );
                   })()}
                 </>
@@ -246,6 +265,21 @@ export default function KYCReviewModal({
                         {rec.rejectionReason}
                       </Text>
                     </Box>
+                  )}
+
+                  {/* Missing Documents Advisory Banner */}
+                  {!Boolean(docs.aadhaarUrl || docs.panUrl || docs.dlUrl || docs.idUrl || docs.profileUrl) && !isAlreadyVerified && (
+                    <Flex p={3} bg="orange.50" border="1px solid" borderColor="orange.300" borderRadius="8px" align="center" gap={2}>
+                      <Icon as={FaExclamationTriangle} color="orange.500" boxSize="18px" flexShrink={0} />
+                      <Box>
+                        <Text fontSize="xs" fontWeight="bold" color="orange.800">
+                          Missing Identity Documents
+                        </Text>
+                        <Text fontSize="xs" color="orange.700">
+                          The technician has not uploaded required identity documents (Aadhaar, PAN, or Driving License). Documents must be uploaded before identity verification can be approved.
+                        </Text>
+                      </Box>
+                    </Flex>
                   )}
 
                   {/* Document Cards Grid */}

@@ -508,7 +508,11 @@ const getImageUrl = (urlData) => {
   const url = Array.isArray(urlData) ? urlData[0] : urlData;
   if (typeof url !== "string") return "";
   if (url.startsWith("http") || url.startsWith("data:")) return url;
-  const origin = (process.env.REACT_APP_API_BASE_URL || "http://localhost:7372").replace(/\/+$/, "");
+  const origin = (
+    process.env.REACT_APP_API_BASE_URL || "http://13.206.118.180:7372"
+  )
+    .replace(/\/api\/?$/, "")
+    .replace(/\/+$/, "");
   return `${origin}/${url.replace(/^\/+/, "")}`;
 };
 
@@ -1195,6 +1199,24 @@ function AdminManagement() {
         duration: 3000,
         isClosable: true,
       });
+    }
+
+    if (status === "approved") {
+      let rec = Array.isArray(kycData)
+        ? kycData.find((d) => (d.technicianId?._id || d.technicianId) === selectedTechForKYC?._id) || kycData[0]
+        : kycData;
+      const docs = rec?.documents || {};
+      const hasDocs = Boolean(docs.aadhaarUrl || docs.panUrl || docs.dlUrl || docs.idUrl || docs.profileUrl);
+
+      if (!hasDocs) {
+        return toast({
+          title: "Cannot Approve KYC",
+          description: "Missing required identity documents. Technician must upload Aadhaar, PAN, or Driving License before approval.",
+          status: "warning",
+          duration: 4000,
+          isClosable: true,
+        });
+      }
     }
 
     try {

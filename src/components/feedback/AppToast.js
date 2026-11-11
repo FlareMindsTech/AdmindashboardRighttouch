@@ -114,7 +114,7 @@ export default function AppToast({
       aria-live={status === "error" ? "assertive" : "polite"}
       bg={surface}
       backdropFilter="blur(20px) saturate(180%)"
-      WebkitBackdropFilter="blur(20px) saturate(180%)"
+      sx={{ WebkitBackdropFilter: "blur(20px) saturate(180%)" }}
       border="1px solid"
       borderColor={border}
       borderRadius="16px"

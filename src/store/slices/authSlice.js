@@ -19,8 +19,10 @@ import {
 } from "views/utils/axiosInstance";
 
 const API_BASE_URL = (
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:7372"
-).replace(/\/+$/, "");
+  process.env.REACT_APP_API_BASE_URL || "http://13.206.118.180:7372"
+)
+  .replace(/\/api\/?$/, "")
+  .replace(/\/+$/, "");
 
 // Preserve the exact legacy login request (URL, payload, response reading).
 export const loginOwner = createAsyncThunk(

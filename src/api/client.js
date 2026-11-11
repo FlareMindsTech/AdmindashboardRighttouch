@@ -7,8 +7,10 @@ import { getToken, clearAuth, handleSessionExpiry } from "views/utils/axiosInsta
 import { normalizeError } from "errors/normalizeError";
 
 const API_BASE_URL = (
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:7372"
-).replace(/\/+$/, "");
+  process.env.REACT_APP_API_BASE_URL || "http://13.206.118.180:7372"
+)
+  .replace(/\/api\/?$/, "")
+  .replace(/\/+$/, "");
 
 export const apiClient = axios.create({
   baseURL: `${API_BASE_URL}/api`,

@@ -1,4 +1,4 @@
-import { getFinanceEarnings, getFinanceSummary } from "api/finance";
+import { getFinanceSummary } from "api/finance";
 import { getProductDashboard, getSalesReport } from "api/productDashboard";
 
 const unwrapBody = (body) => body?.result ?? body?.data ?? body ?? null;
@@ -290,15 +290,11 @@ export const fetchDashboardInsights = async (force = false) => {
     return cachedInsights;
   }
 
-  const currentYear = new Date().getFullYear();
-  const [financeBody, productBody, salesBody, earningsBody] =
+  const [financeBody, productBody, salesBody] =
     await Promise.all([
       safeCall(() => getFinanceSummary()),
       safeCall(() => getProductDashboard()),
       safeCall(() => getSalesReport()),
-      safeCall(() =>
-        getFinanceEarnings({ type: "service", year: currentYear })
-      ),
     ]);
 
   const finance = normalizeFinanceSummary(financeBody);
@@ -316,7 +312,7 @@ export const fetchDashboardInsights = async (force = false) => {
     finance,
     product,
     salesRows,
-    serviceEarnings: earningsBody,
+    serviceEarnings: null,
   };
 
   cachedInsights = result;

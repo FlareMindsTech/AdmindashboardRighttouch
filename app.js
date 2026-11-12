@@ -1382,7 +1382,7 @@
   // --- District Dropdown Populator ---
   function populateDistrictDropdown() {
     const districts = districtFeatures.map(f => f.properties.district).sort();
-    elSelectDistrict.innerHTML = '<option value="ALL">All 37 Districts</option>';
+    elSelectDistrict.innerHTML = '<option value="ALL">All 38 Districts</option>';
     districts.forEach(d => {
       const opt = document.createElement('option');
       opt.value = d;

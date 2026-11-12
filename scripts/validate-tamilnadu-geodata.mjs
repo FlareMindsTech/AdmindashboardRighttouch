@@ -9,10 +9,16 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const dataFile = path.join(rootDir, "src/data/tamilNaduDistrictsData.js");
 const tempFile = path.join(os.tmpdir(), `tamilnadu-geodata-${process.pid}.mjs`);
 const districtsGeo = JSON.parse(
-  await fs.readFile(path.join(rootDir, "public/tamilnadu_districts.geojson"), "utf8")
+  await fs.readFile(path.join(rootDir, "data/source/tamilnadu_districts.nwic.geojson"), "utf8")
 );
 const boundaries = JSON.parse(
   await fs.readFile(path.join(rootDir, "src/data/tamilNaduDistrictBoundaries.json"), "utf8")
+);
+const overlayGeo = JSON.parse(
+  await fs.readFile(
+    path.join(rootDir, "public/geodata/tamilnadu-districts.overlay.geojson"),
+    "utf8"
+  )
 );
 
 const multi = (geometry) =>
@@ -43,6 +49,29 @@ const contains = (geometry, point) =>
   geometry?.type === "Polygon"
     ? pointInRing(point, geometry.coordinates[0])
     : multi(geometry).some((part) => pointInRing(point, part[0]));
+const pointToSegment = ([x, y], [ax, ay], [bx, by]) => {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSq = dx * dx + dy * dy;
+  const t = lengthSq
+    ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lengthSq))
+    : 0;
+  return Math.hypot(x - (ax + t * dx), y - (ay + t * dy));
+};
+const distanceToBoundary = (geometry, point) => {
+  let nearest = Infinity;
+  for (const part of multi(geometry)) {
+    for (const ring of part) {
+      for (let i = 0; i < ring.length - 1; i += 1) {
+        nearest = Math.min(nearest, pointToSegment(point, ring[i], ring[i + 1]));
+      }
+    }
+  }
+  return nearest;
+};
+const CENTER_BOUNDARY_TOLERANCE = 0.001; // ~100m, matches the simplified overlay tolerance
+const containsCenter = (geometry, point) =>
+  contains(geometry, point) || distanceToBoundary(geometry, point) <= CENTER_BOUNDARY_TOLERANCE;
 const bboxOf = (geometry) => {
   let minX = Infinity;
   let minY = Infinity;
@@ -73,9 +102,18 @@ try {
     (subzone) => !canonicalNames.has(subzone.district)
   );
   const outsideCenters = data.TAMIL_NADU_SUBZONES.filter((subzone) => {
-    const boundary = boundaries[subzone.district];
-    return boundary && !contains(boundary, [subzone.lng, subzone.lat]);
+    const boundary = districtGeometries.get(subzone.district);
+    return boundary && !containsCenter(boundary, [subzone.lng, subzone.lat]);
   });
+  const overlayInvalid = overlayGeo.features.filter(
+    (feature) =>
+      !feature.properties?.name ||
+      !Array.isArray(feature.properties?.center) ||
+      !feature.geometry?.coordinates
+  );
+  const overlayBytes = (await fs.stat(
+    path.join(rootDir, "public/geodata/tamilnadu-districts.overlay.geojson")
+  )).size;
   let crossBorder = 0;
   for (const subzone of data.TAMIL_NADU_SUBZONES) {
     const boundary = districtGeometries.get(subzone.district);
@@ -121,12 +159,18 @@ try {
   console.log(`  sub-zone presets: ${data.TAMIL_NADU_SUBZONES.length}`);
   console.log(`  duplicate sub-zone ids: ${duplicates.length}`);
   console.log(`  non-canonical district names: ${invalidNames.length}`);
-  console.log(`  preset centers outside district: ${outsideCenters.length}`);
+  console.log(`  preset centers outside district: ${outsideCenters.length} (100m border tolerance)`);
   console.log(`  presets crossing district border: ${crossBorder} (informational)`);
   console.log(`  overlapping preset pairs: ${overlapPairs} (informational)`);
+  console.log(`  map overlay features: ${overlayGeo.features.length} (${(overlayBytes / 1024).toFixed(1)}KB)`);
+  console.log(`  map overlay invalid features: ${overlayInvalid.length}`);
 
   if (
     districtsGeo.features.length !== 38 ||
+    Object.keys(boundaries).length !== 38 ||
+    overlayGeo.features.length !== 38 ||
+    overlayInvalid.length ||
+    overlayBytes > 512 * 1024 ||
     duplicates.length ||
     invalidNames.length ||
     outsideCenters.length

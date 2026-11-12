@@ -9,6 +9,7 @@ import {
   Icon,
   IconButton,
   Select,
+  Spinner,
   Text,
   Tooltip,
   VStack,
@@ -17,7 +18,8 @@ import { MdClear, MdContentCopy, MdCropSquare, MdGpsFixed, MdLocationOn, MdMap, 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { CITY_LOOKUP, TAMIL_NADU_CITIES, calculatePolygonCentroid, generateCircularGeoJSON } from "./DistrictMap.js";
-import { detectParentDistrict, findTnDistrict, getTnDistrictBoundary, getDistrictCities, TAMIL_NADU_DISTRICTS, formatCleanCityName } from "../../data/tamilNaduLocations";
+import { detectParentDistrict, findTnDistrict, getDistrictCities, TAMIL_NADU_DISTRICTS, formatCleanCityName } from "../../data/tamilNaduLocations";
+import { getCachedDistrictOverlay, loadDistrictOverlay } from "./districtOverlayStore";
 import { computePlusCode, isPointInPolygon, getSubzonesByDistrict, TAMIL_NADU_SUBZONES } from "../../data/tamilNaduDistrictsData";
 import polygonClipping from "polygon-clipping";
 import {
@@ -79,28 +81,6 @@ export const TN_MAX_BOUNDS = [
   [7.2, 75.0],
   [14.2, 81.5],
 ];
-
-let cachedBuiltinTnFeatures = null;
-
-export function getBuiltinTnFeatures() {
-  if (cachedBuiltinTnFeatures) return cachedBuiltinTnFeatures;
-  cachedBuiltinTnFeatures = TAMIL_NADU_DISTRICTS.map((d) => {
-    const boundary = getTnDistrictBoundary(d.name) || generateCircularGeoJSON(d.lat, d.lng, 15);
-    return {
-      type: "Feature",
-      id: d.code || d.name,
-      properties: {
-        district: d.name,
-        name: d.name,
-        code: d.code,
-        dtcode: d.dtcode,
-        center: d.center || [d.lat, d.lng],
-      },
-      geometry: boundary,
-    };
-  });
-  return cachedBuiltinTnFeatures;
-}
 
 /**
  * ZoneMap — production-level geofence editor/viewer (Leaflet core only, no extra deps).
@@ -227,9 +207,6 @@ export function getClosestPointOnRing(pt, ring) {
   return closest;
 }
 
-// Global module-level cache for zero-latency instant GeoJSON loading
-let cachedTnFeatures = null;
-let tnFeaturesFetchPromise = null;
 const NO_DISTRICT_CONFLICTS = [];
 
 export default function ZoneMap({
@@ -363,7 +340,9 @@ export default function ZoneMap({
     if (init.toLowerCase() === "tamil nadu") return "";
     return init;
   });
-  const [tnFeatures, setTnFeatures] = useState(() => cachedTnFeatures || getBuiltinTnFeatures());
+  const [tnFeatures, setTnFeatures] = useState(() => getCachedDistrictOverlay() || []);
+  const [overlayLoading, setOverlayLoading] = useState(() => !getCachedDistrictOverlay()?.length);
+  const [overlayError, setOverlayError] = useState("");
 
   // Canonical active district name & official boundary feature
   const canonicalActiveDistrict = useMemo(() => {
@@ -534,38 +513,35 @@ export default function ZoneMap({
     }
   }, [selectedDistrictName, districtName, viewMode]);
 
-  // Load official Survey of India boundary GeoJSON from public/tamilnadu_districts.geojson (cached)
-  useEffect(() => {
-    let isMounted = true;
-    if (cachedTnFeatures && cachedTnFeatures.length) {
-      setTnFeatures(cachedTnFeatures);
-      return;
-    }
-    if (!tnFeaturesFetchPromise) {
-      const url = `${process.env.PUBLIC_URL || ""}/tamilnadu_districts.geojson`;
-      tnFeaturesFetchPromise = fetch(url)
-        .then((res) => {
-          if (!res.ok) throw new Error("Could not load /tamilnadu_districts.geojson");
-          return res.json();
-        })
-        .then((data) => {
-          if (data && Array.isArray(data.features) && data.features.length) {
-            cachedTnFeatures = data.features;
-            return data.features;
-          }
-          return [];
-        })
-        .catch(() => []);
-    }
-    tnFeaturesFetchPromise.then((features) => {
-      if (isMounted && features && features.length) {
+  const requestOverlay = useCallback((force = false) => {
+    let cancelled = false;
+    setOverlayLoading(true);
+    setOverlayError("");
+    loadDistrictOverlay(force)
+      .then((features) => {
+        if (cancelled) return;
         setTnFeatures(features);
-      }
-    });
+        setOverlayLoading(false);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setOverlayError(error.message || "Could not load district boundaries");
+        setOverlayLoading(false);
+      });
     return () => {
-      isMounted = false;
+      cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const cached = getCachedDistrictOverlay();
+    if (cached?.length) {
+      setTnFeatures(cached);
+      setOverlayLoading(false);
+      return undefined;
+    }
+    return requestOverlay(false);
+  }, [requestOverlay]);
 
   const [layers, setLayers] = useState({
     districts: true,
@@ -873,6 +849,20 @@ export default function ZoneMap({
     };
   });
 
+  const districtClickStateRef = useRef({});
+  useEffect(() => {
+    districtClickStateRef.current = {
+      editable,
+      drawMode,
+      mode,
+      allowRadiusSelect,
+      radius,
+      radiusKm,
+      activeDistrictRing,
+      canonicalActiveDistrict,
+    };
+  });
+
   // Jump to a newly selected city preset. Do not recenter when only the
   // radius, polygon, or zone data changes — that would fight manual zooming.
   const cityViewKeyRef = useRef("");
@@ -1019,7 +1009,9 @@ export default function ZoneMap({
     if (!map || !mapAliveRef.current) return;
     map.invalidateSize();
     const g = groups.current;
-    Object.values(g).forEach((lg) => lg && lg.clearLayers());
+    [g.boundary, g.draft, g.center, g.zones, g.techs, g.customers].forEach(
+      (lg) => lg && lg.clearLayers()
+    );
     vertexMarkers.current = [];
     const bounds = L.latLngBounds([]);
 
@@ -1074,216 +1066,6 @@ export default function ZoneMap({
     // center pin (only show in editable radius mode when a center point is defined)
     if (center && Number.isFinite(center[0]) && editable && mode === "radius") {
       L.marker(center, { icon: centerIcon(`${center[0].toFixed(4)}, ${center[1].toFixed(4)}`), interactive: false, zIndexOffset: 500 }).addTo(g.center);
-    }
-
-    // Official Survey of India Tamil Nadu Districts Layer (from tamilnadu_districts.geojson)
-    if (layers.districts && Array.isArray(tnFeatures)) {
-      // Always render all 38 districts of Tamil Nadu so the full operational map is always visible
-      const featuresToRender = tnFeatures;
-      const districtConflictSet = new Set();
-      (conflictDistrictNames || []).forEach((name) => {
-        districtConflictSet.add(String(name).toLowerCase());
-        const canonical = findTnDistrict(name);
-        if (canonical?.name) districtConflictSet.add(canonical.name.toLowerCase());
-      });
-
-      featuresToRender.forEach((feature) => {
-        if (!feature?.geometry?.coordinates) return;
-        const distName = feature.properties?.district || feature.properties?.name || "";
-        const distCode = feature.properties?.code || feature.properties?.dtcode || "";
-        const lowerName = distName.toLowerCase();
-
-        // Check if currently selected / active focus
-        const isCurrentSelected =
-          Boolean(selectedTnDistrict && selectedTnDistrict.toLowerCase() === lowerName) ||
-          Boolean(selectedDistrictName && selectedDistrictName.toLowerCase() === lowerName) ||
-          Boolean(canonicalActiveDistrict && canonicalActiveDistrict.toLowerCase() === lowerName) ||
-          Boolean(
-            selectedDistrictId &&
-              effectiveDistricts.some(
-                (d) =>
-                  String(d._id) === String(selectedDistrictId) &&
-                  (d.name?.toLowerCase() === lowerName || d.city?.toLowerCase() === lowerName)
-              )
-          );
-
-        // Check if matching backend operational district
-        const backendMatch = effectiveDistricts.find(
-          (d) =>
-            d.name?.toLowerCase() === lowerName ||
-            d.city?.toLowerCase() === lowerName ||
-            d.code?.toLowerCase() === distCode.toLowerCase()
-        );
-        const isOperational = Boolean(
-          backendMatch && backendMatch.active !== false && backendMatch.isActive !== false
-        );
-        const isConflict =
-          districtConflictSet.has(lowerName) ||
-          (distCode && districtConflictSet.has(String(distCode).toLowerCase()));
-
-        // Green color for active / operational / selected district inside
-        const fillColor = isConflict
-          ? "#ef4444"
-          : (isCurrentSelected || isOperational) ? "#064e3b" : "#13253b";
-        const strokeColor = isConflict
-          ? "#ef4444"
-          : isCurrentSelected ? "#34d399" : isOperational ? "#10b981" : "rgba(56, 189, 248, 0.45)";
-        const fillOpacity = isConflict ? 0.38 : isCurrentSelected ? 0.48 : isOperational ? 0.38 : 0.65;
-        const weight = isConflict ? 3.5 : isCurrentSelected ? 3.0 : isOperational ? 2.0 : 1.4;
-
-        try {
-          const layer = L.geoJSON(feature, {
-            style: {
-              color: strokeColor,
-              weight: weight,
-              fillColor: fillColor,
-              fillOpacity: fillOpacity,
-              dashArray: isConflict ? "7,4" : null,
-              opacity: isConflict ? 1.0 : isCurrentSelected ? 1.0 : 0.95,
-            },
-          });
-
-          const tooltipHtml = `
-            <div style="font-family: inherit; font-size: 12px; line-height: 1.35; padding: 3px 5px;">
-              <div style="font-weight: 700; color: #f8fafc; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                <span>📍 ${distName}</span>
-                ${distCode ? `<span style="font-size: 10px; background: #1e293b; color: #94a3b8; padding: 1px 6px; border-radius: 4px; font-weight: 600;">${distCode}</span>` : ""}
-              </div>
-              <div style="font-size: 11px; margin-top: 3px; font-weight: 600; color: ${isConflict ? "#fca5a5" : isCurrentSelected ? "#22d3ee" : isOperational ? "#34d399" : "#94a3b8"};">
-                ${isConflict ? "⚠️ Overlaps the boundary being created" : isCurrentSelected ? "🎯 Active Selected District" : isOperational ? "✓ Service Enabled" : "✕ Service Disabled"}
-              </div>
-              <div style="font-size: 10px; color: #38bdf8; margin-top: 3px;">
-                Click to focus district & inspect sub-zones
-              </div>
-            </div>
-          `;
-          layer.bindTooltip(tooltipHtml, { sticky: true, direction: "top", offset: [0, -6], className: "custom-zone-tooltip" });
-
-          const centerCoord =
-            feature.properties?.center ||
-            (feature.properties?.lat && feature.properties?.lng ? [feature.properties.lat, feature.properties.lng] : null) ||
-            (layer.getBounds && layer.getBounds().isValid() ? [layer.getBounds().getCenter().lat, layer.getBounds().getCenter().lng] : null);
-
-          // Render centered badge label for Tamil Nadu districts
-          if (centerCoord && Array.isArray(centerCoord) && centerCoord.length === 2 && Number.isFinite(centerCoord[0])) {
-            const isViewingThisDistrictDetail = canonicalActiveDistrict && canonicalActiveDistrict.toLowerCase() === lowerName;
-            // Suppress duplicate district centroid label when zoomed into / managing this district's cities
-            if (!isViewingThisDistrictDetail) {
-              const labelHtml = isConflict
-                ? `<div class="district-name-badge default"><span>⚠️ ${distName}</span></div>`
-                : isCurrentSelected
-                ? `<div class="district-name-badge active-selected"><span>📍 ${distName}</span></div>`
-                : isOperational
-                ? `<div class="district-name-badge operational"><span>🟢 ${distName}</span></div>`
-                : `<div class="district-name-badge default"><span>${distName}</span></div>`;
-
-              const labelIcon = L.divIcon({
-                className: "district-badge-container",
-                html: labelHtml,
-                iconSize: [0, 0],
-                iconAnchor: [0, 0],
-              });
-              const marker = L.marker([centerCoord[0], centerCoord[1]], {
-                icon: labelIcon,
-                interactive: false,
-                zIndexOffset: isCurrentSelected ? 1000 : isOperational ? 500 : 100,
-              });
-              marker.addTo(g.districtLabels);
-            }
-          }
-
-          layer.on({
-            mouseover: () => {
-              if (isConflict) {
-                layer.setStyle({
-                  weight: 4.5,
-                  color: "#ef4444",
-                  fillColor: "#dc2626",
-                  fillOpacity: 0.55,
-                });
-                if (layer.bringToFront) layer.bringToFront();
-                return;
-              }
-              if (!isCurrentSelected) {
-                layer.setStyle({
-                  weight: 2.6,
-                  color: "#34d399",
-                  fillColor: isOperational ? "#059669" : "#10b981",
-                  fillOpacity: 0.75,
-                });
-                if (layer.bringToFront) layer.bringToFront();
-              }
-            },
-            mouseout: () => {
-              if (!isCurrentSelected || isConflict) {
-                layer.setStyle({
-                  color: strokeColor,
-                  weight: weight,
-                  fillColor: fillColor,
-                  fillOpacity: fillOpacity,
-                  dashArray: isConflict ? "7,4" : null,
-                  opacity: isConflict ? 1.0 : 0.95,
-                });
-              }
-            },
-            click: (e) => {
-              L.DomEvent.stopPropagation(e);
-              setSelectedTnDistrict(distName);
-              setStatus(`Focused on ${distName} • Full Tamil Nadu Operations Grid`);
-
-              if (layer.getBounds && layer.getBounds().isValid()) {
-                map.fitBounds(layer.getBounds(), { padding: [35, 35], maxZoom: 13 });
-              }
-
-              const payload = backendMatch || {
-                _id: null,
-                name: distName,
-                city: distName,
-                code: distCode,
-                polygon: feature.geometry,
-                geometry: feature.geometry,
-                active: isOperational,
-                isActive: isOperational,
-              };
-
-              const callbacks = mapCallbacksRef.current;
-              if (callbacks.onSelectDistrict) callbacks.onSelectDistrict(payload);
-
-              if (centerCoord) {
-                setCenter(centerCoord);
-                if (!callbacks.onSelectDistrict && callbacks.onCitySelect) {
-                  callbacks.onCitySelect({ name: distName, code: distCode, lat: centerCoord[0], lng: centerCoord[1] });
-                }
-              }
-
-              if (editable) {
-                if (drawMode) {
-                  const { lat, lng } = e.latlng;
-                  if (activeDistrictRing && activeDistrictRing.length >= 3) {
-                    if (!isPointInPolygon([lng, lat], activeDistrictRing)) {
-                      const snapped = getClosestPointOnRing([lng, lat], activeDistrictRing);
-                      setDraftPoints((prev) => [...prev, [snapped[1], snapped[0]]]);
-                      setStatus(`📍 Snapped to ${canonicalActiveDistrict || distName} border (boundary constrained)`);
-                      return;
-                    }
-                  }
-                  setDraftPoints((prev) => [...prev, [lat, lng]]);
-                } else if (mode === "radius" || allowRadiusSelect) {
-                  // Creates a micro-zone radius centered at clicked point, clipped to district borders
-                  callbacks.handleRadiusAt(e.latlng.lat, e.latlng.lng, radius || radiusKm || 5);
-                } else {
-                  // Only emit entire district geometry when in pure district mode (not micro-zone mode)
-                  callbacks.emitPolygon(feature.geometry);
-                }
-              }
-            },
-          });
-
-          layer.addTo(g.districts);
-        } catch {
-          // ignore bad geometry
-        }
-      });
     }
 
     // zones inside the district or all zones
@@ -1460,7 +1242,266 @@ export default function ZoneMap({
           .addTo(g.customers);
       });
     }
-  }, [parsedPolygon, validation.valid, validation.reason, effectiveDistricts, effectiveZones, cappedZones, zoneColorAssignments, technicians, customers, layers, center, cityName, districtName, selectedDistrictId, selectedZoneId, editable, drawMode, draftPoints, tnFeatures, selectedTnDistrict, selectedDistrictName, mode, allowRadiusSelect, radius, radiusKm, activeDistrictRing, canonicalActiveDistrict, conflictZoneKeys, conflictDistrictNames]);
+  }, [parsedPolygon, validation.valid, validation.reason, effectiveZones, cappedZones, zoneColorAssignments, technicians, customers, layers, center, cityName, districtName, selectedZoneId, editable, drawMode, draftPoints, mode, radiusKm, canonicalActiveDistrict, conflictZoneKeys]);
+
+  // ---- district overlay (single FeatureCollection layer) ----
+  useEffect(() => {
+    const map = leafletMap.current;
+    if (!map || !mapAliveRef.current) return;
+    const g = groups.current;
+    if (!g?.districts || !g?.districtLabels) return;
+
+    g.districts.clearLayers();
+    g.districtLabels.clearLayers();
+
+    if (!layers.districts || !Array.isArray(tnFeatures) || !tnFeatures.length) return;
+
+    const districtConflictSet = new Set();
+    (conflictDistrictNames || []).forEach((name) => {
+      districtConflictSet.add(String(name).toLowerCase());
+      const canonical = findTnDistrict(name);
+      if (canonical?.name) districtConflictSet.add(canonical.name.toLowerCase());
+    });
+
+    const visualFor = (feature) => {
+      const distName = feature.properties?.district || feature.properties?.name || "";
+      const distCode = feature.properties?.code || feature.properties?.dtcode || "";
+      const lowerName = distName.toLowerCase();
+
+      const isCurrentSelected =
+        Boolean(selectedTnDistrict && selectedTnDistrict.toLowerCase() === lowerName) ||
+        Boolean(selectedDistrictName && selectedDistrictName.toLowerCase() === lowerName) ||
+        Boolean(canonicalActiveDistrict && canonicalActiveDistrict.toLowerCase() === lowerName) ||
+        Boolean(
+          selectedDistrictId &&
+            effectiveDistricts.some(
+              (d) =>
+                String(d._id) === String(selectedDistrictId) &&
+                (d.name?.toLowerCase() === lowerName || d.city?.toLowerCase() === lowerName)
+            )
+        );
+
+      const backendMatch = effectiveDistricts.find(
+        (d) =>
+          d.name?.toLowerCase() === lowerName ||
+          d.city?.toLowerCase() === lowerName ||
+          d.code?.toLowerCase() === distCode.toLowerCase()
+      );
+      const isOperational = Boolean(
+        backendMatch && backendMatch.active !== false && backendMatch.isActive !== false
+      );
+      const isConflict =
+        districtConflictSet.has(lowerName) ||
+        (distCode && districtConflictSet.has(String(distCode).toLowerCase()));
+
+      return {
+        distName,
+        distCode,
+        lowerName,
+        backendMatch,
+        isCurrentSelected,
+        isOperational,
+        isConflict,
+        fillColor: isConflict ? "#ef4444" : isCurrentSelected || isOperational ? "#064e3b" : "#13253b",
+        strokeColor: isConflict
+          ? "#ef4444"
+          : isCurrentSelected
+          ? "#34d399"
+          : isOperational
+          ? "#10b981"
+          : "rgba(56, 189, 248, 0.45)",
+        fillOpacity: isConflict ? 0.38 : isCurrentSelected ? 0.48 : isOperational ? 0.38 : 0.65,
+        weight: isConflict ? 3.5 : isCurrentSelected ? 3.0 : isOperational ? 2.0 : 1.4,
+      };
+    };
+
+    const layer = L.geoJSON(
+      { type: "FeatureCollection", features: tnFeatures.filter((f) => f?.geometry?.coordinates) },
+      {
+        style: (feature) => {
+          const visual = visualFor(feature);
+          return {
+            color: visual.strokeColor,
+            weight: visual.weight,
+            fillColor: visual.fillColor,
+            fillOpacity: visual.fillOpacity,
+            dashArray: visual.isConflict ? "7,4" : null,
+            opacity: visual.isConflict || visual.isCurrentSelected ? 1.0 : 0.95,
+          };
+        },
+        onEachFeature: (feature, geoLayer) => {
+          const visual = visualFor(feature);
+          const { distName, distCode, backendMatch, isCurrentSelected, isOperational, isConflict } = visual;
+          const centerCoord =
+            feature.properties?.center ||
+            (feature.properties?.lat && feature.properties?.lng
+              ? [feature.properties.lat, feature.properties.lng]
+              : null) ||
+            (geoLayer.getBounds && geoLayer.getBounds().isValid()
+              ? [geoLayer.getBounds().getCenter().lat, geoLayer.getBounds().getCenter().lng]
+              : null);
+
+          const tooltipHtml = `
+            <div style="font-family: inherit; font-size: 12px; line-height: 1.35; padding: 3px 5px;">
+              <div style="font-weight: 700; color: #f8fafc; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <span>📍 ${distName}</span>
+                ${distCode ? `<span style="font-size: 10px; background: #1e293b; color: #94a3b8; padding: 1px 6px; border-radius: 4px; font-weight: 600;">${distCode}</span>` : ""}
+              </div>
+              <div style="font-size: 11px; margin-top: 3px; font-weight: 600; color: ${isConflict ? "#fca5a5" : isCurrentSelected ? "#22d3ee" : isOperational ? "#34d399" : "#94a3b8"};">
+                ${isConflict ? "⚠️ Overlaps the boundary being created" : isCurrentSelected ? "🎯 Active Selected District" : isOperational ? "✓ Service Enabled" : "✕ Service Disabled"}
+              </div>
+              <div style="font-size: 10px; color: #38bdf8; margin-top: 3px;">
+                Click to focus district & inspect sub-zones
+              </div>
+            </div>
+          `;
+
+          const isViewingThisDistrictDetail =
+            canonicalActiveDistrict && canonicalActiveDistrict.toLowerCase() === visual.lowerName;
+          if (
+            !isViewingThisDistrictDetail &&
+            centerCoord &&
+            Array.isArray(centerCoord) &&
+            centerCoord.length === 2 &&
+            Number.isFinite(centerCoord[0])
+          ) {
+            const labelHtml = isConflict
+              ? `<div class="district-name-badge default"><span>⚠️ ${distName}</span></div>`
+              : isCurrentSelected
+              ? `<div class="district-name-badge active-selected"><span>📍 ${distName}</span></div>`
+              : isOperational
+              ? `<div class="district-name-badge operational"><span>🟢 ${distName}</span></div>`
+              : `<div class="district-name-badge default"><span>${distName}</span></div>`;
+            const labelIcon = L.divIcon({
+              className: "district-badge-container",
+              html: labelHtml,
+              iconSize: [0, 0],
+              iconAnchor: [0, 0],
+            });
+            L.marker([centerCoord[0], centerCoord[1]], {
+              icon: labelIcon,
+              interactive: false,
+              zIndexOffset: isCurrentSelected ? 1000 : isOperational ? 500 : 100,
+            }).addTo(g.districtLabels);
+          }
+
+          const parts = typeof geoLayer.getLayers === "function" ? geoLayer.getLayers() : [geoLayer];
+          parts.forEach((part) => {
+            part.bindTooltip(tooltipHtml, {
+              sticky: true,
+              direction: "top",
+              offset: [0, -6],
+              className: "custom-zone-tooltip",
+            });
+
+            part.on({
+              mouseover: () => {
+                if (isConflict) {
+                  part.setStyle({
+                    weight: 4.5,
+                    color: "#ef4444",
+                    fillColor: "#dc2626",
+                    fillOpacity: 0.55,
+                  });
+                  if (part.bringToFront) part.bringToFront();
+                  return;
+                }
+                if (!isCurrentSelected) {
+                  part.setStyle({
+                    weight: 2.6,
+                    color: "#34d399",
+                    fillColor: isOperational ? "#059669" : "#10b981",
+                    fillOpacity: 0.75,
+                  });
+                  if (part.bringToFront) part.bringToFront();
+                }
+              },
+              mouseout: () => {
+                if (!isCurrentSelected || isConflict) {
+                  part.setStyle({
+                    color: visual.strokeColor,
+                    weight: visual.weight,
+                    fillColor: visual.fillColor,
+                    fillOpacity: visual.fillOpacity,
+                    dashArray: isConflict ? "7,4" : null,
+                    opacity: isConflict ? 1.0 : 0.95,
+                  });
+                }
+              },
+              click: (e) => {
+                L.DomEvent.stopPropagation(e);
+                setSelectedTnDistrict(distName);
+                setStatus(`Focused on ${distName} • Full Tamil Nadu Operations Grid`);
+
+                if (geoLayer.getBounds && geoLayer.getBounds().isValid()) {
+                  map.fitBounds(geoLayer.getBounds(), { padding: [35, 35], maxZoom: 13 });
+                }
+
+                const payload = backendMatch || {
+                  _id: null,
+                  name: distName,
+                  city: distName,
+                  code: distCode,
+                  polygon: feature.geometry,
+                  geometry: feature.geometry,
+                  active: isOperational,
+                  isActive: isOperational,
+                };
+
+                const callbacks = mapCallbacksRef.current;
+                if (callbacks.onSelectDistrict) callbacks.onSelectDistrict(payload);
+
+                if (centerCoord) {
+                  setCenter(centerCoord);
+                  if (!callbacks.onSelectDistrict && callbacks.onCitySelect) {
+                    callbacks.onCitySelect({
+                      name: distName,
+                      code: distCode,
+                      lat: centerCoord[0],
+                      lng: centerCoord[1],
+                    });
+                  }
+                }
+
+                const state = districtClickStateRef.current;
+                if (!state.editable) return;
+
+                if (state.drawMode) {
+                  const { lat, lng } = e.latlng;
+                  if (state.activeDistrictRing && state.activeDistrictRing.length >= 3) {
+                    if (!isPointInPolygon([lng, lat], state.activeDistrictRing)) {
+                      const snapped = getClosestPointOnRing([lng, lat], state.activeDistrictRing);
+                      setDraftPoints((prev) => [...prev, [snapped[1], snapped[0]]]);
+                      setStatus(
+                        `📍 Snapped to ${state.canonicalActiveDistrict || distName} border (boundary constrained)`
+                      );
+                      return;
+                    }
+                  }
+                  setDraftPoints((prev) => [...prev, [lat, lng]]);
+                } else if (state.mode === "radius" || state.allowRadiusSelect) {
+                  callbacks.handleRadiusAt(e.latlng.lat, e.latlng.lng, state.radius || state.radiusKm || 5);
+                } else {
+                  callbacks.emitPolygon(feature.geometry);
+                }
+              },
+            });
+          });
+        },
+      }
+    );
+
+    layer.addTo(g.districts);
+  }, [
+    layers.districts,
+    tnFeatures,
+    selectedTnDistrict,
+    selectedDistrictName,
+    selectedDistrictId,
+    effectiveDistricts,
+    canonicalActiveDistrict,
+    conflictDistrictNames,
+  ]);
 
   const fitTamilNadu = useCallback(() => {
     const map = leafletMap.current;
@@ -1531,7 +1572,7 @@ export default function ZoneMap({
         return n?.toLowerCase() === distName.toLowerCase();
       });
       const d = TAMIL_NADU_DISTRICTS.find((x) => x.name.toLowerCase() === distName.toLowerCase());
-      const boundary = feat?.geometry || getTnDistrictBoundary(distName);
+      const boundary = feat?.geometry || null;
       const lat = feat?.properties?.center?.[0] || d?.center?.[0] || d?.lat || 11.1085;
       const lng = feat?.properties?.center?.[1] || d?.center?.[1] || d?.lng || 77.3411;
 
@@ -1872,6 +1913,48 @@ export default function ZoneMap({
           backgroundPosition: "0 0, 16px 16px",
         }}
       >
+        {(overlayLoading || overlayError) && (
+          <Flex
+            position="absolute"
+            inset={0}
+            zIndex={500}
+            align="center"
+            justify="center"
+            bg="rgba(2, 6, 23, 0.55)"
+            pointerEvents="none"
+          >
+            <VStack
+              spacing={2}
+              bg="rgba(15, 23, 42, 0.96)"
+              border="1px solid"
+              borderColor="rgba(6, 182, 212, 0.35)"
+              borderRadius="10px"
+              px={4}
+              py={3}
+              boxShadow="0 8px 24px rgba(0,0,0,0.45)"
+              pointerEvents="auto"
+            >
+              {overlayError ? (
+                <>
+                  <Text fontSize="xs" fontWeight="700" color="red.300" textAlign="center">
+                    {overlayError}
+                  </Text>
+                  <Button size="xs" colorScheme="cyan" onClick={() => requestOverlay(true)}>
+                    Retry
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Spinner size="sm" color="cyan.300" thickness="3px" />
+                  <Text fontSize="xs" fontWeight="600" color="gray.300">
+                    Loading district boundaries…
+                  </Text>
+                </>
+              )}
+            </VStack>
+          </Flex>
+        )}
+
         {mapGeocode && (
           <Box
             position="absolute"

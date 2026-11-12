@@ -66,6 +66,7 @@
     "lint:check": "eslint . --ext=js,jsx;  exit 0",
     "lint:fix": "eslint . --ext=js,jsx --fix;  exit 0",
     "sync:subzones": "node scripts/sync-tamilnadu-subzones.mjs",
+    "build:map-overlay": "node scripts/build-map-overlay.mjs",
     "install:clean": "rm -rf node_modules/ && rm -rf package-lock.json && npm install && npm start",
     "validate:geodata": "node scripts/validate-tamilnadu-geodata.mjs"
   },
@@ -84,6 +85,7 @@
     "eslint-plugin-prettier": "3.4.0",
     "gulp": "4.0.2",
     "gulp-append-prepend": "1.0.9",
+    "mapshaper": "^0.7.101",
     "prettier": "2.2.1"
   },
   "eslintConfig": {

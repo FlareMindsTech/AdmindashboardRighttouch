@@ -5,6 +5,7 @@ export { default as PayoutStatusBadge, getStatusConfig } from "./PayoutStatusBad
 export { default as FinancialBreakdown, formatInr } from "./FinancialBreakdown";
 export { default as PayoutSummaryCards } from "./PayoutSummaryCards";
 export { default as TechnicianWalletDetailsCard } from "./TechnicianWalletDetailsCard";
+export { default as TechnicianSearchCombobox } from "./TechnicianSearchCombobox";
 export { default as PayoutReceiptModal } from "./PayoutReceiptModal";
 export { default as RecordBankTransferModal } from "./RecordBankTransferModal";
 export { default as ApproveWithdrawalModal } from "./ApproveWithdrawalModal";

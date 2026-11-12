@@ -12,7 +12,6 @@ import {
   InputGroup,
   InputLeftElement,
   InputRightElement,
-  Select,
   Icon,
   Tabs,
   TabList,
@@ -41,6 +40,7 @@ import {
   FaCheckCircle,
   FaBan,
   FaUndoAlt,
+  FaPaperPlane,
 } from "react-icons/fa";
 import { MdRefresh, MdFileDownload, MdArrowDropDown } from "react-icons/md";
 
@@ -59,6 +59,8 @@ import {
   RevertPaidModal,
   FreezePayoutModal,
   TechnicianWalletDetailsCard,
+  TechnicianSearchCombobox,
+  SendMoneyModal,
 } from "components/TechnicianPayouts";
 
 import {
@@ -140,6 +142,9 @@ export default function TechnicianPayouts() {
   const [targetFreezeTech, setTargetFreezeTech] = useState(null);
   const [selectedProfileTechId, setSelectedProfileTechId] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSendMoneyOpen, setIsSendMoneyOpen] = useState(false);
+  const [sendMoneyInitialTechId, setSendMoneyInitialTechId] = useState("");
+  const [walletRefreshKey, setWalletRefreshKey] = useState(0);
 
   // 1. Load User from localStorage
   useEffect(() => {
@@ -255,6 +260,33 @@ export default function TechnicianPayouts() {
     setSearchTerm("");
     setSelectedTechFilter("");
     setPage(1);
+  };
+
+  const handleOpenSendMoney = (techOrId) => {
+    const id =
+      typeof techOrId === "string"
+        ? techOrId
+        : techOrId?._id || techOrId?.id || techOrId?.technicianId || "";
+    setSendMoneyInitialTechId(id || selectedTechFilter || "");
+    setIsSendMoneyOpen(true);
+  };
+
+  const handleSendMoneySuccess = () => {
+    const alreadyShowingAll =
+      consoleMode === "queue" && activeTabId === "all" && page === 1;
+
+    setConsoleMode("queue");
+    setActiveTabId("all");
+    setPage(1);
+    setWalletRefreshKey((key) => key + 1);
+    refreshSummaries();
+    dispatch(fetchTechniciansShared({ force: true }));
+
+    // When tab/page change, the effect refetches with the new values. If the
+    // queue is already on "All Withdrawals", refresh it explicitly instead.
+    if (alreadyShowingAll) {
+      fetchWithdrawalsList();
+    }
   };
 
   // Trigger Refresh
@@ -413,12 +445,23 @@ export default function TechnicianPayouts() {
               Pay to Technician
             </Heading>
             <Text fontSize="sm" color="gray.500" mt={1}>
-              Review withdrawal requests, transfer funds externally, and record bank UTRs.
+              Review withdrawal requests or pay a technician directly without waiting for a request.
             </Text>
           </Box>
 
           {/* Header Action Buttons */}
           <HStack spacing={3} flexWrap="wrap">
+            <Button
+              size="sm"
+              variant="brand"
+              borderRadius="10px"
+              fontWeight="800"
+              leftIcon={<FaPaperPlane size={13} />}
+              onClick={() => handleOpenSendMoney()}
+            >
+              Pay Directly
+            </Button>
+
             {/* Payout Policy & Limits Modal Button */}
             <Button
               size="sm"
@@ -648,34 +691,19 @@ export default function TechnicianPayouts() {
                         </InputGroup>
 
                         {/* Technician Filter */}
-                        <Select
-                          size="sm"
-                          w={{ base: "full", sm: "260px" }}
-                          borderRadius="10px"
-                          placeholder="All Technicians"
-                          value={selectedTechFilter}
-                          bg={isDark ? "gray.900" : "white"}
-                          fontWeight="600"
-                          fontSize="xs"
-                          onChange={(e) => {
-                            setSelectedTechFilter(e.target.value);
+                        <TechnicianSearchCombobox
+                          technicians={techniciansList}
+                          selectedTechId={selectedTechFilter}
+                          onSelect={(id) => {
+                            setSelectedTechFilter(id);
                             setPage(1);
                           }}
-                        >
-                          {techniciansList.map((t) => {
-                            const id = t._id || t.id || t.technicianId;
-                            const name =
-                              t.name ||
-                              (t.userId?.fname ? `${t.userId.fname} ${t.userId.lname || ""}`.trim() : "") ||
-                              t.fname ||
-                              "Technician";
-                            return (
-                              <option key={id} value={id}>
-                                {name}
-                              </option>
-                            );
-                          })}
-                        </Select>
+                          allowAll={true}
+                          allLabel="All Technicians"
+                          placeholder="All Technicians"
+                          isDark={isDark}
+                          width={{ base: "full", sm: "260px" }}
+                        />
                       </HStack>
 
                       {/* Reset Filters Button */}
@@ -751,8 +779,10 @@ export default function TechnicianPayouts() {
           <TechnicianWalletDetailsCard
             technicians={techniciansList}
             selectedTechId={selectedTechFilter}
+            refreshKey={walletRefreshKey}
             onSelectTechnician={(id) => setSelectedTechFilter(id)}
             onOpenFreeze={(tech) => setTargetFreezeTech(tech)}
+            onOpenSendMoney={(tech) => handleOpenSendMoney(tech)}
             onFilterTableByTech={(id) => {
               setSelectedTechFilter(id);
               setConsoleMode("queue");
@@ -769,6 +799,10 @@ export default function TechnicianPayouts() {
         onClose={() => setSelectedProfileTechId(null)}
         technicianId={selectedProfileTechId}
         onOpenFreeze={(tech) => setTargetFreezeTech(tech)}
+        onOpenSendMoney={(tech) => {
+          setSelectedProfileTechId(null);
+          handleOpenSendMoney(tech);
+        }}
         onViewReceipt={(id) => setTargetReceiptId(id)}
         onViewWithdrawalDetails={(id) => setSelectedDrawerId(id)}
       />
@@ -861,6 +895,17 @@ export default function TechnicianPayouts() {
             fetchWithdrawalsList();
             refreshSummaries();
           }}
+        />
+      )}
+
+      {/* Direct Admin Payout Modal */}
+      {isSendMoneyOpen && (
+        <SendMoneyModal
+          isOpen={isSendMoneyOpen}
+          onClose={() => setIsSendMoneyOpen(false)}
+          technicians={techniciansList}
+          initialTechnicianId={sendMoneyInitialTechId}
+          onSuccess={handleSendMoneySuccess}
         />
       )}
 

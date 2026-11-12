@@ -470,7 +470,7 @@ const getTechnicianSpecialization = (tech) => {
 };
 
 // Helper to resolve technician district safely
-const getTechnicianDistrict = (tech) => {
+const getTechnicianDistrict = (tech, masterDistricts = []) => {
   if (!tech) return "";
   const d =
     tech.district ||
@@ -478,13 +478,49 @@ const getTechnicianDistrict = (tech) => {
     tech.address?.district ||
     tech.districtName ||
     tech.district_name ||
+    tech.districtId ||
+    tech.primaryCityId ||
+    tech.operationalCityId ||
     tech.city ||
     tech.profile?.city ||
     tech.locality ||
     "";
-  if (typeof d === "string") return d.trim();
-  if (d && typeof d === "object") return d.name || d.districtName || "";
+  if (typeof d === "string") {
+    const trimmed = d.trim();
+    if (Array.isArray(masterDistricts) && masterDistricts.length > 0) {
+      const match = masterDistricts.find(
+        (m) =>
+          String(m._id || m.id) === trimmed ||
+          String(m.name || m.districtName || m.city || "").toLowerCase() === trimmed.toLowerCase()
+      );
+      if (match) return (match.name || match.districtName || match.city || trimmed).trim();
+    }
+    return trimmed;
+  }
+  if (d && typeof d === "object") return (d.name || d.districtName || d.city || "").trim();
   return "";
+};
+
+// Helper to determine if a technician belongs to a created operational district
+const isCreatedDistrict = (tech, masterDistricts = [], createdNamesSet = new Set(), createdIdsSet = new Set()) => {
+  if (!tech) return false;
+  const dist = getTechnicianDistrict(tech, masterDistricts);
+  if (dist && createdNamesSet.has(dist.toLowerCase())) return true;
+  const idCandidates = [
+    tech.district,
+    tech.districtId,
+    tech.primaryCityId,
+    tech.operationalCityId,
+    tech.address?.district,
+    tech.profile?.district,
+  ];
+  for (const candidate of idCandidates) {
+    if (candidate) {
+      const idStr = typeof candidate === "object" ? String(candidate._id || candidate.id || "") : String(candidate);
+      if (idStr && createdIdsSet.has(idStr)) return true;
+    }
+  }
+  return false;
 };
 
 const getTechnicianImage = (tech, kycRecords = []) => {
@@ -607,7 +643,8 @@ function AdminManagement() {
   // Active View & Filter states: 'all' | 'NewTechnician' | 'Active' | 'KYCVerification' | 'BankVerification'
   const [activeTab, setActiveTab] = useState("all");
   const [subFilter, setSubFilter] = useState("all"); // dropdown filter within view
-  const [districtFilter, setDistrictFilter] = useState("all"); // Mandatory District-wise filter
+  const [districtCategory, setDistrictCategory] = useState("all"); // 'all' | 'created' | 'non_created'
+  const [districtFilter, setDistrictFilter] = useState("all"); // specific district or '__created_all__' | '__non_created_all__' | '__unassigned__'
   const [masterDistricts, setMasterDistricts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -917,9 +954,67 @@ function AdminManagement() {
     };
   }, [adminData, allKycRecords]);
 
-  // Available Districts computation (Presets + Master API Districts + Technicians' assigned Districts)
-  const availableDistricts = useMemo(() => {
+  // Created District sets (Names & IDs) for rapid, accurate matching
+  const createdDistrictNamesSet = useMemo(() => {
     const set = new Set();
+    (masterDistricts || []).forEach((d) => {
+      const name = typeof d === "string" ? d : (d.name || d.districtName || d.title || d.city);
+      if (name && typeof name === "string" && name.trim()) {
+        set.add(name.trim().toLowerCase());
+      }
+    });
+    return set;
+  }, [masterDistricts]);
+
+  const createdDistrictIdsSet = useMemo(() => {
+    const set = new Set();
+    (masterDistricts || []).forEach((d) => {
+      if (d && typeof d === "object" && (d._id || d.id)) {
+        set.add(String(d._id || d.id));
+      }
+    });
+    return set;
+  }, [masterDistricts]);
+
+  // 1. Created Districts List (from master API districts)
+  const createdDistrictsList = useMemo(() => {
+    const map = new Map();
+    (masterDistricts || []).forEach((d) => {
+      const rawName = typeof d === "string" ? d : (d.name || d.districtName || d.title || d.city);
+      if (rawName && typeof rawName === "string" && rawName.trim()) {
+        const name = rawName.trim().charAt(0).toUpperCase() + rawName.trim().slice(1);
+        if (!map.has(name.toLowerCase())) {
+          map.set(name.toLowerCase(), { name, count: 0 });
+        }
+      }
+    });
+
+    (adminData || []).forEach((tech) => {
+      const dist = getTechnicianDistrict(tech, masterDistricts);
+      if (dist && map.has(dist.toLowerCase())) {
+        map.get(dist.toLowerCase()).count += 1;
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [masterDistricts, adminData]);
+
+  // 2. Non-Created Districts List (from technician records + presets not in masterDistricts)
+  const nonCreatedDistrictsList = useMemo(() => {
+    const map = new Map();
+
+    (adminData || []).forEach((tech) => {
+      const dist = getTechnicianDistrict(tech, masterDistricts);
+      if (dist && !createdDistrictNamesSet.has(dist.toLowerCase())) {
+        const name = dist.charAt(0).toUpperCase() + dist.slice(1);
+        const key = name.toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, { name, count: 0 });
+        }
+        map.get(key).count += 1;
+      }
+    });
+
     const presets = [
       "Ariyalur", "Chengalpattu", "Chennai", "Coimbatore", "Cuddalore", "Dharmapuri",
       "Dindigul", "Erode", "Kanchipuram", "Kanyakumari", "Karur", "Krishnagiri",
@@ -928,26 +1023,30 @@ function AdminManagement() {
       "Thanjavur", "Theni", "Thoothukudi", "Tiruchirappalli", "Tirunelveli", "Tirupathur",
       "Tiruppur", "Tiruvallur", "Tiruvannamalai", "Thiruvarur", "Vellore", "Viluppuram", "Virudhunagar"
     ];
-    presets.forEach((d) => set.add(d));
-
-    (masterDistricts || []).forEach((d) => {
-      const name = typeof d === "string" ? d : (d.name || d.districtName || d.title);
-      if (name && name.trim()) {
-        const formatted = name.trim().charAt(0).toUpperCase() + name.trim().slice(1);
-        set.add(formatted);
+    presets.forEach((p) => {
+      const key = p.toLowerCase();
+      if (!createdDistrictNamesSet.has(key) && !map.has(key)) {
+        map.set(key, { name: p, count: 0 });
       }
     });
 
-    (adminData || []).forEach((tech) => {
-      const dist = getTechnicianDistrict(tech);
-      if (dist && dist.trim()) {
-        const formatted = dist.trim().charAt(0).toUpperCase() + dist.trim().slice(1);
-        set.add(formatted);
-      }
-    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [adminData, masterDistricts, createdDistrictNamesSet]);
 
-    return Array.from(set).sort();
+  // Technician counts per district category
+  const unassignedDistrictTechCount = useMemo(() => {
+    return (adminData || []).filter((tech) => !getTechnicianDistrict(tech, masterDistricts)).length;
   }, [adminData, masterDistricts]);
+
+  const createdDistrictTechCount = useMemo(() => {
+    return (adminData || []).filter((tech) =>
+      isCreatedDistrict(tech, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet)
+    ).length;
+  }, [adminData, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet]);
+
+  const nonCreatedDistrictTechCount = useMemo(() => {
+    return (adminData || []).length - createdDistrictTechCount;
+  }, [adminData, createdDistrictTechCount]);
 
   // Filtered dataset computation
   const filteredData = useMemo(() => {
@@ -1023,13 +1122,49 @@ function AdminManagement() {
       }
     }
 
-    // 3. Mandatory District-wise Filter
-    if (districtFilter !== "all" && districtFilter.trim() !== "") {
-      const target = districtFilter.toLowerCase();
+    // 3. Mandatory District-wise Filter (Category: All | Created | Non-Created, plus Specific District)
+    if (districtCategory === "created") {
       list = list.filter((admin) => {
-        const dist = getTechnicianDistrict(admin).toLowerCase();
-        return dist.includes(target);
+        const created = isCreatedDistrict(admin, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet);
+        if (!created) return false;
+        if (districtFilter !== "all" && districtFilter.trim() !== "") {
+          const dist = getTechnicianDistrict(admin, masterDistricts).toLowerCase();
+          return dist === districtFilter.toLowerCase();
+        }
+        return true;
       });
+    } else if (districtCategory === "non_created") {
+      list = list.filter((admin) => {
+        const created = isCreatedDistrict(admin, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet);
+        if (created) return false;
+        if (districtFilter === "__unassigned__") {
+          return !getTechnicianDistrict(admin, masterDistricts);
+        }
+        if (districtFilter !== "all" && districtFilter.trim() !== "") {
+          const dist = getTechnicianDistrict(admin, masterDistricts).toLowerCase();
+          return dist === districtFilter.toLowerCase();
+        }
+        return true;
+      });
+    } else {
+      // districtCategory === "all"
+      if (districtFilter === "__created_all__") {
+        list = list.filter((admin) =>
+          isCreatedDistrict(admin, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet)
+        );
+      } else if (districtFilter === "__non_created_all__") {
+        list = list.filter((admin) =>
+          !isCreatedDistrict(admin, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet)
+        );
+      } else if (districtFilter === "__unassigned__") {
+        list = list.filter((admin) => !getTechnicianDistrict(admin, masterDistricts));
+      } else if (districtFilter !== "all" && districtFilter.trim() !== "") {
+        const target = districtFilter.toLowerCase();
+        list = list.filter((admin) => {
+          const dist = getTechnicianDistrict(admin, masterDistricts).toLowerCase();
+          return dist === target || dist.includes(target);
+        });
+      }
     }
 
     // 4. Search Filter (Name, Email, Spec, City, District, Phone, Aadhaar, PAN, Bank Account Number, IFSC, UPI)
@@ -1041,7 +1176,7 @@ function AdminManagement() {
         const email = (getTechnicianEmail(admin, allKycRecords) || "").toLowerCase();
         const spec = (getTechnicianSpecialization(admin) || "").toLowerCase();
         const city = (admin.city || admin.profile?.city || admin.locality || "").toLowerCase();
-        const district = getTechnicianDistrict(admin).toLowerCase();
+        const district = getTechnicianDistrict(admin, masterDistricts).toLowerCase();
         const phone = (getTechnicianPhone(admin, allKycRecords) || "").toString().replace(/[\s-]/g, "");
         const kycMatch = findKYCRecord(admin, allKycRecords);
         const aadhaar = (kycMatch?.aadhaarNumber || "").toString().replace(/[\s-]/g, "");
@@ -1074,7 +1209,18 @@ function AdminManagement() {
     }
 
     return list;
-  }, [adminData, allKycRecords, activeTab, subFilter, districtFilter, searchTerm]);
+  }, [
+    adminData,
+    allKycRecords,
+    activeTab,
+    subFilter,
+    districtCategory,
+    districtFilter,
+    searchTerm,
+    masterDistricts,
+    createdDistrictNamesSet,
+    createdDistrictIdsSet,
+  ]);
 
   // Pagination calculations
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -1117,7 +1263,9 @@ function AdminManagement() {
       setLoading(true);
       await dispatch(setWorkStatus({
         technicianId: tech._id,
+        id: tech._id,
         workStatus: workStatus,
+        status: workStatus,
         trainingCompleted: tech.trainingCompleted ?? true,
       })).unwrap();
       toast({
@@ -1237,7 +1385,9 @@ function AdminManagement() {
       await fetchData();
     } catch (e) {
       const serverReason =
-        (typeof e === "string" ? e : e?.message || e?.data?.message || "")
+        (typeof e === "string"
+          ? e
+          : e?.message || e?.data?.message || e?.response?.data?.message || e?.error || "")
           .replace(/^Error:\s*/i, "")
           .trim();
       const description = serverReason || "Failed to submit KYC verification.";
@@ -1560,10 +1710,33 @@ function AdminManagement() {
                   </InputRightElement>
                 </InputGroup>
 
-                {/* District Filter (Mandatory District-Wise Filter Dropdown) */}
+                {/* 1. District Category Filter (Created Districts vs Non-Created Districts) */}
                 <Select
                   size="sm"
-                  maxW={{ base: "100%", sm: "210px" }}
+                  maxW={{ base: "100%", sm: "205px" }}
+                  value={districtCategory}
+                  onChange={(e) => {
+                    setDistrictCategory(e.target.value);
+                    setDistrictFilter("all");
+                    setCurrentPage(1);
+                  }}
+                  borderRadius="8px"
+                  borderColor={districtCategory !== "all" ? customColor : `${customColor}50`}
+                  bg={districtCategory !== "all" ? `${customColor}12` : "white"}
+                  _focus={{ borderColor: customColor }}
+                  fontWeight="bold"
+                  color={districtCategory !== "all" ? customColor : "gray.700"}
+                  title="Filter by Created vs Non-Created Districts"
+                >
+                  <option value="all">📍 Districts: All Types</option>
+                  <option value="created">✅ 1. Created Districts ({createdDistrictTechCount})</option>
+                  <option value="non_created">⚠️ 2. Non-Created ({nonCreatedDistrictTechCount})</option>
+                </Select>
+
+                {/* 2. Specific District-Wise Filter */}
+                <Select
+                  size="sm"
+                  maxW={{ base: "100%", sm: "215px" }}
                   value={districtFilter}
                   onChange={(e) => {
                     setDistrictFilter(e.target.value);
@@ -1576,12 +1749,53 @@ function AdminManagement() {
                   fontWeight="bold"
                   color={districtFilter !== "all" ? customColor : "gray.700"}
                 >
-                  <option value="all">📍 District: All Districts</option>
-                  {availableDistricts.map((d) => (
-                    <option key={d} value={d}>
-                      📍 District: {d}
-                    </option>
-                  ))}
+                  {districtCategory === "created" ? (
+                    <>
+                      <option value="all">📍 All Created Districts ({createdDistrictTechCount})</option>
+                      {createdDistrictsList.map((d) => (
+                        <option key={d.name} value={d.name}>
+                          📍 {d.name} {d.count > 0 ? `(${d.count})` : ""}
+                        </option>
+                      ))}
+                    </>
+                  ) : districtCategory === "non_created" ? (
+                    <>
+                      <option value="all">⚠️ All Non-Created ({nonCreatedDistrictTechCount})</option>
+                      {unassignedDistrictTechCount > 0 && (
+                        <option value="__unassigned__">⚠️ No District Assigned ({unassignedDistrictTechCount})</option>
+                      )}
+                      {nonCreatedDistrictsList.map((d) => (
+                        <option key={d.name} value={d.name}>
+                          📍 {d.name} {d.count > 0 ? `(${d.count})` : ""}
+                        </option>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      <option value="all">📍 District: All Districts</option>
+                      <option value="__created_all__">✅ All Created Districts ({createdDistrictTechCount})</option>
+                      <option value="__non_created_all__">⚠️ All Non-Created ({nonCreatedDistrictTechCount})</option>
+                      {createdDistrictsList.length > 0 && (
+                        <optgroup label="── ✅ 1. Created Districts ──">
+                          {createdDistrictsList.map((d) => (
+                            <option key={`c-${d.name}`} value={d.name}>
+                              📍 {d.name} {d.count > 0 ? `(${d.count})` : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="── ⚠️ 2. Non-Created Districts ──">
+                        {unassignedDistrictTechCount > 0 && (
+                          <option value="__unassigned__">⚠️ No District Assigned ({unassignedDistrictTechCount})</option>
+                        )}
+                        {nonCreatedDistrictsList.map((d) => (
+                          <option key={`nc-${d.name}`} value={d.name}>
+                            📍 {d.name} {d.count > 0 ? `(${d.count})` : ""}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </>
+                  )}
                 </Select>
 
                 {/* Dropdown Filter for Verified / Unverified */}
@@ -1618,7 +1832,11 @@ function AdminManagement() {
                 </Select>
 
                 {/* Show All / Reset Button */}
-                {(activeTab !== "all" || subFilter !== "all" || districtFilter !== "all" || searchTerm !== "") && (
+                {(activeTab !== "all" ||
+                  subFilter !== "all" ||
+                  districtCategory !== "all" ||
+                  districtFilter !== "all" ||
+                  searchTerm !== "") && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -1629,6 +1847,7 @@ function AdminManagement() {
                     onClick={() => {
                       setActiveTab("all");
                       setSubFilter("all");
+                      setDistrictCategory("all");
                       setDistrictFilter("all");
                       setSearchTerm("");
                       setCurrentPage(1);
@@ -1748,16 +1967,44 @@ function AdminManagement() {
                   key: "district",
                   label: "District *",
                   minWidth: "140px",
-                  cell: (tech) =>
-                    getTechnicianDistrict(tech) ? (
-                      <Badge colorScheme="teal" px={2.5} py={1} borderRadius="md" textTransform="capitalize" fontWeight="bold" fontSize="2xs">
-                        📍 {getTechnicianDistrict(tech)}
+                  cell: (tech) => {
+                    const dist = getTechnicianDistrict(tech, masterDistricts);
+                    if (!dist) {
+                      return (
+                        <Badge colorScheme="red" px={2} py={0.5} borderRadius="md" variant="solid" fontSize="2xs">
+                          ⚠️ District Missing
+                        </Badge>
+                      );
+                    }
+                    const isCreated = isCreatedDistrict(tech, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet);
+                    return isCreated ? (
+                      <Badge
+                        colorScheme="teal"
+                        px={2.5}
+                        py={1}
+                        borderRadius="md"
+                        textTransform="capitalize"
+                        fontWeight="bold"
+                        fontSize="2xs"
+                        title="Created Operational District"
+                      >
+                        📍 {dist}
                       </Badge>
                     ) : (
-                      <Badge colorScheme="red" px={2} py={0.5} borderRadius="md" variant="solid" fontSize="2xs">
-                        ⚠️ District Missing
+                      <Badge
+                        colorScheme="orange"
+                        px={2.5}
+                        py={1}
+                        borderRadius="md"
+                        textTransform="capitalize"
+                        fontWeight="bold"
+                        fontSize="2xs"
+                        title="Non-Created District (Pending Setup)"
+                      >
+                        ⚠️ {dist} (Not Created)
                       </Badge>
-                    ),
+                    );
+                  },
                 },
                 {
                   key: "city",

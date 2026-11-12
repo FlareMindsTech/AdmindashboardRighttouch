@@ -103,8 +103,8 @@ export default function PayoutSettingsModal({ isOpen, onClose, onSuccess }) {
     const dualT = parseFloat(dualApprovalThreshold);
     const coolD = parseInt(cooldownDays, 10);
 
-    if (isNaN(minW) || minW < 100) {
-      setErrorMsg("Minimum withdrawal amount must be at least ₹100.");
+    if (isNaN(minW) || minW < 1) {
+      setErrorMsg("Minimum withdrawal amount must be at least ₹1.");
       return;
     }
     if (isNaN(maxW) || maxW < minW) {
@@ -299,11 +299,11 @@ export default function PayoutSettingsModal({ isOpen, onClose, onSuccess }) {
                       borderRadius="10px"
                       value={minWithdrawal}
                       onChange={(e) => setMinWithdrawal(e.target.value)}
-                      min={100}
+                      min={1}
                       fontWeight="700"
                     />
                   </InputGroup>
-                  <FormHelperText fontSize="3xs">Minimum permissible amount per request (Min ₹100)</FormHelperText>
+                  <FormHelperText fontSize="3xs">Minimum permissible amount per request (Min ₹1)</FormHelperText>
                 </FormControl>
 
                 {/* Max Withdrawal */}

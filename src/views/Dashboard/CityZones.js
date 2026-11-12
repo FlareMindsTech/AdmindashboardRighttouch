@@ -66,8 +66,6 @@ import LocationCombobox from "components/common/LocationCombobox";
 import DistrictPickerCard, {
   QuickPickChips,
 } from "components/common/DistrictPickerCard";
-import DistrictGeoJsonBoundaryCard from "components/common/DistrictGeoJsonBoundaryCard";
-import TamilNaduDistrictMiniMap from "components/Map/TamilNaduDistrictMiniMap";
 import {
   TAMIL_NADU_CITIES,
   TAMIL_NADU_DISTRICTS,
@@ -851,7 +849,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setShowAllChecked(true);
     };
 
-    const isServiceActiveInZone = useCallback((serviceId, zoneId) => {
+    const isServiceActiveInZone = useCallback((serviceId, zoneId, matrixItem = null) => {
       if (!serviceId || !zoneId) return false;
       const sIdStr = String(serviceId);
       const zIdStr = String(zoneId);
@@ -860,8 +858,15 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         const mzId = String(m.zoneId?._id || m.zoneId?.id || m.zoneId || m.cityZoneId?._id || m.cityZoneId?.id || m.cityZoneId || "");
         return msId === sIdStr && mzId === zIdStr;
       });
-      if (!found) return false;
-      return found.active === true || found.status === "ENABLED" || found.enabled === true;
+      if (found) {
+        return found.active === true || found.status === "ENABLED" || found.enabled === true;
+      }
+      if (matrixItem && String(matrixItem.serviceId) === sIdStr) {
+        if (typeof matrixItem.isActiveInZone === "boolean") return matrixItem.isActiveInZone;
+        if (typeof matrixItem.isAvailable === "boolean") return matrixItem.isAvailable;
+        if (typeof matrixItem.activeInZone === "boolean") return matrixItem.activeInZone;
+      }
+      return false;
     }, [mappings]);
 
     const handleToggleSingleServiceInSelectedZone = async (serviceId, currentActive, serviceName) => {
@@ -1145,7 +1150,114 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       if (typeof ref === "string") return ref;
       return ref._id || ref.districtId || ref.id || "";
     };
+
+    const isZoneBelongingToDistrict = useCallback((zone, dist) => {
+      if (!zone || !dist) return false;
+      const dId = String(dist._id || dist.id || dist.districtId || "");
+
+      // 1. Direct parent district ID comparison (handles strings and populated objects)
+      const zDistId = String(
+        zone.operationalCityId?._id ||
+        zone.operationalCityId?.id ||
+        (typeof zone.operationalCityId === "string" ? zone.operationalCityId : "") ||
+        zone.districtId?._id ||
+        zone.districtId?.id ||
+        (typeof zone.districtId === "string" ? zone.districtId : "") ||
+        zone.operationalCity?._id ||
+        zone.operationalCity?.id ||
+        (typeof zone.operationalCity === "string" ? zone.operationalCity : "") ||
+        zone.cityId?._id ||
+        zone.cityId?.id ||
+        (typeof zone.cityId === "string" ? zone.cityId : "") ||
+        ""
+      );
+      if (dId && zDistId && zDistId === dId) return true;
+
+      // 2. Check if district record explicitly lists this zone in its child zones array
+      if (Array.isArray(dist.zones)) {
+        const zoneId = String(zone._id || zone.zoneId || zone.id || "");
+        if (zoneId && dist.zones.some((z) => String(z?._id || z?.zoneId || z?.id || z) === zoneId)) {
+          return true;
+        }
+      }
+
+      // 3. Normalized name / city matching
+      const zName = (
+        zone.districtName ||
+        zone.operationalCityName ||
+        zone.operationalCityId?.name ||
+        zone.operationalCity?.name ||
+        zone.districtId?.name ||
+        zone.city ||
+        zone.district ||
+        ""
+      ).toLowerCase().trim();
+
+      const dName = (dist.name || "").toLowerCase().trim();
+      const dCity = (dist.city || "").toLowerCase().trim();
+
+      if (zName && (zName === dName || zName === dCity)) return true;
+
+      const normZ = normalizeLocationName(zName);
+      const normDName = normalizeLocationName(dName);
+      const normDCity = normalizeLocationName(dCity);
+      if (normZ && (normZ === normDName || normZ === normDCity)) return true;
+
+      const tnDist = findTnDistrictForRecord(dist) || findTnDistrict(dist.city) || findTnDistrict(dist.name);
+      if (tnDist?.name) {
+        const normTn = normalizeLocationName(tnDist.name);
+        if (normZ && normZ === normTn) return true;
+        if (zName && zName.includes(tnDist.name.toLowerCase())) return true;
+        if (dName && dName.includes(normZ)) return true;
+      }
+
+      return false;
+    }, []);
+
+    const getDistrictZones = useCallback((dist) => {
+      if (!dist) return [];
+      const map = new Map();
+
+      // A. Match from global zones state
+      (zones || []).forEach((z) => {
+        if (isZoneBelongingToDistrict(z, dist)) {
+          const zId = String(z._id || z.zoneId || z.id || "");
+          if (zId) map.set(zId, z);
+        }
+      });
+
+      // B. Match from district's embedded zones array
+      if (Array.isArray(dist.zones)) {
+        dist.zones.forEach((z) => {
+          if (typeof z === "object" && z !== null) {
+            const zId = String(z._id || z.zoneId || z.id || "");
+            if (zId && !map.has(zId)) map.set(zId, z);
+          }
+        });
+      }
+
+      // C. Match from populated zone-mappings
+      (mappings || []).forEach((m) => {
+        const rawZone = m.zoneId ?? m.cityZoneId;
+        if (rawZone && typeof rawZone === "object") {
+          const zId = String(rawZone._id || rawZone.zoneId || rawZone.id || "");
+          if (zId && !map.has(zId)) {
+            if (isZoneBelongingToDistrict(rawZone, dist)) {
+              map.set(zId, rawZone);
+            }
+          }
+        }
+      });
+
+      return Array.from(map.values());
+    }, [zones, mappings, isZoneBelongingToDistrict]);
+
     const collectChildZoneIds = (dist, districtId) => {
+      const targetDist = dist || (districts || []).find((d) => String(d._id || d.id || d.districtId) === String(districtId));
+      const childZones = getDistrictZones(targetDist);
+      if (childZones.length > 0) {
+        return childZones.map(resolveDetailZoneId).filter(Boolean);
+      }
       const fromDetail = (Array.isArray(dist?.zones) ? dist.zones : [])
         .map(resolveDetailZoneId)
         .filter(Boolean);
@@ -1664,13 +1776,15 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       const matchesSearch = name.includes(search) || code.includes(search) || city.includes(search);
 
       if (selectedDistrictFilter !== "all") {
-        const ref = zone.operationalCityId ?? zone.districtId ?? null;
-        const distId = typeof ref === "string" ? ref : (ref?._id || ref?.districtId || ref?.id || "");
-        return matchesSearch && String(distId) === String(selectedDistrictFilter);
+        const selectedDistObj = (districts || []).find((d) => String(d._id || d.id || d.districtId) === String(selectedDistrictFilter));
+        const matchesDist =
+          (selectedDistObj ? isZoneBelongingToDistrict(zone, selectedDistObj) : false) ||
+          String(resolveZoneDistrictId(zone)) === String(selectedDistrictFilter);
+        return matchesSearch && matchesDist;
       }
       return matchesSearch;
     });
-  }, [zones, searchTerm, selectedDistrictFilter]);
+  }, [zones, searchTerm, selectedDistrictFilter, districts, isZoneBelongingToDistrict]);
 
     const filteredTechnicians = useMemo(() => {
       const search = searchTerm.toLowerCase();
@@ -2437,12 +2551,94 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         let updatedCount = 0;
         let createdCount = 0;
         const createdBoundaries = [];
+        const skippedDistricts = [];
+
+        // 1. Fetch fresh list of districts from backend before bulk creation
+        let currentBackendDistricts = districts;
+        try {
+          const freshDistResponse = await getAllDistricts();
+          const freshList =
+            freshDistResponse.result ||
+            freshDistResponse.data ||
+            freshDistResponse.districts ||
+            (Array.isArray(freshDistResponse) ? freshDistResponse : []);
+          if (Array.isArray(freshList) && freshList.length > 0) {
+            currentBackendDistricts = freshList;
+          }
+        } catch (e) {
+          console.warn("Could not fetch fresh districts prior to bulk operation:", e);
+        }
+
+        // Fast lookup map of already configured names/cities/canonical TN names to their backend records
+        const existingBackendMap = new Map();
+        (currentBackendDistricts || []).forEach((d) => {
+          const id = d._id || d.id;
+          if (!id) return;
+          if (d.name) {
+            existingBackendMap.set(d.name.toLowerCase().trim(), d);
+            existingBackendMap.set(normalizeLocationName(d.name), d);
+          }
+          if (d.city) {
+            existingBackendMap.set(d.city.toLowerCase().trim(), d);
+            existingBackendMap.set(normalizeLocationName(d.city), d);
+          }
+          const tn = findTnDistrictForRecord(d) || findTnDistrict(d.city) || findTnDistrict(d.name);
+          if (tn?.name) {
+            existingBackendMap.set(tn.name.toLowerCase().trim(), d);
+            existingBackendMap.set(normalizeLocationName(tn.name), d);
+          }
+        });
+
+        // 2. Pre-align any existing backend districts to official Survey of India NWIC boundaries
+        // so their old oversized circular/buffered ranges shrink and do not collide with adjacent districts.
+        if (targetActive) {
+          for (const d of currentBackendDistricts) {
+            const id = d._id || d.id;
+            if (!id) continue;
+            const tn = findTnDistrictForRecord(d) || findTnDistrict(d.city) || findTnDistrict(d.name);
+            if (!tn?.name) continue;
+            const officialBoundary = getTnDistrictBoundary(tn.name);
+            if (!officialBoundary || !officialBoundary.coordinates) continue;
+
+            try {
+              await updateDistrict(id, {
+                ...d,
+                name: d.name || tn.name,
+                city: d.city || tn.name,
+                state: "Tamil Nadu",
+                country: "India",
+                active: true,
+                isRegistrationEnabled: true,
+                isJobEnabled: true,
+                polygon: officialBoundary,
+              });
+              d.polygon = officialBoundary;
+            } catch (syncErr) {
+              console.warn(`Could not pre-sync NWIC boundary for existing district ${d.name}:`, syncErr.message);
+            }
+          }
+        }
+
         for (const dist of allMergedDistricts) {
-          const targetDistId = dist._id || dist.backendRecord?._id;
+          // Check if already in backend by ID, or by name / city / normalized location
+          const matchedBackend =
+            (dist._id ? (currentBackendDistricts || []).find((x) => String(x._id || x.id) === String(dist._id)) : null) ||
+            existingBackendMap.get((dist.name || "").toLowerCase().trim()) ||
+            existingBackendMap.get(normalizeLocationName(dist.name || "")) ||
+            existingBackendMap.get((dist.city || "").toLowerCase().trim()) ||
+            existingBackendMap.get(normalizeLocationName(dist.city || ""));
+
+          const targetDistId = dist._id || dist.backendRecord?._id || matchedBackend?._id || matchedBackend?.id;
+
           if (targetDistId) {
-            if (dist.active !== targetActive) {
-              await toggleDistrictStatus(targetDistId, targetActive);
-              updatedCount++;
+            const isDistActive = matchedBackend ? (matchedBackend.active !== false && matchedBackend.isActive !== false) : dist.active;
+            if (isDistActive !== targetActive) {
+              try {
+                await toggleDistrictStatus(targetDistId, targetActive);
+                updatedCount++;
+              } catch (toggleErr) {
+                console.warn(`Could not toggle status for ${dist.name}:`, toggleErr.message);
+              }
             }
           } else if (targetActive) {
             const officialBoundary = dist.officialBoundary || dist.polygon || getTnDistrictBoundary(dist.name);
@@ -2450,39 +2646,65 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
             try {
               prepared = resolveDistrictPolygonForSave(
                 officialBoundary,
-                [...districts, ...createdBoundaries],
+                [...currentBackendDistricts, ...createdBoundaries],
                 null,
                 findTnDistrictForRecord(dist)?.name || dist.name
               );
             } catch (err) {
               console.warn(`Skipping district ${dist.name}:`, err.message);
+              skippedDistricts.push({ name: dist.name, reason: err.message });
               continue;
             }
-            await createDistrict({
-              name: dist.name,
-              city: dist.city || dist.name,
-              state: "Tamil Nadu",
-              country: "India",
-              code: dist.code || dist.tnDistrict?.code || dist.name.slice(0, 3).toUpperCase(),
-              active: true,
-              isRegistrationEnabled: true,
-              isJobEnabled: true,
-              polygon: prepared.polygon,
-            });
-            createdBoundaries.push({ name: dist.name, city: dist.city || dist.name, polygon: prepared.polygon });
-            createdCount++;
+
+            try {
+              await createDistrict({
+                name: dist.name,
+                city: dist.city || dist.name,
+                state: "Tamil Nadu",
+                country: "India",
+                code: dist.code || dist.tnDistrict?.code || dist.name.slice(0, 3).toUpperCase(),
+                active: true,
+                isRegistrationEnabled: true,
+                isJobEnabled: true,
+                polygon: prepared.polygon,
+              });
+              createdBoundaries.push({ name: dist.name, city: dist.city || dist.name, polygon: prepared.polygon });
+              createdCount++;
+            } catch (createErr) {
+              const errMsg = createErr.message || "";
+              if (errMsg.toLowerCase().includes("already exists")) {
+                // District already created in database — count as updated
+                updatedCount++;
+              } else if (errMsg.toLowerCase().includes("overlap") || createErr.status === 409) {
+                console.warn(`District ${dist.name} skipped due to spatial overlap:`, errMsg);
+                skippedDistricts.push({ name: dist.name, reason: "Boundary overlap with existing range" });
+              } else {
+                console.warn(`District ${dist.name} failed to create:`, errMsg);
+                skippedDistricts.push({ name: dist.name, reason: errMsg });
+              }
+            }
           }
         }
+
+        let desc = "";
+        if (createdCount > 0 && updatedCount > 0) {
+          desc = `Added ${createdCount} Tamil Nadu revenue districts (${updatedCount} updated) with official Survey of India boundary geocodes.`;
+        } else if (createdCount > 0) {
+          desc = `Successfully added ${createdCount} Tamil Nadu revenue districts with official Survey of India boundary geocodes.`;
+        } else {
+          desc = `All ${updatedCount} operational districts are now ${targetActive ? "ACTIVE" : "INACTIVE"}.`;
+        }
+        if (skippedDistricts.length > 0) {
+          desc += ` [${skippedDistricts.length} skipped due to existing range: ${skippedDistricts.map((s) => s.name).join(", ")}]`;
+        }
+
         toast({
-          title: "All 38 Districts Ready",
-          description: createdCount > 0
-            ? `Successfully added ${createdCount} Tamil Nadu revenue districts (${updatedCount} updated) with official Survey of India boundary geocodes.`
-            : `All ${updatedCount} operational districts are now ${targetActive ? "ACTIVE" : "INACTIVE"}.`,
-          status: "success",
-          duration: 4000,
+          title: "District Operation Complete",
+          description: desc,
+          status: skippedDistricts.length > 0 && createdCount === 0 && updatedCount === 0 ? "warning" : "success",
+          duration: 5000,
           isClosable: true,
         });
-        await fetchData();
       } catch (err) {
         toast({
           title: "District Operation Error",
@@ -2492,6 +2714,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           isClosable: true,
         });
       } finally {
+        await fetchData();
         setIsLoading(false);
       }
     };
@@ -2602,6 +2825,25 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       return null;
     };
 
+    const getTechPrimaryDistrictId = () => {
+      const permission =
+        techPermissions?.primaryDistrictPermission ||
+        techPermissions?.primaryPermission ||
+        null;
+      if (permission) {
+        const ref = permission.districtId;
+        return String(ref?._id || ref?.id || ref || "");
+      }
+      const resolved = getResolvedPrimaryDistrict();
+      if (resolved) return String(resolved._id || resolved.id || resolved);
+      const ref =
+        techPermissions?.primaryDistrict ||
+        selectedTechForPermission?.primaryDistrictId ||
+        selectedTechForPermission?.primaryCityId ||
+        null;
+      return String(ref?._id || ref?.id || ref || "");
+    };
+
     const handleOpenTechPermissions = async (tech) => {
       try {
         setIsLoading(true);
@@ -2622,6 +2864,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         setTechPermissions({
           ...rawRes,
           primaryDistrict: primary,
+          primaryPermission: rawRes?.primaryDistrictPermission || null,
+          primaryDistrictHasPermission: rawRes?.primaryDistrictHasPermission === true,
           permissions: perms,
           additionalPermissions: perms,
           allowedDistrictIds: allowedIds,
@@ -2651,6 +2895,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       setTechPermissions({
         ...rawRes,
         primaryDistrict: primary,
+        primaryPermission: rawRes?.primaryDistrictPermission || null,
+        primaryDistrictHasPermission: rawRes?.primaryDistrictHasPermission === true,
         permissions: perms,
         additionalPermissions: perms,
         allowedDistrictIds: allowedIds,
@@ -2745,8 +2991,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
     const handleTogglePermission = async (districtId, currentStatus) => {
       if (!selectedTechForPermission) return;
-      const nextStatus = !currentStatus;
       const targetIdStr = String(districtId);
+      const isPrimaryTarget = targetIdStr === getTechPrimaryDistrictId();
+      const nextStatus = !currentStatus;
 
       // Instant optimistic UI update (0ms switch response)
       setTechPermissions((prev) => {
@@ -2773,6 +3020,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           permissions: updatedPerms,
           additionalPermissions: updatedPerms,
           primaryPermission: updatedPrimaryPerm,
+          primaryDistrictHasPermission: isPrimaryTarget
+            ? nextStatus
+            : prev.primaryDistrictHasPermission,
         };
       });
 
@@ -2802,6 +3052,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     const handleRemovePermission = async (districtId) => {
       if (!selectedTechForPermission) return;
       const targetIdStr = String(districtId);
+      const isPrimaryTarget = targetIdStr === getTechPrimaryDistrictId();
 
       // Instant optimistic UI update
       setTechPermissions((prev) => {
@@ -2821,6 +3072,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           permissions: filtered,
           additionalPermissions: filtered,
           primaryPermission: updatedPrim,
+          primaryDistrictHasPermission: isPrimaryTarget
+            ? false
+            : prev.primaryDistrictHasPermission,
         };
       });
 
@@ -4654,35 +4908,19 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
                 <HStack spacing={2} flexWrap="wrap">
                   {(activeTab === 0 || activeTab === 1) && (
-                    <>
-                      <Button
-                        leftIcon={<MdAdd />}
-                        size="sm"
-                        variant="brand"
-                        borderRadius="8px"
-                        fontWeight="600"
-                        boxShadow="sm"
-                        _hover={{ transform: "translateY(-1px)" }}
-                        _active={{ transform: "translateY(0)" }}
-                        onClick={() => handleOpenCreateDistrictModal()}
-                      >
-                        Add District
-                      </Button>
-                      <Button
-                        leftIcon={<MdAdd />}
-                        size="sm"
-                        bg="purple.600"
-                        color="white"
-                        borderRadius="8px"
-                        fontWeight="600"
-                        boxShadow="sm"
-                        _hover={{ bg: "purple.700", transform: "translateY(-1px)" }}
-                        _active={{ bg: "purple.800", transform: "translateY(0)" }}
-                        onClick={() => handleOpenCreateZone()}
-                      >
-                        Add City Zone
-                      </Button>
-                    </>
+                    <Button
+                      leftIcon={<MdAdd />}
+                      size="sm"
+                      variant="brand"
+                      borderRadius="8px"
+                      fontWeight="600"
+                      boxShadow="sm"
+                      _hover={{ transform: "translateY(-1px)" }}
+                      _active={{ transform: "translateY(0)" }}
+                      onClick={() => handleOpenCreateDistrictModal()}
+                    >
+                      Add District
+                    </Button>
                   )}
                   <Button
                     leftIcon={<MdAdd />}
@@ -5137,15 +5375,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                           />
                                         </Tooltip>
                                       )}
-                                      <Tooltip label="View Real-Time Map Range">
-                                        <IconButton
-                                          size="xs"
-                                          icon={<MdMap />}
-                                          colorScheme="purple"
-                                          variant="ghost"
-                                          onClick={() => handleOpenViewMapModal(dist.backendRecord || dist)}
-                                        />
-                                      </Tooltip>
+
                                       {dist.isConfigured ? (
                                         <>
                                           <Tooltip label="View Technicians">
@@ -5398,7 +5628,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           🌐 All Districts ({districts.length})
                         </Button>
                         {districts.map((d) => {
-                          const zCount = zones.filter((z) => String(z.operationalCityId || z.districtId) === String(d._id)).length;
+                          const dZones = getDistrictZones(d);
+                          const zCount = dZones.length;
                           const isSel = matrixDistrictFilter === String(d._id);
                           return (
                             <Button
@@ -5423,38 +5654,46 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       </Flex>
 
                       {/* Step 2: Micro-Zone Screening inside Selected District */}
-                      {matrixDistrictFilter !== "ALL" && (
-                        <Box pt={2.5} pb={1} borderTop="1px dashed" borderColor="gray.200">
-                          <Flex align="center" gap={2} flexWrap="wrap">
-                            <HStack spacing={1.5} mr={2} minW="135px">
-                              <Icon as={MdPlace} color="purple.600" />
-                              <Text fontSize="xs" fontWeight="700" color="purple.800" textTransform="uppercase" letterSpacing="0.5px">
-                                2. Screen Zone:
-                              </Text>
-                            </HStack>
-                            <Button
-                              size="xs"
-                              borderRadius="full"
-                              variant={matrixZoneFilter === "ALL" ? "solid" : "outline"}
-                              colorScheme={matrixZoneFilter === "ALL" ? "purple" : "gray"}
-                              bg={matrixZoneFilter === "ALL" ? "purple.600" : "white"}
-                              color={matrixZoneFilter === "ALL" ? "white" : "purple.700"}
-                              onClick={() => {
-                                setMatrixZoneFilter("ALL");
-                                setCurrentPage(1);
-                              }}
-                            >
-                              All Zones in {districts.find((d) => String(d._id) === String(matrixDistrictFilter))?.name || "District"}
-                            </Button>
+                      {matrixDistrictFilter !== "ALL" && (() => {
+                        const selectedDistObj = districts.find((d) => String(d._id) === String(matrixDistrictFilter));
+                        const currentDistrictZones = getDistrictZones(selectedDistObj);
+                        const filteredDistrictZones = currentDistrictZones.filter(
+                          (z) =>
+                            !matrixZoneSearch.trim() ||
+                            (z.name || "").toLowerCase().includes(matrixZoneSearch.toLowerCase()) ||
+                            (z.zoneCode || "").toLowerCase().includes(matrixZoneSearch.toLowerCase())
+                        );
 
-                            {zones
-                              .filter((z) => String(z.operationalCityId || z.districtId) === String(matrixDistrictFilter))
-                              .filter((z) => !matrixZoneSearch.trim() || (z.name || "").toLowerCase().includes(matrixZoneSearch.toLowerCase()))
-                              .map((z, zIdx) => {
-                                const isZoneSel = matrixZoneFilter === String(z._id || z.zoneId || z.id);
+                        return (
+                          <Box pt={2.5} pb={1} borderTop="1px dashed" borderColor="gray.200">
+                            <Flex align="center" gap={2} flexWrap="wrap">
+                              <HStack spacing={1.5} mr={2} minW="135px">
+                                <Icon as={MdPlace} color="purple.600" />
+                                <Text fontSize="xs" fontWeight="700" color="purple.800" textTransform="uppercase" letterSpacing="0.5px">
+                                  2. Screen Zone:
+                                </Text>
+                              </HStack>
+                              <Button
+                                size="xs"
+                                borderRadius="full"
+                                variant={matrixZoneFilter === "ALL" ? "solid" : "outline"}
+                                colorScheme={matrixZoneFilter === "ALL" ? "purple" : "gray"}
+                                bg={matrixZoneFilter === "ALL" ? "purple.600" : "white"}
+                                color={matrixZoneFilter === "ALL" ? "white" : "purple.700"}
+                                onClick={() => {
+                                  setMatrixZoneFilter("ALL");
+                                  setCurrentPage(1);
+                                }}
+                              >
+                                All Zones in {selectedDistObj?.name || "District"} ({currentDistrictZones.length})
+                              </Button>
+
+                              {filteredDistrictZones.map((z, zIdx) => {
+                                const zId = String(z._id || z.zoneId || z.id || zIdx);
+                                const isZoneSel = matrixZoneFilter === zId;
                                 return (
                                   <Button
-                                    key={z._id || z.zoneId || z.id || zIdx}
+                                    key={zId}
                                     size="xs"
                                     borderRadius="full"
                                     variant={isZoneSel ? "solid" : "outline"}
@@ -5463,7 +5702,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                     color={isZoneSel ? "white" : "gray.700"}
                                     borderColor={isZoneSel ? "purple.600" : "purple.200"}
                                     onClick={() => {
-                                      setMatrixZoneFilter(String(z._id || z.zoneId || z.id));
+                                      setMatrixZoneFilter(zId);
                                       setCurrentPage(1);
                                     }}
                                   >
@@ -5472,19 +5711,37 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                 );
                               })}
 
-                            <InputGroup size="xs" maxW="160px" ml="auto">
-                              <Input
-                                placeholder="Filter zones..."
-                                value={matrixZoneSearch}
-                                onChange={(e) => setMatrixZoneSearch(e.target.value)}
-                                borderRadius="6px"
-                                bg="white"
-                              />
-                              <InputRightElement><Icon as={MdSearch} color="gray.400" /></InputRightElement>
-                            </InputGroup>
-                          </Flex>
-                        </Box>
-                      )}
+                              {currentDistrictZones.length === 0 && (
+                                <HStack spacing={2} ml={2}>
+                                  <Text fontSize="xs" color="gray.500" fontStyle="italic">
+                                    No micro-zones created yet in {selectedDistObj?.name || "this district"}.
+                                  </Text>
+                                  <Button
+                                    size="xs"
+                                    colorScheme="purple"
+                                    variant="outline"
+                                    leftIcon={<MdAdd />}
+                                    onClick={() => handleOpenCreateZone(selectedDistObj?._id || selectedDistObj?.name)}
+                                  >
+                                    + Create Micro-Zone
+                                  </Button>
+                                </HStack>
+                              )}
+
+                              <InputGroup size="xs" maxW="160px" ml="auto">
+                                <Input
+                                  placeholder="Filter zones..."
+                                  value={matrixZoneSearch}
+                                  onChange={(e) => setMatrixZoneSearch(e.target.value)}
+                                  borderRadius="6px"
+                                  bg="white"
+                                />
+                                <InputRightElement><Icon as={MdSearch} color="gray.400" /></InputRightElement>
+                              </InputGroup>
+                            </Flex>
+                          </Box>
+                        );
+                      })()}
                     </Box>
 
                     {/* Filter & Search Toolbar */}
@@ -5571,8 +5828,10 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     {/* Specific Zone Screening Banner & Direct Actions */}
                     {matrixDistrictFilter !== "ALL" && matrixZoneFilter !== "ALL" && (() => {
                       const activeDistObj = districts.find((d) => String(d._id) === String(matrixDistrictFilter));
-                      const activeZoneObj = zones.find((z) => String(z._id || z.zoneId || z.id) === String(matrixZoneFilter));
-                      const activeCountInZone = currentMatrixData.filter((item) => isServiceActiveInZone(item.serviceId, matrixZoneFilter)).length;
+                      const activeZoneObj =
+                        zones.find((z) => String(z._id || z.zoneId || z.id) === String(matrixZoneFilter)) ||
+                        (getDistrictZones(activeDistObj) || []).find((z) => String(z._id || z.zoneId || z.id) === String(matrixZoneFilter));
+                      const activeCountInZone = currentMatrixData.filter((item) => isServiceActiveInZone(item.serviceId, matrixZoneFilter, item)).length;
 
                       return (
                         <Flex
@@ -5782,9 +6041,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           ) : (
                             currentMatrixData.map((item, idx) => {
                               if (matrixDistrictFilter !== "ALL" && matrixZoneFilter !== "ALL") {
-                                const isZoneActive = isServiceActiveInZone(item.serviceId, matrixZoneFilter);
+                                const isZoneActive = isServiceActiveInZone(item.serviceId, matrixZoneFilter, item);
                                 const currentDist = districts.find((d) => String(d._id) === String(matrixDistrictFilter));
-                                const currentZone = zones.find((z) => String(z._id || z.zoneId || z.id) === String(matrixZoneFilter));
+                                const currentZone =
+                                  zones.find((z) => String(z._id || z.zoneId || z.id) === String(matrixZoneFilter)) ||
+                                  (getDistrictZones(currentDist) || []).find((z) => String(z._id || z.zoneId || z.id) === String(matrixZoneFilter));
 
                                 return (
                                   <Tr key={item.serviceId || idx}>
@@ -7669,7 +7930,9 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                 {/* 1. DISTRICT PERMISSIONS */}
                 {(() => {
                   const resolvedPrim = getResolvedPrimaryDistrict();
-                  const primaryId = resolvedPrim?._id ? String(resolvedPrim._id) : "";
+                  const primaryId = resolvedPrim?._id || resolvedPrim?.id
+                    ? String(resolvedPrim._id || resolvedPrim.id)
+                    : "";
                   const currentRaw = techPermissions?.permissions || techPermissions?.additionalPermissions || [];
                   const getPermDistrictId = (p) =>
                     String(p.districtId?._id || p.districtId?.id || p.districtId || "");
@@ -7681,9 +7944,12 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     techPermissions?.primaryPermission ||
                     currentRaw.find((p) => primaryId && getPermDistrictId(p) === primaryId) ||
                     null;
-                  const primaryEnabled = primaryPerm?.isEnabled === true;
+                  const primaryEnabled = primaryPerm
+                    ? primaryPerm.isEnabled === true
+                    : techPermissions?.primaryDistrictHasPermission === true;
                   const enabledCoverageCount =
-                    currentAddl.filter((p) => p.isEnabled === true).length + (primaryEnabled ? 1 : 0);
+                    currentRaw.filter((p) => p.isEnabled === true).length +
+                    (!primaryPerm && techPermissions?.primaryDistrictHasPermission === true ? 1 : 0);
                   const grantedDistrictIds = new Set([...currentRaw.map(getPermDistrictId)].filter(Boolean));
 
                   return (
@@ -7798,7 +8064,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                       {resolvedPrim?.city && !(resolvedPrim?.name || "").includes(resolvedPrim.city) ? ` (${resolvedPrim.city})` : ""}
                                     </Text>
                                     <Text fontSize="10px" color="gray.500" mt={0.5}>
-                                      Registration base district — not authorization by itself
+                                      Registration base district — coverage requires an explicit grant
                                     </Text>
                                   </Box>
                                 </HStack>
@@ -7814,8 +8080,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                     No Primary District
                                   </Badge>
                                 ) : !primaryPerm ? (
-                                  <Badge colorScheme="red" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
-                                    No Coverage
+                                  <Badge colorScheme="gray" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
+                                    Not Granted
                                   </Badge>
                                 ) : (
                                   <HStack spacing={2} justify="center">
@@ -7825,7 +8091,13 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                       colorScheme="teal"
                                       onChange={() => handleTogglePermission(primaryId, primaryEnabled)}
                                     />
-                                    <Badge colorScheme={primaryEnabled ? "green" : "orange"} fontSize="10px" px={2} py={0.5} borderRadius="full">
+                                    <Badge
+                                      colorScheme={primaryEnabled ? "green" : "orange"}
+                                      fontSize="10px"
+                                      px={2}
+                                      py={0.5}
+                                      borderRadius="full"
+                                    >
                                       {primaryEnabled ? "Enabled" : "Paused"}
                                     </Badge>
                                   </HStack>
@@ -7834,20 +8106,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               <Td py={3} textAlign="center" whiteSpace="nowrap">
                                 {!resolvedPrim ? (
                                   <Text fontSize="10px" color="gray.400">Assign a primary district first</Text>
-                                ) : !primaryPerm ? (
-                                  <Button
-                                    size="xs"
-                                    variant="brand-outline"
-                                    borderRadius="6px"
-                                    h="26px"
-                                    px={2.5}
-                                    fontSize="11px"
-                                    isLoading={isSubmitting}
-                                    onClick={() => handleGrantDistrictPermission(primaryId)}
-                                  >
-                                    Grant Primary
-                                  </Button>
-                                ) : (
+                                ) : primaryPerm ? (
                                   <Button
                                     size="xs"
                                     leftIcon={<MdDelete />}
@@ -7861,6 +8120,21 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                     onClick={() => handleRemovePermission(primaryId)}
                                   >
                                     Revoke
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="xs"
+                                    leftIcon={<MdAddCircleOutline />}
+                                    colorScheme="teal"
+                                    variant="ghost"
+                                    borderRadius="6px"
+                                    h="26px"
+                                    px={2.5}
+                                    fontSize="11px"
+                                    title="Grant primary district coverage"
+                                    onClick={() => handleGrantDistrictPermission(primaryId)}
+                                  >
+                                    Grant
                                   </Button>
                                 )}
                               </Td>

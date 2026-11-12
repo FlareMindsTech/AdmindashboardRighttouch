@@ -12,6 +12,7 @@ import {
   HStack,
   Text,
   Box,
+  Flex,
   Badge,
   Spinner,
   Center,
@@ -24,6 +25,8 @@ import {
   useColorMode,
   Alert,
   AlertIcon,
+  Tooltip,
+  IconButton,
 } from "@chakra-ui/react";
 import {
   FaUser,
@@ -36,7 +39,10 @@ import {
   FaUserCog,
   FaUndoAlt,
   FaChevronRight,
+  FaCopy,
+  FaCheck,
 } from "react-icons/fa";
+import { useAppToast } from "components/feedback";
 import { getWithdrawalDetails } from "api/wallet";
 import PayoutStatusBadge from "./PayoutStatusBadge";
 import FinancialBreakdown from "./FinancialBreakdown";
@@ -56,10 +62,12 @@ export default function WithdrawalDetailsDrawer({
 }) {
   const { colorMode } = useColorMode();
   const isDark = colorMode === "dark";
+  const toast = useAppToast();
 
   const [loading, setLoading] = useState(false);
   const [details, setDetails] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [copiedField, setCopiedField] = useState("");
 
   useEffect(() => {
     if (isOpen && withdrawalId) {
@@ -104,6 +112,48 @@ export default function WithdrawalDetailsDrawer({
   // Mask bank account number safely (never expose raw in UI)
   const rawAcc = String(bank?.accountNumber || "").replace(/\s/g, "");
   const maskedAcc = rawAcc ? `****${rawAcc.slice(-4)}` : "Not provided";
+
+  const copyToClipboard = (text, fieldId, label) => {
+    if (!text) return;
+    const clean = String(text).trim();
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(clean);
+    }
+    setCopiedField(fieldId);
+    setTimeout(() => setCopiedField(""), 2000);
+    toast({
+      title: "Copied!",
+      description: `${label || "Value"} copied to clipboard`,
+      status: "info",
+      duration: 2000,
+      isClosable: true,
+    });
+  };
+
+  const handleCopyAllBankDetails = () => {
+    const lines = [];
+    if (bank.accountHolderName || tech.name) lines.push(`Beneficiary Name: ${bank.accountHolderName || tech.name}`);
+    if (bank.bankName) lines.push(`Bank Name: ${bank.bankName}`);
+    if (rawAcc) lines.push(`Account Number: ${rawAcc}`);
+    if (bank.ifscCode) lines.push(`IFSC Code: ${bank.ifscCode}`);
+    if (bank.branchName) lines.push(`Branch: ${bank.branchName}`);
+    if (bank.upiId) lines.push(`UPI ID: ${bank.upiId}`);
+
+    if (lines.length === 0) return;
+    const text = lines.join("\n");
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(text);
+    }
+    setCopiedField("all");
+    setTimeout(() => setCopiedField(""), 2000);
+    toast({
+      title: "All Bank Details Copied!",
+      description: "Beneficiary details copied to clipboard in transfer format.",
+      status: "success",
+      duration: 2500,
+      isClosable: true,
+    });
+  };
 
   return (
     <Drawer isOpen={isOpen} placement="right" size="xl" onClose={onClose}>
@@ -301,40 +351,119 @@ export default function WithdrawalDetailsDrawer({
               <Box
                 p={4}
                 borderRadius="14px"
-                bg={isDark ? "gray.800" : "gray.50"}
+                bg={isDark ? "gray.800" : "blue.50"}
                 border="1px solid"
-                borderColor={isDark ? "gray.700" : "gray.200"}
+                borderColor={isDark ? "gray.700" : "blue.200"}
               >
-                <HStack justify="space-between" mb={2}>
+                <Flex justify="space-between" align="center" mb={2.5}>
                   <HStack spacing={2}>
                     <Icon as={FaUniversity} color="blue.500" />
-                    <Text fontSize="xs" fontWeight="700">Bank Destination (Masked)</Text>
+                    <Text fontSize="xs" fontWeight="700">Bank Settlement Destination</Text>
+                    <Badge colorScheme={bank.bankVerified ? "green" : "orange"} fontSize="2xs">
+                      {bank.bankVerified ? "KYC VERIFIED" : "VERIFICATION PENDING"}
+                    </Badge>
                   </HStack>
-                  <Badge colorScheme={bank.bankVerified ? "green" : "orange"} fontSize="2xs">
-                    {bank.bankVerified ? "KYC VERIFIED" : "VERIFICATION PENDING"}
-                  </Badge>
-                </HStack>
-                <VStack spacing={1.5} align="stretch" fontSize="xs">
+                  {(rawAcc || bank.upiId) && (
+                    <Button
+                      size="2xs"
+                      colorScheme={copiedField === "all" ? "green" : "blue"}
+                      variant="solid"
+                      leftIcon={<Icon as={copiedField === "all" ? FaCheck : FaCopy} boxSize={2.5} />}
+                      onClick={handleCopyAllBankDetails}
+                    >
+                      {copiedField === "all" ? "Copied All" : "Copy All"}
+                    </Button>
+                  )}
+                </Flex>
+                <VStack spacing={2} align="stretch" fontSize="xs">
                   <HStack justify="space-between">
                     <Text color="gray.500">Account Holder:</Text>
-                    <Text fontWeight="600">{bank.accountHolderName || "N/A"}</Text>
+                    <HStack spacing={1}>
+                      <Text fontWeight="600">{bank.accountHolderName || tech.name || "N/A"}</Text>
+                      {(bank.accountHolderName || tech.name) && (
+                        <Tooltip label="Copy Name">
+                          <IconButton
+                            size="2xs"
+                            icon={<Icon as={copiedField === "name" ? FaCheck : FaCopy} boxSize={2.5} />}
+                            variant="ghost"
+                            colorScheme={copiedField === "name" ? "green" : "blue"}
+                            onClick={() => copyToClipboard(bank.accountHolderName || tech.name, "name", "Account Holder")}
+                            aria-label="Copy Account Holder"
+                          />
+                        </Tooltip>
+                      )}
+                    </HStack>
                   </HStack>
                   <HStack justify="space-between">
                     <Text color="gray.500">Bank Name:</Text>
-                    <Text fontWeight="600">{bank.bankName || "N/A"}</Text>
+                    <HStack spacing={1}>
+                      <Text fontWeight="600">{bank.bankName || "N/A"}</Text>
+                      {bank.bankName && (
+                        <Tooltip label="Copy Bank Name">
+                          <IconButton
+                            size="2xs"
+                            icon={<Icon as={copiedField === "bank" ? FaCheck : FaCopy} boxSize={2.5} />}
+                            variant="ghost"
+                            colorScheme={copiedField === "bank" ? "green" : "blue"}
+                            onClick={() => copyToClipboard(bank.bankName, "bank", "Bank Name")}
+                            aria-label="Copy Bank Name"
+                          />
+                        </Tooltip>
+                      )}
+                    </HStack>
                   </HStack>
                   <HStack justify="space-between">
                     <Text color="gray.500">Account Number:</Text>
-                    <Text fontWeight="700" fontFamily="mono">{maskedAcc}</Text>
+                    <HStack spacing={1}>
+                      <Text fontWeight="700" fontFamily="mono">{maskedAcc}</Text>
+                      {rawAcc && (
+                        <Tooltip label="Copy Full Account Number">
+                          <IconButton
+                            size="2xs"
+                            icon={<Icon as={copiedField === "account" ? FaCheck : FaCopy} boxSize={2.5} />}
+                            variant="ghost"
+                            colorScheme={copiedField === "account" ? "green" : "blue"}
+                            onClick={() => copyToClipboard(rawAcc, "account", "Account Number")}
+                            aria-label="Copy Account Number"
+                          />
+                        </Tooltip>
+                      )}
+                    </HStack>
                   </HStack>
                   <HStack justify="space-between">
                     <Text color="gray.500">IFSC Code:</Text>
-                    <Text fontWeight="700" fontFamily="mono">{bank.ifscCode || "N/A"}</Text>
+                    <HStack spacing={1}>
+                      <Text fontWeight="700" fontFamily="mono">{bank.ifscCode || "N/A"}</Text>
+                      {bank.ifscCode && (
+                        <Tooltip label="Copy IFSC Code">
+                          <IconButton
+                            size="2xs"
+                            icon={<Icon as={copiedField === "ifsc" ? FaCheck : FaCopy} boxSize={2.5} />}
+                            variant="ghost"
+                            colorScheme={copiedField === "ifsc" ? "green" : "blue"}
+                            onClick={() => copyToClipboard(bank.ifscCode, "ifsc", "IFSC Code")}
+                            aria-label="Copy IFSC Code"
+                          />
+                        </Tooltip>
+                      )}
+                    </HStack>
                   </HStack>
                   {bank.upiId && (
                     <HStack justify="space-between">
                       <Text color="gray.500">UPI ID:</Text>
-                      <Text fontWeight="600" fontFamily="mono">{bank.upiId}</Text>
+                      <HStack spacing={1}>
+                        <Text fontWeight="600" fontFamily="mono" color="purple.500">{bank.upiId}</Text>
+                        <Tooltip label="Copy UPI ID">
+                          <IconButton
+                            size="2xs"
+                            icon={<Icon as={copiedField === "upi" ? FaCheck : FaCopy} boxSize={2.5} />}
+                            variant="ghost"
+                            colorScheme={copiedField === "upi" ? "green" : "purple"}
+                            onClick={() => copyToClipboard(bank.upiId, "upi", "UPI ID")}
+                            aria-label="Copy UPI ID"
+                          />
+                        </Tooltip>
+                      </HStack>
                     </HStack>
                   )}
                 </VStack>

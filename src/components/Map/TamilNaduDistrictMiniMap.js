@@ -1,13 +1,9 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Flex, HStack, Text } from "@chakra-ui/react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import {
-  TAMIL_NADU_DISTRICTS,
-  findTnDistrictForRecord,
-  generateCircularGeoJSON,
-  getTnDistrictBoundary,
-} from "../../data/tamilNaduLocations";
+import { findTnDistrictForRecord } from "../../data/tamilNaduLocations";
+import { getCachedDistrictOverlay, loadDistrictOverlay } from "./districtOverlayStore";
 
 const TN_BOUNDS = [
   [7.95, 76.15],
@@ -16,23 +12,6 @@ const TN_BOUNDS = [
 
 const isRecordActive = (record) =>
   !!record && record.active !== false && record.isActive !== false;
-
-const buildFeatures = () =>
-  TAMIL_NADU_DISTRICTS.map((district) => {
-    const boundary =
-      getTnDistrictBoundary(district.name) ||
-      generateCircularGeoJSON(
-        district.center?.[0] ?? district.lat,
-        district.center?.[1] ?? district.lng,
-        12,
-        24
-      );
-    return {
-      type: "Feature",
-      properties: { name: district.name, code: district.code },
-      geometry: boundary,
-    };
-  });
 
 export default function TamilNaduDistrictMiniMap({
   districts = [],
@@ -50,7 +29,19 @@ export default function TamilNaduDistrictMiniMap({
     onSelectRef.current = onSelectDistrict;
   }, [onSelectDistrict]);
 
-  const features = useMemo(buildFeatures, []);
+  const [features, setFeatures] = useState(() => getCachedDistrictOverlay() || []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadDistrictOverlay()
+      .then((loaded) => {
+        if (!cancelled) setFeatures(loaded);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const configuredByTn = useMemo(() => {
     const byTn = {};
@@ -136,6 +127,8 @@ export default function TamilNaduDistrictMiniMap({
         fillOpacity: 0.25,
       };
     };
+
+    if (!features.length) return;
 
     const layer = L.geoJSON({ type: "FeatureCollection", features }, {
       style: styleFor,

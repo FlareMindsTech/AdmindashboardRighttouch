@@ -146,7 +146,10 @@ const mutationThunk = (type, fn) =>
   createAsyncThunk(type, async (arg, { rejectWithValue }) => {
     try {
       const result = await fn(arg);
-      return { arg, result };
+      if (result && result.error) {
+        return rejectWithValue(result.error);
+      }
+      return { arg, result: result?.data !== undefined ? result.data : result };
     } catch (err) {
       return rejectWithValue(err?.message || "Request failed");
     }

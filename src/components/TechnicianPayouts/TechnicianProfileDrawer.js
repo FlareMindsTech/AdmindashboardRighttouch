@@ -44,6 +44,7 @@ import {
   FaEnvelope,
   FaReceipt,
   FaHistory,
+  FaPaperPlane,
 } from "react-icons/fa";
 import { getTechnicianWalletOverview } from "api/wallet";
 import { formatInr } from "./FinancialBreakdown";
@@ -130,8 +131,14 @@ export default function TechnicianProfileDrawer({
   // Balances
   const availablePaise = wallet.availableBalancePaise ?? (wallet.availableBalance ? wallet.availableBalance * 100 : 0);
   const reservedPaise = wallet.reservedBalancePaise ?? (wallet.reservedBalance ? wallet.reservedBalance * 100 : 0);
-  const maintenancePaise = eligibility.minimumMaintenancePaise ?? 10000; // ₹100 default
-  const availableToWithdrawPaise = Math.max(0, availablePaise - maintenancePaise);
+  const maintenancePaise = Math.max(
+    0,
+    overview?.maintenanceFloorPaise ?? eligibility.minimumMaintenancePaise ?? 0
+  );
+  const availableToWithdrawPaise = Math.max(
+    0,
+    overview?.maxWithdrawablePaise ?? availablePaise - maintenancePaise
+  );
   const totalEarnedPaise = wallet.totalEarnedPaise ?? (wallet.totalEarned ? wallet.totalEarned * 100 : 0);
   const totalWithdrawnPaise = wallet.totalWithdrawnPaise ?? (wallet.totalWithdrawn ? wallet.totalWithdrawn * 100 : 0);
 
@@ -530,7 +537,20 @@ export default function TechnicianProfileDrawer({
             </Button>
 
             <HStack spacing={2}>
-              {/* Send Direct Payout */}
+              {onOpenSendMoney && (
+                <Button
+                  size="sm"
+                  colorScheme="teal"
+                  leftIcon={<Icon as={FaPaperPlane} />}
+                  isDisabled={isPayoutFrozen}
+                  onClick={() => {
+                    onClose();
+                    onOpenSendMoney(tech || { _id: technicianId });
+                  }}
+                >
+                  Pay Directly
+                </Button>
+              )}
               <Button size="sm" variant="ghost" onClick={onClose}>
                 Close Drawer
               </Button>

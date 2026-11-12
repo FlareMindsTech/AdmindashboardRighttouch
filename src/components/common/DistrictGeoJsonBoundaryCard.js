@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAppToast } from "components/feedback";
 import {
   Box,
@@ -31,6 +31,11 @@ import {
   computePlusCode,
   getSubzonesByDistrict,
 } from "../../data/tamilNaduLocations";
+import {
+  findOverlayFeature,
+  getCachedDistrictOverlay,
+  loadDistrictOverlay,
+} from "../Map/districtOverlayStore";
 
 const BRAND = "#008080";
 
@@ -106,6 +111,23 @@ export default function DistrictGeoJsonBoundaryCard({
 }) {
   const toast = useAppToast();
   const [showRawJson, setShowRawJson] = useState(false);
+  const [overlayFeatures, setOverlayFeatures] = useState(
+    () => getCachedDistrictOverlay() || []
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!overlayFeatures.length) {
+      loadDistrictOverlay()
+        .then((loaded) => {
+          if (!cancelled) setOverlayFeatures(loaded);
+        })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [overlayFeatures.length]);
 
   // 1. Resolve canonical Tamil Nadu district metadata
   const tnDistrict = useMemo(() => {
@@ -130,10 +152,11 @@ export default function DistrictGeoJsonBoundaryCard({
       }
     }
     if (tnDistrict) {
-      return getTnDistrictBoundary(tnDistrict.name);
+      const feature = findOverlayFeature(overlayFeatures, tnDistrict.name);
+      return feature?.geometry || getTnDistrictBoundary(tnDistrict.name);
     }
     return null;
-  }, [polygonCoordinates, tnDistrict]);
+  }, [polygonCoordinates, tnDistrict, overlayFeatures]);
 
   // 3. Compute SVG vector path
   const svgData = useMemo(() => {
@@ -185,7 +208,8 @@ export default function DistrictGeoJsonBoundaryCard({
   // Re-link official SOI boundary
   const handleResetToOfficialBoundary = () => {
     if (!tnDistrict) return;
-    const official = getTnDistrictBoundary(tnDistrict.name);
+    const feature = findOverlayFeature(overlayFeatures, tnDistrict.name);
+    const official = feature?.geometry || getTnDistrictBoundary(tnDistrict.name);
     if (official && onPolygonChange) {
       onPolygonChange(JSON.stringify(official, null, 2));
       toast({

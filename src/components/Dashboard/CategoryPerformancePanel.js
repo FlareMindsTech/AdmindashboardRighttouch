@@ -74,6 +74,7 @@ export default function CategoryPerformancePanel({
   analytics,
   totalRevenue = 0,
   revenue: revenueOverride,
+  successPayments: successPaymentsOverride,
   catalog,
 }) {
   const isDark = false;
@@ -83,10 +84,15 @@ export default function CategoryPerformancePanel({
     : palette.accentTextLight;
 
   const derivedRevenue = Number(analytics?.revenue) || 0;
+  const successPayments =
+    successPaymentsOverride !== undefined && successPaymentsOverride !== null
+      ? Number(successPaymentsOverride) || 0
+      : Number(analytics?.successPayments) || 0;
   const revenue =
-    Number(revenueOverride) > 0 ? Number(revenueOverride) : derivedRevenue;
+    successPayments > 0 && Number(revenueOverride) > 0
+      ? Number(revenueOverride)
+      : derivedRevenue;
   const totalBookings = Number(analytics?.totalBookings) || 0;
-  const successPayments = Number(analytics?.successPayments) || 0;
   const categories = Array.isArray(analytics?.categoryPerformance)
     ? analytics.categoryPerformance
     : [];

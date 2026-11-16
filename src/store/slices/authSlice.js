@@ -19,7 +19,7 @@ import {
 } from "views/utils/axiosInstance";
 
 const API_BASE_URL = (
-  process.env.REACT_APP_API_BASE_URL || "http://13.206.118.180:7372"
+  process.env.REACT_APP_API_BASE_URL || "https://api.righttouchservice.com"
 )
   .replace(/\/api\/?$/, "")
   .replace(/\/+$/, "");

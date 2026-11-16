@@ -41,6 +41,21 @@ const firstPositive = (...values) => {
   return 0;
 };
 
+const SUCCESS_PAYMENT_STATUSES = new Set(["paid", "success", "captured"]);
+
+const hasPaymentStatus = (row) => {
+  const value = row?.paymentStatus ?? row?.payment_status;
+  return value !== undefined && value !== null && String(value).trim() !== "";
+};
+
+const isSuccessfulSale = (row) => {
+  if (!row) return false;
+  const status = String(
+    row.paymentStatus ?? row.payment_status ?? ""
+  ).toLowerCase();
+  return SUCCESS_PAYMENT_STATUSES.has(status);
+};
+
 const toAmount = (row) => {
   if (!row) return 0;
   const paise = row.totalAmountPaise ?? row.financialSnapshot?.totalAmountPaise;
@@ -63,6 +78,11 @@ const toAmount = (row) => {
     row.value
   );
 };
+
+// Unpaid rows in the sales report still carry an order amount, so they must
+// never be aggregated as collected revenue.
+const toPaidAmount = (row) =>
+  hasPaymentStatus(row) && !isSuccessfulSale(row) ? 0 : toAmount(row);
 
 const toBookings = (row) =>
   firstFinite(
@@ -105,19 +125,25 @@ export const normalizeFinanceSummary = (body) => {
 export const normalizeProductSummary = (body) => {
   const source = unwrapBody(body) || {};
   return {
+    // `totalSalesTurnover` is gross order value (paid + unpaid); only the
+    // collected amount may be presented as revenue.
     revenue: firstPositive(
+      source.totalPaid,
+      source.collectedRevenue,
+      source.paidAmount,
+      source.totalPaidAmount,
       source.revenue,
-      source.totalRevenue,
-      source.totalSalesTurnover,
-      source.totalPaid
+      source.totalRevenue
     ),
     bookings: firstFinite(
+      source.totalBookingsCount,
       source.bookings,
       source.totalBookings,
       source.orders,
       source.totalOrders
     ),
     products: firstFinite(
+      source.totalProductsCount,
       source.products,
       source.totalProducts,
       source.activeProducts
@@ -125,7 +151,9 @@ export const normalizeProductSummary = (body) => {
     paidCount: firstFinite(
       source.paidCount,
       source.paidOrders,
-      source.successPayments
+      source.successPayments,
+      source.paidOrdersCount,
+      source.paidBookingsCount
     ),
   };
 };
@@ -245,7 +273,7 @@ export const normalizeMonthlySeries = (body, months = []) => {
     const key = monthKeyFromRow(row, fallbackYear);
     if (!key) return;
     const current = bucketMap.get(key) || { revenue: 0, bookings: 0 };
-    current.revenue += toAmount(row);
+    current.revenue += toPaidAmount(row);
     current.bookings += toBookings(row);
     bucketMap.set(key, current);
   });
@@ -300,9 +328,14 @@ export const fetchDashboardInsights = async (force = false) => {
   const finance = normalizeFinanceSummary(financeBody);
   const product = normalizeProductSummary(productBody);
   const salesRows = normalizeSalesRows(salesBody);
+  const paidSalesRows = salesRows.filter(isSuccessfulSale);
 
-  if (product.revenue <= 0 && salesRows.length > 0) {
-    product.revenue = salesRows.reduce(
+  if (!product.paidCount && paidSalesRows.length > 0) {
+    product.paidCount = paidSalesRows.length;
+  }
+
+  if (product.revenue <= 0 && paidSalesRows.length > 0) {
+    product.revenue = paidSalesRows.reduce(
       (sum, row) => sum + toAmount(row),
       0
     );

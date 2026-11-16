@@ -195,10 +195,20 @@ export default function Dashboard() {
   const kpiData = useMemo(() => {
     const apiServiceRevenue = insights?.finance?.revenue || 0;
     const apiProductRevenue = insights?.product?.revenue || 0;
-    const serviceRevenue =
-      apiServiceRevenue > 0 ? apiServiceRevenue : serviceAnalytics.revenue;
-    const productRevenue =
-      apiProductRevenue > 0 ? apiProductRevenue : productAnalytics.revenue;
+    const apiServicePaid = insights?.finance?.paidCount || 0;
+    const apiProductPaid = insights?.product?.paidCount || 0;
+
+    // Revenue and paid counts must come from the same source, otherwise a
+    // pending order can be shown as revenue with zero successful payments.
+    const useApiServiceNumbers = apiServiceRevenue > 0 && apiServicePaid > 0;
+    const useApiProductNumbers = apiProductRevenue > 0 && apiProductPaid > 0;
+
+    const serviceRevenue = useApiServiceNumbers
+      ? apiServiceRevenue
+      : serviceAnalytics.revenue;
+    const productRevenue = useApiProductNumbers
+      ? apiProductRevenue
+      : productAnalytics.revenue;
 
     const apiServiceBookings = insights?.finance?.bookings || 0;
     const apiProductBookings = insights?.product?.bookings || 0;
@@ -211,16 +221,12 @@ export default function Dashboard() {
         ? apiProductBookings
         : productAnalytics.totalBookings;
 
-    const apiServicePaid = insights?.finance?.paidCount || 0;
-    const apiProductPaid = insights?.product?.paidCount || 0;
-    const servicePaid =
-      apiServicePaid > 0
-        ? apiServicePaid
-        : serviceAnalytics.successPayments;
-    const productPaid =
-      apiProductPaid > 0
-        ? apiProductPaid
-        : productAnalytics.successPayments;
+    const servicePaid = useApiServiceNumbers
+      ? apiServicePaid
+      : serviceAnalytics.successPayments;
+    const productPaid = useApiProductNumbers
+      ? apiProductPaid
+      : productAnalytics.successPayments;
 
     const totalBookings = serviceBookingsCount + productBookingsCount;
     const successPayments = servicePaid + productPaid;
@@ -240,6 +246,8 @@ export default function Dashboard() {
       productBookings: productBookingsCount,
       serviceRevenue,
       productRevenue,
+      servicePaid,
+      productPaid,
       serviceCategories: serviceAnalytics.categoryCount,
       activeProducts:
         insights?.product?.products > 0
@@ -426,6 +434,7 @@ export default function Dashboard() {
               icon={FaTools}
               analytics={serviceAnalytics}
               revenue={kpiData.serviceRevenue}
+              successPayments={kpiData.servicePaid}
               totalRevenue={kpiData.totalRevenue}
             />
             <CategoryPerformancePanel
@@ -435,6 +444,7 @@ export default function Dashboard() {
               icon={FaBoxOpen}
               analytics={productAnalytics}
               revenue={kpiData.productRevenue}
+              successPayments={kpiData.productPaid}
               totalRevenue={kpiData.totalRevenue}
               catalog={catalog}
             />

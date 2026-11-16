@@ -46,7 +46,7 @@ const FinanceTracking = lazy(() => import("views/Dashboard/FinanceTracking.js"))
 const TechnicianPayouts = lazy(() => import("views/Dashboard/TechnicianPayouts.js"));
 const ProductManagement = lazy(() => import("views/Dashboard/ProductManagement"));
 const SkillRequests = lazy(() => import("views/Dashboard/SkillRequests.js"));
-const DispatchOps = lazy(() => import("views/Dashboard/DispatchOps.js"));
+const SchedulingOps = lazy(() => import("views/Dashboard/SchedulingOps.js"));
 const RewardsManagement = lazy(() => import("views/Dashboard/RewardsManagement.js"));
 const ProductInsights = lazy(() => import("views/Dashboard/ProductInsights.js"));
 const AdminPayments = lazy(() => import("views/Dashboard/AdminPayments.js"));
@@ -119,6 +119,13 @@ const dashRoutes = [
     layout: "/owner",
   },
   {
+    path: "/scheduling-ops",
+    name: "Scheduling & Dispatch",
+    icon: <FaTruckFast color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <SchedulingOps />,
+    layout: "/owner",
+  },
+  {
     path: "/finance-tracking",
     name: "Finance Tracking",
     icon: <FaChartLine color={ICON_COLOR} size={ICON_SIZE} />,
@@ -172,7 +179,7 @@ const dashRoutes = [
     path: "/dispatch-ops",
     name: "Dispatch Ops",
     icon: <FaTruckFast color={ICON_COLOR} size={ICON_SIZE} />,
-    element: <DispatchOps />,
+    element: <SchedulingOps />,
     layout: "/owner",
     hideInSidebar: true,
   },

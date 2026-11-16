@@ -545,7 +545,7 @@ const getImageUrl = (urlData) => {
   if (typeof url !== "string") return "";
   if (url.startsWith("http") || url.startsWith("data:")) return url;
   const origin = (
-    process.env.REACT_APP_API_BASE_URL || "http://13.206.118.180:7372"
+    process.env.REACT_APP_API_BASE_URL || "https://api.righttouchservice.com"
   )
     .replace(/\/api\/?$/, "")
     .replace(/\/+$/, "");

@@ -1,8 +1,12 @@
 // src/views/Dashboard/AdminPayments.js — Admin Payments & Customer Refunds
-// Covers:
-// 1. Customer Product & Booking Online/Offline Payments
-// 2. Customer Refunds Desk (Manual External Transfers & Cancellations)
-// 3. Booking Payment Audit & Lookup
+// Modernized Executive Payments & Refunds Management Desk
+// Features:
+// 1. Executive KPI summary cards with 1-click drilldown
+// 2. Tab 1: Product & Customer Payments (Multi-filter, CSV export, Payment 360° Drawer, 1-click copy)
+// 3. Tab 2: Customer Refunds Desk (Step-by-step workflow guide, UTR tracking, settlement modal, CSV export)
+// 4. Tab 3: Booking Payment Audit & Lookup (Instant audit card, sample chips, status controls, safe deletion)
+// 5. Visual "Record Offline Payment" modal with payment mode selector pills
+// 6. Dynamic dark/light mode via useColorMode()
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
@@ -39,6 +43,12 @@ import {
   Textarea,
   InputGroup,
   InputLeftElement,
+  InputRightElement,
+  useColorMode,
+  Alert,
+  AlertIcon,
+  Tag,
+  TagLabel,
 } from "@chakra-ui/react";
 import Card from "components/Card/Card.js";
 import CardHeader from "components/Card/CardHeader.js";
@@ -47,16 +57,29 @@ import ConfirmActionModal from "components/common/ConfirmActionModal";
 import AppModal from "components/common/AppModal";
 import ErrorState from "components/feedback/ErrorState";
 import { useAppToast } from "components/feedback";
+import PaymentDetailsDrawer from "components/AdminPayments/PaymentDetailsDrawer";
+
 import {
   FaSearch,
   FaCopy,
+  FaCheck,
   FaFileInvoiceDollar,
   FaMoneyBillWave,
   FaCheckCircle,
+  FaTimesCircle,
   FaUndoAlt,
   FaClock,
   FaPlus,
   FaExchangeAlt,
+  FaDownload,
+  FaEye,
+  FaTrash,
+  FaUniversity,
+  FaCreditCard,
+  FaQrcode,
+  FaShieldAlt,
+  FaTimes,
+  FaReceipt,
 } from "react-icons/fa";
 import { MdRefresh } from "react-icons/md";
 
@@ -80,8 +103,10 @@ const BRAND = "#008080";
 
 export default function AdminPayments() {
   const toast = useAppToast();
-  const isDark = false;
+  const { colorMode } = useColorMode();
+  const isDark = colorMode === "dark";
 
+  // Navigation state
   const [activeMainTab, setActiveMainTab] = useState(0);
 
   // Tab 1: Product / Incoming Payments State
@@ -89,11 +114,16 @@ export default function AdminPayments() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
+  const [modeFilter, setModeFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
   const [loadError, setLoadError] = useState(null);
+
+  // Inspector Drawer State
+  const [selectedPaymentForDrawer, setSelectedPaymentForDrawer] = useState(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Record Offline Payment Modal State
   const [offlineOpen, setOfflineOpen] = useState(false);
@@ -101,6 +131,7 @@ export default function AdminPayments() {
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState("cash");
   const [reference, setReference] = useState("");
+  const [offlineNote, setOfflineNote] = useState("");
   const [savingOffline, setSavingOffline] = useState(false);
 
   // Tab 2: Customer Refunds Desk State
@@ -133,13 +164,21 @@ export default function AdminPayments() {
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
+  // Copied indicator state
+  const [copiedKey, setCopiedKey] = useState("");
+
   // Helpers
-  const copyToClipboard = (text, label = "Item") => {
+  const copyToClipboard = (text, key, label = "Item") => {
     if (!text) return;
-    navigator.clipboard?.writeText(String(text));
+    const clean = String(text).trim();
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(clean);
+    }
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(""), 2000);
     toast({
       title: "Copied to clipboard",
-      description: `${label}: ${text}`,
+      description: `${label}: ${clean}`,
       status: "info",
       duration: 2000,
       isClosable: true,
@@ -147,6 +186,7 @@ export default function AdminPayments() {
   };
 
   const idOf = (r) => r?._id || r?.paymentId || r?.id || "—";
+
   const inrFromPaise = (value) =>
     `₹${(Number(value || 0) / 100).toLocaleString("en-IN", {
       minimumFractionDigits: 2,
@@ -169,50 +209,56 @@ export default function AdminPayments() {
     }
   }, []);
 
-  const loadList = useCallback(async (isMounted = { current: true }) => {
-    if (isMounted.current) setLoading(true);
-    const params = { page, limit };
-    if (statusFilter) params.status = statusFilter;
+  const loadList = useCallback(
+    async (isMounted = { current: true }) => {
+      if (isMounted.current) setLoading(true);
+      const params = { page, limit };
+      if (statusFilter) params.status = statusFilter;
 
-    const { data, error } = await listProductPayments(params);
-    if (!isMounted.current) return;
-    setLoading(false);
-    if (error) {
-      setLoadError(error);
-      toast.error(error, { title: "Failed to load payments", duration: 3000, isClosable: true });
-      return;
-    }
-    setLoadError(null);
-    const result = data?.result ?? data?.data ?? data ?? {};
-    const list = Array.isArray(result) ? result : result?.payments ?? [];
-    setRows(list);
-    setPagination(
-      result?.pagination ?? {
-        total: list.length,
-        page,
-        limit,
-        totalPages: Math.max(1, Math.ceil(list.length / limit)),
+      const { data, error } = await listProductPayments(params);
+      if (!isMounted.current) return;
+      setLoading(false);
+      if (error) {
+        setLoadError(error);
+        toast.error(error, { title: "Failed to load payments", duration: 3000, isClosable: true });
+        return;
       }
-    );
-  }, [limit, page, statusFilter, toast]);
+      setLoadError(null);
+      const result = data?.result ?? data?.data ?? data ?? {};
+      const list = Array.isArray(result) ? result : result?.payments ?? [];
+      setRows(list);
+      setPagination(
+        result?.pagination ?? {
+          total: list.length,
+          page,
+          limit,
+          totalPages: Math.max(1, Math.ceil(list.length / limit)),
+        }
+      );
+    },
+    [limit, page, statusFilter, toast]
+  );
 
   // 2. Load Customer Refunds
-  const loadRefunds = useCallback(async (isMounted = { current: true }) => {
-    if (isMounted.current) setRefundsLoading(true);
-    const params = {};
-    if (refundStatusFilter) params.status = refundStatusFilter;
+  const loadRefunds = useCallback(
+    async (isMounted = { current: true }) => {
+      if (isMounted.current) setRefundsLoading(true);
+      const params = {};
+      if (refundStatusFilter) params.status = refundStatusFilter;
 
-    const { data, error } = await listRefunds(params);
-    if (!isMounted.current) return;
-    setRefundsLoading(false);
-    if (error) {
-      toast.error(error, { title: "Failed to load customer refunds", duration: 3000, isClosable: true });
-      return;
-    }
-    const result = data?.result ?? data?.data ?? data ?? {};
-    const list = Array.isArray(result) ? result : result?.refunds ?? [];
-    setRefunds(list);
-  }, [refundStatusFilter, toast]);
+      const { data, error } = await listRefunds(params);
+      if (!isMounted.current) return;
+      setRefundsLoading(false);
+      if (error) {
+        toast.error(error, { title: "Failed to load customer refunds", duration: 3000, isClosable: true });
+        return;
+      }
+      const result = data?.result ?? data?.data ?? data ?? {};
+      const list = Array.isArray(result) ? result : result?.refunds ?? [];
+      setRefunds(list);
+    },
+    [refundStatusFilter, toast]
+  );
 
   useEffect(() => {
     const isMounted = { current: true };
@@ -227,15 +273,22 @@ export default function AdminPayments() {
   // Handle Offline Payment Submission
   const submitOffline = async () => {
     if (!bookingId || !amount) {
-      toast({ title: "Booking and amount are required", status: "warning", duration: 2500, isClosable: true });
+      toast({ title: "Booking ID and Amount are required", status: "warning", duration: 2500, isClosable: true });
       return;
     }
+    const cleanAmount = Number(amount);
+    if (isNaN(cleanAmount) || cleanAmount <= 0) {
+      toast({ title: "Please enter a valid positive amount", status: "warning", duration: 2500, isClosable: true });
+      return;
+    }
+
     setSavingOffline(true);
     const payload = {
       bookingId: bookingId.trim(),
-      amount: Number(amount),
+      amount: cleanAmount,
       paymentMode: mode,
-      transactionReference: reference.trim(),
+      transactionReference: reference.trim() || undefined,
+      note: offlineNote.trim() || undefined,
     };
 
     const { error } = bookingId
@@ -252,6 +305,7 @@ export default function AdminPayments() {
     setBookingId("");
     setAmount("");
     setReference("");
+    setOfflineNote("");
     loadList();
     loadSummary();
   };
@@ -268,16 +322,30 @@ export default function AdminPayments() {
     toast({ title: `Marked payment as ${status}`, status: "success", duration: 2000, isClosable: true });
     loadList();
     loadSummary();
+    if (selectedPaymentForDrawer && (selectedPaymentForDrawer._id === id || selectedPaymentForDrawer.id === id)) {
+      setSelectedPaymentForDrawer((prev) => ({ ...prev, status }));
+    }
+    if (bookingPayment && (bookingPayment._id === id || bookingPayment.id === id)) {
+      setBookingPayment((prev) => ({ ...prev, status }));
+    }
+  };
+
+  // Open Drawer for a Payment
+  const handleOpenDrawer = (payment) => {
+    setSelectedPaymentForDrawer(payment);
+    setIsDrawerOpen(true);
   };
 
   // Booking Payment Lookup
-  const searchBookingPayment = async () => {
-    if (!lookupBookingId.trim()) {
+  const searchBookingPayment = async (targetId) => {
+    const queryId = (targetId || lookupBookingId || "").trim();
+    if (!queryId) {
       toast({ title: "Please enter a Booking ID", status: "warning", duration: 2500, isClosable: true });
       return;
     }
+    setLookupBookingId(queryId);
     setLookupLoading(true);
-    const { data, error } = await getPaymentByBookingAdmin(lookupBookingId.trim());
+    const { data, error } = await getPaymentByBookingAdmin(queryId);
     setLookupLoading(false);
     if (error) {
       toast.error(error, { title: "Booking payment lookup failed", duration: 3000, isClosable: true });
@@ -337,7 +405,7 @@ export default function AdminPayments() {
       manualReference: manualReference.trim(),
       manualMethod,
       paidAt: paidAt || new Date().toISOString(),
-      note: processNote.trim(),
+      note: processNote.trim() || undefined,
     };
 
     const { error } = await markRefundProcessed(refId, payload);
@@ -392,17 +460,53 @@ export default function AdminPayments() {
     loadRefunds();
   };
 
-  // Filtered Payments List (by search)
+  // Filtered Payments List (by search and mode)
   const filteredPayments = useMemo(() => {
-    if (!searchQuery.trim()) return rows;
-    const q = searchQuery.toLowerCase().trim();
     return rows.filter((r) => {
+      // Mode filter
+      if (modeFilter) {
+        const m = String(r?.mode || r?.provider || r?.paymentMode || r?.gateway || "ONLINE").toLowerCase();
+        if (modeFilter === "offline") {
+          const isOffline = m.includes("cash") || m.includes("offline") || m.includes("manual");
+          if (!isOffline) return false;
+        } else if (modeFilter === "online") {
+          const isOnline = !m.includes("cash") && !m.includes("offline") && !m.includes("manual");
+          if (!isOnline) return false;
+        } else if (!m.includes(modeFilter.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Search query filter
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase().trim();
       const pid = String(idOf(r)).toLowerCase();
-      const bid = String(r?.bookingId?._id || r?.bookingId || "").toLowerCase();
-      const ref = String(r?.transactionReference || r?.paymentId || "").toLowerCase();
-      return pid.includes(q) || bid.includes(q) || ref.includes(q);
+      const bid = String(r?.bookingId?._id || r?.bookingId?.bookingId || r?.bookingId || r?.orderId || "").toLowerCase();
+      const ref = String(r?.transactionReference || r?.razorpayPaymentId || r?.reference || "").toLowerCase();
+      const cName = String(
+        r?.customerName ||
+          r?.bookingId?.customerName ||
+          r?.bookingId?.customer?.name ||
+          r?.user?.name ||
+          ""
+      ).toLowerCase();
+      const cPhone = String(
+        r?.customerPhone ||
+          r?.bookingId?.customerPhone ||
+          r?.bookingId?.customer?.phone ||
+          r?.user?.phone ||
+          ""
+      ).toLowerCase();
+
+      return (
+        pid.includes(q) ||
+        bid.includes(q) ||
+        ref.includes(q) ||
+        cName.includes(q) ||
+        cPhone.includes(q)
+      );
     });
-  }, [rows, searchQuery]);
+  }, [rows, searchQuery, modeFilter]);
 
   // Filtered Refunds List (by search)
   const filteredRefunds = useMemo(() => {
@@ -412,8 +516,15 @@ export default function AdminPayments() {
       const rid = String(rf._id || rf.id || "").toLowerCase();
       const bid = String(rf.bookingId || rf.booking?._id || "").toLowerCase();
       const uRef = String(rf.manualReference || rf.reference || "").toLowerCase();
-      const cName = String(rf.customerName || rf.user?.name || "").toLowerCase();
-      return rid.includes(q) || bid.includes(q) || uRef.includes(q) || cName.includes(q);
+      const cName = String(rf.customerName || rf.user?.name || rf.customer?.name || "").toLowerCase();
+      const cPhone = String(rf.customerPhone || rf.user?.phone || rf.customer?.phone || "").toLowerCase();
+      return (
+        rid.includes(q) ||
+        bid.includes(q) ||
+        uRef.includes(q) ||
+        cName.includes(q) ||
+        cPhone.includes(q)
+      );
     });
   }, [refunds, refundSearch]);
 
@@ -431,6 +542,104 @@ export default function AdminPayments() {
       .reduce((sum, r) => sum + (r.amountPaise || (r.amount ? r.amount * 100 : 0)), 0);
   }, [refunds]);
 
+  // Recent sample booking IDs for 1-click audit chips
+  const sampleBookingIds = useMemo(() => {
+    const set = new Set();
+    rows.forEach((r) => {
+      const bid = r?.bookingId?._id || r?.bookingId?.bookingId || r?.bookingId;
+      if (bid && typeof bid === "string" && bid.length >= 8) {
+        set.add(bid);
+      }
+    });
+    return Array.from(set).slice(0, 4);
+  }, [rows]);
+
+  // CSV Export: Payments
+  const handleExportPaymentsCsv = () => {
+    if (!filteredPayments.length) {
+      toast({ title: "No payments to export", status: "info", duration: 2000, isClosable: true });
+      return;
+    }
+    const headers = [
+      "Payment ID",
+      "Booking ID",
+      "Customer Name",
+      "Customer Phone",
+      "Amount (INR)",
+      "Status",
+      "Payment Mode",
+      "Reference / UTR",
+      "Date",
+    ];
+
+    const csvRows = filteredPayments.map((r) => {
+      const pId = idOf(r);
+      const bId = r?.bookingId?._id || r?.bookingId?.bookingId || r?.bookingId || r?.orderId || "";
+      const name = r?.customerName || r?.bookingId?.customerName || r?.user?.name || "";
+      const phone = r?.customerPhone || r?.bookingId?.customerPhone || r?.user?.phone || "";
+      const amount = (paymentAmountPaise(r) / 100).toFixed(2);
+      const status = r?.status || "pending";
+      const mode = r?.mode || r?.provider || r?.paymentMode || r?.gateway || "ONLINE";
+      const ref = r?.transactionReference || r?.razorpayPaymentId || r?.reference || "";
+      const date = r?.createdAt ? new Date(r.createdAt).toISOString() : "";
+      return [pId, bId, `"${name}"`, `"${phone}"`, amount, status, mode, `"${ref}"`, date].join(",");
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...csvRows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `customer_payments_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({ title: "Payments exported to CSV", status: "success", duration: 2500, isClosable: true });
+  };
+
+  // CSV Export: Refunds
+  const handleExportRefundsCsv = () => {
+    if (!filteredRefunds.length) {
+      toast({ title: "No refunds to export", status: "info", duration: 2000, isClosable: true });
+      return;
+    }
+    const headers = [
+      "Refund ID",
+      "Booking ID",
+      "Customer Name",
+      "Amount (INR)",
+      "Status",
+      "Payment Method",
+      "External UTR / Reference",
+      "Created Date",
+      "Settled Date",
+    ];
+
+    const csvRows = filteredRefunds.map((rf) => {
+      const rid = rf._id || rf.id || "";
+      const bid = rf.bookingId || rf.booking?._id || "";
+      const name = rf.customerName || rf.user?.name || rf.customer?.name || "";
+      const amount = rf.amountPaise ? (rf.amountPaise / 100).toFixed(2) : rf.amount ? Number(rf.amount).toFixed(2) : "0.00";
+      const status = rf.status || "pending_manual";
+      const method = rf.manualMethod || "upi";
+      const utr = rf.manualReference || rf.reference || "";
+      const created = rf.createdAt ? new Date(rf.createdAt).toISOString() : "";
+      const paid = rf.paidAt ? new Date(rf.paidAt).toISOString() : "";
+      return [rid, bid, `"${name}"`, amount, status, method, `"${utr}"`, created, paid].join(",");
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...csvRows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `customer_refunds_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({ title: "Refunds exported to CSV", status: "success", duration: 2500, isClosable: true });
+  };
+
   return (
     <Box pt={{ base: "120px", md: "80px" }} px={{ base: "16px", md: "24px" }} pb="40px">
       <VStack spacing={6} align="stretch">
@@ -442,11 +651,27 @@ export default function AdminPayments() {
           gap={4}
         >
           <Box>
-            <Heading as="h1" size="lg" fontWeight="900" letterSpacing="-0.5px" color={isDark ? "white" : "gray.850"}>
-              Admin Payments & Customer Refunds
-            </Heading>
+            <HStack spacing={2.5}>
+              <Box
+                p={2}
+                bg={isDark ? "teal.900" : "teal.50"}
+                color="teal.500"
+                borderRadius="10px"
+              >
+                <Icon as={FaFileInvoiceDollar} boxSize={5} />
+              </Box>
+              <Heading
+                as="h1"
+                size="lg"
+                fontWeight="900"
+                letterSpacing="-0.5px"
+                color={isDark ? "white" : "gray.850"}
+              >
+                Admin Payments & Refunds Desk
+              </Heading>
+            </HStack>
             <Text fontSize="sm" color="gray.500" mt={1}>
-              Track customer revenue, record offline payments, and process manual customer refunds with external UTRs.
+              Supervise platform revenue inflows, record offline cash/UPI receipts, and settle manual customer refunds.
             </Text>
           </Box>
 
@@ -455,15 +680,29 @@ export default function AdminPayments() {
               size="sm"
               bg="linear-gradient(135deg, #008080 0%, #006666 100%)"
               color="white"
-              _hover={{ bg: "linear-gradient(135deg, #006666 0%, #004d4d 100%)" }}
+              _hover={{ bg: "linear-gradient(135deg, #006666 0%, #004d4d 100%)", transform: "translateY(-1px)" }}
+              _active={{ transform: "translateY(0)" }}
               leftIcon={<FaPlus size={12} />}
               fontWeight="800"
               borderRadius="10px"
+              boxShadow="0 4px 12px rgba(0, 128, 128, 0.2)"
               px={4}
               onClick={() => setOfflineOpen(true)}
             >
-              + Record Offline Payment
+              Record Offline Payment
             </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              borderRadius="10px"
+              fontWeight="700"
+              leftIcon={<FaDownload size={12} />}
+              onClick={activeMainTab === 1 ? handleExportRefundsCsv : handleExportPaymentsCsv}
+            >
+              Export CSV
+            </Button>
+
             <Button
               size="sm"
               variant="outline"
@@ -483,109 +722,209 @@ export default function AdminPayments() {
 
         {/* ================= 2. KPI SUMMARY CARDS ================= */}
         <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={4}>
+          {/* Card 1: Revenue */}
           <Box
-            p={4}
+            p={5}
             bg={isDark ? "gray.850" : "white"}
             borderRadius="16px"
             border="1px solid"
             borderColor={isDark ? "gray.700" : "gray.200"}
             boxShadow="sm"
+            cursor="pointer"
+            transition="all 0.2s ease"
+            _hover={{
+              transform: "translateY(-2px)",
+              boxShadow: "md",
+              borderColor: "teal.400",
+            }}
+            onClick={() => {
+              setActiveMainTab(0);
+              setStatusFilter("success");
+            }}
           >
             <HStack justify="space-between" align="flex-start" mb={2}>
-              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
-                Collected Revenue
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" letterSpacing="0.5px">
+                Total Collected Revenue
               </Text>
-              <Box p={2} bg="green.50" color="green.600" borderRadius="8px">
+              <Box p={2.5} bg="green.50" color="green.600" borderRadius="10px">
                 <Icon as={FaMoneyBillWave} boxSize={4} />
               </Box>
             </HStack>
             <Text fontSize="2xl" fontWeight="900" color={isDark ? "white" : "gray.850"}>
               {inrFromPaise(summary?.paidPaise)}
             </Text>
-            <Text fontSize="2xs" color="green.600" fontWeight="600" mt={1}>
-              ● Confirmed customer inflows
-            </Text>
+            <HStack spacing={1.5} mt={2}>
+              <Badge colorScheme="green" variant="subtle" fontSize="3xs" px={2} borderRadius="full">
+                ● Captured Inflows
+              </Badge>
+              <Text fontSize="2xs" color="gray.500">
+                Verified customer receipts
+              </Text>
+            </HStack>
           </Box>
 
+          {/* Card 2: Pending Refunds (Action Needed) */}
           <Box
-            p={4}
+            p={5}
             bg={isDark ? "gray.850" : "white"}
             borderRadius="16px"
             border="1px solid"
-            borderColor={isDark ? "gray.700" : "gray.200"}
-            boxShadow="sm"
+            borderColor={
+              pendingRefundsCount > 0
+                ? isDark
+                  ? "orange.600"
+                  : "orange.300"
+                : isDark
+                ? "gray.700"
+                : "gray.200"
+            }
+            boxShadow={pendingRefundsCount > 0 ? "0 4px 14px rgba(237, 137, 54, 0.15)" : "sm"}
+            cursor="pointer"
+            transition="all 0.2s ease"
+            _hover={{
+              transform: "translateY(-2px)",
+              boxShadow: "md",
+              borderColor: "orange.400",
+            }}
+            onClick={() => {
+              setActiveMainTab(1);
+              setRefundStatusFilter("pending_manual");
+            }}
           >
             <HStack justify="space-between" align="flex-start" mb={2}>
-              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" letterSpacing="0.5px">
                 Pending Manual Refunds
               </Text>
-              <Box p={2} bg="orange.50" color="orange.600" borderRadius="8px">
+              <Box
+                p={2.5}
+                bg={pendingRefundsCount > 0 ? "orange.100" : "gray.100"}
+                color={pendingRefundsCount > 0 ? "orange.600" : "gray.500"}
+                borderRadius="10px"
+              >
                 <Icon as={FaClock} boxSize={4} />
               </Box>
             </HStack>
-            <Text fontSize="2xl" fontWeight="900" color="orange.500">
+            <Text
+              fontSize="2xl"
+              fontWeight="900"
+              color={pendingRefundsCount > 0 ? "orange.500" : isDark ? "white" : "gray.850"}
+            >
               {pendingRefundsCount}
             </Text>
-            <Text fontSize="2xs" color="orange.600" fontWeight="600" mt={1}>
-              Awaiting external transfer & UTR
-            </Text>
+            <HStack spacing={1.5} mt={2}>
+              {pendingRefundsCount > 0 ? (
+                <Badge colorScheme="orange" variant="solid" fontSize="3xs" px={2} borderRadius="full">
+                  Action Required
+                </Badge>
+              ) : (
+                <Badge colorScheme="green" variant="subtle" fontSize="3xs" px={2} borderRadius="full">
+                  All Settled
+                </Badge>
+              )}
+              <Text fontSize="2xs" color="gray.500">
+                Awaiting transfer & UTR
+              </Text>
+            </HStack>
           </Box>
 
+          {/* Card 3: Processed Refunds */}
           <Box
-            p={4}
+            p={5}
             bg={isDark ? "gray.850" : "white"}
             borderRadius="16px"
             border="1px solid"
             borderColor={isDark ? "gray.700" : "gray.200"}
             boxShadow="sm"
+            cursor="pointer"
+            transition="all 0.2s ease"
+            _hover={{
+              transform: "translateY(-2px)",
+              boxShadow: "md",
+              borderColor: "teal.400",
+            }}
+            onClick={() => {
+              setActiveMainTab(1);
+              setRefundStatusFilter("processed");
+            }}
           >
             <HStack justify="space-between" align="flex-start" mb={2}>
-              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
-                Processed Refunds
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" letterSpacing="0.5px">
+                Settled Refunds Total
               </Text>
-              <Box p={2} bg="teal.50" color="teal.600" borderRadius="8px">
+              <Box p={2.5} bg="teal.50" color="teal.600" borderRadius="10px">
                 <Icon as={FaUndoAlt} boxSize={4} />
               </Box>
             </HStack>
             <Text fontSize="2xl" fontWeight="900" color={isDark ? "white" : "gray.850"}>
               {inrFromPaise(processedRefundsTotalPaise)}
             </Text>
-            <Text fontSize="2xs" color="gray.500" fontWeight="600" mt={1}>
-              Total external transfers settled
-            </Text>
+            <HStack spacing={1.5} mt={2}>
+              <Badge colorScheme="teal" variant="subtle" fontSize="3xs" px={2} borderRadius="full">
+                Reconciled
+              </Badge>
+              <Text fontSize="2xs" color="gray.500">
+                Processed via bank/UPI
+              </Text>
+            </HStack>
           </Box>
 
+          {/* Card 4: Total Payment Records */}
           <Box
-            p={4}
+            p={5}
             bg={isDark ? "gray.850" : "white"}
             borderRadius="16px"
             border="1px solid"
             borderColor={isDark ? "gray.700" : "gray.200"}
             boxShadow="sm"
+            cursor="pointer"
+            transition="all 0.2s ease"
+            _hover={{
+              transform: "translateY(-2px)",
+              boxShadow: "md",
+              borderColor: "blue.400",
+            }}
+            onClick={() => {
+              setActiveMainTab(0);
+              setStatusFilter("");
+              setModeFilter("");
+              setSearchQuery("");
+            }}
           >
             <HStack justify="space-between" align="flex-start" mb={2}>
-              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase">
-                Total Payment Records
+              <Text fontSize="xs" fontWeight="700" color="gray.500" textTransform="uppercase" letterSpacing="0.5px">
+                Total Payment Transactions
               </Text>
-              <Box p={2} bg="blue.50" color="blue.600" borderRadius="8px">
-                <Icon as={FaFileInvoiceDollar} boxSize={4} />
+              <Box p={2.5} bg="blue.50" color="blue.600" borderRadius="10px">
+                <Icon as={FaReceipt} boxSize={4} />
               </Box>
             </HStack>
             <Text fontSize="2xl" fontWeight="900" color={isDark ? "white" : "gray.850"}>
               {pagination.total || rows.length}
             </Text>
-            <Text fontSize="2xs" color="gray.500" fontWeight="600" mt={1}>
-              Online & recorded offline
-            </Text>
+            <HStack spacing={1.5} mt={2}>
+              <Badge colorScheme="blue" variant="subtle" fontSize="3xs" px={2} borderRadius="full">
+                Ledger Records
+              </Badge>
+              <Text fontSize="2xs" color="gray.500">
+                Online & recorded offline
+              </Text>
+            </HStack>
           </Box>
         </SimpleGrid>
 
         {/* ================= 3. MAIN NAVIGATION TABS ================= */}
-        <Card bg={isDark ? "gray.850" : "white"} borderRadius="16px" border="1px solid" borderColor={isDark ? "gray.700" : "gray.200"}>
+        <Card
+          bg={isDark ? "gray.850" : "white"}
+          borderRadius="16px"
+          border="1px solid"
+          borderColor={isDark ? "gray.700" : "gray.200"}
+          boxShadow="sm"
+          overflow="hidden"
+        >
           <CardHeader pb={0} pt={4} px={6}>
             <Tabs index={activeMainTab} onChange={setActiveMainTab} colorScheme="teal" variant="enclosed">
-              <TabList borderBottom="2px solid" borderColor="gray.100">
-                <Tab fontWeight="700" fontSize="sm">
+              <TabList borderBottom="2px solid" borderColor={isDark ? "gray.700" : "gray.100"}>
+                <Tab fontWeight="700" fontSize="sm" py={3} px={5}>
                   <HStack spacing={2}>
                     <Icon as={FaMoneyBillWave} />
                     <Text>Product & Customer Payments</Text>
@@ -595,7 +934,7 @@ export default function AdminPayments() {
                   </HStack>
                 </Tab>
 
-                <Tab fontWeight="700" fontSize="sm">
+                <Tab fontWeight="700" fontSize="sm" py={3} px={5}>
                   <HStack spacing={2}>
                     <Icon as={FaUndoAlt} />
                     <Text>Customer Refunds Desk</Text>
@@ -611,7 +950,7 @@ export default function AdminPayments() {
                   </HStack>
                 </Tab>
 
-                <Tab fontWeight="700" fontSize="sm">
+                <Tab fontWeight="700" fontSize="sm" py={3} px={5}>
                   <HStack spacing={2}>
                     <Icon as={FaSearch} />
                     <Text>Booking Payment Audit & Lookup</Text>
@@ -621,26 +960,49 @@ export default function AdminPayments() {
 
               <TabPanels>
                 {/* ================= TAB 1: PRODUCT & CUSTOMER PAYMENTS ================= */}
-                <TabPanel px={0} py={4}>
-                  <Flex justify="space-between" align="center" mb={4} wrap="wrap" gap={3}>
-                    <HStack spacing={3} flexWrap="wrap">
-                      <InputGroup size="sm" maxW="260px">
+                <TabPanel px={0} py={5}>
+                  {/* Filter Toolbar */}
+                  <Flex
+                    direction={{ base: "column", lg: "row" }}
+                    justify="space-between"
+                    align={{ base: "stretch", lg: "center" }}
+                    mb={4}
+                    gap={3}
+                  >
+                    <HStack spacing={2.5} flexWrap="wrap" flex="1">
+                      {/* Search */}
+                      <InputGroup size="sm" maxW={{ base: "100%", md: "280px" }}>
                         <InputLeftElement pointerEvents="none">
                           <Icon as={FaSearch} color="gray.400" />
                         </InputLeftElement>
                         <Input
-                          placeholder="Search payment / booking ID..."
+                          placeholder="Search payment ID, booking, customer, UTR..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           borderRadius="8px"
                         />
+                        {searchQuery && (
+                          <InputRightElement>
+                            <IconButton
+                              size="xs"
+                              icon={<FaTimes size={10} />}
+                              variant="ghost"
+                              onClick={() => setSearchQuery("")}
+                              aria-label="Clear search"
+                            />
+                          </InputRightElement>
+                        )}
                       </InputGroup>
 
+                      {/* Status Selector */}
                       <Select
-                        maxW="180px"
+                        maxW={{ base: "100%", md: "170px" }}
                         size="sm"
                         value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
+                        onChange={(e) => {
+                          setStatusFilter(e.target.value);
+                          setPage(1);
+                        }}
                         borderRadius="8px"
                       >
                         <option value="">All Statuses</option>
@@ -650,7 +1012,24 @@ export default function AdminPayments() {
                         <option value="authorized">Authorized</option>
                       </Select>
 
-                      {(searchQuery || statusFilter) && (
+                      {/* Payment Mode Selector */}
+                      <Select
+                        maxW={{ base: "100%", md: "170px" }}
+                        size="sm"
+                        value={modeFilter}
+                        onChange={(e) => setModeFilter(e.target.value)}
+                        borderRadius="8px"
+                      >
+                        <option value="">All Payment Modes</option>
+                        <option value="cash">Cash / Offline</option>
+                        <option value="upi">Direct UPI</option>
+                        <option value="bank">Bank Transfer</option>
+                        <option value="card">Card POS</option>
+                        <option value="online">Online / Gateway</option>
+                      </Select>
+
+                      {/* Clear Button */}
+                      {(searchQuery || statusFilter || modeFilter) && (
                         <Button
                           size="xs"
                           variant="ghost"
@@ -658,6 +1037,7 @@ export default function AdminPayments() {
                           onClick={() => {
                             setSearchQuery("");
                             setStatusFilter("");
+                            setModeFilter("");
                           }}
                         >
                           Clear Filters
@@ -665,34 +1045,142 @@ export default function AdminPayments() {
                       )}
                     </HStack>
 
-                    <Button size="sm" variant="ghost" onClick={() => { loadSummary(); loadList(); }}>
-                      Refresh List
-                    </Button>
+                    <HStack spacing={2}>
+                      <Text fontSize="2xs" color="gray.500" fontWeight="600">
+                        Showing {filteredPayments.length} of {pagination.total || rows.length} records
+                      </Text>
+                    </HStack>
                   </Flex>
 
+                  {/* Preset quick filter tags */}
+                  <HStack spacing={2} mb={4} flexWrap="wrap">
+                    <Text fontSize="2xs" fontWeight="700" color="gray.500" textTransform="uppercase">
+                      Quick View:
+                    </Text>
+                    <Tag
+                      size="sm"
+                      borderRadius="full"
+                      variant={!statusFilter && !modeFilter ? "solid" : "subtle"}
+                      colorScheme="teal"
+                      cursor="pointer"
+                      onClick={() => {
+                        setStatusFilter("");
+                        setModeFilter("");
+                      }}
+                    >
+                      <TagLabel>All</TagLabel>
+                    </Tag>
+                    <Tag
+                      size="sm"
+                      borderRadius="full"
+                      variant={statusFilter === "success" ? "solid" : "subtle"}
+                      colorScheme="green"
+                      cursor="pointer"
+                      onClick={() => setStatusFilter("success")}
+                    >
+                      <TagLabel>✓ Success Only</TagLabel>
+                    </Tag>
+                    <Tag
+                      size="sm"
+                      borderRadius="full"
+                      variant={statusFilter === "pending" ? "solid" : "subtle"}
+                      colorScheme="yellow"
+                      cursor="pointer"
+                      onClick={() => setStatusFilter("pending")}
+                    >
+                      <TagLabel>● Pending</TagLabel>
+                    </Tag>
+                    <Tag
+                      size="sm"
+                      borderRadius="full"
+                      variant={statusFilter === "failed" ? "solid" : "subtle"}
+                      colorScheme="red"
+                      cursor="pointer"
+                      onClick={() => setStatusFilter("failed")}
+                    >
+                      <TagLabel>✕ Failed</TagLabel>
+                    </Tag>
+                    <Tag
+                      size="sm"
+                      borderRadius="full"
+                      variant={modeFilter === "cash" ? "solid" : "subtle"}
+                      colorScheme="orange"
+                      cursor="pointer"
+                      onClick={() => setModeFilter("cash")}
+                    >
+                      <TagLabel>Cash / Offline</TagLabel>
+                    </Tag>
+                  </HStack>
+
+                  {/* Table or States */}
                   {loadError ? (
                     <ErrorState
                       compact
                       error={loadError}
                       title="Could not load payments"
-                      onRetry={() => { loadSummary(); loadList(); }}
+                      onRetry={() => {
+                        loadSummary();
+                        loadList();
+                      }}
                     />
                   ) : loading ? (
-                    <Center py={12}><Spinner color={BRAND} /></Center>
+                    <Center py={16}>
+                      <VStack spacing={3}>
+                        <Spinner size="lg" color={BRAND} thickness="3px" />
+                        <Text fontSize="xs" color="gray.500">
+                          Fetching payment transactions...
+                        </Text>
+                      </VStack>
+                    </Center>
                   ) : filteredPayments.length === 0 ? (
-                    <Center py={12}><Text color="gray.500" fontSize="sm">No customer payment records found.</Text></Center>
+                    <Center py={16}>
+                      <VStack spacing={3}>
+                        <Box p={4} bg={isDark ? "gray.800" : "gray.50"} borderRadius="full" color="gray.400">
+                          <Icon as={FaFileInvoiceDollar} boxSize={8} />
+                        </Box>
+                        <Text fontWeight="700" color="gray.600">
+                          No payment records found
+                        </Text>
+                        <Text fontSize="xs" color="gray.500" maxW="360px" textAlign="center">
+                          {searchQuery || statusFilter || modeFilter
+                            ? "Try adjusting your search criteria or clearing filters."
+                            : "No incoming customer payment transactions recorded yet."}
+                        </Text>
+                        {(searchQuery || statusFilter || modeFilter) && (
+                          <Button
+                            size="xs"
+                            colorScheme="teal"
+                            variant="outline"
+                            onClick={() => {
+                              setSearchQuery("");
+                              setStatusFilter("");
+                              setModeFilter("");
+                            }}
+                          >
+                            Reset All Filters
+                          </Button>
+                        )}
+                      </VStack>
+                    </Center>
                   ) : (
-                    <Box overflowX="auto" borderRadius="12px" border="1px solid" borderColor={isDark ? "gray.700" : "gray.200"}>
+                    <Box
+                      overflowX="auto"
+                      borderRadius="12px"
+                      border="1px solid"
+                      borderColor={isDark ? "gray.700" : "gray.200"}
+                    >
                       <Table variant="simple" size="sm">
                         <Thead bg={isDark ? "gray.800" : "gray.50"}>
                           <Tr>
-                            <Th py={3}>PAYMENT ID</Th>
-                            <Th py={3}>BOOKING / ORDER</Th>
-                            <Th py={3}>AMOUNT</Th>
-                            <Th py={3}>METHOD / GATEWAY</Th>
-                            <Th py={3}>STATUS</Th>
-                            <Th py={3}>DATE & TIME</Th>
-                            <Th py={3} textAlign="center">ACTIONS</Th>
+                            <Th py={3.5}>PAYMENT ID & TIME</Th>
+                            <Th py={3.5}>CUSTOMER & BOOKING</Th>
+                            <Th py={3.5}>AMOUNT</Th>
+                            <Th py={3.5}>PAYMENT MODE</Th>
+                            <Th py={3.5}>STATUS</Th>
+                            <Th py={3.5}>REFERENCE / UTR</Th>
+                            <Th py={3.5} textAlign="center">
+                              ACTIONS
+                            </Th>
                           </Tr>
                         </Thead>
                         <Tbody>
@@ -700,99 +1188,248 @@ export default function AdminPayments() {
                             const status = String(r?.status || "pending").toLowerCase();
                             const isSuccess = status === "success" || status === "captured";
                             const isPending = status === "pending" || status === "created";
+                            const isFailed = status === "failed";
                             const amountPaise = paymentAmountPaise(r);
                             const paymentIdStr = idOf(r);
-                            const linkedBooking = r?.bookingId?._id || r?.bookingId || "—";
+                            const linkedBooking =
+                              r?.bookingId?._id ||
+                              r?.bookingId?.bookingId ||
+                              r?.bookingId ||
+                              r?.orderId ||
+                              "—";
+                            const modeStr = (
+                              r?.mode ||
+                              r?.provider ||
+                              r?.paymentMode ||
+                              r?.gateway ||
+                              "ONLINE"
+                            ).toUpperCase();
+
+                            const customerName =
+                              r?.customerName ||
+                              r?.bookingId?.customerName ||
+                              r?.bookingId?.customer?.name ||
+                              r?.user?.name ||
+                              "";
+
+                            const customerPhone =
+                              r?.customerPhone ||
+                              r?.bookingId?.customerPhone ||
+                              r?.bookingId?.customer?.phone ||
+                              r?.user?.phone ||
+                              "";
+
+                            const ref =
+                              r?.transactionReference ||
+                              r?.razorpayPaymentId ||
+                              r?.reference ||
+                              "";
 
                             return (
-                              <Tr key={paymentIdStr + i} _hover={{ bg: isDark ? "gray.800" : "gray.50" }}>
-                                <Td fontSize="xs" fontFamily="mono" fontWeight="700" color="teal.600">
-                                  <HStack spacing={1}>
-                                    <Text>{paymentIdStr.length > 12 ? `${paymentIdStr.slice(0, 12)}...` : paymentIdStr}</Text>
-                                    <Tooltip label="Copy ID">
-                                      <IconButton
-                                        icon={<FaCopy size={10} />}
-                                        size="2xs"
-                                        variant="ghost"
-                                        onClick={() => copyToClipboard(paymentIdStr, "Payment ID")}
-                                      />
-                                    </Tooltip>
-                                  </HStack>
+                              <Tr
+                                key={paymentIdStr + i}
+                                _hover={{ bg: isDark ? "gray.800" : "gray.50", cursor: "pointer" }}
+                                onClick={() => handleOpenDrawer(r)}
+                              >
+                                {/* 1. Payment ID & Date */}
+                                <Td py={3}>
+                                  <VStack align="flex-start" spacing={0.5}>
+                                    <HStack spacing={1}>
+                                      <Text
+                                        fontSize="xs"
+                                        fontFamily="mono"
+                                        fontWeight="700"
+                                        color={isDark ? "teal.300" : "teal.700"}
+                                      >
+                                        #{paymentIdStr.slice(-8)}
+                                      </Text>
+                                      <Tooltip label="Copy Payment ID" hasArrow>
+                                        <IconButton
+                                          icon={
+                                            <Icon
+                                              as={copiedKey === `pid_${paymentIdStr}` ? FaCheck : FaCopy}
+                                              boxSize={2.5}
+                                            />
+                                          }
+                                          size="2xs"
+                                          variant="ghost"
+                                          colorScheme={copiedKey === `pid_${paymentIdStr}` ? "green" : "gray"}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            copyToClipboard(paymentIdStr, `pid_${paymentIdStr}`, "Payment ID");
+                                          }}
+                                          aria-label="Copy Payment ID"
+                                        />
+                                      </Tooltip>
+                                    </HStack>
+                                    <Text fontSize="2xs" color="gray.400">
+                                      {r?.createdAt
+                                        ? new Date(r.createdAt).toLocaleString("en-IN", {
+                                            day: "2-digit",
+                                            month: "short",
+                                            year: "numeric",
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })
+                                        : "—"}
+                                    </Text>
+                                  </VStack>
                                 </Td>
 
-                                <Td fontSize="xs" fontFamily="mono">
-                                  {linkedBooking !== "—" ? (
-                                    <Badge
-                                      cursor="pointer"
-                                      variant="subtle"
-                                      colorScheme="blue"
-                                      fontSize="2xs"
-                                      onClick={() => {
-                                        setLookupBookingId(String(linkedBooking));
-                                        setActiveMainTab(2);
-                                        searchBookingPayment();
-                                      }}
-                                    >
-                                      #{String(linkedBooking).slice(-8)}
-                                    </Badge>
-                                  ) : (
-                                    <Text color="gray.400">—</Text>
-                                  )}
+                                {/* 2. Customer & Linked Booking */}
+                                <Td py={3}>
+                                  <VStack align="flex-start" spacing={0.5}>
+                                    {customerName ? (
+                                      <Text fontSize="xs" fontWeight="700">
+                                        {customerName}
+                                      </Text>
+                                    ) : (
+                                      <Text fontSize="xs" color="gray.400">
+                                        Customer
+                                      </Text>
+                                    )}
+
+                                    {linkedBooking !== "—" ? (
+                                      <Badge
+                                        variant="subtle"
+                                        colorScheme="blue"
+                                        fontSize="3xs"
+                                        borderRadius="md"
+                                        cursor="pointer"
+                                        _hover={{ bg: "blue.100" }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setLookupBookingId(String(linkedBooking));
+                                          setActiveMainTab(2);
+                                          searchBookingPayment(String(linkedBooking));
+                                        }}
+                                      >
+                                        Booking #{String(linkedBooking).slice(-8)}
+                                      </Badge>
+                                    ) : (
+                                      customerPhone && (
+                                        <Text fontSize="3xs" color="gray.500" fontFamily="mono">
+                                          {customerPhone}
+                                        </Text>
+                                      )
+                                    )}
+                                  </VStack>
                                 </Td>
 
-                                <Td fontWeight="800" fontSize="xs">
+                                {/* 3. Amount */}
+                                <Td py={3} fontWeight="800" fontSize="sm" color={isSuccess ? "green.600" : undefined}>
                                   {inrFromPaise(amountPaise)}
                                 </Td>
 
-                                <Td fontSize="xs">
-                                  <Badge variant="outline" colorScheme="gray" fontSize="3xs" textTransform="uppercase">
-                                    {r?.mode || r?.provider || r?.paymentMode || r?.gateway || "ONLINE"}
+                                {/* 4. Mode */}
+                                <Td py={3}>
+                                  <Badge
+                                    variant="subtle"
+                                    colorScheme={
+                                      modeStr.includes("CASH")
+                                        ? "orange"
+                                        : modeStr.includes("UPI")
+                                        ? "purple"
+                                        : modeStr.includes("BANK")
+                                        ? "cyan"
+                                        : modeStr.includes("CARD")
+                                        ? "blue"
+                                        : "teal"
+                                    }
+                                    fontSize="3xs"
+                                    px={2}
+                                    py={0.5}
+                                    borderRadius="md"
+                                  >
+                                    {modeStr}
                                   </Badge>
                                 </Td>
 
-                                <Td>
+                                {/* 5. Status */}
+                                <Td py={3}>
                                   <Badge
                                     colorScheme={isSuccess ? "green" : isPending ? "yellow" : "red"}
                                     fontSize="2xs"
-                                    px={2}
+                                    px={2.5}
                                     py={0.5}
                                     borderRadius="full"
+                                    textTransform="uppercase"
                                   >
+                                    {isSuccess ? "✓ " : isPending ? "● " : "✕ "}
                                     {status}
                                   </Badge>
                                 </Td>
 
-                                <Td fontSize="xs" color="gray.500">
-                                  {r?.createdAt ? new Date(r.createdAt).toLocaleString("en-IN", {
-                                    day: "2-digit",
-                                    month: "short",
-                                    year: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  }) : "—"}
+                                {/* 6. Reference / UTR */}
+                                <Td py={3} fontSize="xs" fontFamily="mono">
+                                  {ref ? (
+                                    <HStack spacing={1}>
+                                      <Text fontSize="2xs" color={isDark ? "gray.300" : "gray.600"}>
+                                        {ref.length > 14 ? `${ref.slice(0, 14)}...` : ref}
+                                      </Text>
+                                      <Tooltip label="Copy Reference" hasArrow>
+                                        <IconButton
+                                          icon={
+                                            <Icon
+                                              as={copiedKey === `ref_${ref}` ? FaCheck : FaCopy}
+                                              boxSize={2.5}
+                                            />
+                                          }
+                                          size="2xs"
+                                          variant="ghost"
+                                          colorScheme={copiedKey === `ref_${ref}` ? "green" : "gray"}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            copyToClipboard(ref, `ref_${ref}`, "Reference");
+                                          }}
+                                          aria-label="Copy Reference"
+                                        />
+                                      </Tooltip>
+                                    </HStack>
+                                  ) : (
+                                    <Text fontSize="2xs" color="gray.400">
+                                      —
+                                    </Text>
+                                  )}
                                 </Td>
 
-                                <Td textAlign="center">
+                                {/* 7. Actions */}
+                                <Td py={3} textAlign="center" onClick={(e) => e.stopPropagation()}>
                                   <HStack spacing={1.5} justify="center">
+                                    <Button
+                                      size="xs"
+                                      variant="outline"
+                                      colorScheme="teal"
+                                      leftIcon={<FaEye size={10} />}
+                                      onClick={() => handleOpenDrawer(r)}
+                                    >
+                                      Inspect
+                                    </Button>
+
                                     {!isSuccess && (
-                                      <Button
-                                        size="xs"
-                                        variant="outline"
-                                        colorScheme="green"
-                                        onClick={() => markStatus(r, "success")}
-                                      >
-                                        Mark Success
-                                      </Button>
+                                      <Tooltip label="Mark as Captured" hasArrow>
+                                        <Button
+                                          size="xs"
+                                          variant="ghost"
+                                          colorScheme="green"
+                                          onClick={() => markStatus(r, "success")}
+                                        >
+                                          Confirm
+                                        </Button>
+                                      </Tooltip>
                                     )}
-                                    {status !== "failed" && (
-                                      <Button
-                                        size="xs"
-                                        variant="outline"
-                                        colorScheme="red"
-                                        onClick={() => markStatus(r, "failed")}
-                                      >
-                                        Mark Failed
-                                      </Button>
+
+                                    {!isFailed && status !== "success" && (
+                                      <Tooltip label="Mark as Failed" hasArrow>
+                                        <Button
+                                          size="xs"
+                                          variant="ghost"
+                                          colorScheme="red"
+                                          onClick={() => markStatus(r, "failed")}
+                                        >
+                                          Fail
+                                        </Button>
+                                      </Tooltip>
                                     )}
                                   </HStack>
                                 </Td>
@@ -804,8 +1441,9 @@ export default function AdminPayments() {
                     </Box>
                   )}
 
+                  {/* Pagination */}
                   {filteredPayments.length > 0 && (
-                    <Box mt={3}>
+                    <Box mt={4}>
                       <TablePagination
                         page={pagination.page || page}
                         totalPages={pagination.totalPages || 1}
@@ -828,47 +1466,85 @@ export default function AdminPayments() {
                 </TabPanel>
 
                 {/* ================= TAB 2: CUSTOMER REFUNDS DESK ================= */}
-                <TabPanel px={0} py={4}>
-                  {/* Visual Process Notice */}
-                  <Box p={3.5} mb={4} bg="teal.50" borderRadius="12px" border="1px solid" borderColor="teal.200">
-                    <Flex align="center" gap={3}>
-                      <Box p={2} bg="teal.100" color="teal.800" borderRadius="8px">
-                        <Icon as={FaExchangeAlt} boxSize={4} />
-                      </Box>
-                      <Box>
-                        <Text fontSize="xs" fontWeight="800" color="teal.900">
-                          Manual Customer Refund Desk Active
-                        </Text>
-                        <Text fontSize="xs" color="teal.800">
-                          Customer refunds are settled via external bank/UPI transfer. Execute the transfer offline, then click <strong>&quot;Mark Transferred&quot;</strong> to record the UTR and declare the CreditNote.
-                        </Text>
-                      </Box>
+                <TabPanel px={0} py={5}>
+                  {/* Workflow Guidance Banner */}
+                  <Box
+                    p={4}
+                    mb={5}
+                    bg={isDark ? "teal.950" : "teal.50"}
+                    borderRadius="14px"
+                    border="1px solid"
+                    borderColor={isDark ? "teal.800" : "teal.200"}
+                  >
+                    <Flex
+                      direction={{ base: "column", md: "row" }}
+                      align={{ base: "flex-start", md: "center" }}
+                      justify="space-between"
+                      gap={3}
+                    >
+                      <HStack spacing={3} align="flex-start">
+                        <Box p={2.5} bg="teal.100" color="teal.800" borderRadius="10px">
+                          <Icon as={FaExchangeAlt} boxSize={5} />
+                        </Box>
+                        <Box>
+                          <Text fontSize="sm" fontWeight="800" color={isDark ? "teal.100" : "teal.900"}>
+                            Manual Customer Refund Execution Desk
+                          </Text>
+                          <Text fontSize="xs" color={isDark ? "teal.200" : "teal.800"} mt={0.5}>
+                            Customer refunds are settled via business UPI or netbanking. Execute the transfer offline, then click{" "}
+                            <strong>&quot;Mark Transferred&quot;</strong> to record the external UTR and declare the refund settled.
+                          </Text>
+                        </Box>
+                      </HStack>
+
+                      {pendingRefundsCount > 0 && (
+                        <Badge colorScheme="orange" variant="solid" px={3} py={1} borderRadius="full" fontSize="xs">
+                          {pendingRefundsCount} Pending Settlement
+                        </Badge>
+                      )}
                     </Flex>
                   </Box>
 
                   {/* Filter Toolbar */}
-                  <Flex justify="space-between" align="center" mb={4} wrap="wrap" gap={3}>
+                  <Flex
+                    direction={{ base: "column", md: "row" }}
+                    justify="space-between"
+                    align={{ base: "stretch", md: "center" }}
+                    mb={4}
+                    gap={3}
+                  >
                     <HStack spacing={3} flexWrap="wrap">
-                      <InputGroup size="sm" maxW="280px">
+                      <InputGroup size="sm" maxW={{ base: "100%", md: "280px" }}>
                         <InputLeftElement pointerEvents="none">
                           <Icon as={FaSearch} color="gray.400" />
                         </InputLeftElement>
                         <Input
-                          placeholder="Search refund ID, booking, UTR..."
+                          placeholder="Search refund ID, booking, customer, UTR..."
                           value={refundSearch}
                           onChange={(e) => setRefundSearch(e.target.value)}
                           borderRadius="8px"
                         />
+                        {refundSearch && (
+                          <InputRightElement>
+                            <IconButton
+                              size="xs"
+                              icon={<FaTimes size={10} />}
+                              variant="ghost"
+                              onClick={() => setRefundSearch("")}
+                              aria-label="Clear search"
+                            />
+                          </InputRightElement>
+                        )}
                       </InputGroup>
 
                       <Select
-                        maxW="200px"
+                        maxW={{ base: "100%", md: "220px" }}
                         size="sm"
                         value={refundStatusFilter}
                         onChange={(e) => setRefundStatusFilter(e.target.value)}
                         borderRadius="8px"
                       >
-                        <option value="">All Statuses</option>
+                        <option value="">All Refund Statuses</option>
                         <option value="pending_manual">Awaiting Transfer (Pending)</option>
                         <option value="processed">Processed (Settled)</option>
                         <option value="cancelled">Cancelled</option>
@@ -894,51 +1570,135 @@ export default function AdminPayments() {
                     </Button>
                   </Flex>
 
+                  {/* Quick Preset Tags for Refunds */}
+                  <HStack spacing={2} mb={4} flexWrap="wrap">
+                    <Text fontSize="2xs" fontWeight="700" color="gray.500" textTransform="uppercase">
+                      Filter:
+                    </Text>
+                    <Tag
+                      size="sm"
+                      borderRadius="full"
+                      variant={!refundStatusFilter ? "solid" : "subtle"}
+                      colorScheme="teal"
+                      cursor="pointer"
+                      onClick={() => setRefundStatusFilter("")}
+                    >
+                      <TagLabel>All Refunds ({refunds.length})</TagLabel>
+                    </Tag>
+                    <Tag
+                      size="sm"
+                      borderRadius="full"
+                      variant={refundStatusFilter === "pending_manual" ? "solid" : "subtle"}
+                      colorScheme="orange"
+                      cursor="pointer"
+                      onClick={() => setRefundStatusFilter("pending_manual")}
+                    >
+                      <TagLabel>● Awaiting Transfer ({pendingRefundsCount})</TagLabel>
+                    </Tag>
+                    <Tag
+                      size="sm"
+                      borderRadius="full"
+                      variant={refundStatusFilter === "processed" ? "solid" : "subtle"}
+                      colorScheme="green"
+                      cursor="pointer"
+                      onClick={() => setRefundStatusFilter("processed")}
+                    >
+                      <TagLabel>✓ Settled</TagLabel>
+                    </Tag>
+                    <Tag
+                      size="sm"
+                      borderRadius="full"
+                      variant={refundStatusFilter === "cancelled" ? "solid" : "subtle"}
+                      colorScheme="red"
+                      cursor="pointer"
+                      onClick={() => setRefundStatusFilter("cancelled")}
+                    >
+                      <TagLabel>✕ Cancelled</TagLabel>
+                    </Tag>
+                  </HStack>
+
+                  {/* Table or States */}
                   {refundsLoading ? (
-                    <Center py={12}><Spinner color={BRAND} /></Center>
+                    <Center py={16}>
+                      <VStack spacing={3}>
+                        <Spinner size="lg" color={BRAND} thickness="3px" />
+                        <Text fontSize="xs" color="gray.500">
+                          Loading customer refund requests...
+                        </Text>
+                      </VStack>
+                    </Center>
                   ) : filteredRefunds.length === 0 ? (
-                    <Center py={12}>
-                      <VStack spacing={2}>
-                        <Icon as={FaCheckCircle} color="gray.300" boxSize={8} />
-                        <Text color="gray.500" fontSize="sm">No customer refunds matching criteria.</Text>
+                    <Center py={16}>
+                      <VStack spacing={3}>
+                        <Box p={4} bg={isDark ? "gray.800" : "gray.50"} borderRadius="full" color="gray.400">
+                          <Icon as={FaUndoAlt} boxSize={8} />
+                        </Box>
+                        <Text fontWeight="700" color="gray.600">
+                          No customer refund records
+                        </Text>
+                        <Text fontSize="xs" color="gray.500" maxW="360px" textAlign="center">
+                          {refundSearch || refundStatusFilter
+                            ? "No refunds match your current filters."
+                            : "There are currently no customer refund records on the platform."}
+                        </Text>
                       </VStack>
                     </Center>
                   ) : (
-                    <Box overflowX="auto" borderRadius="12px" border="1px solid" borderColor={isDark ? "gray.700" : "gray.200"}>
+                    <Box
+                      overflowX="auto"
+                      borderRadius="12px"
+                      border="1px solid"
+                      borderColor={isDark ? "gray.700" : "gray.200"}
+                    >
                       <Table variant="simple" size="sm">
                         <Thead bg={isDark ? "gray.800" : "gray.50"}>
                           <Tr>
-                            <Th py={3}>REFUND ID & DATE</Th>
-                            <Th py={3}>CUSTOMER / BOOKING</Th>
-                            <Th py={3}>REFUND AMOUNT</Th>
-                            <Th py={3}>TRANSFER STATUS</Th>
-                            <Th py={3}>EXTERNAL UTR / REFERENCE</Th>
-                            <Th py={3} textAlign="center">ACTIONS</Th>
+                            <Th py={3.5}>REFUND ID & DATE</Th>
+                            <Th py={3.5}>CUSTOMER & BOOKING</Th>
+                            <Th py={3.5}>REFUND AMOUNT</Th>
+                            <Th py={3.5}>TRANSFER STATUS</Th>
+                            <Th py={3.5}>EXTERNAL UTR / REFERENCE</Th>
+                            <Th py={3.5} textAlign="center">
+                              ACTIONS
+                            </Th>
                           </Tr>
                         </Thead>
                         <Tbody>
                           {filteredRefunds.map((rf, idx) => {
                             const rid = String(rf._id || rf.id || "");
                             const status = String(rf.status || "").toLowerCase();
-                            const isPendingManual = status === "pending_manual" || status === "pending" || status === "requested";
+                            const isPendingManual =
+                              status === "pending_manual" || status === "pending" || status === "requested";
                             const isProcessed = status === "processed";
                             const isCancelled = status === "cancelled";
-                            const amountVal = rf.amountPaise ? inrFromPaise(rf.amountPaise) : rf.amount ? `₹${rf.amount}` : "₹0";
+                            const amountVal = rf.amountPaise
+                              ? inrFromPaise(rf.amountPaise)
+                              : rf.amount
+                              ? `₹${Number(rf.amount).toLocaleString("en-IN")}`
+                              : "₹0";
 
                             return (
                               <Tr key={rid || idx} _hover={{ bg: isDark ? "gray.800" : "gray.50" }}>
+                                {/* Refund ID */}
                                 <Td py={3}>
                                   <VStack align="flex-start" spacing={0.5}>
                                     <HStack spacing={1}>
                                       <Text fontSize="xs" fontWeight="700" fontFamily="mono" color="teal.600">
                                         #{rid.slice(-8)}
                                       </Text>
-                                      <Tooltip label="Copy Refund ID">
+                                      <Tooltip label="Copy Refund ID" hasArrow>
                                         <IconButton
-                                          icon={<FaCopy size={10} />}
+                                          icon={
+                                            <Icon
+                                              as={copiedKey === `rid_${rid}` ? FaCheck : FaCopy}
+                                              boxSize={2.5}
+                                            />
+                                          }
                                           size="2xs"
                                           variant="ghost"
-                                          onClick={() => copyToClipboard(rid, "Refund ID")}
+                                          colorScheme={copiedKey === `rid_${rid}` ? "green" : "gray"}
+                                          onClick={() => copyToClipboard(rid, `rid_${rid}`, "Refund ID")}
+                                          aria-label="Copy Refund ID"
                                         />
                                       </Tooltip>
                                     </HStack>
@@ -948,67 +1708,107 @@ export default function AdminPayments() {
                                   </VStack>
                                 </Td>
 
+                                {/* Customer / Booking */}
                                 <Td py={3}>
                                   <VStack align="flex-start" spacing={0.5}>
                                     <Text fontSize="xs" fontWeight="700">
                                       {rf.customerName || rf.user?.name || rf.customer?.name || "Customer"}
                                     </Text>
                                     {rf.bookingId && (
-                                      <Badge fontSize="3xs" colorScheme="blue">
+                                      <Badge
+                                        fontSize="3xs"
+                                        colorScheme="blue"
+                                        cursor="pointer"
+                                        _hover={{ bg: "blue.100" }}
+                                        onClick={() => {
+                                          setLookupBookingId(String(rf.bookingId));
+                                          setActiveMainTab(2);
+                                          searchBookingPayment(String(rf.bookingId));
+                                        }}
+                                      >
                                         Booking #{String(rf.bookingId).slice(-8)}
                                       </Badge>
                                     )}
                                   </VStack>
                                 </Td>
 
+                                {/* Refund Amount */}
                                 <Td py={3} fontWeight="800" fontSize="sm" color="teal.700">
                                   {amountVal}
                                 </Td>
 
+                                {/* Transfer Status */}
                                 <Td py={3}>
                                   {isPendingManual && (
-                                    <Badge colorScheme="orange" variant="subtle" fontSize="2xs" px={2} py={0.5} borderRadius="full">
+                                    <Badge colorScheme="orange" variant="subtle" fontSize="2xs" px={2.5} py={0.5} borderRadius="full">
                                       ● Awaiting Transfer
                                     </Badge>
                                   )}
                                   {isProcessed && (
-                                    <Badge colorScheme="green" variant="subtle" fontSize="2xs" px={2} py={0.5} borderRadius="full">
-                                      ✓ Transferred
+                                    <Badge colorScheme="green" variant="subtle" fontSize="2xs" px={2.5} py={0.5} borderRadius="full">
+                                      ✓ Settled
                                     </Badge>
                                   )}
                                   {isCancelled && (
-                                    <Badge colorScheme="red" variant="subtle" fontSize="2xs" px={2} py={0.5} borderRadius="full">
+                                    <Badge colorScheme="red" variant="subtle" fontSize="2xs" px={2.5} py={0.5} borderRadius="full">
                                       ✕ Cancelled
                                     </Badge>
                                   )}
                                 </Td>
 
+                                {/* UTR / Reference */}
                                 <Td py={3} fontSize="xs" fontFamily="mono">
                                   {rf.manualReference || rf.reference ? (
-                                    <HStack spacing={1}>
-                                      <Text fontWeight="600" color="green.700">
-                                        {rf.manualReference || rf.reference}
-                                      </Text>
-                                      <Tooltip label="Copy Reference">
-                                        <IconButton
-                                          icon={<FaCopy size={10} />}
-                                          size="2xs"
-                                          variant="ghost"
-                                          onClick={() => copyToClipboard(rf.manualReference || rf.reference, "Reference")}
-                                        />
-                                      </Tooltip>
-                                    </HStack>
+                                    <VStack align="flex-start" spacing={0.5}>
+                                      <HStack spacing={1}>
+                                        <Text fontWeight="700" color="green.700" fontSize="xs">
+                                          {rf.manualReference || rf.reference}
+                                        </Text>
+                                        <Tooltip label="Copy UTR" hasArrow>
+                                          <IconButton
+                                            icon={
+                                              <Icon
+                                                as={copiedKey === `utr_${rid}` ? FaCheck : FaCopy}
+                                                boxSize={2.5}
+                                              />
+                                            }
+                                            size="2xs"
+                                            variant="ghost"
+                                            colorScheme={copiedKey === `utr_${rid}` ? "green" : "gray"}
+                                            onClick={() =>
+                                              copyToClipboard(
+                                                rf.manualReference || rf.reference,
+                                                `utr_${rid}`,
+                                                "UTR"
+                                              )
+                                            }
+                                            aria-label="Copy UTR"
+                                          />
+                                        </Tooltip>
+                                      </HStack>
+                                      <HStack spacing={1}>
+                                        <Badge fontSize="3xs" colorScheme="purple">
+                                          {(rf.manualMethod || "UPI").toUpperCase()}
+                                        </Badge>
+                                        {rf.paidAt && (
+                                          <Text fontSize="3xs" color="gray.400">
+                                            {new Date(rf.paidAt).toLocaleDateString("en-IN")}
+                                          </Text>
+                                        )}
+                                      </HStack>
+                                    </VStack>
                                   ) : isCancelled ? (
-                                    <Text fontSize="2xs" color="gray.400">
-                                      {rf.cancelReason || "Cancelled"}
+                                    <Text fontSize="2xs" color="gray.400" fontStyle="italic">
+                                      {rf.cancelReason || "Dispute cancelled"}
                                     </Text>
                                   ) : (
-                                    <Text fontSize="2xs" color="gray.400">
-                                      Pending Transfer
-                                    </Text>
+                                    <Badge variant="outline" colorScheme="orange" fontSize="3xs">
+                                      Awaiting Bank UTR
+                                    </Badge>
                                   )}
                                 </Td>
 
+                                {/* Actions */}
                                 <Td py={3} textAlign="center">
                                   <HStack spacing={1.5} justify="center">
                                     {isPendingManual && (
@@ -1018,7 +1818,7 @@ export default function AdminPayments() {
                                           colorScheme="teal"
                                           bg="teal.600"
                                           _hover={{ bg: "teal.700" }}
-                                          fontWeight="700"
+                                          fontWeight="800"
                                           borderRadius="6px"
                                           onClick={() => handleOpenProcessRefund(rf)}
                                         >
@@ -1037,7 +1837,7 @@ export default function AdminPayments() {
                                     )}
                                     {isProcessed && (
                                       <Badge colorScheme="teal" variant="outline" fontSize="3xs">
-                                        Settled
+                                        Reconciled
                                       </Badge>
                                     )}
                                   </HStack>
@@ -1052,68 +1852,168 @@ export default function AdminPayments() {
                 </TabPanel>
 
                 {/* ================= TAB 3: BOOKING PAYMENT AUDIT & LOOKUP ================= */}
-                <TabPanel px={0} py={4}>
-                  <Box maxW="600px" mb={6}>
-                    <FormControl mb={3}>
-                      <FormLabel fontSize="sm" fontWeight="700">Audit Payment by Booking ID</FormLabel>
-                      <HStack>
+                <TabPanel px={0} py={5}>
+                  <Box maxW="680px" mb={6}>
+                    <Text fontSize="xs" fontWeight="800" color="gray.500" textTransform="uppercase" letterSpacing="0.5px" mb={2}>
+                      Search Booking Payment by ID
+                    </Text>
+
+                    <HStack spacing={3}>
+                      <InputGroup size="md">
+                        <InputLeftElement pointerEvents="none">
+                          <Icon as={FaSearch} color="gray.400" />
+                        </InputLeftElement>
                         <Input
                           value={lookupBookingId}
                           onChange={(e) => setLookupBookingId(e.target.value)}
-                          placeholder="Enter Booking ID (e.g. 507f1f77bcf86cd799439077)"
-                          borderRadius="8px"
+                          placeholder="e.g. 64f40ffd0ff92d4bde26df01"
+                          borderRadius="10px"
+                          fontFamily="mono"
                         />
-                        <Button variant="brand" isLoading={lookupLoading} onClick={searchBookingPayment} px={6}>
-                          Lookup Booking
-                        </Button>
+                      </InputGroup>
+
+                      <Button
+                        size="md"
+                        bg="linear-gradient(135deg, #008080 0%, #006666 100%)"
+                        color="white"
+                        _hover={{ bg: "linear-gradient(135deg, #006666 0%, #004d4d 100%)" }}
+                        isLoading={lookupLoading}
+                        onClick={() => searchBookingPayment()}
+                        px={6}
+                        borderRadius="10px"
+                      >
+                        Audit Booking
+                      </Button>
+                    </HStack>
+
+                    {/* Sample chips */}
+                    {sampleBookingIds.length > 0 && (
+                      <HStack spacing={2} mt={3} flexWrap="wrap">
+                        <Text fontSize="2xs" color="gray.500">
+                          Sample Bookings from Ledger:
+                        </Text>
+                        {sampleBookingIds.map((bid) => (
+                          <Badge
+                            key={bid}
+                            cursor="pointer"
+                            variant="subtle"
+                            colorScheme="teal"
+                            fontSize="3xs"
+                            px={2}
+                            py={0.5}
+                            borderRadius="full"
+                            onClick={() => {
+                              setLookupBookingId(bid);
+                              searchBookingPayment(bid);
+                            }}
+                            _hover={{ bg: "teal.100" }}
+                          >
+                            #{bid.slice(-8)}
+                          </Badge>
+                        ))}
                       </HStack>
-                    </FormControl>
+                    )}
                   </Box>
 
+                  {/* Audit Card Details */}
                   {bookingPayment && (
-                    <Card p={5} variant="outline" borderRadius="14px" maxW="700px" boxShadow="sm">
-                      <Flex justify="space-between" align="center" mb={3}>
-                        <Heading size="sm" color="teal.700">Booking Payment Audit Details</Heading>
-                        <Badge colorScheme={bookingPayment.status === "success" ? "green" : "yellow"} px={2} py={0.5} borderRadius="full">
+                    <Card
+                      p={6}
+                      variant="outline"
+                      borderRadius="16px"
+                      maxW="720px"
+                      boxShadow="sm"
+                      borderColor={isDark ? "gray.700" : "gray.200"}
+                      bg={isDark ? "gray.800" : "white"}
+                    >
+                      <Flex justify="space-between" align="center" mb={4} pb={3} borderBottomWidth="1px" borderColor={isDark ? "gray.700" : "gray.200"}>
+                        <HStack spacing={2.5}>
+                          <Box p={2} bg="teal.50" color="teal.700" borderRadius="8px">
+                            <Icon as={FaShieldAlt} boxSize={4} />
+                          </Box>
+                          <Box>
+                            <Heading size="sm" color={isDark ? "white" : "teal.800"}>
+                              Booking Payment Audit Verification
+                            </Heading>
+                            <Text fontSize="2xs" color="gray.500">
+                              Ledger verification for booking #{String(bookingPayment.bookingId || lookupBookingId).slice(-8)}
+                            </Text>
+                          </Box>
+                        </HStack>
+
+                        <Badge
+                          colorScheme={
+                            bookingPayment.status === "success" || bookingPayment.status === "captured"
+                              ? "green"
+                              : "yellow"
+                          }
+                          px={3}
+                          py={1}
+                          borderRadius="full"
+                          fontSize="2xs"
+                          textTransform="uppercase"
+                        >
                           {bookingPayment.status || "—"}
                         </Badge>
                       </Flex>
+
+                      <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4} mb={5}>
+                        <Box p={3} borderRadius="10px" bg={isDark ? "gray.850" : "gray.50"}>
+                          <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                            Payment ID
+                          </Text>
+                          <HStack spacing={1} mt={1}>
+                            <Text fontWeight="700" fontFamily="mono" fontSize="xs">
+                              {bookingPayment._id || bookingPayment.id || "—"}
+                            </Text>
+                            <Tooltip label="Copy ID" hasArrow>
+                              <IconButton
+                                size="2xs"
+                                icon={<Icon as={FaCopy} boxSize={2.5} />}
+                                variant="ghost"
+                                onClick={() => copyToClipboard(bookingPayment._id || bookingPayment.id, "audit_pid", "Payment ID")}
+                                aria-label="Copy Payment ID"
+                              />
+                            </Tooltip>
+                          </HStack>
+                        </Box>
+
+                        <Box p={3} borderRadius="10px" bg={isDark ? "gray.850" : "gray.50"}>
+                          <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                            Amount Paid
+                          </Text>
+                          <Text fontWeight="900" fontSize="lg" color="teal.600" mt={0.5}>
+                            ₹{Number(bookingPayment.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </Text>
+                        </Box>
+
+                        <Box p={3} borderRadius="10px" bg={isDark ? "gray.850" : "gray.50"}>
+                          <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                            Transaction Reference / UTR
+                          </Text>
+                          <Text fontWeight="600" fontFamily="mono" fontSize="xs" mt={1}>
+                            {bookingPayment.transactionReference || bookingPayment.razorpayPaymentId || "—"}
+                          </Text>
+                        </Box>
+
+                        <Box p={3} borderRadius="10px" bg={isDark ? "gray.850" : "gray.50"}>
+                          <Text fontSize="2xs" color="gray.500" fontWeight="700" textTransform="uppercase">
+                            Payment Mode / Gateway
+                          </Text>
+                          <Badge mt={1} colorScheme="teal" fontSize="2xs">
+                            {bookingPayment.paymentMode || bookingPayment.method || "ONLINE"}
+                          </Badge>
+                        </Box>
+                      </SimpleGrid>
+
                       <Divider mb={4} />
 
-                      <VStack align="stretch" spacing={2.5} fontSize="sm">
-                        <Flex justify="space-between">
-                          <Text color="gray.500">Payment ID:</Text>
-                          <Text fontWeight="semibold" fontFamily="mono">{bookingPayment._id || bookingPayment.id || "—"}</Text>
-                        </Flex>
-                        <Flex justify="space-between">
-                          <Text color="gray.500">Booking ID:</Text>
-                          <Text fontWeight="semibold" fontFamily="mono">{bookingPayment.bookingId || lookupBookingId}</Text>
-                        </Flex>
-                        <Flex justify="space-between">
-                          <Text color="gray.500">Amount Paid:</Text>
-                          <Text fontWeight="bold" color="teal.600">₹{Number(bookingPayment.amount || 0).toLocaleString("en-IN")}</Text>
-                        </Flex>
-                        <Flex justify="space-between">
-                          <Text color="gray.500">Transaction Reference:</Text>
-                          <Text fontFamily="mono">{bookingPayment.transactionReference || bookingPayment.razorpayPaymentId || "—"}</Text>
-                        </Flex>
-                        <Flex justify="space-between">
-                          <Text color="gray.500">Payment Mode:</Text>
-                          <Text>{bookingPayment.paymentMode || bookingPayment.method || "ONLINE"}</Text>
-                        </Flex>
-                        <Flex justify="space-between">
-                          <Text color="gray.500">Created At:</Text>
-                          <Text>{bookingPayment.createdAt ? new Date(bookingPayment.createdAt).toLocaleString("en-IN") : "—"}</Text>
-                        </Flex>
-                      </VStack>
-
-                      <Divider my={4} />
-
-                      <Flex justify="space-between" align="center" flexWrap="wrap" gap={2}>
+                      <Flex justify="space-between" align="center" flexWrap="wrap" gap={3}>
                         <Button
                           size="sm"
                           colorScheme="red"
                           variant="outline"
+                          leftIcon={<FaTrash size={12} />}
                           isLoading={deletingPayment}
                           onClick={() => removeBookingPayment(bookingPayment._id || bookingPayment.id || lookupBookingId)}
                         >
@@ -1121,22 +2021,28 @@ export default function AdminPayments() {
                         </Button>
 
                         <HStack spacing={2}>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            colorScheme="green"
-                            onClick={() => markStatus(bookingPayment, "success")}
-                          >
-                            Mark Success
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            colorScheme="red"
-                            onClick={() => markStatus(bookingPayment, "failed")}
-                          >
-                            Mark Failed
-                          </Button>
+                          {bookingPayment.status !== "success" && (
+                            <Button
+                              size="sm"
+                              variant="solid"
+                              colorScheme="green"
+                              leftIcon={<FaCheckCircle size={12} />}
+                              onClick={() => markStatus(bookingPayment, "success")}
+                            >
+                              Mark Success
+                            </Button>
+                          )}
+                          {bookingPayment.status !== "failed" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              colorScheme="red"
+                              leftIcon={<FaTimesCircle size={12} />}
+                              onClick={() => markStatus(bookingPayment, "failed")}
+                            >
+                              Mark Failed
+                            </Button>
+                          )}
                         </HStack>
                       </Flex>
                     </Card>
@@ -1152,9 +2058,9 @@ export default function AdminPayments() {
       <AppModal
         isOpen={offlineOpen}
         onClose={() => setOfflineOpen(false)}
-        title="Record Offline Payment"
-        subtitle="Capture a cash, UPI, bank, or card payment against a customer booking."
-        size="md"
+        title="Record Customer Offline Payment"
+        subtitle="Log a cash, direct UPI, bank transfer, or card swipe payment against a customer booking."
+        size="lg"
         primaryAction={{
           label: "Record Payment",
           onClick: submitOffline,
@@ -1163,46 +2069,109 @@ export default function AdminPayments() {
         }}
         secondaryAction={{ label: "Cancel", onClick: () => setOfflineOpen(false) }}
       >
-        <FormControl mb={3} isRequired>
-          <FormLabel fontSize="xs" fontWeight="700">Booking ID</FormLabel>
-          <Input
-            value={bookingId}
-            onChange={(e) => setBookingId(e.target.value)}
-            placeholder="507f1f77bcf86cd799439077"
-            borderRadius="8px"
-          />
-        </FormControl>
+        <VStack spacing={4} align="stretch">
+          <Alert status="info" borderRadius="10px" fontSize="xs">
+            <AlertIcon />
+            Recording an offline payment automatically reconciles the booking balance and updates platform revenue.
+          </Alert>
 
-        <FormControl mb={3} isRequired>
-          <FormLabel fontSize="xs" fontWeight="700">Amount Paid (₹)</FormLabel>
-          <Input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="e.g. 750"
-            type="number"
-            borderRadius="8px"
-          />
-        </FormControl>
+          <FormControl isRequired>
+            <FormLabel fontSize="xs" fontWeight="700">
+              Booking ID
+            </FormLabel>
+            <Input
+              value={bookingId}
+              onChange={(e) => setBookingId(e.target.value)}
+              placeholder="e.g. 64f40ffd0ff92d4bde26df01"
+              borderRadius="8px"
+              fontFamily="mono"
+            />
+          </FormControl>
 
-        <FormControl mb={3}>
-          <FormLabel fontSize="xs" fontWeight="700">Payment Mode</FormLabel>
-          <Select value={mode} onChange={(e) => setMode(e.target.value)} borderRadius="8px">
-            <option value="cash">Cash on Delivery / Direct Cash</option>
-            <option value="upi">Direct UPI (QR / PhonePe / GPay)</option>
-            <option value="bank_transfer">Direct Bank Transfer (NEFT/IMPS)</option>
-            <option value="card">Point-of-Sale Card</option>
-          </Select>
-        </FormControl>
+          <FormControl isRequired>
+            <FormLabel fontSize="xs" fontWeight="700">
+              Amount Paid (₹)
+            </FormLabel>
+            <InputGroup>
+              <InputLeftElement pointerEvents="none" color="gray.500" fontSize="sm">
+                ₹
+              </InputLeftElement>
+              <Input
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="e.g. 1500"
+                type="number"
+                borderRadius="8px"
+                fontWeight="700"
+              />
+            </InputGroup>
+          </FormControl>
 
-        <FormControl>
-          <FormLabel fontSize="xs" fontWeight="700">Transaction Reference / UTR</FormLabel>
-          <Input
-            value={reference}
-            onChange={(e) => setReference(e.target.value)}
-            placeholder="Bank UTR number or cash receipt code"
-            borderRadius="8px"
-          />
-        </FormControl>
+          {/* Visual Payment Mode Selector */}
+          <FormControl>
+            <FormLabel fontSize="xs" fontWeight="700">
+              Payment Mode
+            </FormLabel>
+            <SimpleGrid columns={{ base: 2, sm: 4 }} spacing={2}>
+              {[
+                { key: "cash", label: "Direct Cash", icon: FaMoneyBillWave },
+                { key: "upi", label: "Direct UPI", icon: FaQrcode },
+                { key: "bank_transfer", label: "Bank Transfer", icon: FaUniversity },
+                { key: "card", label: "POS Card", icon: FaCreditCard },
+              ].map((item) => (
+                <Box
+                  key={item.key}
+                  p={3}
+                  borderRadius="10px"
+                  border="1.5px solid"
+                  borderColor={mode === item.key ? "teal.500" : isDark ? "gray.700" : "gray.200"}
+                  bg={mode === item.key ? (isDark ? "teal.900" : "teal.50") : undefined}
+                  cursor="pointer"
+                  textAlign="center"
+                  onClick={() => setMode(item.key)}
+                  transition="all 0.2s"
+                >
+                  <Icon
+                    as={item.icon}
+                    boxSize={4}
+                    color={mode === item.key ? "teal.500" : "gray.500"}
+                    mb={1}
+                  />
+                  <Text fontSize="2xs" fontWeight="700" color={mode === item.key ? "teal.700" : "gray.600"}>
+                    {item.label}
+                  </Text>
+                </Box>
+              ))}
+            </SimpleGrid>
+          </FormControl>
+
+          <FormControl>
+            <FormLabel fontSize="xs" fontWeight="700">
+              Transaction Reference / UTR Number (Optional)
+            </FormLabel>
+            <Input
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder="e.g. 431289102948 or Cash Receipt No"
+              borderRadius="8px"
+              fontFamily="mono"
+            />
+          </FormControl>
+
+          <FormControl>
+            <FormLabel fontSize="xs" fontWeight="700">
+              Internal Note (Optional)
+            </FormLabel>
+            <Textarea
+              value={offlineNote}
+              onChange={(e) => setOfflineNote(e.target.value)}
+              placeholder="e.g. Collected at customer doorstep by supervisor..."
+              borderRadius="8px"
+              fontSize="xs"
+              rows={2}
+            />
+          </FormControl>
+        </VStack>
       </AppModal>
 
       {/* ================= MODAL: MARK REFUND PROCESSED ================= */}
@@ -1232,28 +2201,38 @@ export default function AdminPayments() {
       >
         {selectedRefundForProcess && (
           <VStack spacing={4} align="stretch">
-            <Box p={3} bg="teal.50" borderRadius="10px" border="1px solid" borderColor="teal.200">
+            <Box
+              p={3.5}
+              bg={isDark ? "teal.950" : "teal.50"}
+              borderRadius="12px"
+              border="1px solid"
+              borderColor={isDark ? "teal.800" : "teal.200"}
+            >
               <Flex justify="space-between" align="center">
                 <Box>
-                  <Text fontSize="xs" color="teal.800" fontWeight="600">Refund Amount:</Text>
-                  <Text fontSize="lg" fontWeight="900" color="teal.900">
+                  <Text fontSize="xs" color="teal.800" fontWeight="600">
+                    Refund Amount to Transfer:
+                  </Text>
+                  <Text fontSize="xl" fontWeight="900" color="teal.900">
                     {selectedRefundForProcess.amountPaise
                       ? inrFromPaise(selectedRefundForProcess.amountPaise)
                       : selectedRefundForProcess.amount
-                      ? `₹${selectedRefundForProcess.amount}`
+                      ? `₹${Number(selectedRefundForProcess.amount).toLocaleString("en-IN")}`
                       : "₹0"}
                   </Text>
                 </Box>
-                <Badge colorScheme="teal" fontSize="2xs">
+                <Badge colorScheme="teal" fontSize="2xs" px={2} py={1} borderRadius="full">
                   Refund #{String(selectedRefundForProcess._id || selectedRefundForProcess.id).slice(-8)}
                 </Badge>
               </Flex>
             </Box>
 
             <FormControl isRequired>
-              <FormLabel fontSize="xs" fontWeight="700">External Bank Reference / UTR Number</FormLabel>
+              <FormLabel fontSize="xs" fontWeight="700">
+                External Bank Reference / UTR Number
+              </FormLabel>
               <Input
-                placeholder="e.g. 431289102948 or UPI Ref"
+                placeholder="e.g. 431289102948 or UPI Ref Number"
                 value={manualReference}
                 onChange={(e) => setManualReference(e.target.value)}
                 borderRadius="8px"
@@ -1262,9 +2241,11 @@ export default function AdminPayments() {
             </FormControl>
 
             <FormControl>
-              <FormLabel fontSize="xs" fontWeight="700">Payment Transfer Method</FormLabel>
+              <FormLabel fontSize="xs" fontWeight="700">
+                Payment Transfer Method
+              </FormLabel>
               <Select value={manualMethod} onChange={(e) => setManualMethod(e.target.value)} borderRadius="8px">
-                <option value="upi">UPI (GPay / PhonePe / Paytm)</option>
+                <option value="upi">UPI (GPay / PhonePe / Paytm / BHIM)</option>
                 <option value="neft">NEFT Bank Transfer</option>
                 <option value="imps">IMPS Instant Transfer</option>
                 <option value="cash">Cash Handover</option>
@@ -1273,7 +2254,9 @@ export default function AdminPayments() {
             </FormControl>
 
             <FormControl>
-              <FormLabel fontSize="xs" fontWeight="700">Transfer Date & Time</FormLabel>
+              <FormLabel fontSize="xs" fontWeight="700">
+                Transfer Date & Time
+              </FormLabel>
               <Input
                 type="datetime-local"
                 value={paidAt}
@@ -1283,9 +2266,11 @@ export default function AdminPayments() {
             </FormControl>
 
             <FormControl>
-              <FormLabel fontSize="xs" fontWeight="700">Internal Audit Note (Optional)</FormLabel>
+              <FormLabel fontSize="xs" fontWeight="700">
+                Internal Audit Note (Optional)
+              </FormLabel>
               <Textarea
-                placeholder="Notes about the refund execution or customer receipt confirmation..."
+                placeholder="e.g. Sent to customer UPI ID verified by phone..."
                 value={processNote}
                 onChange={(e) => setProcessNote(e.target.value)}
                 borderRadius="8px"
@@ -1306,7 +2291,7 @@ export default function AdminPayments() {
           setSelectedRefundForCancel(null);
         }}
         title="Cancel Customer Refund"
-        subtitle="Cancelling releases the escrow payment reservation and reverses any clawback applied to the technician."
+        subtitle="Cancelling releases the escrow reservation and reverses any clawback applied to the technician."
         size="md"
         primaryAction={{
           label: "Cancel Refund Record",
@@ -1322,17 +2307,26 @@ export default function AdminPayments() {
           },
         }}
       >
-        <FormControl isRequired>
-          <FormLabel fontSize="xs" fontWeight="700">Cancellation Reason</FormLabel>
-          <Textarea
-            placeholder="Explain why this customer refund is being cancelled (e.g., customer agreed to re-service, dispute resolved)..."
-            value={cancelReason}
-            onChange={(e) => setCancelReason(e.target.value)}
-            borderRadius="8px"
-            fontSize="xs"
-            rows={3}
-          />
-        </FormControl>
+        <VStack spacing={4} align="stretch">
+          <Alert status="warning" borderRadius="10px" fontSize="xs">
+            <AlertIcon />
+            Cancelling this refund will reverse any technician escrow clawback and mark the refund dispute closed.
+          </Alert>
+
+          <FormControl isRequired>
+            <FormLabel fontSize="xs" fontWeight="700">
+              Cancellation Reason
+            </FormLabel>
+            <Textarea
+              placeholder="Explain why this customer refund is being cancelled (e.g. customer agreed to reschedule service)..."
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              borderRadius="8px"
+              fontSize="xs"
+              rows={3}
+            />
+          </FormControl>
+        </VStack>
       </AppModal>
 
       {/* ================= MODAL: DELETE CONFIRMATION ================= */}
@@ -1346,11 +2340,28 @@ export default function AdminPayments() {
         }}
         onConfirm={confirmRemoveBookingPayment}
         title="Delete payment record"
-        description="This permanently deletes the payment record and cannot be undone. The related booking may still exist."
+        description="This permanently deletes the payment record from the database and cannot be undone."
         confirmText="Delete payment"
         confirmColorScheme="red"
         isLoading={deletingPayment}
         error={deleteError}
+      />
+
+      {/* ================= DRAWER: PAYMENT 360° INSPECTOR ================= */}
+      <PaymentDetailsDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => {
+          setIsDrawerOpen(false);
+          setSelectedPaymentForDrawer(null);
+        }}
+        payment={selectedPaymentForDrawer}
+        onMarkStatus={markStatus}
+        onLookupBooking={(bid) => {
+          setLookupBookingId(bid);
+          setActiveMainTab(2);
+          searchBookingPayment(bid);
+        }}
+        isDark={isDark}
       />
     </Box>
   );

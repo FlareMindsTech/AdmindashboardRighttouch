@@ -1,24 +1,17 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useAppToast } from "components/feedback";
+import React from "react";
 import {
   Badge,
   Box,
   Button,
   Divider,
-  FormControl,
-  FormLabel,
   Grid,
   HStack,
-  Input,
-  Select,
   Text,
-  Textarea,
   VStack,
 } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 import AppModal from "components/common/AppModal";
 import StatusBadge from "components/common/StatusBadge";
-import { recordManualPaymentForBooking } from "api/quotations";
 import {
   BOOKING_STATUS_COLORS,
   BOOKING_STATUS_LABELS,
@@ -33,14 +26,15 @@ import {
   formatINR,
   getAddress,
   getBookingNumber,
+  getBookingPaidPaise,
+  getBookingRemainingPaise,
   getBookingTotalPaise,
   getCustomer,
+  getPaymentModeLabel,
   getProduct,
   getQuotationNumber,
   getQuotationTotalPaise,
   getRequestNumber,
-  toRupees,
-  unwrapResult,
 } from "./productFlowUtils";
 
 const DetailRow = ({ label, children }) => (
@@ -161,6 +155,7 @@ export function QuotationDetailModal({
   onRevise,
   onEditDraft,
   onDelete,
+  onManagePayment,
   isBusy,
 }) {
   const customer = getCustomer(quotation || {});
@@ -172,6 +167,13 @@ export function QuotationDetailModal({
   const canResend = ["sent", "viewed"].includes(status);
   const canRevise = !["accepted", "converted"].includes(status);
   const canDelete = !["accepted", "converted"].includes(status);
+  const bookingStatus = String(booking?.status || "").toLowerCase();
+  const bookingPaymentStatus = String(booking?.paymentStatus || "pending").toLowerCase();
+  const canManagePayment =
+    Boolean(booking) &&
+    bookingStatus === "active" &&
+    bookingPaymentStatus !== "paid" &&
+    getBookingRemainingPaise(booking) > 0;
 
   return (
     <AppModal
@@ -201,6 +203,11 @@ export function QuotationDetailModal({
             {canResend && (
               <Button size="sm" variant="outline" colorScheme="blue" onClick={() => onResend(quotation)} isLoading={isBusy}>
                 Resend
+              </Button>
+            )}
+            {canManagePayment && (
+              <Button size="sm" variant="outline" colorScheme="blue" onClick={() => onManagePayment(booking)}>
+                Manage payment
               </Button>
             )}
             {canSend && (
@@ -237,6 +244,9 @@ export function QuotationDetailModal({
             </Text>
           </DetailRow>
           <DetailRow label="Quantity">{quotation.quantity || 1}</DetailRow>
+          <DetailRow label="Delivery address">
+            {getAddress(quotation) !== "—" ? getAddress(quotation) : getAddress(booking || {})}
+          </DetailRow>
           <Divider />
           <DetailRow label="Unit price">{formatINR(snapshot.unitPricePaise, { fromPaise: true })}</DetailRow>
           <DetailRow label="Base amount">{formatINR(snapshot.baseAmountPaise, { fromPaise: true })}</DetailRow>
@@ -288,8 +298,8 @@ export function BookingDetailModal({
   const status = String(booking?.status || "active").toLowerCase();
   const paymentStatus = String(booking?.paymentStatus || "pending").toLowerCase();
   const totalPaise = getBookingTotalPaise(booking || {});
-  const paidPaise = Number(booking?.paidAmountPaise || (paymentStatus === "paid" ? totalPaise : 0));
-  const remainingPaise = Math.max(0, totalPaise - paidPaise);
+  const paidPaise = getBookingPaidPaise(booking || {});
+  const remainingPaise = getBookingRemainingPaise(booking || {});
   const canPay = status === "active" && paymentStatus !== "paid" && remainingPaise > 0;
   const canComplete = status === "active" && paymentStatus === "paid";
   const canCancel = status === "active" && paymentStatus !== "paid";
@@ -316,7 +326,7 @@ export function BookingDetailModal({
             )}
             {canPay && (
               <Button size="sm" variant="outline" colorScheme="blue" onClick={() => onRecordPayment(booking)}>
-                Record payment
+                Manage payment
               </Button>
             )}
             {canComplete && (
@@ -369,9 +379,12 @@ export function BookingDetailModal({
           <DetailRow label="Total">{formatINR(totalPaise, { fromPaise: true })}</DetailRow>
           <DetailRow label="Paid">{formatINR(paidPaise, { fromPaise: true })}</DetailRow>
           <DetailRow label="Remaining">{formatINR(remainingPaise, { fromPaise: true })}</DetailRow>
-          <DetailRow label="Payment mode">{booking.paymentMode || "—"}</DetailRow>
+          <DetailRow label="Payment mode">{getPaymentModeLabel(booking.paymentMode || booking.paymentProvider)}</DetailRow>
           <DetailRow label="Payment reference">
             {booking.paymentProviderPaymentId || booking.paymentDetailsSummary || "—"}
+          </DetailRow>
+          <DetailRow label="Payment requested">
+            {booking.paymentRequestedAt ? formatDateTime(booking.paymentRequestedAt) : "Not requested yet"}
           </DetailRow>
           <DetailRow label="Quotation">
             {quotation ? getQuotationNumber(quotation) : "—"}
@@ -381,142 +394,6 @@ export function BookingDetailModal({
           </DetailRow>
         </VStack>
       ) : null}
-    </AppModal>
-  );
-}
-
-export function ManualPaymentModal({ isOpen, onClose, booking, onSaved }) {
-  const toast = useAppToast();
-  const [form, setForm] = useState({
-    amount: "",
-    paymentMode: "cash",
-    transactionReference: "",
-    notes: "Offline payment collected by admin",
-  });
-  const [saving, setSaving] = useState(false);
-
-  const remainingRupees = useMemo(() => {
-    if (!booking) return 0;
-    const total = toRupees(getBookingTotalPaise(booking));
-    const paid = booking.paidAmountPaise != null
-      ? toRupees(booking.paidAmountPaise)
-      : Number(booking.paidAmount || (booking.paymentStatus === "paid" ? total : 0));
-    return Math.max(0, total - paid);
-  }, [booking]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setForm({
-      amount: remainingRupees > 0 ? String(remainingRupees) : "",
-      paymentMode: "cash",
-      transactionReference: "",
-      notes: "Offline payment collected by admin",
-    });
-  }, [isOpen, remainingRupees]);
-
-  const submit = async () => {
-    const amount = Number(form.amount);
-    if (!booking || !Number.isFinite(amount) || amount <= 0) {
-      toast({ title: "Enter a valid amount", status: "warning", duration: 2500, isClosable: true });
-      return;
-    }
-    if (remainingRupees > 0 && Math.abs(amount - remainingRupees) > 0.01) {
-      toast({
-        title: "Full settlement required",
-        description: `Record the full remaining balance of ${formatINR(remainingRupees)}. Partial product payments are not supported.`,
-        status: "warning",
-        duration: 4000,
-        isClosable: true,
-      });
-      return;
-    }
-    setSaving(true);
-    const { data, error } = await recordManualPaymentForBooking(
-      booking._id || booking.id,
-      {
-        amount,
-        paymentMode: form.paymentMode,
-        transactionReference: form.transactionReference.trim() || undefined,
-        notes: form.notes.trim() || undefined,
-      }
-    );
-    setSaving(false);
-    if (error) {
-      toast.error(error, { title: "Payment not recorded", duration: 4000, isClosable: true });
-      return;
-    }
-    const result = unwrapResult(data);
-    toast({
-      title: "Payment recorded",
-      description: `Recorded ${formatINR(result?.amount ?? amount)} via ${form.paymentMode}.`,
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
-    onSaved?.();
-    onClose();
-  };
-
-  return (
-    <AppModal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Record offline payment"
-      subtitle={booking ? getBookingNumber(booking) : ""}
-      size="md"
-      primaryAction={{
-        label: "Record payment",
-        onClick: submit,
-        isLoading: saving,
-        colorScheme: "teal",
-      }}
-      secondaryAction={{ label: "Cancel", onClick: onClose }}
-    >
-      <VStack align="stretch" spacing={3}>
-        <Text fontSize="sm" color="gray.600">
-          Remaining balance: <b>{formatINR(remainingRupees)}</b>
-        </Text>
-        <FormControl isRequired>
-          <FormLabel fontSize="sm">Amount (INR)</FormLabel>
-          <Input
-            type="number"
-            min={1}
-            step="0.01"
-            value={form.amount}
-            onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))}
-          />
-        </FormControl>
-        <FormControl isRequired>
-          <FormLabel fontSize="sm">Payment mode</FormLabel>
-          <Select
-            value={form.paymentMode}
-            onChange={(e) => setForm((prev) => ({ ...prev, paymentMode: e.target.value }))}
-          >
-            <option value="cash">Cash</option>
-            <option value="bank_transfer">Bank transfer</option>
-            <option value="upi_direct">UPI direct</option>
-            <option value="cheque">Cheque</option>
-            <option value="other">Other</option>
-            <option value="offline">Offline</option>
-          </Select>
-        </FormControl>
-        <FormControl>
-          <FormLabel fontSize="sm">Transaction reference</FormLabel>
-          <Input
-            value={form.transactionReference}
-            onChange={(e) => setForm((prev) => ({ ...prev, transactionReference: e.target.value }))}
-            placeholder="Optional reference"
-          />
-        </FormControl>
-        <FormControl>
-          <FormLabel fontSize="sm">Notes</FormLabel>
-          <Textarea
-            rows={3}
-            value={form.notes}
-            onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-          />
-        </FormControl>
-      </VStack>
     </AppModal>
   );
 }

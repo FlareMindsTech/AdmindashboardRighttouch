@@ -1,5 +1,5 @@
 // src/hooks/useNotificationCoordinator.js — Phase 3: single notification
-// refresh owner for the whole owner session.
+// refresh coordinator for the whole privileged session.
 //
 // Consolidates what used to be three independent mechanisms:
 // - Sidebar hook: 10s counts poll + focus + storage event + custom window event
@@ -12,7 +12,7 @@
 // tick (every ~30s, as before). No overlapping timers, one cleanup point.
 // Cross-tab sync (storage event) and the in-tab custom event are preserved
 // with identical semantics. Mount once in layouts/Admin.js (unmounts on
-// logout because the owner layout unmounts).
+// logout because the privileged layout unmounts).
 import { useEffect, useRef, useCallback } from "react";
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
@@ -21,7 +21,7 @@ import {
   syncCountsFromStorage,
   COUNTS_STORAGE_KEY,
 } from "store/slices/notificationsSlice";
-import { selectAuthInitialized, selectIsOwner } from "store/slices/authSlice";
+import { selectAuthInitialized, selectIsPrivileged } from "store/slices/authSlice";
 
 const COUNTS_TICK_MS = 30 * 1000;
 const INBOX_COUNT_EVERY_N_TICKS = 2;
@@ -29,8 +29,8 @@ const INBOX_COUNT_EVERY_N_TICKS = 2;
 export const useNotificationCoordinator = () => {
   const dispatch = useAppDispatch();
   const authInitialized = useAppSelector(selectAuthInitialized);
-  const isOwner = useAppSelector(selectIsOwner);
-  const canPoll = authInitialized && isOwner;
+  const isPrivileged = useAppSelector(selectIsPrivileged);
+  const canPoll = authInitialized && isPrivileged;
   const tickRef = useRef(0);
 
   const refreshCounts = useCallback(() => {

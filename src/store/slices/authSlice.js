@@ -24,6 +24,10 @@ const API_BASE_URL = (
   .replace(/\/api\/?$/, "")
   .replace(/\/+$/, "");
 
+export const PRIVILEGED_ROLES = ["owner", "admin"];
+export const isPrivilegedRole = (role) =>
+  PRIVILEGED_ROLES.includes((role || "").toString().toLowerCase());
+
 // Preserve the exact legacy login request (URL, payload, response reading).
 export const loginOwner = createAsyncThunk(
   "auth/loginOwner",
@@ -210,5 +214,8 @@ export const selectAuthError = (state) => state.auth.error;
 export const selectAuthInitialized = (state) => state.auth.initialized;
 export const selectIsOwner = (state) =>
   state.auth.isAuthenticated && state.auth.role === "owner";
+export const selectIsPrivileged = (state) =>
+  state.auth.isAuthenticated &&
+  (state.auth.role === "owner" || state.auth.role === "admin");
 
 export default authSlice.reducer;

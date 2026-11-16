@@ -51,6 +51,7 @@ const RewardsManagement = lazy(() => import("views/Dashboard/RewardsManagement.j
 const ProductInsights = lazy(() => import("views/Dashboard/ProductInsights.js"));
 const AdminPayments = lazy(() => import("views/Dashboard/AdminPayments.js"));
 const PermissionsManagement = lazy(() => import("views/Dashboard/PermissionsManagement.js"));
+const CredentialManagement = lazy(() => import("views/Dashboard/CredentialManagement.js"));
 
 const ICON_COLOR = "#008080";
 const ICON_SIZE = 20;
@@ -75,7 +76,7 @@ const Logout = () => {
 // subscribes via Redux selectors (layouts/Admin.js, index.js AuthRedirect).
 
 const dashRoutes = [
-  // ---------------- OWNER ONLY ROUTES ----------------
+  // ---------------- PRIVILEGED DASHBOARD ROUTES ----------------
   {
     path: "/dashboard",
     name: "Dashboard",
@@ -89,6 +90,7 @@ const dashRoutes = [
     icon: <MdInventory2 color={ICON_COLOR} size={ICON_SIZE} />,
     element: <ProductManagement />,
     layout: "/owner",
+    roles: ["owner"],
   },
   {
     path: "/service-management",
@@ -103,6 +105,7 @@ const dashRoutes = [
     icon: <FaUserGear color={ICON_COLOR} size={ICON_SIZE} />,
     element: <AdminManagement />,
     layout: "/owner",
+    roles: ["owner"],
   },
   {
     path: "/user-management",
@@ -204,6 +207,15 @@ const dashRoutes = [
     name: "Profile",
     element: <Profile />,
     layout: "/owner",
+    hideInSidebar: true,
+  },
+  {
+    path: "/credentials",
+    name: "Credentials",
+    icon: <FaUserShield color={ICON_COLOR} size={ICON_SIZE} />,
+    element: <CredentialManagement />,
+    layout: "/owner",
+    roles: ["owner"],
     hideInSidebar: true,
   },
 

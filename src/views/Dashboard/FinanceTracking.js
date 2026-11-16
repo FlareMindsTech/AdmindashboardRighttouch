@@ -500,9 +500,6 @@ export default function FinanceTracking() {
             <Heading as="h1" size="lg" fontWeight="900" letterSpacing="-0.5px" color={isDark ? "white" : "gray.850"}>
               Finance & Revenue Tracking
             </Heading>
-            <Text fontSize="sm" color="gray.500" mt={1}>
-              Platform revenue collection, commission margins, customer payment ledger, and partner payout liabilities.
-            </Text>
           </Box>
 
           <HStack spacing={3} flexWrap="wrap">
@@ -1656,7 +1653,6 @@ export default function FinanceTracking() {
         isOpen={isTechDetailOpen}
         onClose={() => setIsTechDetailOpen(false)}
         title="Technician Financial Statement"
-        subtitle="Detailed booking commissions, customer tips, wallet credit ledger, and payout history."
         icon={MdAccountBalanceWallet}
         iconColor={BRAND}
         size="3xl"

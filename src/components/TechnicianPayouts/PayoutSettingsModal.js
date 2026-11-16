@@ -201,9 +201,6 @@ export default function PayoutSettingsModal({ isOpen, onClose, onSuccess }) {
               <Text fontSize="lg" fontWeight="800">
                 Global Payout Policy & Limits
               </Text>
-              <Text fontSize="xs" color="teal.200">
-                Configure platform withdrawal ceilings, liquidity floors, and dual-approval thresholds
-              </Text>
             </Box>
           </HStack>
           <Badge colorScheme="teal" px={3} py={1} borderRadius="full" fontSize="2xs" fontWeight="800">
@@ -213,9 +210,6 @@ export default function PayoutSettingsModal({ isOpen, onClose, onSuccess }) {
       }
       footer={
         <HStack spacing={3} justify="space-between" w="full">
-          <Text fontSize="xs" color="gray.500">
-            Changes take effect immediately across all technician wallets.
-          </Text>
           <HStack spacing={3}>
             <Button size="md" variant="ghost" onClick={onClose} isDisabled={saving}>
               Cancel

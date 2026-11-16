@@ -170,11 +170,6 @@ export default function NoShowCompensationTab({ onRefreshPendingCount }) {
               <Text fontSize="sm" fontWeight="800" color={isDark ? "teal.100" : "teal.900"}>
                 Customer No-Show Compensation Lifecycle
               </Text>
-              <Text fontSize="xs" color={isDark ? "teal.200" : "teal.800"} mt={0.5}>
-                When customers are unreachable at the scheduled service time, technicians report a no-show. Approving
-                creates a pending <strong>manual_adjustment</strong> travel credit in the technician&apos;s ledger. When
-                paid, enter the bank/UPI UTR to post the transaction.
-              </Text>
             </Box>
           </HStack>
         </Flex>

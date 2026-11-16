@@ -62,7 +62,6 @@ export default function PayoutSummaryCards({
       id: "requested",
       title: "Pending Requests",
       count: pendingCount,
-      subtitle: "Awaiting admin review",
       tag: "Action Required",
       icon: FaClock,
       accentColor: "#F59E0B",
@@ -75,7 +74,6 @@ export default function PayoutSummaryCards({
       id: "approved",
       title: "Ready to Pay",
       count: approvedAwaitingTransferCount,
-      subtitle: "Execute bank transfer",
       tag: "Transfer Ready",
       icon: FaMoneyCheckAlt,
       accentColor: "#008080",
@@ -88,7 +86,6 @@ export default function PayoutSummaryCards({
       id: "paid",
       title: "Paid Payouts",
       count: paidCount,
-      subtitle: "UTR recorded & completed",
       tag: "Disbursed",
       icon: FaCheckCircle,
       accentColor: "#10B981",
@@ -102,7 +99,6 @@ export default function PayoutSummaryCards({
       title: "Reserved Payout Funds",
       isCurrency: true,
       amountStr: formatInr(reservedPaise),
-      subtitle: "Escrow for active payouts",
       tag: "Platform Escrow",
       icon: FaLock,
       accentColor: "#6366F1",
@@ -162,9 +158,6 @@ export default function PayoutSummaryCards({
                     noOfLines={1}
                   >
                     {card.title}
-                  </Text>
-                  <Text fontSize="2xs" color="gray.400" fontWeight="500" mt={0.5}>
-                    {card.subtitle}
                   </Text>
                 </Box>
 

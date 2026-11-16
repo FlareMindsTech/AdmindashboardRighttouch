@@ -1,4 +1,4 @@
-// Admin.js - OWNER ONLY ACCESS
+// Admin.js - OWNER/ADMIN ACCESS
 import {
   Portal,
   useDisclosure,
@@ -22,6 +22,7 @@ import PanelContent from "components/Layout/PanelContent";
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
   initializeAuth,
+  isPrivilegedRole,
   selectRole,
   selectAuthInitialized,
   logout,
@@ -41,7 +42,7 @@ export default function Dashboard(props) {
   const isLoading = !authInitialized;
   const location = useLocation();
 
-  // Phase 3: single notification refresh owner for the owner session.
+  // Phase 3: single notification refresh coordinator for privileged sessions.
   // Owns the badge/inbox-count polling + cross-tab sync; unmounts on logout.
   useNotificationCoordinator();
   useAdminSocket();
@@ -58,7 +59,16 @@ export default function Dashboard(props) {
     dispatch(initializeAuth());
   }, [dispatch]);
 
-  // Filter routes for sidebar - ONLY OWNER ROUTES
+  const canAccessRoute = React.useCallback(
+    (route) => {
+      if (!route || route.layout !== "/owner") return false;
+      if (Array.isArray(route.roles)) return route.roles.includes(userRole);
+      return isPrivilegedRole(userRole);
+    },
+    [userRole]
+  );
+
+  // Filter routes for sidebar - privileged dashboard routes only.
   const filteredRoutes = useMemo(() => {
     if (!userRole) return [];
 
@@ -66,26 +76,7 @@ export default function Dashboard(props) {
       return routesArray
         .filter((route) => {
           if (route.collapse) return true;
-
-          // Skip auth routes
-          if (route.layout === "/auth") return false;
-
-          // 🔐 ONLY allow /owner layout for owners
-          if (route.layout === "/owner") {
-            return userRole === "owner";
-          }
-
-          // 🔴 REJECT /admin layout completely
-          if (route.layout === "/admin") {
-            return false;
-          }
-
-          // Check role restrictions if specified
-          if (route.roles && Array.isArray(route.roles)) {
-            return route.roles.includes(userRole);
-          }
-
-          return false; // Default to not showing
+          return canAccessRoute(route);
         })
         .map((route) => {
           if (route.collapse && route.views) {
@@ -99,11 +90,11 @@ export default function Dashboard(props) {
     };
 
     return filterRoutes(routes);
-  }, [userRole]);
+  }, [canAccessRoute, userRole]);
 
-  // Get all accessible routes - ONLY OWNER ROUTES
+  // Get all accessible dashboard routes for the current role.
   const accessibleRoutes = useMemo(() => {
-    if (!userRole || userRole !== "owner") return [];
+    if (!isPrivilegedRole(userRole)) return [];
 
     const extractRoutes = (routesArray) => {
       const result = [];
@@ -111,15 +102,12 @@ export default function Dashboard(props) {
       routesArray.forEach(route => {
         if (route.collapse && route.views) {
           result.push(...extractRoutes(route.views));
-        } else if (route.element && route.path) {
-          // 🔐 ONLY include /owner layout routes
-          if (route.layout === "/owner") {
-            result.push({
-              path: route.path,
-              element: route.element,
-              key: `${route.layout}${route.path}`
-            });
-          }
+        } else if (route.element && route.path && canAccessRoute(route)) {
+          result.push({
+            path: route.path,
+            element: route.element,
+            key: `${route.layout}${route.path}`
+          });
         }
       });
 
@@ -127,21 +115,19 @@ export default function Dashboard(props) {
     };
 
     return extractRoutes(routes);
-  }, [userRole]);
+  }, [canAccessRoute, userRole]);
 
-  // Render routes - ONLY OWNER ACCESS
+  // Render routes for the current privileged role.
   const renderRoutes = () => {
     if (isLoading) return null;
 
-    // 🔐 STRICT CHECK: ONLY OWNER CAN ACCESS
-    if (!userRole || userRole !== "owner") {
+    if (!isPrivilegedRole(userRole)) {
       return <Route path="*" element={<Navigate to="/auth/signin" replace />} />;
     }
 
-    // ✅ OWNER CAN ACCESS ONLY /owner ROUTES
     return (
       <>
-        {/* Render all accessible owner routes */}
+        {/* Render all routes accessible to the current role */}
         {accessibleRoutes.map((route) => (
           <Route
             key={route.key}
@@ -214,9 +200,9 @@ export default function Dashboard(props) {
     []
   );
 
-  // Redirect non-owners safely inside useEffect (NEVER dispatch during render phase)
+  // Redirect non-privileged sessions safely inside useEffect.
   useEffect(() => {
-    if (authInitialized && userRole !== "owner") {
+    if (authInitialized && !isPrivilegedRole(userRole)) {
       try {
         dispatch(logout());
       } catch (e) {
@@ -234,12 +220,9 @@ export default function Dashboard(props) {
     );
   }
 
-  // 🔐 STRICT ACCESS CONTROL: ONLY OWNER
-  if (userRole !== "owner") {
+  if (!isPrivilegedRole(userRole)) {
     return <Navigate to="/auth/signin" replace />;
   }
-
-  // ✅ ONLY OWNER SEES THIS
   return (
     <Box>
       <Box
@@ -257,7 +240,7 @@ export default function Dashboard(props) {
         top="0"
       />
 
-      {/* Mobile Sidebar - ONLY OWNER ROUTES */}
+      {/* Mobile Sidebar - role-filtered routes */}
       <SidebarResponsive
         logo={mobileLogo}
         routes={filteredRoutes}
@@ -267,7 +250,7 @@ export default function Dashboard(props) {
         onClose={onSidebarClose}
       />
 
-      {/* Desktop Sidebar - ONLY OWNER ROUTES */}
+      {/* Desktop Sidebar - role-filtered routes */}
       <Sidebar
         routes={filteredRoutes}
         logo={desktopLogo}

@@ -160,9 +160,6 @@ export default function PayoutReceiptModal({
       }
       footer={
         <HStack spacing={3} justify="space-between" w="full">
-          <Text fontSize="xs" color="gray.500">
-            Immutable settlement audit record • RightTouch Automated Ledger
-          </Text>
           <HStack spacing={3}>
             <Button
               size="md"

@@ -75,12 +75,6 @@ export default function NoShowCompensationModal({
     ? "Reject Customer No-Show Compensation"
     : "Mark No-Show Compensation as Paid";
 
-  const modalSubtitle = isApprove
-    ? "Approve the technician's claim and post a pending liability in their wallet ledger."
-    : isReject
-    ? "Reject this compensation claim and record an exception note."
-    : "Record the external bank or UPI UTR reference to mark the compensation settled.";
-
   const primaryLabel = isApprove
     ? "Confirm Approval"
     : isReject
@@ -161,7 +155,6 @@ export default function NoShowCompensationModal({
         onClose();
       }}
       title={modalTitle}
-      subtitle={modalSubtitle}
       size="md"
       primaryAction={{
         label: primaryLabel,

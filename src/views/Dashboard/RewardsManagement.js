@@ -282,9 +282,6 @@ export default function RewardsManagement() {
           <Flex justify="space-between" align="center" w="100%" wrap="wrap" gap={3}>
             <Box>
               <Heading size="md">Rewards & Loyalty Hub</Heading>
-              <Text fontSize="sm" color="gray.500">
-                Governance, customer wallets, transaction ledger, and redemption audit
-              </Text>
             </Box>
             <HStack>
               <Button size="sm" variant="outline" onClick={loadOverview}>
@@ -318,7 +315,6 @@ export default function RewardsManagement() {
                           onChange={(e) => setForm((f) => ({ ...f, rewardRateBps: e.target.value }))}
                           placeholder="e.g. 100 (100 bps = 1%)"
                         />
-                        <Text fontSize="xs" color="gray.500" mt={1}>100 basis points = 1% coins awarded on completed services</Text>
                       </FormControl>
                       <FormControl>
                         <FormLabel fontSize="sm" fontWeight="semibold">Coin Expiry Duration (Months)</FormLabel>
@@ -327,7 +323,6 @@ export default function RewardsManagement() {
                           onChange={(e) => setForm((f) => ({ ...f, expiryMonths: e.target.value }))}
                           placeholder="e.g. 12"
                         />
-                        <Text fontSize="xs" color="gray.500" mt={1}>Earned coins expire after this many months (FIFO deduction)</Text>
                       </FormControl>
                       <FormControl>
                         <FormLabel fontSize="sm" fontWeight="semibold">Max Redemption Percentage (%)</FormLabel>
@@ -336,7 +331,6 @@ export default function RewardsManagement() {
                           onChange={(e) => setForm((f) => ({ ...f, maxRedemptionPct: e.target.value }))}
                           placeholder="e.g. 20"
                         />
-                        <Text fontSize="xs" color="gray.500" mt={1}>Maximum percentage of service bill payable with coins</Text>
                       </FormControl>
                       <FormControl>
                         <FormLabel fontSize="sm" fontWeight="semibold">Min Eligible Amount (in Paise)</FormLabel>
@@ -345,7 +339,6 @@ export default function RewardsManagement() {
                           onChange={(e) => setForm((f) => ({ ...f, minEligiblePaise: e.target.value }))}
                           placeholder="e.g. 10000 (₹100)"
                         />
-                        <Text fontSize="xs" color="gray.500" mt={1}>100 coins = ₹1 (1 coin = 1 paise)</Text>
                       </FormControl>
                       <FormControl>
                         <FormLabel fontSize="sm" fontWeight="semibold">Max Coins Redeemable per Booking</FormLabel>
@@ -610,7 +603,6 @@ export default function RewardsManagement() {
                     <Flex justify="space-between" align="center" mb={4}>
                       <Box>
                         <Heading size="sm">Ledger Reconciliation Audit</Heading>
-                        <Text fontSize="xs" color="gray.500">Cross-verifies wallet balances against granular lot transactions</Text>
                       </Box>
                       <Button size="sm" variant="outline" onClick={loadReconciliation}>
                         Re-Audit Ledger
@@ -672,7 +664,6 @@ export default function RewardsManagement() {
         isOpen={customerModalOpen}
         onClose={() => setCustomerModalOpen(false)}
         title="Customer reward breakdown"
-        subtitle="Available coins, reserved coins, and active FIFO lots."
         size="xl"
         secondaryAction={{ label: "Close", onClick: () => setCustomerModalOpen(false) }}
       >

@@ -30,8 +30,6 @@ import {
   InputLeftElement,
   InputRightElement,
   useColorMode,
-  Alert,
-  AlertIcon,
   Popover,
   PopoverTrigger,
   PopoverContent,
@@ -260,19 +258,6 @@ export default function DispatchQueueTab({
 
   return (
     <Box>
-      {/* Friendly Guide Callout */}
-      <Alert status="info" borderRadius="12px" mb={4} fontSize="xs">
-        <AlertIcon />
-        <Box>
-          <Text fontWeight="800">Dispatch Outbox Overview:</Text>
-          <Text mt={0.5}>
-            Jobs in this queue are automatically matched and broadcasted to eligible technicians. If a job encounters an
-            error (such as offline technician supply or timeout), it moves to <strong>Failed Rows</strong> where you can
-            re-attempt with 1-click retry.
-          </Text>
-        </Box>
-      </Alert>
-
       {/* Top Controls Bar */}
       <Flex
         direction={{ base: "column", md: "row" }}

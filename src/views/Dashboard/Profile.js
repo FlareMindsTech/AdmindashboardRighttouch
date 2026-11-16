@@ -187,7 +187,6 @@ const EditOwnerModal = ({ isOpen, onClose, owner, onSave }) => {
       isOpen={isOpen}
       onClose={onClose}
       title="Edit owner"
-      subtitle="Update the owner profile details."
       size="md"
       primaryAction={{ label: "Save Changes", onClick: handleSave, colorScheme: "purple" }}
       secondaryAction={{ label: "Cancel", onClick: onClose }}
@@ -645,9 +644,6 @@ export default function OwnerProfile() {
                   <FaCrown color="#5a189a" size="20px" />
                   <Text fontSize="lg" fontWeight="bold">Welcome, {ownerData.name}!</Text>
                 </Flex>
-                <Text mt={2} color="gray.600">
-                  Use the navigation menu to manage {isOwner ? 'owners' : 'users'}, products, or view stock analytics.
-                </Text>
               </Card>
             )}
 

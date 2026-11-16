@@ -24,7 +24,7 @@ import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
   loginOwner,
   logout,
-  selectIsOwner,
+  selectIsPrivileged,
   selectIsAuthenticated,
 } from "store/slices/authSlice";
 
@@ -33,7 +33,7 @@ function AdminLogin() {
   const toast = useAppToast();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const isOwner = useAppSelector(selectIsOwner);
+  const isPrivileged = useAppSelector(selectIsPrivileged);
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const isMountedRef = useRef(true);
 
@@ -46,14 +46,14 @@ function AdminLogin() {
     };
   }, []);
 
-  // If valid owner token is present, bypass login screen
+  // If a valid Owner/Admin session is present, bypass the login screen.
   useEffect(() => {
-    if (isOwner) {
+    if (isPrivileged) {
       navigate("/owner/dashboard", { replace: true });
-    } else if (isAuthenticated && !isOwner) {
+    } else if (isAuthenticated) {
       dispatch(logout());
     }
-  }, [navigate, isOwner, isAuthenticated, dispatch]);
+  }, [navigate, isPrivileged, isAuthenticated, dispatch]);
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");

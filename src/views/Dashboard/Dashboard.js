@@ -313,9 +313,6 @@ export default function Dashboard() {
             <Heading size="md" color={textColor} fontWeight="700">
               Dashboard Overview
             </Heading>
-            <Text fontSize="sm" color={subTextColor}>
-              Real-time business performance, service metrics & recent activity
-            </Text>
           </Box>
           <Button
             size="sm"
@@ -407,9 +404,6 @@ export default function Dashboard() {
               >
                 Category Performance
               </Heading>
-              <Text fontSize="xs" color={subTextColor}>
-                Compare service and product categories side by side
-              </Text>
             </Box>
             <Text
               fontSize="2xs"
@@ -430,7 +424,6 @@ export default function Dashboard() {
             <CategoryPerformancePanel
               kind="service"
               title="Service Performance"
-              subtitle="Service catalogue and booking revenue"
               icon={FaTools}
               analytics={serviceAnalytics}
               revenue={kpiData.serviceRevenue}
@@ -440,7 +433,6 @@ export default function Dashboard() {
             <CategoryPerformancePanel
               kind="product"
               title="Product Performance"
-              subtitle="Product catalogue and order revenue"
               icon={FaBoxOpen}
               analytics={productAnalytics}
               revenue={kpiData.productRevenue}

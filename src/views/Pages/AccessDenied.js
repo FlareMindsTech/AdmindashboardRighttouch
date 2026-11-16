@@ -12,7 +12,8 @@ export default function AccessDenied() {
     if (userString) {
       try {
         const userData = JSON.parse(userString);
-        if (userData.role?.toLowerCase() === "owner") {
+        const role = userData.role?.toLowerCase();
+        if (role === "owner" || role === "admin") {
           navigate("/owner/dashboard");
         } else {
           navigate("/auth/signin");
@@ -32,8 +33,7 @@ export default function AccessDenied() {
           ⚠️ Access Denied
         </Heading>
         <Text fontSize="xl" color="gray.600">
-          You don't have permission to access this page. 
-          Only users with owner privileges can access the admin dashboard.
+          You don't have permission to access this page.
         </Text>
         <Box>
           <Button
@@ -58,4 +58,4 @@ export default function AccessDenied() {
       </VStack>
     </Container>
   );
-}
+}

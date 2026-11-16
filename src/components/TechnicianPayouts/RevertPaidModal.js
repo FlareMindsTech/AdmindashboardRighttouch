@@ -187,9 +187,6 @@ export default function RevertPaidModal({
       }
       footer={
         <HStack spacing={3} justify="space-between" w="full">
-          <Text fontSize="xs" color="gray.500">
-            Compensating ledger transaction will be appended to audit history.
-          </Text>
           <HStack spacing={3}>
             <Button size="md" variant="ghost" onClick={onClose} isDisabled={isSubmitting}>
               Cancel

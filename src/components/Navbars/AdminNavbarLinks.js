@@ -24,7 +24,7 @@ import {
 import { useAppToast } from "components/feedback";
 import { NavLink, useNavigate } from "react-router-dom";
 import { BellIcon, ChevronDownIcon } from "@chakra-ui/icons";
-import { MdPerson, MdLogout, MdAttachMoney, MdReport, MdShield } from "react-icons/md";
+import { MdPerson, MdLogout, MdShield } from "react-icons/md";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
@@ -50,6 +50,9 @@ const HeaderLinks = React.memo(function HeaderLinks() {
 
   const user = useAppSelector(selectUser);
   const role = useAppSelector(selectRole);
+  const normalizedRole = (role || user?.role || "Owner").toString().toLowerCase();
+  const isOwner = normalizedRole === "owner";
+  const roleLabel = isOwner ? "Owner" : "Admin";
 
   const unreadCount = useAppSelector(selectInboxUnreadCount);
   const notifications = useAppSelector(selectInbox);
@@ -98,9 +101,9 @@ const HeaderLinks = React.memo(function HeaderLinks() {
   const displayName =
     user?.fname && user?.lname
       ? `${user.fname} ${user.lname}`
-      : user?.name || user?.identifier || "Owner";
-  const initials = (displayName.slice(0, 2) || "OW").toUpperCase();
-  const userRole = (role || user?.role || "Owner").toUpperCase();
+      : user?.name || user?.identifier || roleLabel;
+  const initials = (displayName.slice(0, 2) || roleLabel).toUpperCase();
+  const userRole = roleLabel.toUpperCase();
 
   return (
     <Flex alignItems="center" gap={{ base: 2, sm: 3 }} flexShrink={0}>
@@ -119,7 +122,7 @@ const HeaderLinks = React.memo(function HeaderLinks() {
           ✦
         </Box>
         <Text fontSize="3xs" fontWeight="800" color="white" textTransform="uppercase" letterSpacing="0.8px">
-          Owner Console
+          {roleLabel} Console
         </Text>
       </HStack>
 
@@ -340,38 +343,18 @@ const HeaderLinks = React.memo(function HeaderLinks() {
             My Profile & Security
           </MenuItem>
 
-          <MenuItem
-            as={NavLink}
-            to="/owner/finance-tracking"
-            icon={<MdAttachMoney size={16} color={BRAND_TEAL} />}
-            borderRadius="10px"
-            fontSize="xs"
-            fontWeight="600"
-          >
-            Financial Analytics
-          </MenuItem>
-
-          <MenuItem
-            as={NavLink}
-            to="/owner/reports-ratings"
-            icon={<MdReport size={16} color={BRAND_TEAL} />}
-            borderRadius="10px"
-            fontSize="xs"
-            fontWeight="600"
-          >
-            Disputes & Ratings
-          </MenuItem>
-
-          <MenuItem
-            as={NavLink}
-            to="/owner/admin-management"
-            icon={<MdShield size={16} color={BRAND_TEAL} />}
-            borderRadius="10px"
-            fontSize="xs"
-            fontWeight="600"
-          >
-            Partner Management
-          </MenuItem>
+          {isOwner && (
+            <MenuItem
+              as={NavLink}
+              to="/owner/credentials"
+              icon={<MdShield size={16} color={BRAND_TEAL} />}
+              borderRadius="10px"
+              fontSize="xs"
+              fontWeight="600"
+            >
+              Admin & Owner Credentials
+            </MenuItem>
+          )}
 
           <MenuDivider my={1} borderColor="gray.200" />
 
@@ -395,7 +378,7 @@ const HeaderLinks = React.memo(function HeaderLinks() {
         onClose={() => setIsLogoutOpen(false)}
         onConfirm={handleConfirmLogout}
         title="Sign Out Confirmation"
-        description="Are you sure you want to sign out of the RightTouch Owner Console?"
+        description={`Are you sure you want to sign out of the RightTouch ${roleLabel} Console?`}
         confirmText="Sign Out"
         confirmColorScheme="red"
         isLoading={logoutLoading}

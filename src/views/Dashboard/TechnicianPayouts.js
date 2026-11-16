@@ -444,9 +444,6 @@ export default function TechnicianPayouts() {
             <Heading as="h1" size="lg" fontWeight="900" letterSpacing="-0.5px" color={isDark ? "white" : "gray.850"}>
               Pay to Technician
             </Heading>
-            <Text fontSize="sm" color="gray.500" mt={1}>
-              Review withdrawal requests or pay a technician directly without waiting for a request.
-            </Text>
           </Box>
 
           {/* Header Action Buttons */}

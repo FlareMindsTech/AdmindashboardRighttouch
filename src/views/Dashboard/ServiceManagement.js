@@ -2959,9 +2959,6 @@ export default function ServiceManagement() {
                               {analysisStats.totalCount} {analysisStats.totalCount === 1 ? "Service" : "Services"}
                             </Badge>
                           </HStack>
-                          <Text fontSize="xs" color="gray.500" mt={1}>
-                            Analyze service distribution, active status rates, valuation metrics, and cost rankings in real-time.
-                          </Text>
                         </Box>
 
                         {analysisStats.activeFiltersCount > 0 && (
@@ -3274,9 +3271,6 @@ export default function ServiceManagement() {
                                 Top Services Ranked by Cost
                               </Heading>
                             </HStack>
-                            <Text fontSize="xs" color="gray.500" mt={0.5}>
-                              Showing highest value services according to applied filter criteria.
-                            </Text>
                           </Box>
                           <Badge colorScheme="teal" px={3} py={1} borderRadius="full" fontSize="xs">
                             {filteredAnalysisServices.length} Results

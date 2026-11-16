@@ -237,9 +237,6 @@ export default function RecordBankTransferModal({
       }
       footer={
         <HStack spacing={3} justify="space-between" w="full">
-          <Text fontSize="xs" color="gray.500">
-            Recording UTR releases reserved funds and marks payout as settled.
-          </Text>
           <HStack spacing={3}>
             <Button size="md" variant="ghost" onClick={onClose} isDisabled={isSubmitting}>
               Cancel

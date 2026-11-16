@@ -44,6 +44,25 @@ export const PAYMENT_STATUS_LABELS = {
   completed: "Completed",
 };
 
+export const PAYMENT_MODE_LABELS = {
+  cash: "Cash",
+  upi: "UPI",
+  upi_direct: "UPI Direct",
+  bank_transfer: "Bank Transfer",
+  cheque: "Cheque",
+  card: "Card / POS",
+  pos: "Card / POS",
+  offline: "Offline",
+  other: "Other",
+  online: "Online",
+  razorpay: "Razorpay",
+};
+
+export const getPaymentModeLabel = (mode) => {
+  const key = String(mode || "").toLowerCase();
+  return PAYMENT_MODE_LABELS[key] || (mode ? String(mode) : "—");
+};
+
 export const QUOTE_REQUEST_STATUS_COLORS = {
   quote_requested: "blue",
   under_review: "orange",
@@ -235,6 +254,21 @@ export const getBookingTotalPaise = (booking = {}) => {
   if (booking.amount != null) return toPaise(booking.amount);
   return 0;
 };
+
+export const getBookingPaidPaise = (booking = {}) => {
+  const total = getBookingTotalPaise(booking);
+  if (String(booking.paymentStatus || "").toLowerCase() === "paid") return total;
+  const paidPaise = Number(booking.paidAmountPaise);
+  if (Number.isFinite(paidPaise) && paidPaise > 0) return Math.min(total, paidPaise);
+  const paidRupees = Number(booking.paidAmount);
+  if (Number.isFinite(paidRupees) && paidRupees > 0) {
+    return Math.min(total, toPaise(paidRupees));
+  }
+  return 0;
+};
+
+export const getBookingRemainingPaise = (booking = {}) =>
+  Math.max(0, getBookingTotalPaise(booking) - getBookingPaidPaise(booking));
 
 export const getBookingNumber = (booking = {}) =>
   booking.bookingNumber ||

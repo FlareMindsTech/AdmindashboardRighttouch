@@ -134,7 +134,6 @@ export default function ProductInsights() {
           <Flex justify="space-between" align="center" w="100%">
             <Box>
               <Heading size="md">Product Insights & Audit Ledger</Heading>
-              <Text fontSize="sm" color="gray.500">Sales metrics, conversion analytics, and catalog audit history</Text>
             </Box>
             <Button size="sm" variant="brand" onClick={() => { loadSummary(); loadTab(); }}>
               Refresh Data
@@ -260,7 +259,6 @@ export default function ProductInsights() {
         isOpen={logModalOpen}
         onClose={() => setLogModalOpen(false)}
         title="Audit log details"
-        subtitle="Immutable record details and the captured change payload."
         size="lg"
         secondaryAction={{ label: "Close", onClick: () => setLogModalOpen(false) }}
       >

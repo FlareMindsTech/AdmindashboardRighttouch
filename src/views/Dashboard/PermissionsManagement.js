@@ -209,9 +209,6 @@ export default function PermissionsManagement() {
               <Heading size="md" color="gray.800">
                 User Permissions & Access Inspector
               </Heading>
-              <Text fontSize="sm" color="gray.500" mt={1}>
-                Inspect and verify active role scopes, module privileges, and security permissions
-              </Text>
             </Box>
             <Button
               size="sm"

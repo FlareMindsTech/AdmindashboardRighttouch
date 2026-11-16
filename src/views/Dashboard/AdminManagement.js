@@ -1646,9 +1646,6 @@ function AdminManagement() {
                 <Heading size="md" color="gray.800">
                   {headerInfo.title}
                 </Heading>
-                <Text fontSize="xs" color="gray.500" mt={1}>
-                  {headerInfo.subtitle}
-                </Text>
               </Box>
 
               {/* Controls: Search, Mandatory District Filter, Status Dropdown & Reset */}
@@ -2279,9 +2276,6 @@ function AdminManagement() {
                 <Heading size="sm" color="gray.800">
                   🧹 Orphaned KYC Records
                 </Heading>
-                <Text fontSize="xs" color="gray.500">
-                  Identity documents with no linked technician account.
-                </Text>
               </Box>
               <HStack spacing={2}>
                 <Button

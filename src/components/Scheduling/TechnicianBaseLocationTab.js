@@ -24,8 +24,6 @@ import {
   InputGroup,
   InputLeftElement,
   InputRightElement,
-  Alert,
-  AlertIcon,
   Link,
   useColorMode,
 } from "@chakra-ui/react";
@@ -140,19 +138,6 @@ export default function TechnicianBaseLocationTab({ onRefreshMissingCount }) {
 
   return (
     <Box>
-      {/* Information Banner */}
-      <Alert status="info" borderRadius="12px" mb={4} fontSize="xs">
-        <AlertIcon />
-        <Box>
-          <Text fontWeight="800">Why Service Base Locations Matter for Scheduling:</Text>
-          <Text mt={0.5}>
-            RightTouch&apos;s scheduled matching engine measures driving distance and travel radius from the technician&apos;s
-            verified GPS service base coordinates. Approved technicians without a verified location cannot receive scheduled
-            customer job offers.
-          </Text>
-        </Box>
-      </Alert>
-
       {/* Controls Bar */}
       <Flex
         direction={{ base: "column", md: "row" }}

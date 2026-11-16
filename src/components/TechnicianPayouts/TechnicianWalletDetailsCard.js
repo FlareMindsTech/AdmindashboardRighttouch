@@ -352,9 +352,6 @@ export default function TechnicianWalletDetailsCard({
                 <Text fontSize="sm" fontWeight="800" color={isDark ? "white" : "gray.800"}>
                   Technician Wallet Console & Liquidity Audit
                 </Text>
-                <Text fontSize="2xs" color="gray.500">
-                  Inspect available funds, active payout holds, retention reserve floor, and KYC eligibility.
-                </Text>
               </Box>
             </HStack>
 
@@ -578,9 +575,6 @@ export default function TechnicianWalletDetailsCard({
                             : "No Bank Added"}
                         </Badge>
                       </HStack>
-                      <Text fontSize="2xs" color="gray.500">
-                        Official destination credentials for IMPS, NEFT, RTGS, and UPI technician payouts
-                      </Text>
                     </Box>
                   </HStack>
 
@@ -884,9 +878,6 @@ export default function TechnicianWalletDetailsCard({
                   <Text fontSize="xl" fontWeight="800" color="teal.700">
                     {formatInr(wallet.availableBalancePaise)}
                   </Text>
-                  <Text fontSize="3xs" color="teal.600" mt={1}>
-                    Unencumbered funds ready for withdrawal or direct payout
-                  </Text>
                 </Box>
 
                 {/* 2. Active Payout Reservation */}
@@ -905,9 +896,6 @@ export default function TechnicianWalletDetailsCard({
                   </HStack>
                   <Text fontSize="xl" fontWeight="800" color="orange.700">
                     {formatInr(wallet.reservedBalancePaise)}
-                  </Text>
-                  <Text fontSize="3xs" color="orange.600" mt={1}>
-                    Funds currently reserved for pending/approved withdrawals
                   </Text>
                 </Box>
 
@@ -928,9 +916,6 @@ export default function TechnicianWalletDetailsCard({
                   <Text fontSize="xl" fontWeight="800" color="purple.700">
                     {formatInr(wallet.reserveBalancePaise || overview.maintenanceFloorPaise)}
                   </Text>
-                  <Text fontSize="3xs" color="purple.600" mt={1}>
-                    Minimum safety retention reserve / maintenance buffer
-                  </Text>
                 </Box>
 
                 {/* 4. Outstanding Dues */}
@@ -949,9 +934,6 @@ export default function TechnicianWalletDetailsCard({
                   </HStack>
                   <Text fontSize="xl" fontWeight="800" color="red.700">
                     {formatInr(wallet.outstandingDuesPaise)}
-                  </Text>
-                  <Text fontSize="3xs" color="red.600" mt={1}>
-                    Unrecovered platform deductions or penalty dues
                   </Text>
                 </Box>
               </SimpleGrid>

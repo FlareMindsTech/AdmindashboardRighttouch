@@ -123,7 +123,6 @@ export default function SkillRequests() {
           <Flex justify="space-between" align="center" w="100%" wrap="wrap" gap={3}>
             <Box>
               <Heading size="md">Skill Requests</Heading>
-              <Text fontSize="sm" color="gray.500">Review technician skill additions</Text>
             </Box>
             <HStack>
               <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} maxW="200px" size="sm" placeholder="All statuses">
@@ -199,7 +198,6 @@ export default function SkillRequests() {
         isOpen={Boolean(reviewTarget)}
         onClose={() => setReviewTarget(null)}
         title="Review skill request"
-        subtitle="Approve or reject the technician skill request and record your decision."
         size="md"
         primaryAction={{
           label: "Submit",

@@ -66,3 +66,6 @@ export const recordManualPaymentForBooking = (bookingId, body) =>
     apiClient.post(`/admin/product-bookings/${bookingId}/manual-payment`, body)
   );
 
+export const requestProductPayment = (bookingId) =>
+  handle(apiClient.post(`/admin/product-bookings/${bookingId}/request-payment`));
+

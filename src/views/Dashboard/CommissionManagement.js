@@ -804,9 +804,6 @@ export default function CommissionManagement() {
               <Heading size="md" color="gray.800" fontWeight="800" letterSpacing="-0.02em">
                 RightTouch Commission Governance &amp; Financial Ledgers
               </Heading>
-              <Text fontSize="xs" color="gray.500" mt={0.5}>
-                Manage catalog commission rates, schedule future revisions, audit overrides, and track COD/Gateway settlements.
-              </Text>
             </Box>
 
             <HStack spacing={2}>
@@ -1338,9 +1335,6 @@ export default function CommissionManagement() {
                     <Icon as={FaMoneyBillWave} color="orange.600" />
                     <Text fontWeight="800" color="orange.900">Cash on Delivery (COD) Collections</Text>
                   </HStack>
-                  <Text fontSize="xs" color="gray.600" mb={3}>
-                    Technicians physically hold 100% customer cash. Platform fee is debited from their floating security deposit.
-                  </Text>
                   <SimpleGrid columns={2} gap={2} fontSize="xs">
                     <Box p={2.5} bg="white" borderRadius="8px">
                       <Text color="gray.500">Total COD Collected</Text>
@@ -1359,9 +1353,6 @@ export default function CommissionManagement() {
                     <Icon as={MdOutlineAccountBalanceWallet} color="blue.600" />
                     <Text fontWeight="800" color="blue.900">Online Gateway (UPI / Razorpay)</Text>
                   </HStack>
-                  <Text fontSize="xs" color="gray.600" mb={3}>
-                    Platform collects 100% upfront. Platform cut is retained and net earnings are credited to the technician wallet.
-                  </Text>
                   <SimpleGrid columns={2} gap={2} fontSize="xs">
                     <Box p={2.5} bg="white" borderRadius="8px">
                       <Text color="gray.500">Online Captured</Text>
@@ -1823,9 +1814,6 @@ export default function CommissionManagement() {
                 <Text fontSize="sm" fontWeight="700" color="gray.700">
                   Standard Default Catalog Rate
                 </Text>
-                <Text fontSize="xs" color="gray.500" maxW="420px">
-                  This service is currently operating on the default catalog rate (15.0%). No manual override or rate revision has been logged yet.
-                </Text>
               </VStack>
             ) : (
               <VStack spacing={3} align="stretch">
@@ -1863,7 +1851,6 @@ export default function CommissionManagement() {
               </Flex>
               <Box>
                 <Text fontSize="md" fontWeight="800">Override Booking Commission</Text>
-                <Text fontSize="xs" fontWeight="500" color="gray.500">Apply a negotiated manual commission rate exception</Text>
               </Box>
             </HStack></>} footer={<><Button variant="ghost" mr={3} size="sm" onClick={() => setIsOverrideModalOpen(false)}>
               Cancel
@@ -1989,7 +1976,6 @@ export default function CommissionManagement() {
         isOpen={isLogDetailOpen}
         onClose={() => setIsLogDetailOpen(false)}
         title="Financial Audit Inspection"
-        subtitle="Deep immutable audit record details and payload"
         icon={MdVisibility}
         metadata={
           selectedLog

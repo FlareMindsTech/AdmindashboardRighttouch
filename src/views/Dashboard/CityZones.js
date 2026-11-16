@@ -4901,9 +4901,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   <Heading size="md" color={INK} fontWeight="800" letterSpacing="-0.02em">
                     RightTouch Zone &amp; Geofencing Governance
                   </Heading>
-                  <Text fontSize="xs" color="gray.500" mt={0.5} fontWeight="500">
-                    Manage operational districts, micro-zones, service matrices, technician permissions, and spatial telemetry
-                  </Text>
                 </Box>
 
                 <HStack spacing={2} flexWrap="wrap">
@@ -5207,9 +5204,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                 <Icon as={MdCheckCircle} color="teal.500" boxSize={4} />
                                 <Text fontSize="xs" fontWeight="700" color="gray.800">Survey of India GeoJSON</Text>
                               </HStack>
-                              <Text fontSize="11px" color="gray.500" lineHeight="1.4">
-                                Pre-loaded official boundary coordinates for all 38 TN revenue districts.
-                              </Text>
                             </Box>
 
                             <Box p={3.5} bg="white" borderRadius="12px" border="1px solid" borderColor="teal.100" boxShadow="xs">
@@ -5217,9 +5211,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                 <Icon as={MdCheckCircle} color="purple.500" boxSize={4} />
                                 <Text fontSize="xs" fontWeight="700" color="gray.800">City Micro-Zones</Text>
                               </HStack>
-                              <Text fontSize="11px" color="gray.500" lineHeight="1.4">
-                                Create sub-zones and villages under parent districts for targeted dispatch.
-                              </Text>
                             </Box>
 
                             <Box p={3.5} bg="white" borderRadius="12px" border="1px solid" borderColor="teal.100" boxShadow="xs">
@@ -5227,9 +5218,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                 <Icon as={MdCheckCircle} color="blue.500" boxSize={4} />
                                 <Text fontSize="xs" fontWeight="700" color="gray.800">1-Click Governance</Text>
                               </HStack>
-                              <Text fontSize="11px" color="gray.500" lineHeight="1.4">
-                                Control master active state, registration access, and job dispatch flags instantly.
-                              </Text>
                             </Box>
                           </Grid>
 
@@ -6170,9 +6158,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           <Text fontSize="xs" fontWeight="700" color="purple.900">
                             Technician Dispatch Permissions:
                           </Text>
-                          <Text fontSize="xs" color="purple.800">
-                            Technicians are authorized exclusively by District coverage and operating radius. Micro-zones do not restrict technician assignments.
-                          </Text>
                         </HStack>
                         <Badge colorScheme="purple" fontSize="10px" px={2.5} py={0.5} borderRadius="full" fontWeight="700">
                           District-Level Authorization Only
@@ -6436,9 +6421,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             <Heading size="xs" color={BRAND} textTransform="uppercase" letterSpacing="0.5px">
                               Spatial Hierarchy Tree (Districts ➔ Micro-Zones ➔ Services ➔ Technicians)
                             </Heading>
-                            <Text fontSize="xs" color="gray.500">
-                              Complete nested relational graph of all operational boundaries and authorized resources.
-                            </Text>
                           </Box>
                           <Button
                             size="xs"
@@ -6500,9 +6482,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             <Heading size="xs" color={BRAND} textTransform="uppercase" letterSpacing="0.5px">
                               District Operational Dashboard & Boundary Impact Simulator
                             </Heading>
-                            <Text fontSize="xs" color="gray.500">
-                              Real-time district performance metrics and simulation of polygon change impacts.
-                            </Text>
                           </Box>
                           <HStack>
                             <Select
@@ -6602,9 +6581,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               <Heading size="xs" color={BRAND} textTransform="uppercase" letterSpacing="0.5px">
                                 Live Real-Time Leaflet Geofence Canvas
                               </Heading>
-                              <Text fontSize="xs" color="gray.500">
-                                Inspect operational boundaries, geofence radius buffers, and live authorized technicians across Tamil Nadu.
-                              </Text>
                             </Box>
                           </Flex>
 
@@ -6683,9 +6659,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           <Heading size="xs" color={BRAND} mb={2} textTransform="uppercase" letterSpacing="0.5px">
                             12-Step Technician Dispatch Readiness Test
                           </Heading>
-                          <Text fontSize="xs" color="gray.500" mb={3}>
-                            Simulate matching for a technician against district containment, 10KM radius, and permissions.
-                          </Text>
                           <VStack spacing={3} align="stretch">
                             <FormControl isRequired>
                               <FormLabel fontSize="xs" fontWeight="600">Technician</FormLabel>
@@ -6735,9 +6708,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           <Heading size="xs" color={INK} mb={2} textTransform="uppercase" letterSpacing="0.5px">
                             Inspect Active Job Location & Broadcast Audit
                           </Heading>
-                          <Text fontSize="xs" color="gray.500" mb={3}>
-                            Pinpoint booking coordinates inside district polygons and audit candidate exclusion reasons.
-                          </Text>
                           <HStack mb={3}>
                             <Input size="sm" placeholder="Enter Booking ID..." value={inspectJobId} onChange={(e) => setInspectJobId(e.target.value)} borderRadius="8px" />
                             <Button size="sm" colorScheme="purple" onClick={handleInspectJobAndAudit} isLoading={isInspectingJob}>
@@ -6796,9 +6766,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               <Heading size="xs" color={BRAND} textTransform="uppercase" letterSpacing="0.5px">
                                 Customer Address & Location Serviceability Simulator
                               </Heading>
-                              <Text fontSize="xs" color="gray.500">
-                                Simulates customer website & app bookings by verifying Global Service Status, District Boundaries, and Micro-Zone availability for any GPS coordinate.
-                              </Text>
                             </Box>
                             <HStack spacing={2}>
                               <Button
@@ -6950,9 +6917,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             <Heading size="xs" color={BRAND} mb={2} textTransform="uppercase" letterSpacing="0.5px">
                               Dispatch Health & Diagnostics Debug
                             </Heading>
-                            <Text fontSize="xs" color="gray.500" mb={3}>
-                              Diagnose why services fail to broadcast or why zero technicians receive job alerts.
-                            </Text>
                             <VStack spacing={3} align="stretch">
                               <FormControl isRequired>
                                 <FormLabel fontSize="xs" fontWeight="600">Technician</FormLabel>
@@ -7031,9 +6995,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             <Heading size="xs" color="red.600" mb={2} textTransform="uppercase" letterSpacing="0.5px">
                               Rollback Polygon Version (Spatial Audit Log)
                             </Heading>
-                            <Text fontSize="xs" color="gray.500" mb={3}>
-                              Restore an earlier validated polygon boundary for a district or micro-zone from history.
-                            </Text>
                             <VStack spacing={3} align="stretch">
                               <FormControl isRequired>
                                 <FormLabel fontSize="xs" fontWeight="600">Entity Type</FormLabel>
@@ -7091,9 +7052,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                 Spatial Boundary &amp; GeoJSON RFC 7946 Validator
                               </Heading>
                             </HStack>
-                            <Text fontSize="xs" color="gray.500" mt={1}>
-                              Deep spatial verification of coordinates, ring closure, parent district boundary containment, and sibling-zone overlap inspection (overlap is allowed).
-                            </Text>
                           </Box>
 
                           <HStack spacing={2} flexWrap="wrap">
@@ -7887,9 +7845,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       <Text fontSize="sm" fontWeight="700" color={BRAND}>
                         {getResolvedPrimaryDistrict()?.name || selectedTechForPermission?.city || "None Specified"}
                       </Text>
-                      <Text fontSize="10px" color="gray.600">
-                        Registration context only. It grants no dispatch coverage until an admin grants district access below.
-                      </Text>
                     </Box>
                   </Flex>
                 </Box>
@@ -7899,9 +7854,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     <Box>
                       <Text fontSize="11px" fontWeight="700" color="blue.800" textTransform="uppercase" letterSpacing="0.5px">
                         Coverage Radius (KM)
-                      </Text>
-                      <Text fontSize="xs" color="gray.600">
-                        Default is 10 KM. Defines maximum matching radius for service allocation.
                       </Text>
                     </Box>
                     <HStack spacing={2}>
@@ -7962,9 +7914,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                               1. District Permissions & Coverage
                             </Text>
                           </HStack>
-                          <Text fontSize="11px" color="gray.500">
-                            Explicit operational districts the technician may receive work in. Registration district is metadata only.
-                          </Text>
                         </Box>
                         <Badge colorScheme={enabledCoverageCount > 0 ? "purple" : "red"} fontSize="11px" px={2.5} py={0.5} borderRadius="full">
                           {enabledCoverageCount} Active Coverage
@@ -8291,9 +8240,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                         </Badge>
                       )}
                     </HStack>
-                    <Text fontSize="xs" color="gray.500" fontWeight="400">
-                      Define operational sub-zone boundaries within parent district using real-time Leaflet vector map.
-                    </Text>
                   </Box>
                 </HStack>
               </Flex>
@@ -9126,7 +9072,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       <Flex justify="space-between" align="center">
                         <Box>
                           <Text fontSize="xs" fontWeight="700">GPS Location Verified</Text>
-                          <Text fontSize="10px" color="gray.500">Confirm physical address matches registered GPS pin</Text>
                         </Box>
                         <Switch
                           colorScheme="teal"
@@ -9138,7 +9083,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                       <Flex justify="space-between" align="center">
                         <Box>
                           <Text fontSize="xs" fontWeight="700" color="orange.700">Override Zone Mismatch</Text>
-                          <Text fontSize="10px" color="gray.500">Allow dispatch even if home GPS falls outside district boundary</Text>
                         </Box>
                         <Switch
                           colorScheme="orange"

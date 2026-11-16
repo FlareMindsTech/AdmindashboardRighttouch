@@ -572,9 +572,6 @@ export default function BookingAuditTab({
                   <Text fontSize="sm" fontWeight="800">
                     Broadcast Delivery &amp; Wave Audit
                   </Text>
-                  <Text fontSize="2xs" color="gray.500">
-                    Live candidate dispatch distribution logs
-                  </Text>
                 </Box>
               </HStack>
 
@@ -591,9 +588,6 @@ export default function BookingAuditTab({
                   <Icon as={FaClock} color="gray.300" boxSize={6} />
                   <Text fontSize="xs" color="gray.500">
                     No broadcast wave logs recorded for this booking.
-                  </Text>
-                  <Text fontSize="2xs" color="gray.400">
-                    (Job may have been assigned directly or dispatched via offline workflow)
                   </Text>
                 </VStack>
               </Center>

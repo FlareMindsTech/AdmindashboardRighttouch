@@ -134,7 +134,6 @@ export default function BaseLocationModal({
         onClose();
       }}
       title="Set Technician Service Base Location"
-      subtitle="Configure GPS origin for scheduled job matching and radius geofence calculations."
       size="lg"
       primaryAction={{
         label: "Save Base Location",

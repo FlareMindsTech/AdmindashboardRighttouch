@@ -1186,7 +1186,6 @@ export default function BookingDetailDrawer({
                   icon={FaUser}
                   colorScheme="brand"
                   title="Customer details"
-                  subtitle="Contact and service destination"
                 >
                   <HStack spacing={3} align="flex-start">
                     <Avatar
@@ -1292,13 +1291,6 @@ export default function BookingDetailDrawer({
                   icon={techInfo ? (techIsCurrent ? FaUserCheck : FaUserTimes) : FaUserTimes}
                   colorScheme={techInfo ? (techIsCurrent ? "green" : "orange") : "gray"}
                   title="Technician details"
-                  subtitle={
-                    techInfo
-                      ? techIsCurrent
-                        ? "Assigned service professional"
-                        : "Released technician from a previous attempt"
-                      : "Assignment pending"
-                  }
                   right={
                     <Badge
                       colorScheme={techInfo ? (techIsCurrent ? "green" : "orange") : "gray"}
@@ -1478,7 +1470,6 @@ export default function BookingDetailDrawer({
                 icon={FaBullhorn}
                 colorScheme="purple"
                 title="Broadcast & assignment audit"
-                subtitle="Offers sent to technicians and their responses"
                 right={
                   <HStack spacing={2} flexWrap="wrap" justify="flex-end">
                     {broadcast && (

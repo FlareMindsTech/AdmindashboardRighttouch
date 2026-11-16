@@ -38,7 +38,6 @@ export default function PayoutFlowPipeline({
       id: "requested",
       stepNumber: 1,
       title: "Requested",
-      subtitle: "Balance reserved in escrow",
       actionText: "Awaiting Admin Transfer",
       icon: FaFileInvoiceDollar,
       count: (counts.requested || 0) + (counts.pending || 0),
@@ -50,7 +49,6 @@ export default function PayoutFlowPipeline({
       id: "approved",
       stepNumber: 2,
       title: "Ready to Disburse",
-      subtitle: "Offline Bank / UPI transfer",
       actionText: "Execute Transfer & Record UTR",
       icon: FaMoneyCheckAlt,
       count: counts.approved ?? 0,
@@ -62,7 +60,6 @@ export default function PayoutFlowPipeline({
       id: "paid",
       stepNumber: 3,
       title: "Settled & Paid",
-      subtitle: "UTR recorded & ledger debited",
       actionText: "Receipt Generated (Owner Reversible)",
       icon: FaCheckCircle,
       count: counts.paid ?? 0,
@@ -228,10 +225,6 @@ export default function PayoutFlowPipeline({
                     {stage.count}
                   </Badge>
                 </Flex>
-
-                <Text fontSize="3xs" color="gray.500" noOfLines={1} mb={2}>
-                  {stage.subtitle}
-                </Text>
 
                 <Flex
                   align="center"

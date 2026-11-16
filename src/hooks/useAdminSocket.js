@@ -1,11 +1,11 @@
-// src/hooks/useAdminSocket.js — owner-session Socket.IO connection.
+// src/hooks/useAdminSocket.js — privileged-session Socket.IO connection.
 //
-// One connection per owner layout. Polling remains the fallback in
+// One connection per Owner/Admin layout. Polling remains the fallback in
 // useNotificationCoordinator; this hook only adds push updates.
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { useAppDispatch, useAppSelector } from "store/hooks";
-import { selectAuthInitialized, selectIsOwner } from "store/slices/authSlice";
+import { selectAuthInitialized, selectIsPrivileged } from "store/slices/authSlice";
 import { applySocketCounts } from "store/slices/notificationsSlice";
 import { getToken, handleSessionExpiry } from "views/utils/axiosInstance";
 
@@ -26,11 +26,11 @@ const PRODUCT_EVENTS = [
 export const useAdminSocket = () => {
   const dispatch = useAppDispatch();
   const authInitialized = useAppSelector(selectAuthInitialized);
-  const isOwner = useAppSelector(selectIsOwner);
+  const isPrivileged = useAppSelector(selectIsPrivileged);
   const socketRef = useRef(null);
 
   useEffect(() => {
-    if (!authInitialized || !isOwner) return undefined;
+    if (!authInitialized || !isPrivileged) return undefined;
 
     const token = getToken();
     if (!token) return undefined;
@@ -95,7 +95,7 @@ export const useAdminSocket = () => {
       socket.disconnect();
       if (socketRef.current === socket) socketRef.current = null;
     };
-  }, [authInitialized, isOwner, dispatch]);
+  }, [authInitialized, isPrivileged, dispatch]);
 
   return socketRef;
 };

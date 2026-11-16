@@ -129,7 +129,8 @@ const UserMobileCard = React.memo(({
   onViewDetails,
   onViewTechnician,
   onViewPayment,
-  onDelete
+  onDelete,
+  canDelete,
 }) => {
   const userName = getUserDisplayName(user);
   const userEmail = getUserDisplayEmail(user);
@@ -174,7 +175,9 @@ const UserMobileCard = React.memo(({
           { label: "View details", icon: <FaEye />, colorScheme: "blue", onClick: () => onViewDetails(user) },
           { label: "View technician", icon: <FaUserCog />, colorScheme: "green", onClick: () => onViewTechnician(user) },
           { label: "View payments", icon: <FaWallet />, colorScheme: "orange", onClick: () => onViewPayment(user) },
-          { label: "Delete user", icon: <FaTrash />, colorScheme: "red", onClick: () => onDelete(user) },
+          ...(canDelete
+            ? [{ label: "Delete user", icon: <FaTrash />, colorScheme: "red", onClick: () => onDelete(user) }]
+            : []),
         ]}
       />
     </MobileCard>
@@ -194,6 +197,7 @@ export default function UserManagement() {
 
   // State hooks
   const [currentUser, setCurrentUser] = useState(null);
+  const isOwner = currentUser?.role?.toLowerCase() === "owner";
   const [userData, setUserData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -765,18 +769,20 @@ export default function UserManagement() {
                               size="xs"
                               onClick={() => handleViewPaymentDetails(user)}
                             />
-                            <IconButton
-                              aria-label="Delete user"
-                              icon={<FaTrash />}
-                              bg="white"
-                              color="red.500"
-                              border="1px"
-                              borderColor="red.500"
-                              _hover={{ bg: "red.500", color: "white" }}
-                              _active={{ bg: "red.600", color: "white" }}
-                              size="xs"
-                              onClick={() => handleDeleteClick(user)}
-                            />
+                            {isOwner && (
+                              <IconButton
+                                aria-label="Delete user"
+                                icon={<FaTrash />}
+                                bg="white"
+                                color="red.500"
+                                border="1px"
+                                borderColor="red.500"
+                                _hover={{ bg: "red.500", color: "white" }}
+                                _active={{ bg: "red.600", color: "white" }}
+                                size="xs"
+                                onClick={() => handleDeleteClick(user)}
+                              />
+                            )}
                           </Flex>
                         ),
                       },
@@ -803,6 +809,7 @@ export default function UserManagement() {
                         onViewTechnician={handleViewTechnicianAllocation}
                         onViewPayment={handleViewPaymentDetails}
                         onDelete={handleDeleteClick}
+                        canDelete={isOwner}
                       />
                     ))
                   ) : (

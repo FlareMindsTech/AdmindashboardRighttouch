@@ -76,9 +76,6 @@ export default function ZoneHealthTab() {
               Operational Zone Supply &amp; Demand Health
             </Text>
           </HStack>
-          <Text fontSize="xs" color="gray.500">
-            Real-time balance between scheduled customer booking slots and active verified technicians.
-          </Text>
         </Box>
 
         <Button size="sm" variant="outline" leftIcon={<MdRefresh size={16} />} onClick={loadHealth}>

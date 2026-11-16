@@ -782,10 +782,6 @@ export default function SchedulingOps() {
               <Heading as="h1" size="lg" fontWeight="900" letterSpacing="-0.4px">
                 Scheduling &amp; Dispatch
               </Heading>
-              <Text fontSize="sm" color="gray.500" mt={1}>
-                See which bookings need a technician, fix dispatch problems, and
-                settle customer no-show claims.
-              </Text>
             </Box>
           </HStack>
         </Box>

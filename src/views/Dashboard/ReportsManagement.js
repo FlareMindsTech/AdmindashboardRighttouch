@@ -980,9 +980,6 @@ export default function ReportsManagement() {
             <Heading as="h1" size="lg" fontWeight="900" letterSpacing="-0.5px" color={isDark ? "white" : "gray.850"}>
               Reported Issues & Customer Ratings
             </Heading>
-            <Text fontSize="sm" color="gray.500" mt={1}>
-              Investigate customer dispute claims, review counter-evidence, enforce SLA penalties, and monitor service rating scores.
-            </Text>
           </Box>
 
           <HStack spacing={3} flexWrap="wrap">
@@ -1705,8 +1702,8 @@ export default function ReportsManagement() {
         title={activeTab === "reports" ? "Dispute Investigation Dossier" : "Rating Details"}
         subtitle={
           activeTab === "reports"
-            ? `Case #${String(selectedItem?._id || selectedItem?.id || "").slice(-8).toUpperCase()} • Full evidence claims, counter-defense, and SLA enforcement desk.`
-            : "Customer rating review and aggregate score."
+            ? `Case #${String(selectedItem?._id || selectedItem?.id || "").slice(-8).toUpperCase()}`
+            : undefined
         }
         icon={activeTab === "reports" ? MdReport : MdStar}
         iconColor={BRAND}
@@ -2051,7 +2048,6 @@ export default function ReportsManagement() {
         onClose={() => setIsEditModalOpen(false)}
         size="md"
         title="Edit Customer Rating"
-        subtitle="Modify score rating and review feedback statement."
         icon={MdRateReview}
         iconColor={BRAND}
       >
@@ -2133,7 +2129,6 @@ export default function ReportsManagement() {
         onClose={() => setIsConfirmModalOpen(false)}
         size="lg"
         title={confirmModalData.title || "Confirm Enforcement Action"}
-        subtitle="Review action parameters and execute financial/status modification."
         icon={FaExclamationTriangle}
         iconColor={confirmModalData.colorScheme === "red" ? "red.500" : BRAND}
       >

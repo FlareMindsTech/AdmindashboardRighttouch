@@ -46,6 +46,8 @@ export default function QuoteRequestsView({ requests = [], isLoading, onRefresh 
   const toast = useAppToast();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [selected, setSelected] = useState(null);
@@ -63,6 +65,15 @@ export default function QuoteRequestsView({ requests = [], isLoading, onRefresh 
           ? ["quote_requested", "under_review", "quotation_prepared", "quotation_sent", "viewed"].includes(requestStatus)
           : requestStatus === status);
       if (!statusMatch) return false;
+      const createdAt = new Date(request.createdAt);
+      if (fromDate) {
+        const from = new Date(`${fromDate}T00:00:00`);
+        if (!Number.isNaN(createdAt.getTime()) && createdAt < from) return false;
+      }
+      if (toDate) {
+        const to = new Date(`${toDate}T23:59:59.999`);
+        if (!Number.isNaN(createdAt.getTime()) && createdAt > to) return false;
+      }
       if (!term) return true;
       const customer = getCustomer(request);
       const product = getProduct(request);
@@ -76,17 +87,24 @@ export default function QuoteRequestsView({ requests = [], isLoading, onRefresh 
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term));
     });
-  }, [requests, search, status]);
+  }, [requests, search, status, fromDate, toDate]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, status, rowsPerPage]);
+  }, [search, status, fromDate, toDate, rowsPerPage]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const paged = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
   const refresh = async () => {
     await onRefresh?.();
+  };
+
+  const clearFilters = () => {
+    setSearch("");
+    setStatus("active");
+    setFromDate("");
+    setToDate("");
   };
 
   const handleAssign = async (request) => {
@@ -214,9 +232,6 @@ export default function QuoteRequestsView({ requests = [], isLoading, onRefresh 
       >
         <Box flex="1">
           <Text fontSize="md" fontWeight="800" color="gray.800">Product quote requests</Text>
-          <Text fontSize="xs" color="gray.500">
-            Requests waiting for review or quotation. {filtered.length} shown.
-          </Text>
         </Box>
         <HStack spacing={2} flexWrap="wrap">
           <Input
@@ -233,6 +248,25 @@ export default function QuoteRequestsView({ requests = [], isLoading, onRefresh 
               <option key={value} value={value}>{label}</option>
             ))}
           </Select>
+          <Input
+            size="sm"
+            maxW="150px"
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            aria-label="Requests from date"
+          />
+          <Input
+            size="sm"
+            maxW="150px"
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            aria-label="Requests to date"
+          />
+          {(search || status !== "active" || fromDate || toDate) && (
+            <Button size="sm" variant="ghost" onClick={clearFilters}>Clear</Button>
+          )}
           <Button size="sm" variant="outline" onClick={refresh} isLoading={isLoading}>Refresh</Button>
         </HStack>
       </Flex>

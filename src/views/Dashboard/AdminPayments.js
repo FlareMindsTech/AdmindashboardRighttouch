@@ -92,6 +92,14 @@ import {
   getPaymentByBookingAdmin,
   deleteBookingAsAdmin,
 } from "api/adminPayments";
+import { listProductBookings } from "api/quotations";
+import {
+  formatINR,
+  getBookingNumber,
+  getBookingRemainingPaise,
+  getCustomer,
+  getProduct,
+} from "views/Dashboard/ProductManagement/productFlowUtils";
 
 import {
   listRefunds,
@@ -133,6 +141,13 @@ export default function AdminPayments() {
   const [reference, setReference] = useState("");
   const [offlineNote, setOfflineNote] = useState("");
   const [savingOffline, setSavingOffline] = useState(false);
+  const [bookingOptions, setBookingOptions] = useState([]);
+  const [bookingOptionsLoading, setBookingOptionsLoading] = useState(false);
+
+  // Manual Status Override State
+  const [statusAction, setStatusAction] = useState(null);
+  const [statusReason, setStatusReason] = useState("");
+  const [statusSaving, setStatusSaving] = useState(false);
 
   // Tab 2: Customer Refunds Desk State
   const [refunds, setRefunds] = useState([]);
@@ -270,15 +285,73 @@ export default function AdminPayments() {
     };
   }, [loadSummary, loadList, loadRefunds]);
 
+  useEffect(() => {
+    if (!offlineOpen) return undefined;
+    let active = true;
+    setBookingOptionsLoading(true);
+    listProductBookings({ status: "active" })
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          toast.error(error, { title: "Failed to load product bookings", duration: 3000, isClosable: true });
+          setBookingOptions([]);
+          return;
+        }
+        const payload = data?.result ?? data?.data ?? data ?? [];
+        const list = Array.isArray(payload) ? payload : payload?.bookings ?? [];
+        setBookingOptions(
+          list.filter((booking) => {
+            const status = String(booking.paymentStatus || "pending").toLowerCase();
+            return status !== "paid" && getBookingRemainingPaise(booking) > 0;
+          })
+        );
+      })
+      .finally(() => {
+        if (active) setBookingOptionsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [offlineOpen, toast]);
+
+  const selectedBookingOption = bookingOptions.find(
+    (booking) => String(booking._id || booking.id) === String(bookingId)
+  );
+
+  const closeOfflineModal = () => {
+    if (savingOffline) return;
+    setOfflineOpen(false);
+    setBookingId("");
+    setAmount("");
+    setReference("");
+    setOfflineNote("");
+  };
+
+  const selectOfflineBooking = (id) => {
+    setBookingId(id);
+    const booking = bookingOptions.find((item) => String(item._id || item.id) === String(id));
+    if (!booking) {
+      setAmount("");
+      return;
+    }
+    const remainingPaise = getBookingRemainingPaise(booking);
+    setAmount(remainingPaise > 0 ? (remainingPaise / 100).toFixed(2) : "");
+  };
+
   // Handle Offline Payment Submission
   const submitOffline = async () => {
-    if (!bookingId || !amount) {
-      toast({ title: "Booking ID and Amount are required", status: "warning", duration: 2500, isClosable: true });
+    if (!bookingId) {
+      toast({ title: "Select a product booking", status: "warning", duration: 2500, isClosable: true });
       return;
     }
     const cleanAmount = Number(amount);
     if (isNaN(cleanAmount) || cleanAmount <= 0) {
-      toast({ title: "Please enter a valid positive amount", status: "warning", duration: 2500, isClosable: true });
+      toast({ title: "Selected booking has no payable balance", status: "warning", duration: 2500, isClosable: true });
+      return;
+    }
+    const expectedPaise = selectedBookingOption ? getBookingRemainingPaise(selectedBookingOption) : 0;
+    if (expectedPaise > 0 && Math.abs(Math.round(cleanAmount * 100) - expectedPaise) > 1) {
+      toast({ title: "Full settlement required", description: "Product payments must settle the full remaining balance.", status: "warning", duration: 3000, isClosable: true });
       return;
     }
 
@@ -288,7 +361,7 @@ export default function AdminPayments() {
       amount: cleanAmount,
       paymentMode: mode,
       transactionReference: reference.trim() || undefined,
-      note: offlineNote.trim() || undefined,
+      notes: offlineNote.trim() || undefined,
     };
 
     const { error } = bookingId
@@ -311,15 +384,39 @@ export default function AdminPayments() {
   };
 
   // Mark Incoming Payment Status
-  const markStatus = async (row, status) => {
+  const markStatus = (row, status) => {
     const id = row?._id || row?.paymentId || row?.id;
     if (!id) return;
-    const { error } = await updateAdminPaymentStatus(id, { status });
+    setStatusAction({ row, status, id });
+    setStatusReason(
+      status === "success"
+        ? "Payment verified manually by admin"
+        : "Payment marked failed manually by admin"
+    );
+  };
+
+  const submitStatusAction = async () => {
+    if (!statusAction?.id) return;
+    const reason = statusReason.trim();
+    if (!reason) {
+      toast({ title: "Reason is required", status: "warning", duration: 2500, isClosable: true });
+      return;
+    }
+    setStatusSaving(true);
+    const { error } = await updateAdminPaymentStatus(statusAction.id, {
+      status: statusAction.status,
+      reason,
+    });
+    setStatusSaving(false);
     if (error) {
       toast.error(error, { title: "Update failed", duration: 3000, isClosable: true });
       return;
     }
+    const id = statusAction.id;
+    const status = statusAction.status;
     toast({ title: `Marked payment as ${status}`, status: "success", duration: 2000, isClosable: true });
+    setStatusAction(null);
+    setStatusReason("");
     loadList();
     loadSummary();
     if (selectedPaymentForDrawer && (selectedPaymentForDrawer._id === id || selectedPaymentForDrawer.id === id)) {
@@ -670,9 +767,6 @@ export default function AdminPayments() {
                 Admin Payments & Refunds Desk
               </Heading>
             </HStack>
-            <Text fontSize="sm" color="gray.500" mt={1}>
-              Supervise platform revenue inflows, record offline cash/UPI receipts, and settle manual customer refunds.
-            </Text>
           </Box>
 
           <HStack spacing={3} flexWrap="wrap">
@@ -689,7 +783,7 @@ export default function AdminPayments() {
               px={4}
               onClick={() => setOfflineOpen(true)}
             >
-              Record Offline Payment
+              Record Product Payment
             </Button>
 
             <Button
@@ -2057,9 +2151,8 @@ export default function AdminPayments() {
       {/* ================= MODAL: RECORD OFFLINE PAYMENT ================= */}
       <AppModal
         isOpen={offlineOpen}
-        onClose={() => setOfflineOpen(false)}
+        onClose={closeOfflineModal}
         title="Record Customer Offline Payment"
-        subtitle="Log a cash, direct UPI, bank transfer, or card swipe payment against a customer booking."
         size="lg"
         primaryAction={{
           label: "Record Payment",
@@ -2067,30 +2160,65 @@ export default function AdminPayments() {
           isLoading: savingOffline,
           colorScheme: "teal",
         }}
-        secondaryAction={{ label: "Cancel", onClick: () => setOfflineOpen(false) }}
+        secondaryAction={{ label: "Cancel", onClick: closeOfflineModal }}
       >
         <VStack spacing={4} align="stretch">
           <Alert status="info" borderRadius="10px" fontSize="xs">
             <AlertIcon />
-            Recording an offline payment automatically reconciles the booking balance and updates platform revenue.
+            Product payments are recorded against active product orders only. The full remaining balance is collected and the customer is notified automatically.
           </Alert>
 
           <FormControl isRequired>
             <FormLabel fontSize="xs" fontWeight="700">
-              Booking ID
+              Product booking
             </FormLabel>
-            <Input
+            <Select
               value={bookingId}
-              onChange={(e) => setBookingId(e.target.value)}
-              placeholder="e.g. 64f40ffd0ff92d4bde26df01"
+              onChange={(e) => selectOfflineBooking(e.target.value)}
+              placeholder={bookingOptionsLoading ? "Loading product bookings..." : "Select an unpaid product booking"}
               borderRadius="8px"
-              fontFamily="mono"
-            />
+              isDisabled={bookingOptionsLoading}
+            >
+              {bookingOptions.map((booking) => {
+                const customer = getCustomer(booking);
+                const product = getProduct(booking);
+                const remaining = getBookingRemainingPaise(booking);
+                return (
+                  <option key={booking._id || booking.id} value={booking._id || booking.id}>
+                    {getBookingNumber(booking)} · {customer.name} · {product.name} · {formatINR(remaining, { fromPaise: true })} due
+                  </option>
+                );
+              })}
+            </Select>
+            {!bookingOptionsLoading && bookingOptions.length === 0 && (
+              <Text fontSize="2xs" color="gray.500" mt={1}>
+                No unpaid active product bookings are available.
+              </Text>
+            )}
           </FormControl>
+
+          {selectedBookingOption && (
+            <Box p={3} border="1px solid" borderColor="teal.200" borderRadius="10px" bg={isDark ? "teal.950" : "teal.50"}>
+              <HStack justify="space-between" flexWrap="wrap" gap={2}>
+                <Box>
+                  <Text fontSize="xs" fontWeight="800">{getCustomer(selectedBookingOption).name}</Text>
+                  <Text fontSize="2xs" color="gray.600">
+                    {getProduct(selectedBookingOption).name} · {getBookingNumber(selectedBookingOption)}
+                  </Text>
+                </Box>
+                <Box textAlign="right">
+                  <Text fontSize="2xs" color="gray.500">Full balance due</Text>
+                  <Text fontSize="sm" fontWeight="800" color="teal.700">
+                    {formatINR(getBookingRemainingPaise(selectedBookingOption), { fromPaise: true })}
+                  </Text>
+                </Box>
+              </HStack>
+            </Box>
+          )}
 
           <FormControl isRequired>
             <FormLabel fontSize="xs" fontWeight="700">
-              Amount Paid (₹)
+              Full Amount Paid (₹)
             </FormLabel>
             <InputGroup>
               <InputLeftElement pointerEvents="none" color="gray.500" fontSize="sm">
@@ -2098,11 +2226,12 @@ export default function AdminPayments() {
               </InputLeftElement>
               <Input
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="e.g. 1500"
+                readOnly
+                placeholder="Select a booking"
                 type="number"
                 borderRadius="8px"
                 fontWeight="700"
+                bg="gray.50"
               />
             </InputGroup>
           </FormControl>
@@ -2115,7 +2244,7 @@ export default function AdminPayments() {
             <SimpleGrid columns={{ base: 2, sm: 4 }} spacing={2}>
               {[
                 { key: "cash", label: "Direct Cash", icon: FaMoneyBillWave },
-                { key: "upi", label: "Direct UPI", icon: FaQrcode },
+                { key: "upi_direct", label: "Direct UPI", icon: FaQrcode },
                 { key: "bank_transfer", label: "Bank Transfer", icon: FaUniversity },
                 { key: "card", label: "POS Card", icon: FaCreditCard },
               ].map((item) => (
@@ -2174,6 +2303,51 @@ export default function AdminPayments() {
         </VStack>
       </AppModal>
 
+      {/* ================= MODAL: MANUAL PAYMENT STATUS ================= */}
+      <AppModal
+        isOpen={Boolean(statusAction)}
+        onClose={() => {
+          if (statusSaving) return;
+          setStatusAction(null);
+          setStatusReason("");
+        }}
+        title={statusAction?.status === "success" ? "Confirm payment success" : "Mark payment failed"}
+        size="md"
+        isBusy={statusSaving}
+        primaryAction={{
+          label: statusAction?.status === "success" ? "Confirm success" : "Confirm failure",
+          onClick: submitStatusAction,
+          isLoading: statusSaving,
+          colorScheme: statusAction?.status === "success" ? "teal" : "red",
+        }}
+        secondaryAction={{
+          label: "Cancel",
+          onClick: () => {
+            if (statusSaving) return;
+            setStatusAction(null);
+            setStatusReason("");
+          },
+        }}
+      >
+        <VStack align="stretch" spacing={4}>
+          <Alert status={statusAction?.status === "success" ? "warning" : "error"} borderRadius="10px" fontSize="xs">
+            <AlertIcon />
+            {statusAction?.status === "success"
+              ? "Only confirm if the payment is verified in the gateway or bank statement. The customer will be notified of successful payment."
+              : "This marks the payment as failed. Add a clear reason for the audit trail."}
+          </Alert>
+          <FormControl isRequired>
+            <FormLabel fontSize="xs" fontWeight="700">Reason</FormLabel>
+            <Textarea
+              rows={3}
+              value={statusReason}
+              onChange={(event) => setStatusReason(event.target.value)}
+              placeholder="Enter the verification or failure reason"
+            />
+          </FormControl>
+        </VStack>
+      </AppModal>
+
       {/* ================= MODAL: MARK REFUND PROCESSED ================= */}
       <AppModal
         isOpen={processModalOpen}
@@ -2183,7 +2357,6 @@ export default function AdminPayments() {
           setSelectedRefundForProcess(null);
         }}
         title="Mark Refund as Transferred (Record UTR)"
-        subtitle="Record the external bank or UPI transaction details for this customer refund."
         size="md"
         primaryAction={{
           label: "Confirm Transfer & Mark Processed",
@@ -2291,7 +2464,6 @@ export default function AdminPayments() {
           setSelectedRefundForCancel(null);
         }}
         title="Cancel Customer Refund"
-        subtitle="Cancelling releases the escrow reservation and reverses any clawback applied to the technician."
         size="md"
         primaryAction={{
           label: "Cancel Refund Record",

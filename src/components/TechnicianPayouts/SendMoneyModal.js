@@ -314,9 +314,6 @@ export default function SendMoneyModal({
             <Text fontSize="lg" fontWeight="800">
               Pay Technician Directly
             </Text>
-            <Text fontSize="xs" color="teal.100">
-              No withdrawal request required
-            </Text>
           </Box>
         </HStack>
       }
@@ -410,9 +407,6 @@ export default function SendMoneyModal({
             <Icon as={FaUser} boxSize={7} color="gray.400" mb={2} />
             <Text fontSize="sm" fontWeight="700" color="gray.600">
               Select a technician first
-            </Text>
-            <Text fontSize="xs" color="gray.400" mt={1}>
-              You will see their live balance, bank destination, and payout eligibility before paying.
             </Text>
           </Box>
         )}

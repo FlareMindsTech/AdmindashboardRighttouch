@@ -21,6 +21,7 @@ import {
 } from "api/quotations";
 import QuotationEditorModal from "./QuotationEditorModal";
 import { QuotationDetailModal } from "./ProductFlowModals";
+import ProductPaymentModal from "./ProductPaymentModal";
 import {
   PAYMENT_STATUS_COLORS,
   PAYMENT_STATUS_LABELS,
@@ -31,6 +32,7 @@ import {
   formatINR,
   getCustomer,
   getProduct,
+  getBookingRemainingPaise,
   getQuotationNumber,
   getQuotationTotalPaise,
 } from "./productFlowUtils";
@@ -48,9 +50,13 @@ export default function QuotationsView({
   const toast = useAppToast();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
+  const [paymentStatus, setPaymentStatus] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [selected, setSelected] = useState(null);
+  const [paymentBooking, setPaymentBooking] = useState(null);
   const [editor, setEditor] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -61,6 +67,19 @@ export default function QuotationsView({
     const term = search.trim().toLowerCase();
     return (quotations || []).filter((quotation) => {
       if (status !== "all" && statusOf(quotation) !== status) return false;
+      const booking = bookingsByQuotation.get(String(quotation._id));
+      if (paymentStatus !== "all" && String(booking?.paymentStatus || "none").toLowerCase() !== paymentStatus) {
+        return false;
+      }
+      const createdAt = new Date(quotation.createdAt);
+      if (fromDate) {
+        const from = new Date(`${fromDate}T00:00:00`);
+        if (!Number.isNaN(createdAt.getTime()) && createdAt < from) return false;
+      }
+      if (toDate) {
+        const to = new Date(`${toDate}T23:59:59.999`);
+        if (!Number.isNaN(createdAt.getTime()) && createdAt > to) return false;
+      }
       if (!term) return true;
       const customer = getCustomer(quotation);
       const product = getProduct(quotation);
@@ -73,17 +92,25 @@ export default function QuotationsView({
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term));
     });
-  }, [quotations, search, status]);
+  }, [quotations, bookingsByQuotation, search, status, paymentStatus, fromDate, toDate]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, status, rowsPerPage]);
+  }, [search, status, paymentStatus, fromDate, toDate, rowsPerPage]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const paged = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
   const refresh = async () => {
     await onRefresh?.();
+  };
+
+  const clearFilters = () => {
+    setSearch("");
+    setStatus("all");
+    setPaymentStatus("all");
+    setFromDate("");
+    setToDate("");
   };
 
   const handleSend = async (quotation) => {
@@ -231,6 +258,18 @@ export default function QuotationsView({
             {["sent", "viewed"].includes(key) && (
               <Button size="xs" variant="outline" colorScheme="blue" onClick={() => handleResend(row)} isDisabled={busy}>Resend</Button>
             )}
+            {(() => {
+              const booking = bookingsByQuotation.get(String(row._id));
+              const canManage = booking &&
+                String(booking.status || "").toLowerCase() === "active" &&
+                String(booking.paymentStatus || "pending").toLowerCase() !== "paid" &&
+                getBookingRemainingPaise(booking) > 0;
+              return canManage ? (
+                <Button size="xs" variant="outline" colorScheme="blue" onClick={() => setPaymentBooking(booking)}>
+                  Payment
+                </Button>
+              ) : null;
+            })()}
           </HStack>
         );
       },
@@ -250,9 +289,6 @@ export default function QuotationsView({
       >
         <Box flex="1">
           <Text fontSize="md" fontWeight="800" color="gray.800">Quotations</Text>
-          <Text fontSize="xs" color="gray.500">
-            Create quotations from a quote request, then send, resend or revise. {filtered.length} shown.
-          </Text>
         </Box>
         <HStack spacing={2} flexWrap="wrap">
           <Input
@@ -268,6 +304,32 @@ export default function QuotationsView({
               <option key={value} value={value}>{label}</option>
             ))}
           </Select>
+          <Select size="sm" maxW="150px" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}>
+            <option value="all">All payments</option>
+            <option value="none">No booking</option>
+            <option value="pending">Payment pending</option>
+            <option value="paid">Paid</option>
+            <option value="refunded">Refunded</option>
+          </Select>
+          <Input
+            size="sm"
+            maxW="150px"
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            aria-label="Quotations from date"
+          />
+          <Input
+            size="sm"
+            maxW="150px"
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            aria-label="Quotations to date"
+          />
+          {(search || status !== "all" || paymentStatus !== "all" || fromDate || toDate) && (
+            <Button size="sm" variant="ghost" onClick={clearFilters}>Clear</Button>
+          )}
           <Button size="sm" variant="outline" onClick={refresh} isLoading={isLoading}>Refresh</Button>
         </HStack>
       </Flex>
@@ -340,6 +402,14 @@ export default function QuotationsView({
                   {key === "draft" && (
                     <Button size="xs" colorScheme="teal" onClick={() => handleSend(row)} isDisabled={busy}>Send</Button>
                   )}
+                  {booking &&
+                    String(booking.status || "").toLowerCase() === "active" &&
+                    String(booking.paymentStatus || "pending").toLowerCase() !== "paid" &&
+                    getBookingRemainingPaise(booking) > 0 && (
+                      <Button size="xs" variant="outline" colorScheme="blue" onClick={() => setPaymentBooking(booking)}>
+                        Payment
+                      </Button>
+                    )}
                 </HStack>
               </MobileCard>
             );
@@ -367,6 +437,18 @@ export default function QuotationsView({
           setEditor({ mode: "edit", quotation });
         }}
         onDelete={(quotation) => setConfirm(quotation)}
+        onManagePayment={(booking) => {
+          setSelected(null);
+          setPaymentBooking(booking);
+        }}
+      />
+
+      <ProductPaymentModal
+        isOpen={Boolean(paymentBooking)}
+        onClose={() => setPaymentBooking(null)}
+        booking={paymentBooking}
+        quotation={paymentBooking ? quotations.find((item) => String(item._id) === String(paymentBooking.quotationId?._id || paymentBooking.quotationId)) : null}
+        onSaved={refresh}
       />
 
       <QuotationEditorModal

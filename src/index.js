@@ -10,7 +10,7 @@ import { ChakraProvider } from "@chakra-ui/react";
 import { Provider } from "react-redux";
 import store from "store/store";
 import theme from "theme/theme.js";
-import { initializeAuth, selectIsOwner } from "store/slices/authSlice";
+import { initializeAuth, selectIsPrivileged } from "store/slices/authSlice";
 import { useAppSelector } from "store/hooks";
 import ErrorBoundary from "components/feedback/ErrorBoundary";
 import ToastProvider from "components/feedback/ToastProvider";
@@ -40,8 +40,12 @@ try {
 
 // Dynamic redirect component based on authentication state
 const AuthRedirect = () => {
-  const isOwner = useAppSelector(selectIsOwner);
-  return isOwner ? <Navigate to="/owner/dashboard" replace /> : <Navigate to="/auth/signin" replace />;
+  const isPrivileged = useAppSelector(selectIsPrivileged);
+  return isPrivileged ? (
+    <Navigate to="/owner/dashboard" replace />
+  ) : (
+    <Navigate to="/auth/signin" replace />
+  );
 };
 
 ReactDOM.render(
@@ -54,7 +58,7 @@ ReactDOM.render(
               {/* Auth routes */}
               <Route path="/auth/*" element={<AuthLayout />} />
 
-              {/*  ONLY OWNER ROUTES */}
+              {/* Privileged Owner/Admin dashboard routes */}
               <Route path="/owner/*" element={<AdminLayout />} />
 
               <Route

@@ -19,7 +19,8 @@ import {
   cancelProductBooking,
   completeProductBooking,
 } from "api/quotations";
-import { BookingDetailModal, ManualPaymentModal } from "./ProductFlowModals";
+import { BookingDetailModal } from "./ProductFlowModals";
+import ProductPaymentModal from "./ProductPaymentModal";
 import {
   BOOKING_STATUS_COLORS,
   BOOKING_STATUS_LABELS,
@@ -49,6 +50,9 @@ export default function BookingsView({
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("active");
   const [paymentStatus, setPaymentStatus] = useState("all");
+  const [paymentMode, setPaymentMode] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [selected, setSelected] = useState(null);
@@ -74,6 +78,17 @@ export default function BookingsView({
     return (bookings || []).filter((booking) => {
       if (status !== "all" && normalize(booking.status) !== status) return false;
       if (paymentStatus !== "all" && normalize(booking.paymentStatus) !== paymentStatus) return false;
+      const mode = normalize(booking.paymentMode || booking.paymentId?.mode || "online");
+      if (paymentMode !== "all" && mode !== paymentMode) return false;
+      const createdAt = new Date(booking.createdAt);
+      if (fromDate) {
+        const from = new Date(`${fromDate}T00:00:00`);
+        if (!Number.isNaN(createdAt.getTime()) && createdAt < from) return false;
+      }
+      if (toDate) {
+        const to = new Date(`${toDate}T23:59:59.999`);
+        if (!Number.isNaN(createdAt.getTime()) && createdAt > to) return false;
+      }
       if (!term) return true;
       const customer = getCustomer(booking);
       const product = getProduct(booking);
@@ -86,17 +101,26 @@ export default function BookingsView({
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(term));
     });
-  }, [bookings, search, status, paymentStatus]);
+  }, [bookings, search, status, paymentStatus, paymentMode, fromDate, toDate]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, status, paymentStatus, rowsPerPage]);
+  }, [search, status, paymentStatus, paymentMode, fromDate, toDate, rowsPerPage]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
   const paged = filtered.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
   const refresh = async () => {
     await onRefresh?.();
+  };
+
+  const clearFilters = () => {
+    setSearch("");
+    setStatus("active");
+    setPaymentStatus("all");
+    setPaymentMode("all");
+    setFromDate("");
+    setToDate("");
   };
 
   const handleComplete = async (booking) => {
@@ -181,14 +205,19 @@ export default function BookingsView({
       cell: (row) => {
         const key = normalize(row.paymentStatus || "pending");
         return (
-          <StatusBadge
-            colorScheme={PAYMENT_STATUS_COLORS[key] || "gray"}
-            label={PAYMENT_STATUS_LABELS[key] || key}
-            fontSize="2xs"
-            px={2}
-            py={0.5}
-            borderRadius="full"
-          />
+          <VStack align="start" spacing={0}>
+            <StatusBadge
+              colorScheme={PAYMENT_STATUS_COLORS[key] || "gray"}
+              label={PAYMENT_STATUS_LABELS[key] || key}
+              fontSize="2xs"
+              px={2}
+              py={0.5}
+              borderRadius="full"
+            />
+            {row.paymentRequestedAt ? (
+              <Text fontSize="2xs" color="gray.500">Requested {formatDate(row.paymentRequestedAt)}</Text>
+            ) : null}
+          </VStack>
         );
       },
     },
@@ -283,10 +312,16 @@ export default function BookingsView({
           <Text>Phone</Text>
           <Text fontWeight="600">{customer.phone}</Text>
         </Flex>
-        <Flex justify="space-between" fontSize="2xs" color="gray.600" mb={2}>
+        <Flex justify="space-between" fontSize="2xs" color="gray.600" mb={row.paymentRequestedAt ? 1 : 2}>
           <Text>Created</Text>
           <Text fontWeight="600">{formatDate(row.createdAt)}</Text>
         </Flex>
+        {row.paymentRequestedAt ? (
+          <Flex justify="space-between" fontSize="2xs" color="gray.600" mb={2}>
+            <Text>Payment request</Text>
+            <Text fontWeight="600">{formatDate(row.paymentRequestedAt)}</Text>
+          </Flex>
+        ) : null}
         <HStack spacing={2} justify="flex-end">
           <Button size="xs" variant="ghost" onClick={() => setSelected(row)}>View</Button>
           {canPay && (
@@ -316,9 +351,6 @@ export default function BookingsView({
       >
         <Box flex="1">
           <Text fontSize="md" fontWeight="800" color="gray.800">Product bookings</Text>
-          <Text fontSize="xs" color="gray.500">
-            Real accepted-quotation bookings. Record payment, complete or refund. {filtered.length} shown.
-          </Text>
         </Box>
         <HStack spacing={2} flexWrap="wrap">
           <Input
@@ -340,6 +372,35 @@ export default function BookingsView({
             <option value="paid">Paid</option>
             <option value="refunded">Refunded</option>
           </Select>
+          <Select size="sm" maxW="145px" value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)}>
+            <option value="all">All methods</option>
+            <option value="cash">Cash</option>
+            <option value="upi_direct">UPI Direct</option>
+            <option value="bank_transfer">Bank Transfer</option>
+            <option value="card">Card / POS</option>
+            <option value="cheque">Cheque</option>
+            <option value="other">Other</option>
+            <option value="online">Online</option>
+          </Select>
+          <Input
+            size="sm"
+            maxW="150px"
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            aria-label="Bookings from date"
+          />
+          <Input
+            size="sm"
+            maxW="150px"
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            aria-label="Bookings to date"
+          />
+          {(search || status !== "active" || paymentStatus !== "all" || paymentMode !== "all" || fromDate || toDate) && (
+            <Button size="sm" variant="ghost" onClick={clearFilters}>Clear</Button>
+          )}
           <Button size="sm" variant="outline" onClick={refresh} isLoading={isLoading}>Refresh</Button>
         </HStack>
       </Flex>
@@ -393,10 +454,11 @@ export default function BookingsView({
         }}
       />
 
-      <ManualPaymentModal
+      <ProductPaymentModal
         isOpen={Boolean(paymentBooking)}
         onClose={() => setPaymentBooking(null)}
         booking={paymentBooking}
+        quotation={paymentBooking ? quotationFor(paymentBooking) : null}
         onSaved={refresh}
       />
 

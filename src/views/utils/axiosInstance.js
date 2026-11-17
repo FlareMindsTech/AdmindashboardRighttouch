@@ -1,6 +1,17 @@
 import axios from "axios";
 import { appToast } from "components/feedback/standaloneToast";
 import { normalizeError } from "errors/normalizeError";
+import { clearAuth, getToken } from "./authStorage";
+import { refreshSession, isAuthEndpoint } from "./tokenRefresh";
+
+export {
+  setAuth,
+  clearAuth,
+  getToken,
+  getUser,
+  getRefreshToken,
+  updateTokens,
+} from "./authStorage";
 
 let lastExpiryToastTime = 0;
 
@@ -47,18 +58,76 @@ export const handleSessionExpiry = (customMessage) => {
   }
 };
 
-// Global fetch interceptor to catch any 401 responses across the app
+// Global fetch interceptor: transparently refreshes and retries any 401
+// from the many legacy fetch() call sites.
 if (typeof window !== "undefined" && window.fetch) {
   const originalFetch = window.fetch;
-  window.fetch = async function (...args) {
-    const response = await originalFetch.apply(this, args);
-    if (response && response.status === 401) {
-      const url = typeof args[0] === "string" ? args[0] : args[0]?.url || "";
-      if (!url.includes("/login") && !url.includes("/signin")) {
-        handleSessionExpiry();
+  const retriedRequests = new WeakSet();
+
+  const bearerFrom = (headers) => {
+    try {
+      const value = new Headers(headers || {}).get("Authorization") || "";
+      return value.replace(/^Bearer\s+/i, "") || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  window.fetch = async function (input, init) {
+    const isRequest =
+      typeof Request !== "undefined" && input instanceof Request;
+    const alreadyRetried = isRequest
+      ? retriedRequests.has(input)
+      : Boolean(init && init.__rtRetried);
+
+    // Clone before the first send so a consumed stream body can still be
+    // replayed after the refresh.
+    let retrySource = null;
+    if (isRequest) {
+      try {
+        retrySource = input.clone();
+      } catch (e) {
+        retrySource = null;
       }
     }
-    return response;
+
+    const response = await originalFetch.call(this, input, init);
+    if (!response || response.status !== 401) return response;
+
+    const url = isRequest ? input.url : String(input || "");
+    if (alreadyRetried) {
+      handleSessionExpiry();
+      return response;
+    }
+    if (isAuthEndpoint(url)) return response;
+
+    const staleToken = isRequest
+      ? bearerFrom(input.headers) || getToken()
+      : bearerFrom(init && init.headers) || getToken();
+
+    try {
+      const newToken = await refreshSession({ staleToken });
+      if (!newToken) return response;
+
+      if (retrySource) {
+        const headers = new Headers(retrySource.headers);
+        headers.set("Authorization", `Bearer ${newToken}`);
+        const retried = new Request(retrySource, { headers });
+        retriedRequests.add(retried);
+        return originalFetch.call(this, retried);
+      }
+
+      const retryInit = { ...(init || {}) };
+      retryInit.headers = new Headers((init && init.headers) || {});
+      retryInit.headers.set("Authorization", `Bearer ${newToken}`);
+      retryInit.__rtRetried = true;
+      return originalFetch.call(this, input, retryInit);
+    } catch (err) {
+      if (err && err.terminal) {
+        handleSessionExpiry(err.message);
+      }
+      return response;
+    }
   };
 }
 
@@ -70,62 +139,6 @@ const API_BASE_URL = (
   .replace(/\/+$/, "");
 const BASE_URL = `${API_BASE_URL}/api`;
 const TIMEOUT_MS = 10000;
-
-// =========================================================
-// AUTH HELPERS (Unified token & user storage across localStorage & sessionStorage)
-// =========================================================
-export const setAuth = (token, user) => {
-  if (token) {
-    localStorage.setItem("token", token);
-    localStorage.setItem("adminToken", token);
-    sessionStorage.setItem("token", token);
-    sessionStorage.setItem("adminToken", token);
-  }
-  if (user) {
-    const userStr = typeof user === "string" ? user : JSON.stringify(user);
-    localStorage.setItem("user", userStr);
-    localStorage.setItem("currentUser", userStr);
-    sessionStorage.setItem("user", userStr);
-    sessionStorage.setItem("currentUser", userStr);
-  }
-};
-
-export const clearAuth = () => {
-  localStorage.removeItem("token");
-  localStorage.removeItem("adminToken");
-  localStorage.removeItem("user");
-  localStorage.removeItem("currentUser");
-  sessionStorage.removeItem("token");
-  sessionStorage.removeItem("adminToken");
-  sessionStorage.removeItem("user");
-  sessionStorage.removeItem("currentUser");
-  try {
-    localStorage.clear();
-    sessionStorage.clear();
-  } catch (e) {
-    console.error("Storage clear error:", e);
-  }
-};
-
-export const getToken = () =>
-  localStorage.getItem("token") ||
-  sessionStorage.getItem("token") ||
-  localStorage.getItem("adminToken") ||
-  sessionStorage.getItem("adminToken");
-
-export const getUser = () => {
-  const userStr =
-    localStorage.getItem("user") ||
-    sessionStorage.getItem("user") ||
-    localStorage.getItem("currentUser") ||
-    sessionStorage.getItem("currentUser");
-  if (!userStr) return null;
-  try {
-    return JSON.parse(userStr);
-  } catch (e) {
-    return null;
-  }
-};
 
 // =========================================================
 // 1. GENERAL USER AXIOS INSTANCE
@@ -168,28 +181,57 @@ adminAxiosInstance.interceptors.request.use(
 );
 
 // =========================================================
-// 3️⃣ COMMON RESPONSE INTERCEPTOR (401 Unauthorized handler)
+// 3️⃣ COMMON RESPONSE INTERCEPTOR (401 -> refresh -> retry once)
 // =========================================================
-const unauthorizedResponseHandler = (error) => {
-  if (error.response && error.response.status === 401) {
-    const url = error.config?.url || "";
-    if (!url.includes("/login") && !url.includes("/signin")) {
-      handleSessionExpiry();
-    } else {
-      clearAuth();
+const bearerFromConfig = (config) => {
+  const raw =
+    config?.headers?.Authorization ||
+    config?.headers?.authorization ||
+    config?.headers?.get?.("Authorization") ||
+    "";
+  return String(raw).replace(/^Bearer\s+/i, "") || null;
+};
+
+export const createUnauthorizedResponseHandler = (instance) => async (error) => {
+  if (!error?.response || error.response.status !== 401) {
+    return Promise.reject(error);
+  }
+
+  const url = error.config?.url || "";
+  const alreadyRetried = Boolean(error.config?._rtRetried);
+
+  if (!isAuthEndpoint(url) && !alreadyRetried) {
+    try {
+      await refreshSession({
+        staleToken: bearerFromConfig(error.config) || getToken(),
+      });
+      error.config._rtRetried = true;
+      return instance(error.config);
+    } catch (refreshErr) {
+      if (refreshErr?.terminal) {
+        handleSessionExpiry(refreshErr.message);
+      }
+      return Promise.reject(error);
     }
   }
+
+  if (isAuthEndpoint(url)) {
+    if (/\/(login|signin)/i.test(url)) clearAuth();
+    return Promise.reject(error);
+  }
+
+  handleSessionExpiry();
   return Promise.reject(error);
 };
 
 axiosInstance.interceptors.response.use(
   (res) => res,
-  unauthorizedResponseHandler
+  createUnauthorizedResponseHandler(axiosInstance)
 );
 
 adminAxiosInstance.interceptors.response.use(
   (response) => response,
-  unauthorizedResponseHandler
+  createUnauthorizedResponseHandler(adminAxiosInstance)
 );
 
 // =========================================================
@@ -230,11 +272,7 @@ export const getAllTechnicians = async () => {
     });
 
     if (response.status === 401) {
-      // Clear tokens if unauthorized
-      localStorage.removeItem("token");
-      localStorage.removeItem("adminToken");
-      sessionStorage.removeItem("token");
-      sessionStorage.removeItem("adminToken");
+      handleSessionExpiry("Session expired. Please log in again.");
       throw new Error("Session expired. Please log in again.");
     }
 
@@ -2005,7 +2043,7 @@ export const getRatingById = async (ratingId) => {
 export const updateRating = async (ratingId, ratingData) => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/user/updateRating/${ratingId}`, {
+    const response = await fetch(`${BASE_URL}/user/admin/ratings/${ratingId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(ratingData),
@@ -2021,7 +2059,7 @@ export const updateRating = async (ratingId, ratingData) => {
 export const deleteRating = async (ratingId) => {
   try {
     const token = getToken();
-    const response = await fetch(`${BASE_URL}/user/deleteRating/${ratingId}`, {
+    const response = await fetch(`${BASE_URL}/user/admin/ratings/${ratingId}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });

@@ -2,28 +2,16 @@
 import React from "react";
 import { Box, Heading, Text, Button, VStack, Container } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
-import { clearAuth } from "../utils/axiosInstance";
+import { useAppDispatch, useAppSelector } from "store/hooks";
+import { logoutSession, selectIsPrivileged } from "store/slices/authSlice";
 
 export default function AccessDenied() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
+  const isPrivileged = useAppSelector(selectIsPrivileged);
 
   const handleGoHome = () => {
-    const userString = localStorage.getItem("user") || sessionStorage.getItem("user");
-    if (userString) {
-      try {
-        const userData = JSON.parse(userString);
-        const role = userData.role?.toLowerCase();
-        if (role === "owner" || role === "admin") {
-          navigate("/owner/dashboard");
-        } else {
-          navigate("/auth/signin");
-        }
-      } catch {
-        navigate("/auth/signin");
-      }
-    } else {
-      navigate("/auth/signin");
-    }
+    navigate(isPrivileged ? "/owner/dashboard" : "/auth/signin");
   };
 
   return (
@@ -48,7 +36,7 @@ export default function AccessDenied() {
             variant="outline"
             size="lg"
             onClick={() => {
-              clearAuth();
+              dispatch(logoutSession());
               navigate("/auth/signin");
             }}
           >

@@ -53,6 +53,7 @@ import {
 } from "react-icons/fa";
 import { MdRefresh } from "react-icons/md";
 import { useAppToast } from "components/feedback";
+import StatusBadge from "components/common/StatusBadge";
 import TablePagination from "components/common/TablePagination";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
 import {
@@ -488,7 +489,7 @@ export default function DispatchQueueTab({
 
                             {/* Status */}
                             <Td py={3}>
-                              <Badge
+                              <StatusBadge
                                 colorScheme={
                                   status === "failed"
                                     ? "red"
@@ -496,24 +497,25 @@ export default function DispatchQueueTab({
                                     ? "purple"
                                     : "yellow"
                                 }
-                                fontSize="2xs"
-                                px={2.5}
-                                py={0.5}
-                                borderRadius="full"
-                              >
-                                {status === "failed"
-                                  ? "✕ Failed"
-                                  : status === "inflight"
-                                  ? "● Dispatching..."
-                                  : "● Ready in Queue"}
-                              </Badge>
+                                label={
+                                  status === "failed"
+                                    ? "Failed"
+                                    : status === "inflight"
+                                    ? "Dispatching"
+                                    : "Ready in Queue"
+                                }
+                                variant={status === "failed" ? "solid" : "subtle"}
+                                showDot
+                              />
                             </Td>
 
                             {/* Attempts */}
                             <Td py={3} fontSize="xs">
-                              <Badge colorScheme={attempts > 1 ? "orange" : "gray"} fontSize="3xs">
-                                Attempt {attempts}
-                              </Badge>
+                              <StatusBadge
+                                colorScheme={attempts > 1 ? "orange" : "gray"}
+                                label={`Attempt ${attempts}`}
+                                variant="subtle"
+                              />
                             </Td>
 
                             {/* Error Reason (Failed only) */}

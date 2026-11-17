@@ -80,7 +80,7 @@ import {
 } from "../utils/axiosInstance";
 import { rebuildRatingAggregate } from "api/bookingsReports";
 import { useAppSelector } from "store/hooks";
-import { selectUser } from "store/slices/authSlice";
+import { isOwnerRole, selectRole, selectUser } from "store/slices/authSlice";
 
 const BRAND = "#008080";
 const GOLD = "#F5B700";
@@ -88,9 +88,10 @@ const GOLD = "#F5B700";
 export default function ReportsManagement() {
   const isDark = false;
   const toast = useAppToast();
-  const reduxUser = useAppSelector(selectUser);
+  const currentUser = useAppSelector(selectUser);
+  const userRole = useAppSelector(selectRole);
+  const isOwner = isOwnerRole(userRole);
 
-  const [currentUser, setCurrentUser] = useState(reduxUser || null);
   const [activeTab, setActiveTab] = useState("reports");
 
   const [reports, setReports] = useState([]);
@@ -113,7 +114,7 @@ export default function ReportsManagement() {
 
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("all");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
-  const [selectedStatusAction, setSelectedStatusAction] = useState("resolved_refunded");
+  const [selectedStatusAction, setSelectedStatusAction] = useState("under_review");
   const [resolutionNoteInput, setResolutionNoteInput] = useState("");
 
   const [editRates, setEditRates] = useState(5);
@@ -129,17 +130,6 @@ export default function ReportsManagement() {
     colorScheme: "blue",
     onConfirm: null,
   });
-
-  useEffect(() => {
-    if (reduxUser) {
-      setCurrentUser(reduxUser);
-      return;
-    }
-    const storedUser = JSON.parse(localStorage.getItem("user") || "null");
-    if (storedUser) {
-      setCurrentUser(storedUser);
-    }
-  }, [reduxUser]);
 
   const copyToClipboard = (text, label = "Item") => {
     if (!text) return;
@@ -491,11 +481,11 @@ export default function ReportsManagement() {
     setSelectedItem(item);
     setResolutionNoteInput(item.resolutionNote || "");
     setSelectedStatusAction(
-      item.status === "open"
-        ? "under_review"
-        : ["resolved_refunded", "resolved_no_refund", "under_review"].includes(item.status)
+      isOwner && ["resolved_refunded", "resolved_no_refund", "under_review"].includes(item.status)
         ? item.status
-        : "resolved_refunded"
+        : item.status === "resolved_no_refund"
+        ? "resolved_no_refund"
+        : "under_review"
     );
     setIsDetailModalOpen(true);
 
@@ -511,6 +501,16 @@ export default function ReportsManagement() {
   };
 
   const triggerConfirmation = (type) => {
+    if (!isOwner && ["refund", "penalize", "freeze"].includes(type)) {
+      toast({
+        title: "Owner access required",
+        description: "Refunds, penalties, and payout freezes are restricted to Owner accounts.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
     if (type === "reject" && !resolutionNoteInput.trim()) {
       toast({
         title: "Reason Required",
@@ -594,6 +594,16 @@ export default function ReportsManagement() {
 
   const handleExecuteResolve = async () => {
     if (!selectedItem) return;
+    if (!isOwner && selectedStatusAction === "resolved_refunded") {
+      toast({
+        title: "Owner access required",
+        description: "Only Owner accounts can resolve complaints with a refund.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
     setActionLoading(true);
     try {
       const payload = {
@@ -663,7 +673,7 @@ export default function ReportsManagement() {
   };
 
   const handleFreezePayout = async () => {
-    if (!selectedItem) return;
+    if (!selectedItem || !isOwner) return;
     setActionLoading(true);
     try {
       const amt = Number(customAmountInput) || 0;
@@ -696,7 +706,7 @@ export default function ReportsManagement() {
   };
 
   const handleRefundCustomer = async () => {
-    if (!selectedItem) return;
+    if (!selectedItem || !isOwner) return;
     setActionLoading(true);
     try {
       const refundAmt = Number(customAmountInput) || 0;
@@ -743,7 +753,7 @@ export default function ReportsManagement() {
   };
 
   const handlePenalizeTechnician = async () => {
-    if (!selectedItem) return;
+    if (!selectedItem || !isOwner) return;
     setActionLoading(true);
     try {
       const penaltyAmt = Number(customAmountInput) || 0;
@@ -1900,37 +1910,41 @@ export default function ReportsManagement() {
                     </Box>
 
                     {/* Quick Direct Actions Matrix */}
-                    <SimpleGrid columns={{ base: 2, sm: 4 }} spacing={2}>
-                      <Button
-                        size="xs"
-                        colorScheme="blue"
-                        borderRadius="8px"
-                        fontWeight="700"
-                        onClick={() => triggerConfirmation("freeze")}
-                        isLoading={actionLoading}
-                      >
-                        🧊 Freeze Payout
-                      </Button>
-                      <Button
-                        size="xs"
-                        colorScheme="green"
-                        borderRadius="8px"
-                        fontWeight="700"
-                        onClick={() => triggerConfirmation("refund")}
-                        isLoading={actionLoading}
-                      >
-                        💸 Refund Customer
-                      </Button>
-                      <Button
-                        size="xs"
-                        colorScheme="orange"
-                        borderRadius="8px"
-                        fontWeight="700"
-                        onClick={() => triggerConfirmation("penalize")}
-                        isLoading={actionLoading}
-                      >
-                        ⚠️ Penalize Tech
-                      </Button>
+                    <SimpleGrid columns={{ base: 1, sm: isOwner ? 4 : 1 }} spacing={2}>
+                      {isOwner && (
+                        <>
+                          <Button
+                            size="xs"
+                            colorScheme="blue"
+                            borderRadius="8px"
+                            fontWeight="700"
+                            onClick={() => triggerConfirmation("freeze")}
+                            isLoading={actionLoading}
+                          >
+                            🧊 Freeze Payout
+                          </Button>
+                          <Button
+                            size="xs"
+                            colorScheme="green"
+                            borderRadius="8px"
+                            fontWeight="700"
+                            onClick={() => triggerConfirmation("refund")}
+                            isLoading={actionLoading}
+                          >
+                            💸 Refund Customer
+                          </Button>
+                          <Button
+                            size="xs"
+                            colorScheme="orange"
+                            borderRadius="8px"
+                            fontWeight="700"
+                            onClick={() => triggerConfirmation("penalize")}
+                            isLoading={actionLoading}
+                          >
+                            ⚠️ Penalize Tech
+                          </Button>
+                        </>
+                      )}
                       <Button
                         size="xs"
                         colorScheme="red"
@@ -1953,7 +1967,9 @@ export default function ReportsManagement() {
                         maxW="260px"
                       >
                         <option value="under_review">🔍 Under Review</option>
-                        <option value="resolved_refunded">✅ Resolve (Refund Customer)</option>
+                        {isOwner && (
+                          <option value="resolved_refunded">✅ Resolve (Refund Customer)</option>
+                        )}
                         <option value="resolved_no_refund">🛑 Resolve (No Refund)</option>
                       </Select>
                       <Button

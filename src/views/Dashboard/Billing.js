@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import AppModal from "components/common/AppModal";
+import StatusBadge from "components/common/StatusBadge";
 import { useAppToast } from "components/feedback";
 import ErrorState from "components/feedback/ErrorState";
 import {
@@ -604,9 +605,7 @@ export default function BillingPaymentDashboard() {
             No manual approval needed for normal payouts.
           </AlertDescription>
         </Box>
-        <Badge colorScheme="green" px="10px" py="4px" borderRadius="full">
-          Auto Engine Active
-        </Badge>
+        <StatusBadge colorScheme="green" label="Auto Engine Active" showDot />
       </Alert>
 
       {/* Real-time Monitoring Executive Stat Cards */}
@@ -822,7 +821,7 @@ export default function BillingPaymentDashboard() {
                               </HStack>
                             </Td>
                             <Td>
-                              <Badge
+                              <StatusBadge
                                 colorScheme={
                                   w.status === "paid" || w.status === "success"
                                     ? "green"
@@ -832,9 +831,9 @@ export default function BillingPaymentDashboard() {
                                     ? "orange"
                                     : "red"
                                 }
-                              >
-                                {isReview ? "Manual Review" : w.status || "processing"}
-                              </Badge>
+                                label={isReview ? "Manual Review" : w.status || "processing"}
+                                variant={isReview ? "solid" : "subtle"}
+                              />
                             </Td>
                             <Td fontSize="xs" color="gray.500">{new Date(w.createdAt || Date.now()).toLocaleString()}</Td>
                             <Td>
@@ -905,9 +904,11 @@ export default function BillingPaymentDashboard() {
                           <Td fontWeight="bold" color="teal.600">₹{p.amount || 0}</Td>
                           <Td><Tag size="sm">{p.method || "Online"}</Tag></Td>
                           <Td>
-                            <Badge colorScheme={p.status === "success" || p.status === "paid" ? "green" : "red"}>
-                              {p.status || "paid"}
-                            </Badge>
+                            <StatusBadge
+                              colorScheme={p.status === "success" || p.status === "paid" ? "green" : "red"}
+                              label={p.status || "paid"}
+                              variant="subtle"
+                            />
                           </Td>
                           <Td fontSize="xs" color="gray.500">{new Date(p.createdAt || Date.now()).toLocaleDateString()}</Td>
                         </Tr>
@@ -966,9 +967,11 @@ export default function BillingPaymentDashboard() {
                           <Td fontSize="xs">{r.bookingId || "—"}</Td>
                           <Td fontWeight="bold" color="red.500">₹{r.amount}</Td>
                           <Td>
-                            <Badge colorScheme={r.status === "approved" || r.status === "processed" ? "green" : r.status === "failed" ? "red" : "orange"}>
-                              {r.status}
-                            </Badge>
+                            <StatusBadge
+                              colorScheme={r.status === "approved" || r.status === "processed" ? "green" : r.status === "failed" ? "red" : "orange"}
+                              label={r.status}
+                              variant="subtle"
+                            />
                           </Td>
                           <Td><Tag size="sm">{r.type || "Partial"}</Tag></Td>
                           <Td>
@@ -1023,9 +1026,11 @@ export default function BillingPaymentDashboard() {
                             <Td fontSize="xs">{q.title || "Custom Service Quote"}</Td>
                             <Td fontWeight="bold" color="teal.600">₹{q.amount}</Td>
                             <Td>
-                              <Badge colorScheme={q.status === "approved" || q.status === "accepted" ? "green" : q.status === "sent" ? "blue" : "orange"}>
-                                {q.status || "draft"}
-                              </Badge>
+                              <StatusBadge
+                                colorScheme={q.status === "approved" || q.status === "accepted" ? "green" : q.status === "sent" ? "blue" : "orange"}
+                                label={q.status || "draft"}
+                                variant="subtle"
+                              />
                             </Td>
                             <Td>
                               <HStack spacing="4px">
@@ -1179,7 +1184,11 @@ export default function BillingPaymentDashboard() {
                 <VStack spacing="8px" align="stretch" fontSize="xs">
                   <Flex justify="space-between" p="8px" bg="green.50" borderRadius="6px">
                     <Text>1. Verification & Security Gate</Text>
-                    <Badge colorScheme="green">PASSED (KYC & Fingerprint Match)</Badge>
+                    <StatusBadge
+                      colorScheme="green"
+                      label="PASSED (KYC & Fingerprint Match)"
+                      variant="subtle"
+                    />
                   </Flex>
                   <Flex justify="space-between" p="8px" bg="blue.50" borderRadius="6px">
                     <Text>2. Wallet Reservation</Text>

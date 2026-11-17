@@ -2858,7 +2858,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           : (Array.isArray(rawRes?.permissions)
             ? rawRes.permissions
             : (Array.isArray(rawRes) ? rawRes : []));
-        const primary = rawRes?.primaryDistrict || tech?.primaryDistrictId || tech?.primaryCityId || null;
+        const primary = rawRes?.registrationDistrict || rawRes?.primaryDistrict || tech?.primaryDistrictId || tech?.primaryCityId || null;
         const allowedIds = Array.isArray(rawRes?.allowedDistrictIds) ? rawRes.allowedDistrictIds : [];
 
         setTechPermissions({
@@ -2889,7 +2889,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         : (Array.isArray(rawRes?.permissions)
           ? rawRes.permissions
           : (Array.isArray(rawRes) ? rawRes : []));
-      const primary = rawRes?.primaryDistrict || selectedTechForPermission?.primaryDistrictId || selectedTechForPermission?.primaryCityId || null;
+      const primary = rawRes?.registrationDistrict || rawRes?.primaryDistrict || selectedTechForPermission?.primaryDistrictId || selectedTechForPermission?.primaryCityId || null;
       const allowedIds = Array.isArray(rawRes?.allowedDistrictIds) ? rawRes.allowedDistrictIds : [];
 
       setTechPermissions({
@@ -7881,28 +7881,16 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
                 {/* 1. DISTRICT PERMISSIONS */}
                 {(() => {
-                  const resolvedPrim = getResolvedPrimaryDistrict();
-                  const primaryId = resolvedPrim?._id || resolvedPrim?.id
-                    ? String(resolvedPrim._id || resolvedPrim.id)
-                    : "";
                   const currentRaw = techPermissions?.permissions || techPermissions?.additionalPermissions || [];
                   const getPermDistrictId = (p) =>
                     String(p.districtId?._id || p.districtId?.id || p.districtId || "");
-                  const currentAddl = currentRaw.filter((p) => {
-                    const dId = getPermDistrictId(p);
-                    return dId && (!primaryId || dId !== primaryId);
-                  });
-                  const primaryPerm =
-                    techPermissions?.primaryPermission ||
-                    currentRaw.find((p) => primaryId && getPermDistrictId(p) === primaryId) ||
-                    null;
-                  const primaryEnabled = primaryPerm
-                    ? primaryPerm.isEnabled === true
-                    : techPermissions?.primaryDistrictHasPermission === true;
-                  const enabledCoverageCount =
-                    currentRaw.filter((p) => p.isEnabled === true).length +
-                    (!primaryPerm && techPermissions?.primaryDistrictHasPermission === true ? 1 : 0);
-                  const grantedDistrictIds = new Set([...currentRaw.map(getPermDistrictId)].filter(Boolean));
+                  const currentPermissions = currentRaw.filter((p) => getPermDistrictId(p));
+                  const enabledCoverageCount = currentPermissions.filter(
+                    (p) => p.isEnabled === true
+                  ).length;
+                  const grantedDistrictIds = new Set(
+                    currentPermissions.map(getPermDistrictId).filter(Boolean)
+                  );
 
                   return (
                     <Box p={4} border="1px solid" borderColor={SURFACE_BORDER} borderRadius="12px" bg="white" boxShadow="xs">
@@ -7991,106 +7979,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                             </Tr>
                           </Thead>
                           <Tbody>
-                            {/* PRIMARY DISTRICT ROW */}
-                            <Tr bg={primaryEnabled ? "teal.50" : "gray.50"} borderBottom="1px solid" borderColor={primaryEnabled ? "teal.100" : "gray.200"}>
-                              <Td py={3}>
-                                <HStack spacing={3} align="center">
-                                  <Flex
-                                    w="32px"
-                                    h="32px"
-                                    bg={primaryEnabled ? "teal.100" : "gray.200"}
-                                    color={primaryEnabled ? "teal.800" : "gray.600"}
-                                    borderRadius="8px"
-                                    align="center"
-                                    justify="center"
-                                    flexShrink={0}
-                                  >
-                                    <Icon as={MdLocationOn} boxSize={4} />
-                                  </Flex>
-                                  <Box>
-                                    <Text fontWeight="700" fontSize="xs" color={primaryEnabled ? "teal.900" : INK} lineHeight="short">
-                                      {resolvedPrim?.name || (selectedTechForPermission?.city ? `${selectedTechForPermission.city} Operational Range` : "Primary District Not Assigned")}
-                                      {resolvedPrim?.city && !(resolvedPrim?.name || "").includes(resolvedPrim.city) ? ` (${resolvedPrim.city})` : ""}
-                                    </Text>
-                                    <Text fontSize="10px" color="gray.500" mt={0.5}>
-                                      Registration base district — coverage requires an explicit grant
-                                    </Text>
-                                  </Box>
-                                </HStack>
-                              </Td>
-                              <Td py={3} textAlign="center" whiteSpace="nowrap">
-                                <Badge colorScheme="teal" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
-                                  PRIMARY
-                                </Badge>
-                              </Td>
-                              <Td py={3} textAlign="center" whiteSpace="nowrap">
-                                {!resolvedPrim ? (
-                                  <Badge colorScheme="gray" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
-                                    No Primary District
-                                  </Badge>
-                                ) : !primaryPerm ? (
-                                  <Badge colorScheme="gray" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
-                                    Not Granted
-                                  </Badge>
-                                ) : (
-                                  <HStack spacing={2} justify="center">
-                                    <Switch
-                                      size="sm"
-                                      isChecked={primaryEnabled}
-                                      colorScheme="teal"
-                                      onChange={() => handleTogglePermission(primaryId, primaryEnabled)}
-                                    />
-                                    <Badge
-                                      colorScheme={primaryEnabled ? "green" : "orange"}
-                                      fontSize="10px"
-                                      px={2}
-                                      py={0.5}
-                                      borderRadius="full"
-                                    >
-                                      {primaryEnabled ? "Enabled" : "Paused"}
-                                    </Badge>
-                                  </HStack>
-                                )}
-                              </Td>
-                              <Td py={3} textAlign="center" whiteSpace="nowrap">
-                                {!resolvedPrim ? (
-                                  <Text fontSize="10px" color="gray.400">Assign a primary district first</Text>
-                                ) : primaryPerm ? (
-                                  <Button
-                                    size="xs"
-                                    leftIcon={<MdDelete />}
-                                    colorScheme="red"
-                                    variant="ghost"
-                                    borderRadius="6px"
-                                    h="26px"
-                                    px={2.5}
-                                    fontSize="11px"
-                                    title="Revoke primary district coverage"
-                                    onClick={() => handleRemovePermission(primaryId)}
-                                  >
-                                    Revoke
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    size="xs"
-                                    leftIcon={<MdAddCircleOutline />}
-                                    colorScheme="teal"
-                                    variant="ghost"
-                                    borderRadius="6px"
-                                    h="26px"
-                                    px={2.5}
-                                    fontSize="11px"
-                                    title="Grant primary district coverage"
-                                    onClick={() => handleGrantDistrictPermission(primaryId)}
-                                  >
-                                    Grant
-                                  </Button>
-                                )}
-                              </Td>
-                            </Tr>
-
-                            {/* ADDITIONAL / EXPLICIT DISTRICT ROWS */}
-                            {currentAddl.map((p) => {
+                            {/* EXPLICIT DISTRICT PERMISSION ROWS */}
+                            {currentPermissions.map((p) => {
                               const distId = getPermDistrictId(p);
                               const distName = p.districtId?.name || getDistrictNameById(distId);
                               const distCity = p.districtId?.city || "";
@@ -8115,14 +8005,14 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                                           {distName} {distCity && !distName.includes(distCity) ? `(${distCity})` : ""}
                                         </Text>
                                         <Text fontSize="10px" color="gray.500" mt={0.5}>
-                                          Explicit cross-district dispatch coverage
+                                          Admin/Owner approved dispatch coverage
                                         </Text>
                                       </Box>
                                     </HStack>
                                   </Td>
                                   <Td py={3} textAlign="center" whiteSpace="nowrap">
-                                    <Badge colorScheme="purple" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
-                                      {p.permissionType || "ADDITIONAL"}
+                                    <Badge colorScheme="teal" variant="subtle" fontSize="10px" px={2.5} py={0.5} borderRadius="full">
+                                      Approved
                                     </Badge>
                                   </Td>
                                   <Td py={3} textAlign="center" whiteSpace="nowrap">
@@ -8171,7 +8061,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                         <Flex align="center" mt={3} p={2.5} bg="red.50" borderRadius="8px" border="1px dashed" borderColor="red.200">
                           <Icon as={MdInfoOutline} color="red.500" mr={2} boxSize={4} />
                           <Text fontSize="11px" color="red.700">
-                            No active district coverage. This technician will not receive any jobs, even within their registered primary district, until an admin grants coverage below.
+                            No approved district coverage. Registration address does not grant work permission. An Admin/Owner must grant an existing district above before this technician can receive jobs.
                           </Text>
                         </Flex>
                       )}

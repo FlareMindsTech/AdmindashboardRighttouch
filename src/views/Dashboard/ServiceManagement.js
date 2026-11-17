@@ -75,6 +75,7 @@ import CardHeader from "components/Card/CardHeader.js";
 import IconBox from "components/common/IconBox";
 import { MobileCard, MobileCardActions } from "components/common/MobileCard";
 import DataTable from "components/common/DataTable";
+import StatusBadge from "components/common/StatusBadge";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
 import ErrorState from "components/feedback/ErrorState";
 import { useAppToast } from "components/feedback";
@@ -1240,14 +1241,11 @@ export default function ServiceManagement() {
             #{indexOfFirstItem + idx + 1} {cat.category || cat.name}
           </Text>
         </HStack>
-        <Badge
+        <StatusBadge
           colorScheme={cat.isActive ? "green" : "red"}
-          borderRadius="full"
-          px={2}
-          fontSize="3xs"
-        >
-          {cat.isActive ? "Active" : "Inactive"}
-        </Badge>
+          label={cat.isActive ? "Active" : "Inactive"}
+          variant="subtle"
+        />
       </Flex>
       <Text fontSize="2xs" color="gray.600" noOfLines={2} mb={3}>
         {cat.description || "No description provided."}
@@ -1274,14 +1272,11 @@ export default function ServiceManagement() {
             {service.categoryId?.category || "N/A"}
           </Text>
         </VStack>
-        <Badge
+        <StatusBadge
           colorScheme={service.isActive ? "green" : "red"}
-          borderRadius="full"
-          px={2}
-          fontSize="3xs"
-        >
-          {service.isActive ? "Active" : "Inactive"}
-        </Badge>
+          label={service.isActive ? "Active" : "Inactive"}
+          variant="subtle"
+        />
       </Flex>
 
       <HStack spacing={2} mb={3} wrap="wrap">
@@ -2632,16 +2627,11 @@ export default function ServiceManagement() {
                               align: "center",
                               width: "120px",
                               cell: (cat) => (
-                                <Badge
+                                <StatusBadge
                                   colorScheme={cat.isActive ? "green" : "red"}
-                                  px={2}
-                                  py={0.5}
-                                  borderRadius="full"
-                                  fontSize="2xs"
-                                  fontWeight="bold"
-                                >
-                                  {cat.isActive ? "Active" : "Inactive"}
-                                </Badge>
+                                  label={cat.isActive ? "Active" : "Inactive"}
+                                  variant="subtle"
+                                />
                               ),
                             },
                             {
@@ -2828,15 +2818,11 @@ export default function ServiceManagement() {
                               width: "150px",
                               cell: (service) => (
                                 <HStack justify="center" spacing={1.5} align="center">
-                                  <Badge
+                                  <StatusBadge
                                     colorScheme={service.isActive ? "green" : "red"}
-                                    fontSize="2xs"
-                                    px={2}
-                                    py={0.5}
-                                    borderRadius="full"
-                                  >
-                                    {service.isActive ? "Active" : "Inactive"}
-                                  </Badge>
+                                    label={service.isActive ? "Active" : "Inactive"}
+                                    variant="subtle"
+                                  />
                                   {service.isPopular && (
                                     <Badge colorScheme="orange" fontSize="3xs" px={1.5} py={0.5} borderRadius="md" title="Popular">
                                       P
@@ -3355,15 +3341,11 @@ export default function ServiceManagement() {
                                         </Td>
                                         <Td textAlign="center" py={3}>
                                           <HStack justify="center" spacing={1.5}>
-                                            <Badge
+                                            <StatusBadge
                                               colorScheme={service.isActive ? "green" : "red"}
-                                              fontSize="3xs"
-                                              px={2}
-                                              py={0.5}
-                                              borderRadius="full"
-                                            >
-                                              {service.isActive ? "Active" : "Inactive"}
-                                            </Badge>
+                                              label={service.isActive ? "Active" : "Inactive"}
+                                              variant="subtle"
+                                            />
                                             <Badge
                                               colorScheme={service.pricingType === "fixed" ? "teal" : "blue"}
                                               fontSize="3xs"
@@ -3428,14 +3410,11 @@ export default function ServiceManagement() {
                 </Box>
                 <Box>
                   <Text fontWeight="bold" color="gray.600" fontSize="sm">Status:</Text>
-                  <Badge
+                  <StatusBadge
                     colorScheme={selectedCategory.isActive ? "green" : "red"}
-                    fontSize="sm"
-                    px={3}
-                    py={1}
-                  >
-                    {selectedCategory.isActive ? "Active" : "Inactive"}
-                  </Badge>
+                    label={selectedCategory.isActive ? "Active" : "Inactive"}
+                    variant="subtle"
+                  />
                 </Box>
                 <Box>
                   <Text fontWeight="bold" color="gray.600" fontSize="sm">Services in this category:</Text>
@@ -3695,38 +3674,29 @@ export default function ServiceManagement() {
                   </Box>
                   <Box>
                     <Text fontWeight="bold" color="gray.600" fontSize="sm">Requires Spare Parts:</Text>
-                    <Badge
+                    <StatusBadge
                       colorScheme={selectedService.requiresSpareParts ? "red" : "green"}
-                      fontSize="sm"
-                      px={3}
-                      py={1}
-                    >
-                      {selectedService.requiresSpareParts ? "Yes" : "No"}
-                    </Badge>
+                      label={selectedService.requiresSpareParts ? "Yes" : "No"}
+                      variant="subtle"
+                    />
                   </Box>
                   <Box>
                     <Text fontWeight="bold" color="gray.600" fontSize="sm">Site Visit Required:</Text>
-                    <Badge
+                    <StatusBadge
                       colorScheme={selectedService.siteVisitRequired ? "blue" : "gray"}
-                      fontSize="sm"
-                      px={3}
-                      py={1}
-                    >
-                      {selectedService.siteVisitRequired ? "Yes" : "No"}
-                    </Badge>
+                      label={selectedService.siteVisitRequired ? "Yes" : "No"}
+                      variant="subtle"
+                    />
                   </Box>
                 </Grid>
 
                 {/* Status Badges */}
                 <Flex gap={3} mt={4} wrap="wrap">
-                  <Badge
+                  <StatusBadge
                     colorScheme={selectedService.isActive ? "green" : "red"}
-                    fontSize="sm"
-                    px={3}
-                    py={1}
-                  >
-                    {selectedService.isActive ? "Active" : "Inactive"}
-                  </Badge>
+                    label={selectedService.isActive ? "Active" : "Inactive"}
+                    variant="subtle"
+                  />
                   {selectedService.isPopular && (
                     <Badge colorScheme="orange" fontSize="sm" px={3} py={1}>
                       Popular
@@ -3745,9 +3715,11 @@ export default function ServiceManagement() {
                     <Text fontWeight="bold" color="gray.600" fontSize="sm">
                       Service Coverage Polygon
                     </Text>
-                    <Badge colorScheme={selectedService.polygon ? "green" : "gray"} fontSize="xs">
-                      {selectedService.polygon ? "Defined" : "Unrestricted"}
-                    </Badge>
+                    <StatusBadge
+                      colorScheme={selectedService.polygon ? "green" : "gray"}
+                      label={selectedService.polygon ? "Defined" : "Unrestricted"}
+                      variant="subtle"
+                    />
                   </Flex>
                   {selectedService.polygon && (
                     <Text fontSize="xs" color="gray.500" mb={2} fontFamily="monospace">

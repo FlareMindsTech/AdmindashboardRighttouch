@@ -18,6 +18,7 @@ import {
   FaTools,
 } from "react-icons/fa";
 import { useAppDispatch, useAppSelector } from "store/hooks";
+import { isOwnerRole, selectRole } from "store/slices/authSlice";
 import {
   fetchCategories,
   fetchProducts,
@@ -53,6 +54,8 @@ import {
 
 export default function Dashboard() {
   const dispatch = useAppDispatch();
+  const userRole = useAppSelector(selectRole);
+  const isOwner = isOwnerRole(userRole);
   const serviceBookings = useAppSelector(selectServiceBookings);
   const productBookings = useAppSelector(selectProductBookings);
   const serviceCategories = useAppSelector(selectServiceCategories);
@@ -71,7 +74,7 @@ export default function Dashboard() {
     try {
       const [, insightData] = await Promise.all([
         dispatchDashboardData(true),
-        fetchDashboardInsights(true),
+        isOwner ? fetchDashboardInsights(true) : Promise.resolve(null),
       ]);
       setInsights(insightData);
     } catch (err) {
@@ -85,35 +88,43 @@ export default function Dashboard() {
   const subTextColor = "gray.500";
 
   const dispatchDashboardData = useCallback(
-    (force = false) =>
-      Promise.all([
+    (force = false) => {
+      const requests = [
         dispatch(fetchServiceBookings({ force }))
           .unwrap()
           .catch((error) => {
             console.warn("Service bookings fetch warning:", error);
-          }),
-        dispatch(fetchProductBookings({ force }))
-          .unwrap()
-          .catch((error) => {
-            console.warn("Product bookings fetch warning:", error);
           }),
         dispatch(fetchCategories({ categoryType: "service", force }))
           .unwrap()
           .catch((error) => {
             console.warn("Service categories fetch warning:", error);
           }),
-        dispatch(fetchCategories({ categoryType: "product", force }))
-          .unwrap()
-          .catch((error) => {
-            console.warn("Product categories fetch warning:", error);
-          }),
-        dispatch(fetchProducts({ force }))
-          .unwrap()
-          .catch((error) => {
-            console.warn("Products fetch warning:", error);
-          }),
-      ]),
-    [dispatch]
+      ];
+
+      if (isOwner) {
+        requests.push(
+          dispatch(fetchProductBookings({ force }))
+            .unwrap()
+            .catch((error) => {
+              console.warn("Product bookings fetch warning:", error);
+            }),
+          dispatch(fetchCategories({ categoryType: "product", force }))
+            .unwrap()
+            .catch((error) => {
+              console.warn("Product categories fetch warning:", error);
+            }),
+          dispatch(fetchProducts({ force }))
+            .unwrap()
+            .catch((error) => {
+              console.warn("Products fetch warning:", error);
+            })
+        );
+      }
+
+      return Promise.all(requests);
+    },
+    [dispatch, isOwner]
   );
 
   useEffect(() => {
@@ -126,7 +137,7 @@ export default function Dashboard() {
       try {
         const [, insightData] = await Promise.all([
           dispatchDashboardData(false),
-          fetchDashboardInsights(false),
+          isOwner ? fetchDashboardInsights(false) : Promise.resolve(null),
         ]);
         if (isMounted) {
           setInsights(insightData);
@@ -140,7 +151,7 @@ export default function Dashboard() {
     return () => {
       isMounted = false;
     };
-  }, [dispatchDashboardData, hasExistingData]);
+  }, [dispatchDashboardData, hasExistingData, isOwner]);
 
   const serviceAnalytics = useMemo(
     () => buildDomainAnalytics(serviceBookings, serviceCategories, "service"),
@@ -273,7 +284,7 @@ export default function Dashboard() {
       ...(Array.isArray(serviceBookings)
         ? serviceBookings.map((booking) => ({ booking, kind: "service" }))
         : []),
-      ...(Array.isArray(productBookings)
+      ...(isOwner && Array.isArray(productBookings)
         ? productBookings.map((booking) => ({ booking, kind: "product" }))
         : []),
     ];
@@ -289,7 +300,7 @@ export default function Dashboard() {
         return (dateB || 0) - (dateA || 0);
       })
       .slice(0, 8);
-  }, [serviceBookings, productBookings]);
+  }, [serviceBookings, productBookings, isOwner]);
 
   if (loading) {
     return <LoadingState label="Loading Dashboard..." />;
@@ -311,7 +322,7 @@ export default function Dashboard() {
         >
           <Box>
             <Heading size="md" color={textColor} fontWeight="700">
-              Dashboard Overview
+              {isOwner ? "Dashboard Overview" : "Operations Overview"}
             </Heading>
           </Box>
           <Button
@@ -330,118 +341,139 @@ export default function Dashboard() {
           </Button>
         </Flex>
 
-        <SimpleGrid
-          columns={{ base: 1, sm: 2, lg: 3, xl: 5 }}
-          spacing={{ base: 3, md: 4 }}
-        >
-          <KpiTile
-            label="Total Revenue"
-            value={formatCurrency(kpiData.totalRevenue)}
-            icon={FaRupeeSign}
-            subValue={`Svc ${formatCompactCurrency(
-              kpiData.serviceRevenue
-            )} · Prod ${formatCompactCurrency(kpiData.productRevenue)}`}
-            trend={kpiData.revenueTrend}
-          />
-          <KpiTile
-            label="Total Bookings"
-            value={kpiData.totalBookings.toLocaleString("en-IN")}
-            icon={FaCalendarCheck}
-            subValue={`${kpiData.serviceBookings} services · ${kpiData.productBookings} products`}
-            trend={kpiData.bookingsTrend}
-          />
-          <KpiTile
-            label="Paid Bookings"
-            value={kpiData.successPayments.toLocaleString("en-IN")}
-            icon={FaCheckCircle}
-            subValue={`${kpiData.successRate.toFixed(1)}% success rate`}
-            trend={kpiData.successTrend}
-          />
-          <KpiTile
-            label="Service Categories"
-            value={kpiData.serviceCategories.toLocaleString("en-IN")}
-            icon={FaTools}
-            subValue={`${kpiData.serviceBookings} service bookings`}
-          />
-          <KpiTile
-            label="Active Products"
-            value={kpiData.activeProducts.toLocaleString("en-IN")}
-            icon={FaBoxOpen}
-            subValue={`${catalog.total} total in catalogue`}
-          />
-        </SimpleGrid>
-
-        <SimpleGrid
-          columns={{ base: 1, xl: 3 }}
-          spacing={{ base: 4, md: 5 }}
-          alignItems="stretch"
-        >
-          <RevenueTrendCard
-            months={monthlyTrend}
-            gridColumn={{ xl: "span 2" }}
-          />
-          <RevenueMixCard
-            serviceRevenue={kpiData.serviceRevenue}
-            productRevenue={kpiData.productRevenue}
-          />
-        </SimpleGrid>
-
-        <Box>
-          <Flex
-            justify="space-between"
-            align={{ base: "flex-start", sm: "center" }}
-            direction={{ base: "column", sm: "row" }}
-            gap={2}
-            mb={3}
-          >
-            <Box>
-              <Heading
-                size="sm"
-                fontSize={{ base: "md", md: "lg" }}
-                fontWeight="800"
-                color={textColor}
-                letterSpacing="-0.02em"
-              >
-                Category Performance
-              </Heading>
-            </Box>
-            <Text
-              fontSize="2xs"
-              fontWeight="800"
-              letterSpacing="0.08em"
-              textTransform="uppercase"
-              color={subTextColor}
-            >
-              All time
-            </Text>
-          </Flex>
-
+        {isOwner ? (
           <SimpleGrid
-            columns={{ base: 1, xl: 2 }}
-            spacing={{ base: 4, md: 5 }}
-            alignItems="stretch"
+            columns={{ base: 1, sm: 2, lg: 3, xl: 5 }}
+            spacing={{ base: 3, md: 4 }}
           >
-            <CategoryPerformancePanel
-              kind="service"
-              title="Service Performance"
-              icon={FaTools}
-              analytics={serviceAnalytics}
-              revenue={kpiData.serviceRevenue}
-              successPayments={kpiData.servicePaid}
-              totalRevenue={kpiData.totalRevenue}
+            <KpiTile
+              label="Total Revenue"
+              value={formatCurrency(kpiData.totalRevenue)}
+              icon={FaRupeeSign}
+              subValue={`Svc ${formatCompactCurrency(
+                kpiData.serviceRevenue
+              )} · Prod ${formatCompactCurrency(kpiData.productRevenue)}`}
+              trend={kpiData.revenueTrend}
             />
-            <CategoryPerformancePanel
-              kind="product"
-              title="Product Performance"
+            <KpiTile
+              label="Total Bookings"
+              value={kpiData.totalBookings.toLocaleString("en-IN")}
+              icon={FaCalendarCheck}
+              subValue={`${kpiData.serviceBookings} services · ${kpiData.productBookings} products`}
+              trend={kpiData.bookingsTrend}
+            />
+            <KpiTile
+              label="Paid Bookings"
+              value={kpiData.successPayments.toLocaleString("en-IN")}
+              icon={FaCheckCircle}
+              subValue={`${kpiData.successRate.toFixed(1)}% success rate`}
+              trend={kpiData.successTrend}
+            />
+            <KpiTile
+              label="Service Categories"
+              value={kpiData.serviceCategories.toLocaleString("en-IN")}
+              icon={FaTools}
+              subValue={`${kpiData.serviceBookings} service bookings`}
+            />
+            <KpiTile
+              label="Active Products"
+              value={kpiData.activeProducts.toLocaleString("en-IN")}
               icon={FaBoxOpen}
-              analytics={productAnalytics}
-              revenue={kpiData.productRevenue}
-              successPayments={kpiData.productPaid}
-              totalRevenue={kpiData.totalRevenue}
-              catalog={catalog}
+              subValue={`${catalog.total} total in catalogue`}
             />
           </SimpleGrid>
-        </Box>
+        ) : (
+          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={{ base: 3, md: 4 }}>
+            <KpiTile
+              label="Service Bookings"
+              value={kpiData.serviceBookings.toLocaleString("en-IN")}
+              icon={FaCalendarCheck}
+              subValue={`${kpiData.serviceCategories} service categories`}
+            />
+            <KpiTile
+              label="Recent Activity"
+              value={recentActivity.length.toLocaleString("en-IN")}
+              icon={FaTools}
+              subValue="Latest service operations"
+            />
+          </SimpleGrid>
+        )}
+
+        {isOwner && (
+          <>
+            <SimpleGrid
+              columns={{ base: 1, xl: 3 }}
+              spacing={{ base: 4, md: 5 }}
+              alignItems="stretch"
+            >
+              <RevenueTrendCard
+                months={monthlyTrend}
+                gridColumn={{ xl: "span 2" }}
+              />
+              <RevenueMixCard
+                serviceRevenue={kpiData.serviceRevenue}
+                productRevenue={kpiData.productRevenue}
+              />
+            </SimpleGrid>
+
+            <Box>
+              <Flex
+                justify="space-between"
+                align={{ base: "flex-start", sm: "center" }}
+                direction={{ base: "column", sm: "row" }}
+                gap={2}
+                mb={3}
+              >
+                <Box>
+                  <Heading
+                    size="sm"
+                    fontSize={{ base: "md", md: "lg" }}
+                    fontWeight="800"
+                    color={textColor}
+                    letterSpacing="-0.02em"
+                  >
+                    Category Performance
+                  </Heading>
+                </Box>
+                <Text
+                  fontSize="2xs"
+                  fontWeight="800"
+                  letterSpacing="0.08em"
+                  textTransform="uppercase"
+                  color={subTextColor}
+                >
+                  All time
+                </Text>
+              </Flex>
+
+              <SimpleGrid
+                columns={{ base: 1, xl: 2 }}
+                spacing={{ base: 4, md: 5 }}
+                alignItems="stretch"
+              >
+                <CategoryPerformancePanel
+                  kind="service"
+                  title="Service Performance"
+                  icon={FaTools}
+                  analytics={serviceAnalytics}
+                  revenue={kpiData.serviceRevenue}
+                  successPayments={kpiData.servicePaid}
+                  totalRevenue={kpiData.totalRevenue}
+                />
+                <CategoryPerformancePanel
+                  kind="product"
+                  title="Product Performance"
+                  icon={FaBoxOpen}
+                  analytics={productAnalytics}
+                  revenue={kpiData.productRevenue}
+                  successPayments={kpiData.productPaid}
+                  totalRevenue={kpiData.totalRevenue}
+                  catalog={catalog}
+                />
+              </SimpleGrid>
+            </Box>
+          </>
+        )}
 
         <RecentBookingsCard items={recentActivity} />
       </Stack>

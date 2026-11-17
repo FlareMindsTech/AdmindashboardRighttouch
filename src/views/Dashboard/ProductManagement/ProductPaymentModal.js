@@ -11,12 +11,20 @@ import {
   HStack,
   Icon,
   Input,
-  Select,
   Text,
   Textarea,
   VStack,
 } from "@chakra-ui/react";
-import { FaMoneyBillWave, FaPaperPlane, FaWallet } from "react-icons/fa";
+import {
+  FaCreditCard,
+  FaEllipsisH,
+  FaMoneyBillWave,
+  FaMoneyCheckAlt,
+  FaPaperPlane,
+  FaQrcode,
+  FaUniversity,
+  FaWallet,
+} from "react-icons/fa";
 import AppModal from "components/common/AppModal";
 import StatusBadge from "components/common/StatusBadge";
 import { useAppToast } from "components/feedback";
@@ -52,6 +60,69 @@ const DetailRow = ({ label, children }) => (
       {children || "—"}
     </Box>
   </Grid>
+);
+
+const PAYMENT_MODES = [
+  { key: "cash", label: "Cash", hint: "Collected in person", icon: FaMoneyBillWave },
+  { key: "upi_direct", label: "UPI", hint: "Direct transfer", icon: FaQrcode },
+  { key: "bank_transfer", label: "Bank", hint: "NEFT / IMPS", icon: FaUniversity },
+  { key: "card", label: "Card / POS", hint: "Card machine", icon: FaCreditCard },
+  { key: "cheque", label: "Cheque", hint: "Cheque payment", icon: FaMoneyCheckAlt },
+  { key: "other", label: "Other", hint: "Another mode", icon: FaEllipsisH },
+];
+
+const ModeTile = ({ active, icon, label, hint, onClick, isDisabled }) => (
+  <Box
+    role="button"
+    tabIndex={0}
+    p={3}
+    borderRadius="10px"
+    border="1.5px solid"
+    borderColor={active ? "teal.400" : "gray.200"}
+    bg={active ? "teal.50" : "white"}
+    cursor={isDisabled ? "not-allowed" : "pointer"}
+    opacity={isDisabled ? 0.55 : 1}
+    textAlign="center"
+    transition="all 0.18s ease"
+    _hover={
+      isDisabled
+        ? undefined
+        : { borderColor: "teal.300", transform: "translateY(-1px)" }
+    }
+    _focusVisible={{
+      outline: "2px solid",
+      outlineColor: "teal.400",
+      outlineOffset: "2px",
+    }}
+    onClick={() => {
+      if (!isDisabled) onClick();
+    }}
+    onKeyDown={(event) => {
+      if (!isDisabled && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        onClick();
+      }
+    }}
+  >
+    <VStack spacing={1} align="center">
+      <Icon
+        as={icon}
+        boxSize={4}
+        color={active ? "teal.600" : "gray.500"}
+      />
+      <Text
+        fontSize="2xs"
+        fontWeight="800"
+        color={active ? "teal.800" : "gray.700"}
+        noOfLines={1}
+      >
+        {label}
+      </Text>
+      <Text fontSize="3xs" color="gray.500" noOfLines={1}>
+        {hint}
+      </Text>
+    </VStack>
+  </Box>
 );
 
 const OptionCard = ({ active, icon, title, description, onClick, isDisabled }) => (
@@ -113,7 +184,7 @@ export default function ProductPaymentModal({
   const [option, setOption] = useState("app");
   const [mode, setMode] = useState("cash");
   const [reference, setReference] = useState("");
-  const [notes, setNotes] = useState("Offline payment collected by admin");
+  const [notes, setNotes] = useState("Offline payment collected by staff");
   const [requesting, setRequesting] = useState(false);
   const [recording, setRecording] = useState(false);
 
@@ -133,7 +204,7 @@ export default function ProductPaymentModal({
     setOption("app");
     setMode("cash");
     setReference("");
-    setNotes("Offline payment collected by admin");
+    setNotes("Offline payment collected by staff");
   }, [isOpen, booking?._id]);
 
   const finish = () => {
@@ -312,8 +383,8 @@ export default function ProductPaymentModal({
               <OptionCard
                 active={option === "offline"}
                 icon={FaMoneyBillWave}
-                title="Admin records payment"
-                description="Record a full offline payment collected by cash, UPI, bank transfer, cheque, or POS card."
+                title="Record offline payment"
+                description="Collect the full balance by cash, UPI, bank transfer, cheque, or card. The customer is notified automatically."
                 onClick={() => setOption("offline")}
                 isDisabled={!canPay}
               />
@@ -342,10 +413,10 @@ export default function ProductPaymentModal({
             <VStack align="stretch" spacing={3} p={4} border="1px solid" borderColor="teal.100" borderRadius="12px">
               <Alert status="info" borderRadius="8px" fontSize="xs">
                 <AlertIcon />
-                This records the full remaining balance, marks the booking paid, and sends a payment-success notification to the customer.
+                Records the full remaining balance and marks this product booking as paid. Use only after the payment is verified.
               </Alert>
               <FormControl isRequired>
-                <FormLabel fontSize="xs" fontWeight="700">Full amount (INR)</FormLabel>
+                <FormLabel fontSize="xs" fontWeight="700">Full amount due</FormLabel>
                 <Input
                   value={formatINR(remainingPaise, { fromPaise: true })}
                   isReadOnly
@@ -354,18 +425,23 @@ export default function ProductPaymentModal({
                 />
               </FormControl>
               <FormControl isRequired>
-                <FormLabel fontSize="xs" fontWeight="700">Payment mode</FormLabel>
-                <Select size="sm" value={mode} onChange={(event) => setMode(event.target.value)}>
-                  <option value="cash">Cash</option>
-                  <option value="upi_direct">UPI Direct</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                  <option value="card">Card / POS</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="other">Other</option>
-                </Select>
+                <FormLabel fontSize="xs" fontWeight="700">Collected via</FormLabel>
+                <Grid templateColumns={{ base: "repeat(2, 1fr)", sm: "repeat(3, 1fr)" }} gap={2}>
+                  {PAYMENT_MODES.map((item) => (
+                    <ModeTile
+                      key={item.key}
+                      active={mode === item.key}
+                      icon={item.icon}
+                      label={item.label}
+                      hint={item.hint}
+                      onClick={() => setMode(item.key)}
+                      isDisabled={!canPay}
+                    />
+                  ))}
+                </Grid>
               </FormControl>
               <FormControl>
-                <FormLabel fontSize="xs" fontWeight="700">Transaction reference / UTR</FormLabel>
+                <FormLabel fontSize="xs" fontWeight="700">Reference / UTR (optional)</FormLabel>
                 <Input
                   size="sm"
                   value={reference}
@@ -374,7 +450,7 @@ export default function ProductPaymentModal({
                 />
               </FormControl>
               <FormControl>
-                <FormLabel fontSize="xs" fontWeight="700">Internal note</FormLabel>
+                <FormLabel fontSize="xs" fontWeight="700">Notes (optional)</FormLabel>
                 <Textarea
                   rows={2}
                   value={notes}

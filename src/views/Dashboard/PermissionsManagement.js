@@ -37,9 +37,14 @@ import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
 import SharedStatCard from "components/common/StatCard";
+import StatusBadge from "components/common/StatusBadge";
 import { getUserPermissions, getPermissionsAnalytics } from "api/permissions";
 import { useAppDispatch, useAppSelector } from "store/hooks";
-import { selectUser } from "store/slices/authSlice";
+import {
+  isOwnerRole,
+  selectRole,
+  selectUser,
+} from "store/slices/authSlice";
 import { fetchUsersByRole, selectUsersByRole } from "store/slices/usersSlice";
 
 const BRAND = "#008080";
@@ -61,6 +66,8 @@ export default function PermissionsManagement() {
   const toast = useAppToast();
   const dispatch = useAppDispatch();
   const currentUser = useAppSelector(selectUser);
+  const userRole = useAppSelector(selectRole);
+  const currentRoleLabel = isOwnerRole(userRole) ? "Owner" : "Admin";
 
   const customers = useAppSelector(selectUsersByRole("Customer"));
   const technicians = useAppSelector(selectUsersByRole("Technician"));
@@ -142,15 +149,15 @@ export default function PermissionsManagement() {
   useEffect(() => {
     if (currentUser?.id && !userId) {
       setUserId(currentUser.id);
-      setSelectedUserName(currentUser.identifier || "Owner Account");
-      lookupUser(currentUser.id, currentUser.identifier || "Owner Account");
+      setSelectedUserName(currentUser.identifier || `${currentRoleLabel} Account`);
+      lookupUser(currentUser.id, currentUser.identifier || `${currentRoleLabel} Account`);
     }
-  }, [currentUser, userId, lookupUser]);
+  }, [currentUser, userId, lookupUser, currentRoleLabel]);
 
   // Combined selectable users list
   const userOptions = [
     ...(currentUser?.id
-      ? [{ id: currentUser.id, name: `${currentUser.identifier || "Current User"} (Owner)`, role: "Owner" }]
+      ? [{ id: currentUser.id, name: `${currentUser.identifier || "Current User"} (${currentRoleLabel})`, role: currentRoleLabel }]
       : []),
     ...customers.slice(0, 15).map((c) => ({
       id: c._id || c.id,
@@ -321,9 +328,11 @@ export default function PermissionsManagement() {
                   <Badge colorScheme="purple" px={3} py={1} borderRadius="full" fontSize="xs">
                     {Array.isArray(perms.roles) ? perms.roles.join(", ") : "Owner / SuperAdmin"}
                   </Badge>
-                  <Badge colorScheme="green" px={3} py={1} borderRadius="full" fontSize="xs">
-                    Full Access Active
-                  </Badge>
+                  <StatusBadge
+                    colorScheme="green"
+                    label="Full Access Active"
+                    showDot
+                  />
                 </HStack>
               </Flex>
 
@@ -382,11 +391,11 @@ export default function PermissionsManagement() {
                     variant="brand"
                     onClick={() => {
                       setUserId(currentUser.id);
-                      setSelectedUserName(currentUser.identifier || "Owner");
-                      lookupUser(currentUser.id, currentUser.identifier || "Owner");
+                      setSelectedUserName(currentUser.identifier || currentRoleLabel);
+                      lookupUser(currentUser.id, currentUser.identifier || currentRoleLabel);
                     }}
                   >
-                    Inspect My Owner Permissions
+                    Inspect My {currentRoleLabel} Permissions
                   </Button>
                 )}
               </VStack>

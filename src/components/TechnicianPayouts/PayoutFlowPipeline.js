@@ -113,8 +113,9 @@ export default function PayoutFlowPipeline({
             cursor="pointer"
             px={2.5}
             py={1}
-            borderRadius="full"
+            borderRadius="control"
             fontWeight="700"
+            minH="24px"
             onClick={() => onSelectStage && onSelectStage("all")}
             _hover={{ opacity: 0.85 }}
           >
@@ -126,8 +127,9 @@ export default function PayoutFlowPipeline({
             cursor="pointer"
             px={2.5}
             py={1}
-            borderRadius="full"
+            borderRadius="control"
             fontWeight="700"
+            minH="24px"
             onClick={() => onSelectStage && onSelectStage("rejected")}
             _hover={{ opacity: 0.85 }}
           >
@@ -142,8 +144,9 @@ export default function PayoutFlowPipeline({
             cursor="pointer"
             px={2.5}
             py={1}
-            borderRadius="full"
+            borderRadius="control"
             fontWeight="700"
+            minH="24px"
             onClick={() => onSelectStage && onSelectStage("failed")}
             _hover={{ opacity: 0.85 }}
           >

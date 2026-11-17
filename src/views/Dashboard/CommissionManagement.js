@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import AppModal from "components/common/AppModal";
+import StatusBadge from "components/common/StatusBadge";
 import { useAppToast } from "components/feedback";
 import ErrorState from "components/feedback/ErrorState";
 import {
@@ -1395,7 +1396,13 @@ export default function CommissionManagement() {
                         <Td fontWeight="700">₹{row.gross}</Td>
                         <Td color="teal.600" fontWeight="700">₹{row.cut}</Td>
                         <Td color="green.600" fontWeight="700">₹{row.net}</Td>
-                        <Td><Badge colorScheme="green">{row.status}</Badge></Td>
+                        <Td>
+                          <StatusBadge
+                            colorScheme={row.status?.includes("CREDITED") ? "green" : "orange"}
+                            label={row.status}
+                            variant="subtle"
+                          />
+                        </Td>
                       </Tr>
                     ))}
                   </Tbody>

@@ -12,6 +12,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useAppToast } from "components/feedback";
 import ErrorState from "components/feedback/ErrorState";
 import AppModal from "components/common/AppModal";
+import StatusBadge from "components/common/StatusBadge";
 import {
   Box,
   Button,
@@ -37,7 +38,6 @@ import {
   Tr,
   Th,
   Td,
-  Badge,
   Select,
   Stat,
   StatLabel,
@@ -512,7 +512,13 @@ export default function RewardsManagement() {
                             <Tr key={idOf(tx) + idx}>
                               <Td fontSize="xs" fontFamily="mono">{idOf(tx)}</Td>
                               <Td fontSize="xs" fontFamily="mono">{tx.customerId || tx.userId || "—"}</Td>
-                              <Td><Badge colorScheme={badgeColor}>{type}</Badge></Td>
+                              <Td>
+                                <StatusBadge
+                                  colorScheme={badgeColor}
+                                  label={type}
+                                  variant="subtle"
+                                />
+                              </Td>
                               <Td fontWeight="semibold">{tx.coins ? (type === "EARN" ? `+${tx.coins}` : `-${tx.coins}`) : "—"}</Td>
                               <Td fontSize="xs">{tx.bookingId || tx.referenceId || "—"}</Td>
                               <Td fontSize="xs">{tx.balanceAfter != null ? tx.balanceAfter : "—"}</Td>
@@ -582,7 +588,13 @@ export default function RewardsManagement() {
                               <Td fontSize="xs" fontFamily="mono">{rd.customerId || rd.userId || "—"}</Td>
                               <Td fontWeight="bold">{rd.coins || rd.coinsRedeemed || 0}</Td>
                               <Td>₹{rd.discountRupees != null ? rd.discountRupees : (Number(rd.coins || 0) / 100).toFixed(2)}</Td>
-                              <Td><Badge colorScheme={color}>{status}</Badge></Td>
+                              <Td>
+                                <StatusBadge
+                                  colorScheme={color}
+                                  label={status}
+                                  variant="subtle"
+                                />
+                              </Td>
                               <Td fontSize="xs">{rd.createdAt ? new Date(rd.createdAt).toLocaleString() : "—"}</Td>
                               <Td fontSize="xs">{rd.consumedAt ? new Date(rd.consumedAt).toLocaleString() : (rd.releasedAt ? `Released: ${new Date(rd.releasedAt).toLocaleTimeString()}` : "—")}</Td>
                             </Tr>

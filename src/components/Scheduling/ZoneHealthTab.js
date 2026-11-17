@@ -14,7 +14,6 @@ import {
   Tr,
   Spinner,
   Center,
-  Badge,
   HStack,
   VStack,
   SimpleGrid,
@@ -33,6 +32,7 @@ import {
 } from "react-icons/fa";
 import { MdRefresh } from "react-icons/md";
 import { useAppToast } from "components/feedback";
+import StatusBadge from "components/common/StatusBadge";
 import { getZoneHealthDashboard } from "api/scheduling";
 
 export default function ZoneHealthTab() {
@@ -225,13 +225,18 @@ export default function ZoneHealthTab() {
                         </Td>
                         <Td py={3}>
                           {isLow ? (
-                            <Badge colorScheme="orange" variant="solid" fontSize="3xs" px={2} py={0.5} borderRadius="full">
-                              ● Under-Supplied
-                            </Badge>
+                            <StatusBadge
+                              colorScheme="orange"
+                              label="Under-Supplied"
+                              variant="solid"
+                              showDot
+                            />
                           ) : (
-                            <Badge colorScheme="green" variant="subtle" fontSize="3xs" px={2} py={0.5} borderRadius="full">
-                              ✓ Healthy Coverage
-                            </Badge>
+                            <StatusBadge
+                              colorScheme="green"
+                              label="Healthy Coverage"
+                              variant="subtle"
+                            />
                           )}
                         </Td>
                         <Td py={3} fontSize="2xs" color="gray.600">

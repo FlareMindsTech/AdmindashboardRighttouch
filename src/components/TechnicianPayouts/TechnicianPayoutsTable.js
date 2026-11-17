@@ -42,6 +42,7 @@ import {
   FaSnowflake,
   FaShieldAlt,
 } from "react-icons/fa";
+import StatusBadge from "components/common/StatusBadge";
 import PayoutStatusBadge from "./PayoutStatusBadge";
 import { formatInr } from "./FinancialBreakdown";
 
@@ -316,15 +317,12 @@ export default function TechnicianPayoutsTable({
                       </HStack>
 
                       <HStack spacing={1.5}>
-                        <Badge
-                          fontSize="3xs"
-                          px={1.5}
-                          py={0.5}
-                          borderRadius="4px"
+                        <StatusBadge
                           colorScheme={item.origin === "admin_direct" ? "purple" : "gray"}
+                          variant="subtle"
                         >
-                          {item.origin === "admin_direct" ? "DIRECT DISPATCH" : "REQUESTED"}
-                        </Badge>
+                          {item.origin === "admin_direct" ? "Direct dispatch" : "Requested"}
+                        </StatusBadge>
                         <Text fontSize="3xs" color="gray.500" whiteSpace="nowrap">
                           {item.createdAt
                             ? new Date(item.createdAt).toLocaleDateString("en-IN", {
@@ -371,9 +369,15 @@ export default function TechnicianPayoutsTable({
                               {techName}
                             </Text>
                             {techObj.payoutBlocked && (
-                              <Badge colorScheme="red" fontSize="3xs" px={1} borderRadius="3px">
-                                FROZEN
-                              </Badge>
+                              <StatusBadge
+                                colorScheme="red"
+                                variant="subtle"
+                                minH="auto"
+                                px={2}
+                                py={0.5}
+                              >
+                                Frozen
+                              </StatusBadge>
                             )}
                           </HStack>
                           {techPhone && (
@@ -496,9 +500,9 @@ export default function TechnicianPayoutsTable({
                           </Tooltip>
                         </HStack>
                       ) : status === "approved" ? (
-                        <Badge colorScheme="blue" variant="subtle" fontSize="3xs" px={1.5} py={0.5} borderRadius="4px">
+                        <StatusBadge colorScheme="blue" variant="subtle">
                           Ready for Bank Transfer
-                        </Badge>
+                        </StatusBadge>
                       ) : null}
                     </VStack>
                   </Td>
@@ -510,7 +514,10 @@ export default function TechnicianPayoutsTable({
                       {(status === "pending" || status === "requested" || status === "approved") && (
                         <>
                           <Button
-                            size="xs"
+                            size="sm"
+                            minH="34px"
+                            px={3.5}
+                            fontSize="xs"
                             colorScheme="teal"
                             bg="teal.600"
                             _hover={{ bg: "teal.700", transform: "translateY(-1px)" }}
@@ -525,7 +532,8 @@ export default function TechnicianPayoutsTable({
                           </Button>
                           <Tooltip label="Reject & Refund Reserve" hasArrow>
                             <IconButton
-                              size="xs"
+                              size="sm"
+                              minH="34px"
                               colorScheme="red"
                               variant="outline"
                               borderColor="red.200"

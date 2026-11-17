@@ -245,6 +245,14 @@ export const getBookingTechnicianInfo = (booking) => {
   const latestAssignment = getLatestAssignmentAttempt(booking);
   const statusKey = normalizeStatusKey(booking.status);
   const assignmentStatusKey = normalizeStatusKey(booking.assignmentStatus);
+  const isCompleted = statusKey === "completed";
+  const isHistoricalStatus = ["expired", "cancelled", "canceled"].includes(
+    statusKey
+  );
+  const resolveIsCurrent = (hasTechnician) =>
+    Boolean(hasTechnician) &&
+    !isHistoricalStatus &&
+    (isCompleted || assignmentStatusKey !== "released");
   const hasCurrentTechnician = Boolean(
     booking.technicianId ||
       booking.technician ||
@@ -253,10 +261,7 @@ export const getBookingTechnicianInfo = (booking) => {
       booking.acceptedTechnician ||
       booking.provider
   );
-  const isCurrent =
-    hasCurrentTechnician &&
-    !["expired", "cancelled"].includes(statusKey) &&
-    assignmentStatusKey !== "released";
+  const isCurrent = resolveIsCurrent(hasCurrentTechnician);
 
   const sources = [
     booking.technician,
@@ -279,6 +284,7 @@ export const getBookingTechnicianInfo = (booking) => {
         id: firstText(source._id, source.id, source.technicianId),
         raw: source,
         isCurrent,
+        isCompleted,
         latestAssignment,
       };
     }
@@ -311,7 +317,8 @@ export const getBookingTechnicianInfo = (booking) => {
       latestAssignment?.technicianId ? String(latestAssignment.technicianId) : ""
     ),
     raw: snapshot,
-    isCurrent,
+    isCurrent: resolveIsCurrent(Boolean(name || phone)),
+    isCompleted,
     latestAssignment,
   };
 };
@@ -498,7 +505,7 @@ export const getFriendlyCandidateStatus = (statusStr) => {
   const s = String(statusStr || "offered").toLowerCase();
 
   if (s === "accepted" || s === "winner" || s === "assigned" || s === "confirmed") {
-    return { label: "Accepted", color: "green", icon: "check", desc: "Technician accepted the job offer" };
+    return { label: "Accepted", color: "teal", icon: "check", desc: "Technician accepted the job offer" };
   }
   if (s === "declined" || s === "rejected" || s === "refused") {
     return { label: "Rejected", color: "red", icon: "times", desc: "Technician rejected the job offer" };
@@ -516,9 +523,9 @@ export const getFriendlyCandidateStatus = (statusStr) => {
     return { label: "Cancelled", color: "gray", icon: "times", desc: "Offer was cancelled before a response" };
   }
   if (s === "pending" || s === "awaiting" || s === "sent" || s === "offered" || s === "notified" || s === "delivered") {
-    return { label: "Offer Sent", color: "blue", icon: "bullhorn", desc: "Offer is waiting for the technician to respond" };
+    return { label: "Offer Sent", color: "gray", icon: "bullhorn", desc: "Offer is waiting for the technician to respond" };
   }
-  return { label: "Offer Sent", color: "blue", icon: "bullhorn", desc: "Offer dispatched to technician app" };
+  return { label: "Offer Sent", color: "gray", icon: "bullhorn", desc: "Offer dispatched to technician app" };
 };
 
 /**
@@ -528,13 +535,13 @@ export const getBookingTypeMeta = (booking) => {
   const scheduledMeta = {
     key: "scheduled",
     label: "Scheduled",
-    color: "blue",
+    color: "gray",
     description: "Booked for a future time slot",
   };
   const instantMeta = {
     key: "instant",
     label: "Instant",
-    color: "orange",
+    color: "teal",
     description: "Technician matching starts immediately",
   };
 

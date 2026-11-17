@@ -22,9 +22,9 @@ export const getAllRatings = () =>
 export const getRatingById = (id) =>
   handle(apiClient.get(`/user/getRatingById/${id}`));
 export const updateRating = (id, body) =>
-  handle(apiClient.put(`/user/updateRating/${id}`, body));
+  handle(apiClient.put(`/user/admin/ratings/${id}`, body));
 export const deleteRating = (id) =>
-  handle(apiClient.delete(`/user/deleteRating/${id}`));
+  handle(apiClient.delete(`/user/admin/ratings/${id}`));
 
 // Admin bookings / ratings ops (Postman folder 17, Routes/User.js)
 export const deleteBookingAsAdmin = (id) =>

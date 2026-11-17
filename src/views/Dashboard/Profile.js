@@ -13,7 +13,7 @@ import Card from "components/Card/Card";
 import { useNavigate } from "react-router-dom";
 import { getAllBookings, getAllServiceBooking, getAllTechnicians, getAllProduct, getAllServices, clearAuth, getUser, getMyProfile, updateMyProfile } from "views/utils/axiosInstance";
 import { useAppDispatch, useAppSelector } from "store/hooks";
-import { selectUser, selectIsOwner, logout } from "store/slices/authSlice";
+import { selectUser, selectIsOwner, logoutSession } from "store/slices/authSlice";
 import { fetchProducts, fetchServices, selectProducts, selectServices } from "store/slices/referenceSlice";
 import { fetchTechnicians, selectTechnicians } from "store/slices/techniciansSlice";
 import { fetchServiceBookings, selectServiceBookings } from "store/slices/bookingsSlice";
@@ -497,11 +497,7 @@ export default function OwnerProfile() {
   };
 
   const handleLogout = () => {
-    try {
-      dispatch(logout());
-    } catch (e) {
-      clearAuth();
-    }
+    Promise.resolve(dispatch(logoutSession())).catch(() => clearAuth());
     toast({ title: "Logged Out", status: "info", duration: 2000 });
     navigate("/auth/signin");
   };

@@ -22,11 +22,14 @@ import { MdAdminPanelSettings, MdLightbulb } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
+  isPrivilegedRole,
   loginOwner,
   logout,
+  logoutSession,
   selectIsPrivileged,
   selectIsAuthenticated,
 } from "store/slices/authSlice";
+import { normalizeRole } from "config/accessPolicy";
 
 function AdminLogin() {
   const bgForm = useColorModeValue("white", "gray.800");
@@ -51,7 +54,7 @@ function AdminLogin() {
     if (isPrivileged) {
       navigate("/owner/dashboard", { replace: true });
     } else if (isAuthenticated) {
-      dispatch(logout());
+      dispatch(logoutSession());
     }
   }, [navigate, isPrivileged, isAuthenticated, dispatch]);
 
@@ -182,11 +185,21 @@ function AdminLogin() {
 
       if (!isMountedRef.current) return;
 
-      const role = result?.role || result?.user?.role || "Owner";
+      const role = normalizeRole(result?.role || result?.user?.role);
+      if (!isPrivilegedRole(role)) {
+        dispatch(logout());
+        showErrorToast({
+          title: "Access Restricted",
+          message: "This dashboard is restricted to Owner and Admin accounts.",
+          field: "mobile",
+        });
+        return;
+      }
+      const roleLabel = role === "owner" ? "Owner" : "Admin";
 
       toast({
         title: "Login Successful",
-        description: `Welcome back, ${role}!`,
+        description: `Welcome back, ${roleLabel}!`,
         status: "success",
         duration: 2000,
         isClosable: true,

@@ -1,5 +1,6 @@
 import React from "react";
 import { Badge, HStack, Icon, Text } from "@chakra-ui/react";
+import { STATUS_BADGE_PROPS } from "components/common/StatusBadge";
 import {
   FaClock,
   FaCheckCircle,
@@ -113,15 +114,12 @@ export default function PayoutStatusBadge({ status, size = "md", showIcon = true
 
   return (
     <Badge
-      px={size === "sm" ? 2 : 2.5}
-      py={size === "sm" ? 0.5 : 1}
-      borderRadius="full"
+      {...STATUS_BADGE_PROPS}
       borderWidth="1px"
       bg={config.bg}
       color={config.color}
       borderColor={config.borderColor}
       fontSize={size === "sm" ? "2xs" : "xs"}
-      fontWeight="700"
       letterSpacing="0.02em"
       textTransform="none"
       boxShadow="sm"

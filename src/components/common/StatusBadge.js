@@ -1,22 +1,5 @@
 import React from "react";
-import { Badge } from "@chakra-ui/react";
-
-/**
- * Shared status badge — Phase 1 extraction (visual parity only).
- *
- * Presets preserve the exact status→colorScheme mappings found in source:
- * - preset="payment": Dashboard.js getStatusColor — success/paid/completed/
- *   approved→green, pending/requested→yellow, failed/rejected/cancelled→red,
- *   else gray. Default badge props match Dashboard recent-bookings badge
- *   (size sm, mt 1, fontSize 10px).
- * - preset="report": ReportsManagement.js renderStatusBadge — resolved_refunded/
- *   resolved→green, resolved_no_refund→gray, under_review→blue,
- *   withdrawn→purple, expired→red, else Open/yellow. Default badge props
- *   match that call site (px 2, py 0.5, full radius, 2xs).
- *
- * Pass `colorScheme` directly for one-off cases, or `map` for a custom
- * status→colorScheme function. Explicit props always override preset defaults.
- */
+import { Badge, Box, HStack } from "@chakra-ui/react";
 
 export const paymentStatusColor = (status) => {
   const s = (status || "").toLowerCase();
@@ -42,13 +25,32 @@ export const reportStatusMeta = (status) => {
   return { colorScheme: "yellow", label: "Open" };
 };
 
+export const STATUS_BADGE_PROPS = {
+  px: 2.5,
+  py: 1,
+  fontSize: "2xs",
+  fontWeight: "700",
+  borderRadius: "control",
+  lineHeight: "1.2",
+  minH: "24px",
+};
+
 const PRESET_DEFAULT_PROPS = {
-  payment: { size: "sm", mt: 1, fontSize: "10px", borderRadius: "full" },
-  report: { px: 2, py: 0.5, borderRadius: "full", fontSize: "2xs" },
+  payment: { mt: 1 },
+  report: {},
 };
 
 export default function StatusBadge(props) {
-  const { preset, status, colorScheme, map, label, children, ...rest } = props;
+  const {
+    preset,
+    status,
+    colorScheme,
+    map,
+    label,
+    children,
+    showDot = false,
+    ...rest
+  } = props;
 
   let resolvedScheme = colorScheme;
   let resolvedLabel = label !== undefined ? label : children;
@@ -68,9 +70,23 @@ export default function StatusBadge(props) {
     if (resolvedLabel === undefined) resolvedLabel = status;
   }
 
+  const content = showDot ? (
+    <HStack as="span" spacing={1.5} align="center">
+      <Box as="span" boxSize="6px" borderRadius="full" bg="currentColor" />
+      <Box as="span">{resolvedLabel}</Box>
+    </HStack>
+  ) : (
+    resolvedLabel
+  );
+
   return (
-    <Badge colorScheme={resolvedScheme} {...defaults} {...rest}>
-      {resolvedLabel}
+    <Badge
+      colorScheme={resolvedScheme}
+      {...STATUS_BADGE_PROPS}
+      {...defaults}
+      {...rest}
+    >
+      {content}
     </Badge>
   );
 }

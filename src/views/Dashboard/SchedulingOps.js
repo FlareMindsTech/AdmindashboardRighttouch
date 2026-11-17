@@ -69,6 +69,7 @@ import { MdRefresh } from "react-icons/md";
 import Card from "components/Card/Card.js";
 import { useAppToast } from "components/feedback";
 import TablePagination from "components/common/TablePagination";
+import StatusBadge from "components/common/StatusBadge";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
 
 import {
@@ -92,7 +93,7 @@ import {
   getBookingAmount,
 } from "components/Scheduling/schedulingFormatters";
 
-import BookingAuditTab from "components/Scheduling/BookingAuditTab";
+import BookingTrackingModal from "components/Scheduling/BookingTrackingModal";
 import DispatchQueueTab from "components/Scheduling/DispatchQueueTab";
 import TechnicianBaseLocationTab from "components/Scheduling/TechnicianBaseLocationTab";
 import NoShowCompensationTab from "components/Scheduling/NoShowCompensationTab";
@@ -170,14 +171,14 @@ const dispatchBadgeOf = (booking) => {
     if (["paid", "settled", "posted"].includes(noShowStatus)) {
       return {
         label: "No-show settled",
-        colorScheme: "green",
+        colorScheme: "gray",
         icon: FaCheckCircle,
       };
     }
     if (noShowStatus === "approved") {
       return {
         label: "No-show approved",
-        colorScheme: "blue",
+        colorScheme: "orange",
         icon: FaCheckCircle,
       };
     }
@@ -198,7 +199,7 @@ const dispatchBadgeOf = (booking) => {
     return { label: "Cancelled", colorScheme: "gray", icon: FaTimes };
   }
   if (status === "completed") {
-    return { label: "Completed", colorScheme: "green", icon: FaCheckCircle };
+    return { label: "Completed", colorScheme: "teal", icon: FaCheckCircle };
   }
   if (status === "expired") {
     return { label: "Expired", colorScheme: "orange", icon: FaClock };
@@ -206,7 +207,7 @@ const dispatchBadgeOf = (booking) => {
   if (currentTechnicianOf(booking)) {
     return {
       label: "Technician assigned",
-      colorScheme: "green",
+      colorScheme: "teal",
       icon: FaUserCheck,
     };
   }
@@ -219,10 +220,13 @@ const dispatchBadgeOf = (booking) => {
   }
   return {
     label: "Finding technician",
-    colorScheme: "purple",
+    colorScheme: "gray",
     icon: FaBullhorn,
   };
 };
+
+const isCompletedBooking = (booking) =>
+  String(booking?.status || "").toLowerCase() === "completed";
 
 const sortBySchedule = (direction) => (a, b) => {
   const aTime = scheduleTimeOf(a);
@@ -240,6 +244,7 @@ export default function SchedulingOps() {
 
   const [activeMainTab, setActiveMainTab] = useState(0);
   const [trackerBookingId, setTrackerBookingId] = useState("");
+  const [isTrackerOpen, setIsTrackerOpen] = useState(false);
 
   const [selectedDrawerBookingId, setSelectedDrawerBookingId] = useState("");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -498,7 +503,17 @@ export default function SchedulingOps() {
   const handleOpenTracker = (bookingId) => {
     if (!bookingId) return;
     setTrackerBookingId(String(bookingId));
-    setActiveMainTab(1);
+    setIsTrackerOpen(true);
+  };
+
+  const handleCloseTracker = () => {
+    setIsTrackerOpen(false);
+    setTrackerBookingId("");
+  };
+
+  const handleTrackerCompensation = (booking, action) => {
+    handleCloseTracker();
+    handleOpenCompensation(booking, action);
   };
 
   const handleMissingCountChange = useCallback(
@@ -659,14 +674,14 @@ export default function SchedulingOps() {
         bookings.length === 0
           ? { text: "Idle", colorScheme: "gray" }
           : unassignedCount > 0
-          ? { text: "Matching", colorScheme: "purple" }
-          : { text: "Covered", colorScheme: "green" },
+          ? { text: "Matching", colorScheme: "orange" }
+          : { text: "Covered", colorScheme: "teal" },
       icon: FaCalendarAlt,
       iconBg: isDark ? "gray.700" : "teal.50",
       iconColor: isDark ? "teal.200" : "teal.600",
     },
     {
-      tab: 2,
+      tab: 1,
       label: "Failed dispatches",
       value: failedCount,
       helper: `${pendingCount} ${
@@ -675,13 +690,27 @@ export default function SchedulingOps() {
       badge:
         failedCount > 0
           ? { text: "Needs retry", colorScheme: "red" }
-          : { text: "All clear", colorScheme: "green" },
+          : { text: "All clear", colorScheme: "gray" },
       icon: FaExclamationTriangle,
-      iconBg: isDark ? "red.900" : "red.50",
-      iconColor: isDark ? "red.200" : "red.500",
+      iconBg:
+        failedCount > 0
+          ? isDark
+            ? "red.900"
+            : "red.50"
+          : isDark
+          ? "gray.700"
+          : "teal.50",
+      iconColor:
+        failedCount > 0
+          ? isDark
+            ? "red.200"
+            : "red.500"
+          : isDark
+          ? "teal.200"
+          : "teal.600",
     },
     {
-      tab: 3,
+      tab: 2,
       label: "Technician locations",
       value: missingBaseCount,
       helper:
@@ -691,13 +720,27 @@ export default function SchedulingOps() {
       badge:
         missingBaseCount > 0
           ? { text: "Setup needed", colorScheme: "orange" }
-          : { text: "Verified", colorScheme: "green" },
+          : { text: "Verified", colorScheme: "gray" },
       icon: FaMapMarkerAlt,
-      iconBg: isDark ? "orange.900" : "orange.50",
-      iconColor: isDark ? "orange.200" : "orange.500",
+      iconBg:
+        missingBaseCount > 0
+          ? isDark
+            ? "orange.900"
+            : "orange.50"
+          : isDark
+          ? "gray.700"
+          : "teal.50",
+      iconColor:
+        missingBaseCount > 0
+          ? isDark
+            ? "orange.200"
+            : "orange.500"
+          : isDark
+          ? "teal.200"
+          : "teal.600",
     },
     {
-      tab: 4,
+      tab: 3,
       label: "No-show claims",
       value: noShowClaimsCount,
       helper:
@@ -706,11 +749,25 @@ export default function SchedulingOps() {
           : "No claims waiting for review",
       badge:
         noShowClaimsCount > 0
-          ? { text: "Review", colorScheme: "yellow" }
-          : { text: "Settled", colorScheme: "green" },
+          ? { text: "Review", colorScheme: "orange" }
+          : { text: "Settled", colorScheme: "gray" },
       icon: FaMoneyBillWave,
-      iconBg: isDark ? "yellow.900" : "yellow.50",
-      iconColor: isDark ? "yellow.200" : "yellow.700",
+      iconBg:
+        noShowClaimsCount > 0
+          ? isDark
+            ? "orange.900"
+            : "orange.50"
+          : isDark
+          ? "gray.700"
+          : "teal.50",
+      iconColor:
+        noShowClaimsCount > 0
+          ? isDark
+            ? "orange.200"
+            : "orange.500"
+          : isDark
+          ? "teal.200"
+          : "teal.600",
     },
   ];
 
@@ -738,20 +795,12 @@ export default function SchedulingOps() {
   const renderDispatchBadge = (booking) => {
     const state = dispatchBadgeOf(booking);
     return (
-      <Badge
+      <StatusBadge
         colorScheme={state.colorScheme}
+        label={state.label}
         variant="subtle"
-        px={2.5}
-        py={1}
-        borderRadius="full"
-        fontSize="2xs"
-        fontWeight="700"
-      >
-        <HStack spacing={1.5}>
-          <Icon as={state.icon} boxSize={2.5} />
-          <Text>{state.label}</Text>
-        </HStack>
-      </Badge>
+        showDot
+      />
     );
   };
 
@@ -796,25 +845,12 @@ export default function SchedulingOps() {
               }
               hasArrow
             >
-              <Badge
-                colorScheme={isWorkerOk ? "green" : "red"}
+              <StatusBadge
+                colorScheme={isWorkerOk ? "teal" : "red"}
+                label={isWorkerOk ? "Worker online" : "Worker offline"}
                 variant={isWorkerOk ? "subtle" : "solid"}
-                px={3}
-                py={1.5}
-                borderRadius="full"
-                fontSize="2xs"
-                fontWeight="800"
-              >
-                <HStack spacing={1.5}>
-                  <Box
-                    w="6px"
-                    h="6px"
-                    borderRadius="full"
-                    bg={isWorkerOk ? "green.500" : "white"}
-                  />
-                  <Text>{isWorkerOk ? "Worker online" : "Worker offline"}</Text>
-                </HStack>
-              </Badge>
+                showDot
+              />
             </Tooltip>
 
             <HStack
@@ -932,7 +968,9 @@ export default function SchedulingOps() {
               borderColor={
                 isActive ? "teal.400" : isDark ? "gray.700" : "gray.200"
               }
-              boxShadow={isActive ? "0 0 0 1px #2C7A7B" : "sm"}
+              boxShadow={
+                isActive ? "0 0 0 1px rgba(0, 128, 128, 0.35)" : "sm"
+              }
               cursor="pointer"
               transition="all 0.2s"
               _hover={{
@@ -985,7 +1023,7 @@ export default function SchedulingOps() {
                         : card.tab === 2 && missingBaseCount > 0
                         ? "orange.500"
                         : card.tab === 3 && noShowClaimsCount > 0
-                        ? "yellow.600"
+                        ? "orange.500"
                         : isDark
                         ? "white"
                         : "gray.800"
@@ -997,11 +1035,12 @@ export default function SchedulingOps() {
                 <Badge
                   colorScheme={card.badge.colorScheme}
                   variant="subtle"
-                  borderRadius="full"
-                  px={2}
-                  py={0.5}
+                  borderRadius="control"
+                  px={2.5}
+                  py={1}
                   fontSize="2xs"
                   fontWeight="700"
+                  minH="24px"
                 >
                   {card.badge.text}
                 </Badge>
@@ -1045,16 +1084,9 @@ export default function SchedulingOps() {
               <HStack spacing={2}>
                 <Icon as={FaCalendarAlt} boxSize={3.5} />
                 <Text>Bookings</Text>
-                <Badge colorScheme="teal" borderRadius="full" px={2} fontSize="2xs">
+                <Badge colorScheme="gray" borderRadius="full" px={2} fontSize="2xs">
                   {bookings.length}
                 </Badge>
-              </HStack>
-            </Tab>
-
-            <Tab fontWeight="700" fontSize="sm" py={3.5} px={{ base: 3, md: 4 }} whiteSpace="nowrap">
-              <HStack spacing={2}>
-                <Icon as={FaBullhorn} boxSize={3.5} />
-                <Text>Booking tracking</Text>
               </HStack>
             </Tab>
 
@@ -1063,7 +1095,7 @@ export default function SchedulingOps() {
                 <Icon as={FaTruckFast} boxSize={3.5} />
                 <Text>Dispatch queue</Text>
                 <Badge
-                  colorScheme={failedCount > 0 ? "red" : "teal"}
+                  colorScheme={failedCount > 0 ? "red" : "gray"}
                   variant={failedCount > 0 ? "solid" : "subtle"}
                   borderRadius="full"
                   px={2}
@@ -1079,7 +1111,7 @@ export default function SchedulingOps() {
                 <Icon as={FaMapMarkerAlt} boxSize={3.5} />
                 <Text>Technician locations</Text>
                 <Badge
-                  colorScheme={missingBaseCount > 0 ? "orange" : "green"}
+                  colorScheme={missingBaseCount > 0 ? "orange" : "gray"}
                   variant={missingBaseCount > 0 ? "solid" : "subtle"}
                   borderRadius="full"
                   px={2}
@@ -1095,7 +1127,7 @@ export default function SchedulingOps() {
                 <Icon as={FaMoneyBillWave} boxSize={3.5} />
                 <Text>No-show claims</Text>
                 <Badge
-                  colorScheme={noShowClaimsCount > 0 ? "yellow" : "green"}
+                  colorScheme={noShowClaimsCount > 0 ? "orange" : "gray"}
                   variant={noShowClaimsCount > 0 ? "solid" : "subtle"}
                   borderRadius="full"
                   px={2}
@@ -1252,7 +1284,7 @@ export default function SchedulingOps() {
                           p={4}
                           bg={isDark ? "gray.700" : "gray.50"}
                           borderRadius="full"
-                          color={hasActiveFilters ? "gray.400" : "green.500"}
+                          color={hasActiveFilters ? "gray.400" : "teal.500"}
                         >
                           <Icon
                             as={hasActiveFilters ? FaSearch : FaCheckCircle}
@@ -1311,6 +1343,7 @@ export default function SchedulingOps() {
                                   : null;
                               const noShowAction = noShowActionOf(booking);
                               const typeMeta = getBookingTypeMeta(booking);
+                              const bookingCompleted = isCompletedBooking(booking);
 
                               return (
                                 <Tr
@@ -1344,7 +1377,7 @@ export default function SchedulingOps() {
                                               }
                                               variant="ghost"
                                               colorScheme={
-                                                copiedKey === `bid_${id}` ? "green" : "gray"
+                                                copiedKey === `bid_${id}` ? "teal" : "gray"
                                               }
                                               onClick={(event) => {
                                                 event.stopPropagation();
@@ -1423,7 +1456,7 @@ export default function SchedulingOps() {
                                         <Avatar
                                           size="xs"
                                           name={currentTechnician.name || "Technician"}
-                                          bg="green.500"
+                                          bg="teal.500"
                                           color="white"
                                           fontSize="2xs"
                                         />
@@ -1472,8 +1505,13 @@ export default function SchedulingOps() {
                                     ) : (
                                       <HStack spacing={1.5} color="gray.500">
                                         <Icon as={FaUserClock} boxSize={3} />
-                                        <Text fontSize="xs" fontStyle="italic">
-                                          Auto-matching
+                                        <Text
+                                          fontSize="xs"
+                                          fontStyle={bookingCompleted ? "normal" : "italic"}
+                                        >
+                                          {bookingCompleted
+                                            ? "No technician recorded"
+                                            : "Auto-matching"}
                                         </Text>
                                       </HStack>
                                     )}
@@ -1497,7 +1535,7 @@ export default function SchedulingOps() {
                                         <Button
                                           size="xs"
                                           variant="ghost"
-                                          colorScheme="purple"
+                                          colorScheme="gray"
                                           leftIcon={<FaBullhorn size={10} />}
                                           onClick={() => handleOpenTracker(id)}
                                         >
@@ -1522,7 +1560,7 @@ export default function SchedulingOps() {
                                         <Button
                                           size="xs"
                                           colorScheme={
-                                            noShowAction === "mark_paid" ? "green" : "orange"
+                                            noShowAction === "mark_paid" ? "teal" : "orange"
                                           }
                                           variant="solid"
                                           onClick={() =>
@@ -1560,6 +1598,7 @@ export default function SchedulingOps() {
                               : null;
                           const noShowAction = noShowActionOf(booking);
                           const typeMeta = getBookingTypeMeta(booking);
+                          const bookingCompleted = isCompletedBooking(booking);
 
                           return (
                             <Box
@@ -1603,10 +1642,12 @@ export default function SchedulingOps() {
                                     <Badge
                                       colorScheme={typeMeta.color}
                                       variant="subtle"
-                                      borderRadius="full"
-                                      px={1.5}
-                                      py={0.5}
+                                      borderRadius="control"
+                                      px={2.5}
+                                      py={1}
                                       fontSize="2xs"
+                                      fontWeight="700"
+                                      minH="24px"
                                     >
                                       {typeMeta.label}
                                     </Badge>
@@ -1642,7 +1683,7 @@ export default function SchedulingOps() {
                                     boxSize={3}
                                     color={
                                       currentTechnician
-                                        ? "green.500"
+                                        ? "teal.500"
                                         : previousTechnician
                                         ? "orange.500"
                                         : "gray.400"
@@ -1650,9 +1691,15 @@ export default function SchedulingOps() {
                                   />
                                   <Text fontSize="xs" fontWeight="600" noOfLines={1}>
                                     {currentTechnician
-                                      ? currentTechnician.name || "Technician"
+                                      ? currentTechnician.isCompleted
+                                        ? `Completed by ${
+                                            currentTechnician.name || "Technician"
+                                          }`
+                                        : currentTechnician.name || "Technician"
                                       : previousTechnician
                                       ? `${previousTechnician.name || "Technician"} · Previously assigned`
+                                      : bookingCompleted
+                                      ? "No technician recorded"
                                       : "Auto-matching"}
                                   </Text>
                                 </HStack>
@@ -1668,7 +1715,7 @@ export default function SchedulingOps() {
                                   <Button
                                     size="xs"
                                     variant="ghost"
-                                    colorScheme="purple"
+                                    colorScheme="gray"
                                     onClick={() => handleOpenTracker(id)}
                                   >
                                     Track
@@ -1692,7 +1739,7 @@ export default function SchedulingOps() {
                                   mt={3}
                                   w="full"
                                   colorScheme={
-                                    noShowAction === "mark_paid" ? "green" : "orange"
+                                    noShowAction === "mark_paid" ? "teal" : "orange"
                                   }
                                   variant="outline"
                                   onClick={(event) => {
@@ -1741,13 +1788,6 @@ export default function SchedulingOps() {
             </TabPanel>
 
             <TabPanel px={{ base: 3, md: 5 }} py={5}>
-              <BookingAuditTab
-                preselectedBookingId={trackerBookingId}
-                onOpenCompensation={handleOpenCompensation}
-              />
-            </TabPanel>
-
-            <TabPanel px={{ base: 3, md: 5 }} py={5}>
               <DispatchQueueTab
                 onInspectBooking={handleOpenDrawer}
                 stats={stats}
@@ -1785,6 +1825,13 @@ export default function SchedulingOps() {
         onOpenCompensation={handleOpenCompensation}
         onOpenTracker={handleOpenTracker}
         isDark={isDark}
+      />
+
+      <BookingTrackingModal
+        isOpen={isTrackerOpen}
+        onClose={handleCloseTracker}
+        bookingId={trackerBookingId}
+        onOpenCompensation={handleTrackerCompensation}
       />
 
       <NoShowCompensationModal

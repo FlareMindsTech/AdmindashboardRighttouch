@@ -38,7 +38,7 @@ import FlareMindslogo from "assets/img/fm logo.png";
 
 import { useAdminNotificationCounts } from "hooks/useAdminNotificationCounts";
 import { useAppDispatch, useAppSelector } from "store/hooks";
-import { logout, selectToken } from "store/slices/authSlice";
+import { logoutSession, selectToken } from "store/slices/authSlice";
 
 const Sidebar = React.memo(function Sidebar(props) {
   const { sidebarVariant, logo, routes } = props;
@@ -145,7 +145,7 @@ const Sidebar = React.memo(function Sidebar(props) {
       closeLogout();
       // Canonical logout: clears legacy storage (same cleanup as before)
       // and resets Redux auth state.
-      dispatch(logout());
+      dispatch(logoutSession());
       toast({
         title: "Logged out successfully",
         description: "Redirecting to the sign-in page...",
@@ -635,7 +635,7 @@ export const SidebarResponsive = React.memo(function SidebarResponsive(props) {
       if (onClose) onClose();
       // Canonical logout: clears legacy storage (same cleanup as before)
       // and resets Redux auth state.
-      dispatchResp(logout());
+      dispatchResp(logoutSession());
       toastResp({
         title: "Logged out successfully",
         description: "Redirecting to the sign-in page...",

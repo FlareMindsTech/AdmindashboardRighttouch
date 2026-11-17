@@ -61,6 +61,7 @@ import {
   FaSearch,
 } from "react-icons/fa";
 import { useAppToast } from "components/feedback";
+import StatusBadge from "components/common/StatusBadge";
 import {
   getSchedulingBookingById,
   getBroadcastAudit,
@@ -88,25 +89,25 @@ import {
 const STATUS_META = {
   pending: {
     label: "Pending",
-    color: "yellow",
+    color: "orange",
     step: 0,
     description: "Booking created and waiting for dispatch.",
   },
   broadcasted: {
     label: "Broadcasting",
-    color: "purple",
+    color: "orange",
     step: 1,
     description: "Nearby technicians are being notified about this job.",
   },
   accepted: {
     label: "Assigned",
-    color: "blue",
+    color: "teal",
     step: 2,
     description: "A technician accepted this booking.",
   },
   on_the_way: {
     label: "On the way",
-    color: "cyan",
+    color: "teal",
     step: 3,
     description: "The technician is travelling to the customer.",
   },
@@ -124,13 +125,13 @@ const STATUS_META = {
   },
   completed: {
     label: "Completed",
-    color: "green",
+    color: "teal",
     step: 5,
     description: "The service was completed successfully.",
   },
   cancelled: {
     label: "Cancelled",
-    color: "red",
+    color: "gray",
     step: -1,
     description: "This booking was cancelled.",
   },
@@ -435,7 +436,7 @@ const LifecycleStepper = ({ dark, currentStep, statusMeta }) => (
 
 const TerminalStatusBanner = ({ dark, statusMeta }) => {
   const isCancelled = statusMeta.key === "cancelled";
-  const colorScheme = isCancelled ? "red" : "orange";
+  const colorScheme = isCancelled ? "gray" : "orange";
   return (
     <Flex
       p={4}
@@ -700,6 +701,7 @@ export default function BookingDetailDrawer({
 
   const techInfo = getBookingTechnicianInfo(booking);
   const techIsCurrent = Boolean(techInfo?.isCurrent);
+  const techIsCompleted = Boolean(techInfo?.isCompleted);
   const previousAssignment = techInfo && !techIsCurrent ? techInfo.latestAssignment : null;
   const previousReleaseLabel = previousAssignment?.releaseReason
     ? getAssignmentReleaseLabel(previousAssignment.releaseReason)
@@ -737,7 +739,10 @@ export default function BookingDetailDrawer({
 
   const assignmentStatus = normalizeStatusKey(booking?.assignmentStatus);
   let techEmptyMessage = "No technician is assigned to this booking yet.";
-  if (
+  if (statusMeta.key === "completed") {
+    techEmptyMessage =
+      "No technician is recorded for this completed booking.";
+  } else if (
     statusMeta.key === "broadcasted" ||
     assignmentStatus === "broadcasted"
   ) {
@@ -872,7 +877,7 @@ export default function BookingDetailDrawer({
                         />
                       }
                       variant="ghost"
-                      colorScheme={copiedKey === "bId" ? "green" : "gray"}
+                      colorScheme={copiedKey === "bId" ? "teal" : "gray"}
                       onClick={() =>
                         copyToClipboard(bookingId, "bId", "Booking ID")
                       }
@@ -983,16 +988,11 @@ export default function BookingDetailDrawer({
                         <Icon as={FaMoneyBillWave} boxSize={4} />
                       </Flex>
                       <Box>
-                        <Badge
+                        <StatusBadge
                           colorScheme="orange"
+                          label="Customer no-show claim"
                           variant="subtle"
-                          fontSize="3xs"
-                          borderRadius="full"
-                          px={2}
-                          py={0.5}
-                        >
-                          Customer no-show claim
-                        </Badge>
+                        />
                         <Text
                           fontSize="sm"
                           fontWeight="800"
@@ -1056,28 +1056,16 @@ export default function BookingDetailDrawer({
                 >
                   <Box flex="1" minW={0}>
                     <HStack spacing={2} flexWrap="wrap">
-                      <Badge
+                      <StatusBadge
                         colorScheme={bookingTypeMeta.color}
+                        label={bookingTypeMeta.label}
                         variant="subtle"
-                        fontSize="3xs"
-                        px={2.5}
-                        py={0.5}
-                        borderRadius="full"
-                        textTransform="uppercase"
-                      >
-                        {bookingTypeMeta.label}
-                      </Badge>
-                      <Badge
+                      />
+                      <StatusBadge
                         colorScheme={statusMeta.color}
+                        label={statusMeta.label}
                         variant="solid"
-                        fontSize="3xs"
-                        px={2.5}
-                        py={0.5}
-                        borderRadius="full"
-                        textTransform="uppercase"
-                      >
-                        {statusMeta.label}
-                      </Badge>
+                      />
                     </HStack>
                     <Text
                       fontSize="3xs"
@@ -1220,7 +1208,7 @@ export default function BookingDetailDrawer({
                                 />
                               }
                               colorScheme={
-                                copiedKey === "customerPhone" ? "green" : "gray"
+                                copiedKey === "customerPhone" ? "teal" : "gray"
                               }
                               onClick={() =>
                                 copyToClipboard(
@@ -1289,19 +1277,22 @@ export default function BookingDetailDrawer({
                 <SectionCard
                   dark={dark}
                   icon={techInfo ? (techIsCurrent ? FaUserCheck : FaUserTimes) : FaUserTimes}
-                  colorScheme={techInfo ? (techIsCurrent ? "green" : "orange") : "gray"}
+                  colorScheme={techInfo ? (techIsCurrent ? "teal" : "orange") : "gray"}
                   title="Technician details"
                   right={
-                    <Badge
-                      colorScheme={techInfo ? (techIsCurrent ? "green" : "orange") : "gray"}
+                    <StatusBadge
+                      colorScheme={techInfo ? (techIsCurrent ? "teal" : "orange") : "gray"}
+                      label={
+                        techInfo
+                          ? techIsCompleted
+                            ? "Completed by"
+                            : techIsCurrent
+                            ? "Assigned"
+                            : "Previously assigned"
+                          : "No technician recorded"
+                      }
                       variant="subtle"
-                      fontSize="3xs"
-                      px={2}
-                      py={0.5}
-                      borderRadius="full"
-                    >
-                      {techInfo ? (techIsCurrent ? "Assigned" : "Previously assigned") : "Unassigned"}
-                    </Badge>
+                    />
                   }
                 >
                   {techInfo ? (
@@ -1328,7 +1319,7 @@ export default function BookingDetailDrawer({
                         <Avatar
                           size="md"
                           name={techInfo.name}
-                          bg={techIsCurrent ? "green.500" : "orange.400"}
+                          bg={techIsCurrent ? "teal.500" : "orange.400"}
                           color="white"
                           fontWeight="700"
                         />
@@ -1361,7 +1352,7 @@ export default function BookingDetailDrawer({
                                     />
                                   }
                                   colorScheme={
-                                    copiedKey === "techPhone" ? "green" : "gray"
+                                    copiedKey === "techPhone" ? "teal" : "gray"
                                   }
                                   onClick={() =>
                                     copyToClipboard(
@@ -1409,7 +1400,7 @@ export default function BookingDetailDrawer({
                                   />
                                 }
                                 colorScheme={
-                                  copiedKey === "techId" ? "green" : "gray"
+                                  copiedKey === "techId" ? "teal" : "gray"
                                 }
                                 onClick={() =>
                                   copyToClipboard(
@@ -1458,7 +1449,11 @@ export default function BookingDetailDrawer({
                     <EmptyState
                       dark={dark}
                       icon={FaUserTimes}
-                      title="No technician assigned yet"
+                      title={
+                        statusMeta.key === "completed"
+                          ? "No technician recorded"
+                          : "No technician assigned yet"
+                      }
                       description={techEmptyMessage}
                     />
                   )}
@@ -1468,13 +1463,13 @@ export default function BookingDetailDrawer({
               <SectionCard
                 dark={dark}
                 icon={FaBullhorn}
-                colorScheme="purple"
+                colorScheme="brand"
                 title="Broadcast & assignment audit"
                 right={
                   <HStack spacing={2} flexWrap="wrap" justify="flex-end">
                     {broadcast && (
                       <Badge
-                        colorScheme="purple"
+                        colorScheme="gray"
                         variant="subtle"
                         fontSize="3xs"
                         px={2}
@@ -1488,7 +1483,7 @@ export default function BookingDetailDrawer({
                       <Button
                         size="xs"
                         variant="ghost"
-                        colorScheme="purple"
+                        colorScheme="gray"
                         leftIcon={<Icon as={FaBullhorn} boxSize={2.5} />}
                         onClick={() => {
                           onClose();
@@ -1530,7 +1525,7 @@ export default function BookingDetailDrawer({
                         icon={FaCheckCircle}
                         label="Accepted"
                         value={broadcastSummary.accepted}
-                        colorScheme="green"
+                        colorScheme="teal"
                       />
                       <StatTile
                         dark={dark}
@@ -1554,7 +1549,7 @@ export default function BookingDetailDrawer({
                       <HStack spacing={2} flexWrap="wrap">
                         {broadcastSummary.pending > 0 && (
                           <Badge
-                            colorScheme="blue"
+                            colorScheme="gray"
                             variant="subtle"
                             fontSize="3xs"
                             borderRadius="full"
@@ -1578,7 +1573,7 @@ export default function BookingDetailDrawer({
                         )}
                         {broadcastSummary.cancelled > 0 && (
                           <Badge
-                            colorScheme="purple"
+                            colorScheme="gray"
                             variant="subtle"
                             fontSize="3xs"
                             borderRadius="full"
@@ -1625,7 +1620,7 @@ export default function BookingDetailDrawer({
                                       <Avatar
                                         size="xs"
                                         name={candidate.name}
-                                        bg="purple.500"
+                                        bg="teal.500"
                                         color="white"
                                         fontSize="2xs"
                                       />
@@ -1680,16 +1675,11 @@ export default function BookingDetailDrawer({
                                       }
                                       hasArrow
                                     >
-                                      <Badge
+                                      <StatusBadge
                                         colorScheme={candidate.status.color}
+                                        label={candidate.status.label}
                                         variant="subtle"
-                                        fontSize="3xs"
-                                        px={2}
-                                        py={0.5}
-                                        borderRadius="full"
-                                      >
-                                        {candidate.status.label}
-                                      </Badge>
+                                      />
                                     </Tooltip>
                                   </Td>
                                 </Tr>
@@ -1717,7 +1707,7 @@ export default function BookingDetailDrawer({
                                   <Avatar
                                     size="xs"
                                     name={candidate.name}
-                                    bg="purple.500"
+                                    bg="teal.500"
                                     color="white"
                                     fontSize="2xs"
                                   />
@@ -1740,17 +1730,12 @@ export default function BookingDetailDrawer({
                                     )}
                                   </Box>
                                 </HStack>
-                                <Badge
+                                <StatusBadge
                                   colorScheme={candidate.status.color}
+                                  label={candidate.status.label}
                                   variant="subtle"
-                                  fontSize="3xs"
-                                  px={2}
-                                  py={0.5}
-                                  borderRadius="full"
                                   flexShrink={0}
-                                >
-                                  {candidate.status.label}
-                                </Badge>
+                                />
                               </Flex>
                               <HStack
                                 spacing={2}

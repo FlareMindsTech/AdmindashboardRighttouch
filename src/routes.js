@@ -1,5 +1,5 @@
 
-import React, { lazy } from "react";
+import React, { lazy, useEffect } from "react";
 
 // Icons for Sidebar Navigation
 import {
@@ -30,7 +30,7 @@ import {
 
 import { clearAuth } from "views/utils/axiosInstance";
 import { useDispatch } from "react-redux";
-import { logout } from "store/slices/authSlice";
+import { logoutSession } from "store/slices/authSlice";
 
 // Lazy-loaded views for on-demand bundle splitting & fast initial paint
 const Dashboard = lazy(() => import("views/Dashboard/Dashboard.js"));
@@ -57,16 +57,18 @@ const ICON_COLOR = "#008080";
 const ICON_SIZE = 20;
 
 const Logout = () => {
-  // Keep legacy storage cleanup (canonical path) and sync Redux state.
+  // Clear local state immediately, then best-effort revoke this device.
   // Rendered as a route element inside the Redux Provider.
   const dispatch = useDispatch();
-  try {
-    dispatch(logout());
-  } catch (e) {
-    clearAuth();
-  }
-  const base = window.location.origin + window.location.pathname;
-  window.location.replace(`${base}#/auth/signin`);
+  useEffect(() => {
+    try {
+      dispatch(logoutSession());
+    } catch (e) {
+      clearAuth();
+    }
+    const base = window.location.origin + window.location.pathname;
+    window.location.replace(`${base}#/auth/signin`);
+  }, [dispatch]);
   return <div>Logging out...</div>;
 };
 
@@ -83,6 +85,7 @@ const dashRoutes = [
     icon: <HomeIcon color={ICON_COLOR} />,
     element: <Dashboard />,
     layout: "/owner",
+    roles: ["owner", "admin"],
   },
   {
     path: "/product-management",
@@ -98,6 +101,7 @@ const dashRoutes = [
     icon: <MdHomeRepairService color={ICON_COLOR} size={ICON_SIZE} />,
     element: <ServiceManagement />,
     layout: "/owner",
+    roles: ["owner"],
   },
   {
     path: "/admin-management",
@@ -105,7 +109,7 @@ const dashRoutes = [
     icon: <FaUserGear color={ICON_COLOR} size={ICON_SIZE} />,
     element: <AdminManagement />,
     layout: "/owner",
-    roles: ["owner"],
+    roles: ["owner", "admin"],
   },
   {
     path: "/user-management",
@@ -113,6 +117,7 @@ const dashRoutes = [
     icon: <FaUsers color={ICON_COLOR} size={ICON_SIZE} />,
     element: <UserManagement />,
     layout: "/owner",
+    roles: ["owner", "admin"],
   },
   {
     path: "/city-zones",
@@ -120,6 +125,7 @@ const dashRoutes = [
     icon: <FaMapLocationDot color={ICON_COLOR} size={ICON_SIZE} />,
     element: <CityZones />,
     layout: "/owner",
+    roles: ["owner", "admin"],
   },
   {
     path: "/scheduling-ops",
@@ -127,6 +133,7 @@ const dashRoutes = [
     icon: <FaTruckFast color={ICON_COLOR} size={ICON_SIZE} />,
     element: <SchedulingOps />,
     layout: "/owner",
+    roles: ["owner", "admin"],
   },
   {
     path: "/finance-tracking",
@@ -134,6 +141,7 @@ const dashRoutes = [
     icon: <FaChartLine color={ICON_COLOR} size={ICON_SIZE} />,
     element: <FinanceTracking />,
     layout: "/owner",
+    roles: ["owner"],
   },
   {
     path: "/technician-payouts",
@@ -141,6 +149,7 @@ const dashRoutes = [
     icon: <MdPayments color={ICON_COLOR} size={ICON_SIZE} />,
     element: <TechnicianPayouts />,
     layout: "/owner",
+    roles: ["owner"],
   },
   {
     path: "/commission-management",
@@ -148,6 +157,7 @@ const dashRoutes = [
     icon: <FaHandHoldingDollar color={ICON_COLOR} size={ICON_SIZE} />,
     element: <CommissionManagement />,
     layout: "/owner",
+    roles: ["owner"],
   },
   {
     path: "/admin-payments",
@@ -155,6 +165,7 @@ const dashRoutes = [
     icon: <FaWallet color={ICON_COLOR} size={ICON_SIZE} />,
     element: <AdminPayments />,
     layout: "/owner",
+    roles: ["owner"],
   },
   {
     path: "/reports-ratings",
@@ -162,6 +173,7 @@ const dashRoutes = [
     icon: <HiDocumentChartBar color={ICON_COLOR} size={ICON_SIZE} />,
     element: <ReportsManagement />,
     layout: "/owner",
+    roles: ["owner", "admin"],
   },
   {
     path: "/rewards",
@@ -169,6 +181,7 @@ const dashRoutes = [
     icon: <FaGift color={ICON_COLOR} size={ICON_SIZE} />,
     element: <RewardsManagement />,
     layout: "/owner",
+    roles: ["owner"],
   },
   {
     path: "/skill-requests",
@@ -176,6 +189,7 @@ const dashRoutes = [
     icon: <FaTools color={ICON_COLOR} size={ICON_SIZE} />,
     element: <SkillRequests />,
     layout: "/owner",
+    roles: ["owner", "admin"],
     hideInSidebar: true,
   },
   {
@@ -184,6 +198,7 @@ const dashRoutes = [
     icon: <FaTruckFast color={ICON_COLOR} size={ICON_SIZE} />,
     element: <SchedulingOps />,
     layout: "/owner",
+    roles: ["owner", "admin"],
     hideInSidebar: true,
   },
   {
@@ -192,6 +207,7 @@ const dashRoutes = [
     icon: <MdInsights color={ICON_COLOR} size={ICON_SIZE} />,
     element: <ProductInsights />,
     layout: "/owner",
+    roles: ["owner"],
     hideInSidebar: true,
   },
   {
@@ -200,6 +216,7 @@ const dashRoutes = [
     icon: <FaUserShield color={ICON_COLOR} size={ICON_SIZE} />,
     element: <PermissionsManagement />,
     layout: "/owner",
+    roles: ["owner", "admin"],
     hideInSidebar: true,
   },
   {
@@ -207,6 +224,7 @@ const dashRoutes = [
     name: "Profile",
     element: <Profile />,
     layout: "/owner",
+    roles: ["owner", "admin"],
     hideInSidebar: true,
   },
   {
@@ -233,6 +251,7 @@ const dashRoutes = [
     icon: <MdLogout color={ICON_COLOR} size={ICON_SIZE} />,
     element: <Logout />,
     layout: "/owner",
+    roles: ["owner", "admin"],
   },
 ];
 

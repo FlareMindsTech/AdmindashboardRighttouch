@@ -21,15 +21,19 @@ import PanelContent from "components/Layout/PanelContent";
 
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
-  initializeAuth,
   isPrivilegedRole,
-  selectRole,
   selectAuthInitialized,
+  selectIsAuthenticated,
+  selectRole,
+  selectSessionVerified,
   logout,
+  verifySession,
 } from "store/slices/authSlice";
+import { canAccessRoute as canAccessRoutePolicy } from "config/accessPolicy";
 import { clearAuth } from "views/utils/axiosInstance";
 import { useNotificationCoordinator } from "hooks/useNotificationCoordinator";
 import { useAdminSocket } from "hooks/useAdminSocket";
+import { useSessionRefresh } from "hooks/useSessionRefresh";
 
 export default function Dashboard(props) {
   const { ...rest } = props;
@@ -39,13 +43,17 @@ export default function Dashboard(props) {
   // initializeAuth (also dispatched at entry in index.js — idempotent).
   const userRole = useAppSelector(selectRole);
   const authInitialized = useAppSelector(selectAuthInitialized);
-  const isLoading = !authInitialized;
+  const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const sessionVerified = useAppSelector(selectSessionVerified);
+  const isLoading =
+    !authInitialized || (isAuthenticated && !sessionVerified);
   const location = useLocation();
 
   // Phase 3: single notification refresh coordinator for privileged sessions.
   // Owns the badge/inbox-count polling + cross-tab sync; unmounts on logout.
   useNotificationCoordinator();
   useAdminSocket();
+  useSessionRefresh();
 
   const { isOpen: isSidebarOpen, onOpen: onSidebarOpen, onClose: onSidebarClose } = useDisclosure();
   const { onOpen: onPluginOpen } = useDisclosure();
@@ -53,17 +61,15 @@ export default function Dashboard(props) {
   document.documentElement.dir = "ltr";
 
   useEffect(() => {
-    // Idempotent restore (index.js already dispatched once at entry).
-    // Keeps direct navigation / hard refresh working without a flash of
-    // protected content: guards below wait for `initialized`.
-    dispatch(initializeAuth());
-  }, [dispatch]);
+    if (authInitialized && isAuthenticated && !sessionVerified) {
+      dispatch(verifySession());
+    }
+  }, [authInitialized, isAuthenticated, sessionVerified, dispatch]);
 
   const canAccessRoute = React.useCallback(
     (route) => {
       if (!route || route.layout !== "/owner") return false;
-      if (Array.isArray(route.roles)) return route.roles.includes(userRole);
-      return isPrivilegedRole(userRole);
+      return canAccessRoutePolicy(userRole, route);
     },
     [userRole]
   );
@@ -136,10 +142,10 @@ export default function Dashboard(props) {
           />
         ))}
 
-        {/* Catch-all for unmatched routes */}
+        {/* Catch-all for unmatched or unauthorized routes */}
         <Route
           path="*"
-          element={<Navigate to="/owner/dashboard" replace />}
+          element={<Navigate to="/access-denied" replace />}
         />
       </>
     );

@@ -32,6 +32,7 @@ import {
 import { useAppToast } from "components/feedback";
 import ErrorState from "components/feedback/ErrorState";
 import AppModal from "components/common/AppModal";
+import StatusBadge from "components/common/StatusBadge";
 
 import {
   FaChevronLeft,
@@ -482,20 +483,12 @@ export default function FinanceTracking() {
               <Tag size="sm" colorScheme="teal" borderRadius="full" fontWeight="bold">
                 FINANCIAL INTELLIGENCE CONSOLE
               </Tag>
-              <Badge
+              <StatusBadge
                 colorScheme="green"
+                label="Live Balances"
                 variant="subtle"
-                fontSize="xs"
-                px={2}
-                py={0.5}
-                borderRadius="full"
-                display="flex"
-                alignItems="center"
-                gap={1}
-              >
-                <Box as="span" w="6px" h="6px" borderRadius="full" bg="green.500" />
-                Live Balances
-              </Badge>
+                showDot
+              />
             </HStack>
             <Heading as="h1" size="lg" fontWeight="900" letterSpacing="-0.5px" color={isDark ? "white" : "gray.850"}>
               Finance & Revenue Tracking
@@ -1180,30 +1173,19 @@ export default function FinanceTracking() {
                                 </Td>
 
                                 <Td>
-                                  <Badge
+                                  <StatusBadge
                                     colorScheme={isPaid ? "green" : item.paymentStatus === "pending" ? "yellow" : "gray"}
-                                    borderRadius="full"
-                                    px={2}
-                                    py={0.5}
-                                    fontSize="3xs"
-                                    textTransform="uppercase"
-                                  >
-                                    {item.paymentStatus || "unknown"}
-                                  </Badge>
+                                    label={item.paymentStatus || "unknown"}
+                                    variant="subtle"
+                                  />
                                 </Td>
 
                                 <Td>
-                                  <Badge
+                                  <StatusBadge
                                     colorScheme={isSettled ? "green" : "yellow"}
+                                    label={item.settlementStatus || "pending"}
                                     variant="subtle"
-                                    borderRadius="full"
-                                    px={2}
-                                    py={0.5}
-                                    fontSize="3xs"
-                                    textTransform="uppercase"
-                                  >
-                                    {item.settlementStatus || "pending"}
-                                  </Badge>
+                                  />
                                 </Td>
 
                                 <Td fontSize="2xs" color="gray.500" whiteSpace="nowrap">
@@ -1430,26 +1412,12 @@ export default function FinanceTracking() {
                                 </Td>
 
                                 <Td>
-                                  <Badge
+                                  <StatusBadge
                                     colorScheme={isSuccess ? "green" : isPending ? "yellow" : "red"}
-                                    borderRadius="full"
-                                    px={2}
-                                    py={0.5}
-                                    fontSize="3xs"
-                                    textTransform="uppercase"
-                                    display="inline-flex"
-                                    alignItems="center"
-                                    gap={1}
-                                  >
-                                    <Box
-                                      as="span"
-                                      w="5px"
-                                      h="5px"
-                                      borderRadius="full"
-                                      bg={isSuccess ? "green.500" : isPending ? "yellow.500" : "red.500"}
-                                    />
-                                    {p.status || "unknown"}
-                                  </Badge>
+                                    label={p.status || "unknown"}
+                                    variant="subtle"
+                                    showDot
+                                  />
                                 </Td>
 
                                 <Td fontSize="2xs" color="gray.500" whiteSpace="nowrap">
@@ -1596,16 +1564,11 @@ export default function FinanceTracking() {
                                 </Box>
                               </HStack>
 
-                              <Badge
+                              <StatusBadge
                                 colorScheme={isApproved ? "teal" : "gray"}
-                                borderRadius="full"
-                                px={2}
-                                py={0.5}
-                                fontSize="3xs"
-                                textTransform="capitalize"
-                              >
-                                {tech.workStatus || "pending"}
-                              </Badge>
+                                label={tech.workStatus || "pending"}
+                                variant="subtle"
+                              />
                             </Flex>
 
                             <Divider my={3} borderColor={isDark ? "gray.700" : "gray.100"} />
@@ -1684,15 +1647,11 @@ export default function FinanceTracking() {
                       <Text fontSize="md" fontWeight="800" color={isDark ? "white" : "gray.850"}>
                         {selectedTechDetail.data?.technician?.name || getTechName(selectedTechDetail.technician)}
                       </Text>
-                      <Badge
+                      <StatusBadge
                         colorScheme={selectedTechDetail.data?.technician?.workStatus === "approved" ? "teal" : "gray"}
-                        borderRadius="full"
-                        px={2}
-                        fontSize="3xs"
-                        textTransform="capitalize"
-                      >
-                        {selectedTechDetail.data?.technician?.workStatus || "Active"}
-                      </Badge>
+                        label={selectedTechDetail.data?.technician?.workStatus || "Active"}
+                        variant="subtle"
+                      />
                     </HStack>
                     <Text fontSize="xs" color="gray.500" mt={0.5}>
                       {selectedTechDetail.data?.technician?.mobile ||

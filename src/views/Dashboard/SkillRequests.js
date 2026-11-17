@@ -19,7 +19,6 @@ import {
   Tr,
   Spinner,
   Center,
-  Badge,
   HStack,
   Select,
   Textarea,
@@ -31,6 +30,7 @@ import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
 import { MobileCard, MobileCardActions } from "components/common/MobileCard";
+import StatusBadge from "components/common/StatusBadge";
 import { listSkillRequests, reviewSkillRequest } from "api/skillRequests";
 
 const BRAND = "#008080";
@@ -165,7 +165,13 @@ export default function SkillRequests() {
                         <Td fontSize="xs">{idOf(r)}</Td>
                         <Td>{techOf(r)}</Td>
                         <Td>{skillOf(r)}</Td>
-                        <Td><Badge colorScheme={statusColor(r.status)}>{r.status || "pending"}</Badge></Td>
+                        <Td>
+                          <StatusBadge
+                            colorScheme={statusColor(r.status)}
+                            label={r.status || "pending"}
+                            variant="subtle"
+                          />
+                        </Td>
                         <Td>
                           <Button size="xs" variant="brand" onClick={() => openReview(r)}>Review</Button>
                         </Td>
@@ -177,7 +183,11 @@ export default function SkillRequests() {
               <Box display={{ base: "block", md: "none" }}>
                 {pageRows.map((r) => (
                   <MobileCard key={idOf(r)} title={skillOf(r)} subtitle={techOf(r)}>
-                    <Badge colorScheme={statusColor(r.status)}>{r.status || "pending"}</Badge>
+                    <StatusBadge
+                      colorScheme={statusColor(r.status)}
+                      label={r.status || "pending"}
+                      variant="subtle"
+                    />
                     <MobileCardActions actions={[{ label: "Review", colorScheme: "teal", onClick: () => openReview(r) }]} />
                   </MobileCard>
                 ))}

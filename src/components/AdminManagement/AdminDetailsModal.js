@@ -37,9 +37,13 @@ export default function AdminDetailsModal({
   getTechnicianPhone,
   getTechnicianEmail,
   getTechnicianDistrict,
+  getTechnicianApprovedDistricts,
   getTechnicianAddress,
   getTechnicianSpecialization,
 }) {
+  const approvedDistricts = selectedTechnician
+    ? getTechnicianApprovedDistricts?.(selectedTechnician) || []
+    : [];
   return (
     <AppModal isOpen={isOpen} onClose={onClose} size="xl" scrollBehavior="inside" title={<>Technician Complete Profile</>} footer={<>{selectedTechnician && (
             <Flex w="100%" justify="space-between" align="center">
@@ -177,15 +181,15 @@ export default function AdminDetailsModal({
                     </Flex>
 
                     <Flex justify="space-between" align="center">
-                      <Text color="gray.600" fontWeight="medium">District (Mandatory):</Text>
+                      <Text color="gray.600" fontWeight="medium">Registration District:</Text>
                       {getTechnicianDistrict(selectedTechnician) ? (
-                        <Badge colorScheme="teal" px={2} py={0.5} borderRadius="md" textTransform="capitalize" fontWeight="bold">
+                        <Badge colorScheme="gray" px={2} py={0.5} borderRadius="md" textTransform="capitalize" fontWeight="bold">
                           📍 {getTechnicianDistrict(selectedTechnician)}
                         </Badge>
                       ) : (
-                        <Badge colorScheme="red" px={2} py={0.5} borderRadius="md">
-                          ⚠️ District Missing
-                      </Badge>
+                        <Badge colorScheme="gray" px={2} py={0.5} borderRadius="md">
+                          Not set
+                        </Badge>
                       )}
                     </Flex>
 
@@ -195,6 +199,33 @@ export default function AdminDetailsModal({
                         {selectedTechnician.city || selectedTechnician.profile?.city || selectedTechnician.locality || "N/A"}
                       </Text>
                     </Flex>
+
+                    <Box pt={2} borderTop="1px dashed" borderColor="gray.100">
+                      <Text color="gray.600" fontWeight="medium" mb={1}>Approved Coverage:</Text>
+                      {approvedDistricts.length > 0 ? (
+                        <HStack spacing={1.5} flexWrap="wrap">
+                          {approvedDistricts.map((district) => (
+                            <Badge
+                              key={district.id}
+                              colorScheme="teal"
+                              px={2}
+                              py={0.5}
+                              borderRadius="md"
+                              textTransform="capitalize"
+                            >
+                              📍 {district.name}
+                            </Badge>
+                          ))}
+                        </HStack>
+                      ) : (
+                        <Badge colorScheme="orange" px={2} py={0.5} borderRadius="md">
+                          Coverage Pending
+                        </Badge>
+                      )}
+                      <Text fontSize="2xs" color="gray.500" mt={1}>
+                        Only explicit Admin/Owner district grants enable dispatch coverage.
+                      </Text>
+                    </Box>
 
                     <Box pt={1} borderTop="1px dashed" borderColor="gray.100">
                       <Text color="gray.600" fontWeight="medium" mb={0.5}>Address:</Text>

@@ -8,7 +8,7 @@
 // - Only the auth slice is persisted, and only via the existing legacy
 //   storage helpers (setAuth/clearAuth). The store itself is never persisted.
 import { configureStore } from "@reduxjs/toolkit";
-import authReducer, { sessionExpired } from "./slices/authSlice";
+import authReducer, { sessionExpired, tokensRefreshed } from "./slices/authSlice";
 import notificationsReducer from "./slices/notificationsSlice";
 import referenceReducer from "./slices/referenceSlice";
 import bookingsReducer from "./slices/bookingsSlice";
@@ -17,6 +17,7 @@ import usersReducer from "./slices/usersSlice";
 import financeReducer from "./slices/financeSlice";
 import walletReducer from "./slices/walletSlice";
 import { setAuthResetListener } from "views/utils/axiosInstance";
+import { setTokenRefreshListener } from "views/utils/tokenRefresh";
 
 export const store = configureStore({
   reducer: {
@@ -38,6 +39,11 @@ export const store = configureStore({
 try {
   setAuthResetListener(() => {
     store.dispatch(sessionExpired());
+  });
+  // The HTTP layer updates storage first; keep Redux's token in sync so the
+  // socket reconnect and selectors use the rotated access token.
+  setTokenRefreshListener(({ token }) => {
+    if (token) store.dispatch(tokensRefreshed({ token }));
   });
 } catch (e) {
   // Legacy helper unavailable (e.g. isolated tests) — store still works;

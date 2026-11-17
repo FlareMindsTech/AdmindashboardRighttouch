@@ -17,6 +17,7 @@ import {
   FaMoneyCheckAlt,
   FaArrowRight,
 } from "react-icons/fa";
+import { STATUS_BADGE_PROPS } from "components/common/StatusBadge";
 import { formatInr } from "./FinancialBreakdown";
 
 export default function PayoutSummaryCards({
@@ -197,13 +198,9 @@ export default function PayoutSummaryCards({
               {/* Bottom Footer: Status Tag & Filter Hint */}
               <Flex justify="space-between" align="center" mt={3} pt={2.5} borderTop="1px solid" borderColor={isDark ? "gray.800" : "gray.100"}>
                 <Badge
-                  fontSize="2xs"
-                  px={2}
-                  py={0.5}
-                  borderRadius="full"
+                  {...STATUS_BADGE_PROPS}
                   bg={card.lightBg}
                   color={card.accentColor}
-                  fontWeight="700"
                   textTransform="uppercase"
                   letterSpacing="0.04em"
                 >

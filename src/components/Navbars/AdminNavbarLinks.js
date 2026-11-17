@@ -28,10 +28,11 @@ import { MdPerson, MdLogout, MdShield } from "react-icons/md";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
-  logout,
+  logoutSession,
   selectUser,
   selectRole,
 } from "store/slices/authSlice";
+import { isAdminRole, isOwnerRole, normalizeRole } from "config/accessPolicy";
 import {
   fetchInboxList,
   markInboxRead as markInboxReadThunk,
@@ -50,9 +51,9 @@ const HeaderLinks = React.memo(function HeaderLinks() {
 
   const user = useAppSelector(selectUser);
   const role = useAppSelector(selectRole);
-  const normalizedRole = (role || user?.role || "Owner").toString().toLowerCase();
-  const isOwner = normalizedRole === "owner";
-  const roleLabel = isOwner ? "Owner" : "Admin";
+  const normalizedRole = normalizeRole(role || user?.role);
+  const isOwner = isOwnerRole(normalizedRole);
+  const roleLabel = isOwner ? "Owner" : isAdminRole(normalizedRole) ? "Admin" : "Account";
 
   const unreadCount = useAppSelector(selectInboxUnreadCount);
   const notifications = useAppSelector(selectInbox);
@@ -90,7 +91,7 @@ const HeaderLinks = React.memo(function HeaderLinks() {
   const handleConfirmLogout = () => {
     setLogoutLoading(true);
     try {
-      dispatch(logout());
+      dispatch(logoutSession());
       navigate("/auth/signin");
     } finally {
       setLogoutLoading(false);

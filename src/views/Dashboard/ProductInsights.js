@@ -25,7 +25,6 @@ import {
   TabPanels,
   Tab,
   TabPanel,
-  Badge,
   VStack,
   Divider,
 } from "@chakra-ui/react";
@@ -33,6 +32,7 @@ import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
 import SharedStatCard from "components/common/StatCard";
+import StatusBadge from "components/common/StatusBadge";
 import {
   getProductDashboard,
   getSalesReport,
@@ -181,14 +181,18 @@ export default function ProductInsights() {
                               ₹{Number(s?.amount ?? (s?.amountPaise || 0) / 100).toLocaleString("en-IN")}
                             </Td>
                             <Td>
-                              <Badge colorScheme={s?.paymentStatus === "paid" ? "green" : "yellow"}>
-                                {s?.paymentStatus || "pending"}
-                              </Badge>
+                              <StatusBadge
+                                colorScheme={s?.paymentStatus === "paid" ? "green" : "yellow"}
+                                label={s?.paymentStatus || "pending"}
+                                variant="subtle"
+                              />
                             </Td>
                             <Td>
-                              <Badge colorScheme={s?.status === "completed" ? "green" : s?.status === "cancelled" ? "red" : "blue"}>
-                                {s?.status || "active"}
-                              </Badge>
+                              <StatusBadge
+                                colorScheme={s?.status === "completed" ? "green" : s?.status === "cancelled" ? "red" : "blue"}
+                                label={s?.status || "active"}
+                                variant="subtle"
+                              />
                             </Td>
                             <Td fontSize="xs">{s?.createdAt ? new Date(s.createdAt).toLocaleDateString() : "—"}</Td>
                           </Tr>
@@ -225,9 +229,11 @@ export default function ProductInsights() {
                           return (
                             <Tr key={logId || i}>
                               <Td>
-                                <Badge colorScheme={log?.action === "create" ? "green" : log?.action === "delete" ? "red" : "blue"}>
-                                  {log?.action || log?.event || "UPDATE"}
-                                </Badge>
+                                <StatusBadge
+                                  colorScheme={log?.action === "create" ? "green" : log?.action === "delete" ? "red" : "blue"}
+                                  label={log?.action || log?.event || "UPDATE"}
+                                  variant="subtle"
+                                />
                               </Td>
                               <Td fontSize="xs" fontWeight="semibold">{log?.productName || log?.targetId || "—"}</Td>
                               <Td fontSize="xs">{log?.actorName || log?.actor || log?.userId || "Admin"}</Td>
@@ -270,7 +276,11 @@ export default function ProductInsights() {
               <VStack align="stretch" spacing={3} fontSize="sm">
                 <Flex justify="space-between">
                   <Text color="gray.500">Action:</Text>
-                  <Badge colorScheme="teal">{selectedLog.action || selectedLog.event || "UPDATE"}</Badge>
+                  <StatusBadge
+                    colorScheme="teal"
+                    label={selectedLog.action || selectedLog.event || "UPDATE"}
+                    variant="subtle"
+                  />
                 </Flex>
                 <Flex justify="space-between">
                   <Text color="gray.500">Target Product ID:</Text>

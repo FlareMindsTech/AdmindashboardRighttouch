@@ -14,7 +14,6 @@ import {
   Tr,
   Spinner,
   Center,
-  Badge,
   HStack,
   VStack,
   Icon,
@@ -39,6 +38,7 @@ import {
 } from "react-icons/fa";
 import { MdRefresh } from "react-icons/md";
 import { useAppToast } from "components/feedback";
+import StatusBadge from "components/common/StatusBadge";
 import NoShowCompensationModal from "./NoShowCompensationModal";
 import { getAllSchedulingBookings } from "api/scheduling";
 import { formatFriendlyDateTime, formatFriendlyCurrency } from "./schedulingFormatters";
@@ -397,24 +397,36 @@ export default function NoShowCompensationTab({ onRefreshPendingCount }) {
                     {/* Status */}
                     <Td py={3}>
                       {isPending && (
-                        <Badge colorScheme="yellow" variant="subtle" fontSize="2xs" px={2.5} py={0.5} borderRadius="full">
-                          ● Pending Review
-                        </Badge>
+                        <StatusBadge
+                          colorScheme="yellow"
+                          label="Pending Review"
+                          variant="subtle"
+                          showDot
+                        />
                       )}
                       {isApproved && (
-                        <Badge colorScheme="orange" variant="subtle" fontSize="2xs" px={2.5} py={0.5} borderRadius="full">
-                          ● Approved (Awaiting UTR)
-                        </Badge>
+                        <StatusBadge
+                          colorScheme="orange"
+                          label="Approved (Awaiting UTR)"
+                          variant="subtle"
+                          showDot
+                        />
                       )}
                       {isPaid && (
-                        <Badge colorScheme="green" variant="subtle" fontSize="2xs" px={2.5} py={0.5} borderRadius="full">
-                          ✓ Settled &amp; Posted
-                        </Badge>
+                        <StatusBadge
+                          colorScheme="green"
+                          label="Settled & Posted"
+                          variant="subtle"
+                          showDot
+                        />
                       )}
                       {isRejected && (
-                        <Badge colorScheme="red" variant="subtle" fontSize="2xs" px={2.5} py={0.5} borderRadius="full">
-                          ✕ Rejected
-                        </Badge>
+                        <StatusBadge
+                          colorScheme="red"
+                          label="Rejected"
+                          variant="subtle"
+                          showDot
+                        />
                       )}
                     </Td>
 
@@ -493,9 +505,11 @@ export default function NoShowCompensationTab({ onRefreshPendingCount }) {
                         )}
 
                         {isPaid && (
-                          <Badge colorScheme="teal" variant="outline" fontSize="3xs">
-                            Reconciled
-                          </Badge>
+                          <StatusBadge
+                            colorScheme="teal"
+                            label="Reconciled"
+                            variant="outline"
+                          />
                         )}
                       </HStack>
                     </Td>

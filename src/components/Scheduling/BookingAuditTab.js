@@ -46,6 +46,7 @@ import {
 } from "react-icons/fa";
 import { MdRefresh } from "react-icons/md";
 import { useAppToast } from "components/feedback";
+import StatusBadge from "components/common/StatusBadge";
 import {
   getAllSchedulingBookings,
   getSchedulingBookingById,
@@ -67,9 +68,18 @@ import {
   normalizeBroadcastAudit,
 } from "./schedulingFormatters";
 
+const bookingStatusColor = (status) => {
+  const s = String(status || "").toLowerCase();
+  if (s === "completed") return "green";
+  if (s === "cancelled" || s === "canceled") return "red";
+  if (s === "active" || s === "in_progress") return "blue";
+  return "teal";
+};
+
 export default function BookingAuditTab({
   preselectedBookingId,
   onOpenCompensation,
+  lockToBooking = false,
 }) {
   const toast = useAppToast();
   const { colorMode } = useColorMode();
@@ -79,6 +89,9 @@ export default function BookingAuditTab({
   const [bookingsList, setBookingsList] = useState([]);
   const [searchBookingQuery, setSearchBookingQuery] = useState("");
   const [selectedBookingId, setSelectedBookingId] = useState(preselectedBookingId || "");
+  const activeBookingId = lockToBooking
+    ? preselectedBookingId || ""
+    : selectedBookingId;
 
   // Audit details
   const [bookingDetail, setBookingDetail] = useState(null);
@@ -120,8 +133,9 @@ export default function BookingAuditTab({
   }, [toast]);
 
   useEffect(() => {
+    if (lockToBooking) return;
     loadBookingsList();
-  }, [loadBookingsList]);
+  }, [loadBookingsList, lockToBooking]);
 
   // If preselectedBookingId changes from props
   useEffect(() => {
@@ -154,10 +168,10 @@ export default function BookingAuditTab({
   }, [toast]);
 
   useEffect(() => {
-    if (selectedBookingId) {
-      inspectBooking(selectedBookingId);
+    if (activeBookingId) {
+      inspectBooking(activeBookingId);
     }
-  }, [selectedBookingId, inspectBooking]);
+  }, [activeBookingId, inspectBooking]);
 
   const handleManualSearch = () => {
     if (!searchBookingQuery.trim()) return;
@@ -182,109 +196,126 @@ export default function BookingAuditTab({
 
   return (
     <Box>
-      {/* Search & Selector Bar */}
-      <Flex
-        direction={{ base: "column", md: "row" }}
-        justify="space-between"
-        align={{ base: "stretch", md: "center" }}
-        mb={4}
-        gap={3}
-      >
-        <HStack spacing={3} flex="1">
-          <InputGroup size="sm" maxW={{ base: "100%", md: "400px" }}>
-            <InputLeftElement pointerEvents="none">
-              <Icon as={FaSearch} color="gray.400" />
-            </InputLeftElement>
-            <Input
-              placeholder="Enter or paste Booking ID to inspect..."
-              value={searchBookingQuery}
-              onChange={(e) => setSearchBookingQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleManualSearch()}
-              borderRadius="8px"
-              fontFamily="mono"
-            />
-            {searchBookingQuery && (
-              <InputRightElement>
-                <IconButton
-                  size="xs"
-                  icon={<FaTimes size={10} />}
-                  variant="ghost"
-                  onClick={() => setSearchBookingQuery("")}
-                  aria-label="Clear search"
-                />
-              </InputRightElement>
-            )}
-          </InputGroup>
-
+      {lockToBooking ? (
+        <Flex justify="flex-end" mb={4}>
           <Button
             size="sm"
-            bg="linear-gradient(135deg, #008080 0%, #006666 100%)"
-            color="white"
-            _hover={{ bg: "linear-gradient(135deg, #006666 0%, #004d4d 100%)" }}
-            onClick={handleManualSearch}
-            borderRadius="8px"
-            fontWeight="700"
+            variant="outline"
+            leftIcon={<MdRefresh size={16} />}
+            onClick={() => {
+              if (activeBookingId) inspectBooking(activeBookingId);
+            }}
           >
-            Audit Booking
+            Refresh Tracking
           </Button>
-        </HStack>
+        </Flex>
+      ) : (
+        <>
+          {/* Search & Selector Bar */}
+          <Flex
+            direction={{ base: "column", md: "row" }}
+            justify="space-between"
+            align={{ base: "stretch", md: "center" }}
+            mb={4}
+            gap={3}
+          >
+            <HStack spacing={3} flex="1">
+              <InputGroup size="sm" maxW={{ base: "100%", md: "400px" }}>
+                <InputLeftElement pointerEvents="none">
+                  <Icon as={FaSearch} color="gray.400" />
+                </InputLeftElement>
+                <Input
+                  placeholder="Enter or paste Booking ID to inspect..."
+                  value={searchBookingQuery}
+                  onChange={(e) => setSearchBookingQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleManualSearch()}
+                  borderRadius="8px"
+                  fontFamily="mono"
+                />
+                {searchBookingQuery && (
+                  <InputRightElement>
+                    <IconButton
+                      size="xs"
+                      icon={<FaTimes size={10} />}
+                      variant="ghost"
+                      onClick={() => setSearchBookingQuery("")}
+                      aria-label="Clear search"
+                    />
+                  </InputRightElement>
+                )}
+              </InputGroup>
 
-        <Button
-          size="sm"
-          variant="outline"
-          leftIcon={<MdRefresh size={16} />}
-          onClick={() => {
-            loadBookingsList();
-            if (selectedBookingId) inspectBooking(selectedBookingId);
-          }}
-        >
-          Refresh Data
-        </Button>
-      </Flex>
+              <Button
+                size="sm"
+                bg="linear-gradient(135deg, #008080 0%, #006666 100%)"
+                color="white"
+                _hover={{ bg: "linear-gradient(135deg, #006666 0%, #004d4d 100%)" }}
+                onClick={handleManualSearch}
+                borderRadius="8px"
+                fontWeight="700"
+              >
+                Audit Booking
+              </Button>
+            </HStack>
 
-      {/* Quick Booking Selector Chips */}
-      {bookingsList.length > 0 && (
-        <Box mb={5} overflowX="auto" pb={2}>
-          <HStack spacing={2}>
-            <Text fontSize="2xs" fontWeight="700" color="gray.500" textTransform="uppercase" whiteSpace="nowrap">
-              Recent Bookings:
-            </Text>
-            {bookingsList.map((b) => {
-              const bId = idOf(b);
-              const isCurrent = bId === selectedBookingId;
-              const status = String(b.status || "scheduled").toLowerCase();
-              const serviceName = b.serviceName || b.service?.name || "Service";
-              const typeMeta = getBookingTypeMeta(b);
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={<MdRefresh size={16} />}
+              onClick={() => {
+                loadBookingsList();
+                if (activeBookingId) inspectBooking(activeBookingId);
+              }}
+            >
+              Refresh Data
+            </Button>
+          </Flex>
 
-              return (
-                <Badge
-                  key={bId}
-                  cursor="pointer"
-                  variant={isCurrent ? "solid" : "subtle"}
-                  colorScheme={
-                    isCurrent
-                      ? "teal"
-                      : status === "completed"
-                      ? "green"
-                      : status === "cancelled"
-                      ? "red"
-                      : "blue"
-                  }
-                  fontSize="3xs"
-                  px={2.5}
-                  py={1}
-                  borderRadius="full"
-                  onClick={() => setSelectedBookingId(bId)}
-                  whiteSpace="nowrap"
-                  _hover={{ transform: "translateY(-1px)" }}
-                  transition="all 0.15s"
-                >
-                  #{String(bId).slice(-6)} • {serviceName.slice(0, 12)} • {typeMeta.label}
-                </Badge>
-              );
-            })}
-          </HStack>
-        </Box>
+          {/* Quick Booking Selector Chips */}
+          {bookingsList.length > 0 && (
+            <Box mb={5} overflowX="auto" pb={2}>
+              <HStack spacing={2}>
+                <Text fontSize="2xs" fontWeight="700" color="gray.500" textTransform="uppercase" whiteSpace="nowrap">
+                  Recent Bookings:
+                </Text>
+                {bookingsList.map((b) => {
+                  const bId = idOf(b);
+                  const isCurrent = bId === selectedBookingId;
+                  const status = String(b.status || "scheduled").toLowerCase();
+                  const serviceName = b.serviceName || b.service?.name || "Service";
+                  const typeMeta = getBookingTypeMeta(b);
+
+                  return (
+                    <Badge
+                      key={bId}
+                      cursor="pointer"
+                      variant={isCurrent ? "solid" : "subtle"}
+                      colorScheme={
+                        isCurrent
+                          ? "teal"
+                          : status === "completed"
+                          ? "green"
+                          : status === "cancelled"
+                          ? "red"
+                          : "blue"
+                      }
+                      fontSize="2xs"
+                      px={2.5}
+                      py={1}
+                      borderRadius="6px"
+                      onClick={() => setSelectedBookingId(bId)}
+                      whiteSpace="nowrap"
+                      _hover={{ transform: "translateY(-1px)" }}
+                      transition="all 0.15s"
+                    >
+                      #{String(bId).slice(-6)} • {serviceName.slice(0, 12)} • {typeMeta.label}
+                    </Badge>
+                  );
+                })}
+              </HStack>
+            </Box>
+          )}
+        </>
       )}
 
       {/* Main Inspection Area */}
@@ -339,7 +370,7 @@ export default function BookingAuditTab({
                   </Text>
                   <HStack spacing={1}>
                     <Text fontSize="2xs" color="gray.500" fontFamily="mono">
-                      ID: #{String(selectedBookingId).slice(-10)}
+                      ID: #{String(activeBookingId).slice(-10)}
                     </Text>
                     <Tooltip label="Copy Full Booking ID" hasArrow>
                       <IconButton
@@ -347,7 +378,7 @@ export default function BookingAuditTab({
                         icon={<Icon as={copiedKey === "bId" ? FaCheck : FaCopy} boxSize={2.5} />}
                         variant="ghost"
                         colorScheme={copiedKey === "bId" ? "green" : "gray"}
-                        onClick={() => copyToClipboard(selectedBookingId, "bId", "Booking ID")}
+                        onClick={() => copyToClipboard(activeBookingId, "bId", "Booking ID")}
                         aria-label="Copy Booking ID"
                       />
                     </Tooltip>
@@ -356,33 +387,15 @@ export default function BookingAuditTab({
               </HStack>
 
               <HStack spacing={2}>
-                <Badge
+                <StatusBadge
                   colorScheme={bookingTypeMeta.color}
+                  label={bookingTypeMeta.label}
                   variant="subtle"
-                  fontSize="2xs"
-                  px={2.5}
-                  py={0.5}
-                  borderRadius="full"
-                  textTransform="uppercase"
-                >
-                  {bookingTypeMeta.label}
-                </Badge>
-                <Badge
-                  colorScheme={
-                    bookingDetail.status === "completed"
-                      ? "green"
-                      : bookingDetail.status === "cancelled"
-                      ? "red"
-                      : "teal"
-                  }
-                  fontSize="2xs"
-                  px={2.5}
-                  py={0.5}
-                  borderRadius="full"
-                  textTransform="uppercase"
-                >
-                  {bookingDetail.status || "Scheduled"}
-                </Badge>
+                />
+                <StatusBadge
+                  status={bookingDetail.status || "Scheduled"}
+                  map={bookingStatusColor}
+                />
               </HStack>
             </Flex>
 
@@ -399,9 +412,10 @@ export default function BookingAuditTab({
                 <Flex justify="space-between" align="center" flexWrap="wrap" gap={2}>
                   <Box>
                     <HStack spacing={2}>
-                      <Badge colorScheme="orange" fontSize="3xs" px={2} py={0.5} borderRadius="full">
-                        Customer No-Show Reported
-                      </Badge>
+                      <StatusBadge
+                        colorScheme="orange"
+                        label="Customer No-Show Reported"
+                      />
                       <Text fontSize="2xs" fontWeight="700" color="orange.700">
                         Status: {noShowData.compensationStatus || noShowData.status || "Pending Review"}
                       </Text>
@@ -766,16 +780,12 @@ export default function BookingAuditTab({
 
                               <Td py={2.5}>
                                 <Tooltip label={stateObj.desc} hasArrow>
-                                  <Badge
+                                  <StatusBadge
                                     colorScheme={stateObj.color}
-                                    variant="solid"
-                                    fontSize="3xs"
-                                    px={2}
-                                    py={0.5}
-                                    borderRadius="full"
-                                  >
-                                    {stateObj.label}
-                                  </Badge>
+                                    label={stateObj.label}
+                                    variant={stateObj.color === "gray" ? "subtle" : "solid"}
+                                    showDot
+                                  />
                                 </Tooltip>
                               </Td>
                             </Tr>

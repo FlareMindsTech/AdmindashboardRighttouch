@@ -195,6 +195,7 @@ import QuoteRequestsView from "./ProductManagement/QuoteRequestsView";
 import QuotationsView from "./ProductManagement/QuotationsView";
 import BookingsView from "./ProductManagement/BookingsView";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
+import StatusBadge from "components/common/StatusBadge";
 import { useAppToast } from "components/feedback";
 import ErrorState from "components/feedback/ErrorState";
 import { ADMIN_PRODUCT_FLOW_EVENT } from "hooks/useAdminSocket";
@@ -4292,7 +4293,7 @@ export default function ProductManagement() {
                                                       <HStack justify="space-between"><Text fontWeight="bold">System ID:</Text><Text fontFamily="mono" fontSize="3xs">{qId}</Text></HStack>
                                                       <HStack justify="space-between"><Text fontWeight="bold">Created Date:</Text><Text>{formatExpiryDate(q.createdAt || Date.now())}</Text></HStack>
                                                       <HStack justify="space-between"><Text fontWeight="bold">Valid Until:</Text><Text color="orange.700" fontWeight="bold">{formatExpiryDate(q.validUntil)}</Text></HStack>
-                                                      <HStack justify="space-between"><Text fontWeight="bold">Lifecycle State:</Text><Badge colorScheme={status === "accepted" ? "green" : "teal"} fontSize="3xs">{status.toUpperCase()}</Badge></HStack>
+                                                      <HStack justify="space-between"><Text fontWeight="bold">Lifecycle State:</Text><StatusBadge colorScheme={status === "accepted" ? "green" : "teal"} label={status.toUpperCase()} variant="subtle" /></HStack>
                                                     </VStack>
                                                   </Box>
                                                 </PopoverContent>
@@ -5052,7 +5053,7 @@ export default function ProductManagement() {
                                             <HStack justify="space-between"><Text fontWeight="bold">Category:</Text><Badge colorScheme="teal" fontSize="3xs">{getCategoryName()}</Badge></HStack>
                                             <HStack justify="space-between"><Text fontWeight="bold">Price Range:</Text><Text fontWeight="bold" color="teal.700">{priceRange}</Text></HStack>
                                             <HStack justify="space-between"><Text fontWeight="bold">Pricing Model:</Text><Text>{(prod.pricingModel || 'fixed').toUpperCase()}</Text></HStack>
-                                            <HStack justify="space-between"><Text fontWeight="bold">Status:</Text><Badge colorScheme={prod.status === "Available" ? "green" : "orange"} fontSize="3xs">{prod.status || "Available"}</Badge></HStack>
+                                            <HStack justify="space-between"><Text fontWeight="bold">Status:</Text><StatusBadge colorScheme={prod.status === "Available" ? "green" : "orange"} label={prod.status || "Available"} variant="subtle" /></HStack>
                                             {prod.description && (
                                               <Box bg="teal.50" p={2} borderRadius="6px" border="1px solid" borderColor="teal.100">
                                                 <Text color="teal.900" fontWeight="bold" fontSize="3xs" mb={0.5}>Description:</Text>
@@ -5298,15 +5299,19 @@ export default function ProductManagement() {
                                                 <HStack justify="space-between"><Text fontWeight="bold">Created Date:</Text><Text>{new Date(b.createdAt || Date.now()).toLocaleDateString()}</Text></HStack>
                                                 <HStack justify="space-between">
                                                   <Text fontWeight="bold">Order Status:</Text>
-                                                  <Badge colorScheme={status === "completed" ? "green" : status === "active" ? "blue" : "red"} fontSize="3xs">
-                                                    {status.toUpperCase()}
-                                                  </Badge>
+                                                  <StatusBadge
+                                                    colorScheme={status === "completed" ? "green" : status === "active" ? "blue" : "red"}
+                                                    label={status.toUpperCase()}
+                                                    variant="subtle"
+                                                  />
                                                 </HStack>
                                                 <HStack justify="space-between">
                                                   <Text fontWeight="bold">Payment Status:</Text>
-                                                  <Badge colorScheme={payStatus === "paid" ? "green" : "red"} fontSize="3xs">
-                                                    {payStatus.toUpperCase()}
-                                                  </Badge>
+                                                  <StatusBadge
+                                                    colorScheme={payStatus === "paid" ? "green" : "red"}
+                                                    label={payStatus.toUpperCase()}
+                                                    variant="subtle"
+                                                  />
                                                 </HStack>
                                                 <Divider my={1} />
                                                 <HStack justify="space-between"><Text fontWeight="bold">Subtotal Amount:</Text><Text>INR {Number(baseAmount).toLocaleString("en-IN")}</Text></HStack>
@@ -5565,9 +5570,11 @@ export default function ProductManagement() {
                                       <Td fontSize="xs" fontWeight="semibold">₹{item.price || item.estimatedPriceFrom || 0}</Td>
                                       <Td fontSize="xs" fontWeight="extrabold" color={`${statusScheme}.600`}>{qty} units</Td>
                                       <Td>
-                                        <Badge colorScheme={statusScheme} px={2} py={0.5} borderRadius="full" fontSize="3xs">
-                                          {statusLabel}
-                                        </Badge>
+                                        <StatusBadge
+                                          colorScheme={statusScheme}
+                                          label={statusLabel}
+                                          variant="subtle"
+                                        />
                                       </Td>
                                       <Td textAlign="right">
                                         <HStack justify="flex-end" spacing={1.5}>
@@ -5652,9 +5659,11 @@ export default function ProductManagement() {
                                         <Badge colorScheme="purple" fontSize="3xs">{pay.paymentMethod || pay.method || "ONLINE"}</Badge>
                                       </Td>
                                       <Td>
-                                        <Badge colorScheme={status === "paid" || status === "captured" ? "green" : status === "failed" ? "red" : "orange"} px={2.5} py={1} borderRadius="full" fontSize="2xs">
-                                          {status}
-                                        </Badge>
+                                        <StatusBadge
+                                          colorScheme={status === "paid" || status === "captured" ? "green" : status === "failed" ? "red" : "orange"}
+                                          label={status}
+                                          variant="subtle"
+                                        />
                                       </Td>
                                       <Td fontSize="xs" color="gray.500">
                                         {new Date(pay.createdAt || pay.receivedAt || Date.now()).toLocaleDateString()}
@@ -6294,12 +6303,16 @@ export default function ProductManagement() {
                             <Flex justify="space-between" align="center" mb={2}>
                               <Text fontFamily="mono" fontSize="xs" fontWeight="bold" color="teal.700">{displayBId}</Text>
                               <HStack spacing={1}>
-                                <Badge colorScheme={status === "completed" ? "green" : status === "active" ? "blue" : "red"} fontSize="3xs">
-                                  {status}
-                                </Badge>
-                                <Badge colorScheme={payStatus === "paid" ? "green" : "red"} fontSize="3xs">
-                                  {payStatus === "paid" ? "PAID" : "UNPAID"}
-                                </Badge>
+                                <StatusBadge
+                                  colorScheme={status === "completed" ? "green" : status === "active" ? "blue" : "red"}
+                                  label={status}
+                                  variant="subtle"
+                                />
+                                <StatusBadge
+                                  colorScheme={payStatus === "paid" ? "green" : "red"}
+                                  label={payStatus === "paid" ? "PAID" : "UNPAID"}
+                                  variant="subtle"
+                                />
                               </HStack>
                             </Flex>
                             <VStack align="stretch" spacing={1} fontSize="xs" mb={3}>
@@ -6393,7 +6406,11 @@ export default function ProductManagement() {
                         <Card key={pay._id || idx} p={3} border="1px solid" borderColor="gray.200" borderRadius="xl">
                           <Flex justify="space-between" align="center" mb={1}>
                             <Text fontFamily="mono" fontSize="2xs" fontWeight="bold" color="teal.700">{pay.reference || pay.razorpayPaymentId || `PAY_${idx}`}</Text>
-                            <Badge colorScheme={(pay.status || pay.paymentStatus || "").toLowerCase() === "paid" ? "green" : "orange"} fontSize="3xs">{pay.status || pay.paymentStatus || "pending"}</Badge>
+                            <StatusBadge
+                              colorScheme={(pay.status || pay.paymentStatus || "").toLowerCase() === "paid" ? "green" : "orange"}
+                              label={pay.status || pay.paymentStatus || "pending"}
+                              variant="subtle"
+                            />
                           </Flex>
                           <Text fontSize="xs" fontWeight="semibold" color="gray.800">{pay.customerName || pay.clientName || "Customer"}</Text>
                           <Flex justify="space-between" fontSize="2xs" color="gray.600" mt={1}>
@@ -7154,12 +7171,16 @@ export default function ProductManagement() {
                       </Box>
                     </HStack>
                     <HStack spacing="8px">
-                      <Badge colorScheme={status === "accepted" ? "green" : "whiteAlpha"} px="10px" py="4px" borderRadius="8px" fontSize="xs" fontWeight="bold">
-                        {status.toUpperCase()}
-                      </Badge>
-                      <Badge colorScheme={payStatus === "paid" ? "green" : "red"} px="10px" py="4px" borderRadius="8px" fontSize="xs" fontWeight="extrabold">
-                        {payStatus === "paid" ? "✓ PAID" : "✕ UNPAID"}
-                      </Badge>
+                      <StatusBadge
+                        colorScheme={status === "accepted" ? "green" : "whiteAlpha"}
+                        label={status.toUpperCase()}
+                        variant="solid"
+                      />
+                      <StatusBadge
+                        colorScheme={payStatus === "paid" ? "green" : "red"}
+                        label={payStatus === "paid" ? "PAID" : "UNPAID"}
+                        variant="solid"
+                      />
                     </HStack>
                   </Flex></>} footer={<><Button size="sm" variant="ghost" mr={3} onClick={() => setIsQuotationDetailModalOpen(false)}>
                     Close Dossier
@@ -7223,9 +7244,11 @@ export default function ProductManagement() {
                               </Text>
                             </Box>
                           </HStack>
-                          <Badge colorScheme="red" fontSize="2xs" px="10px" py="3px" borderRadius="full">
-                            REJECTED
-                          </Badge>
+                          <StatusBadge
+                            colorScheme="red"
+                            label="REJECTED"
+                            variant="solid"
+                          />
                         </Flex>
                         <Box bg="white" p="12px 14px" borderRadius="10px" border="1px solid" borderColor="red.200" mt="6px">
                           <Text fontSize="3xs" color="gray.500" fontWeight="bold" textTransform="uppercase">Customer Stated Reason</Text>
@@ -7275,9 +7298,11 @@ export default function ProductManagement() {
                           </Text>
                         </Box>
                       </HStack>
-                      <Badge colorScheme={expiryInfo.color} fontSize="2xs" px="10px" py="3px" borderRadius="full">
-                        {expiryInfo.isExpired ? "EXPIRED" : "ACTIVE"}
-                      </Badge>
+                      <StatusBadge
+                        colorScheme={expiryInfo.color}
+                        label={expiryInfo.isExpired ? "EXPIRED" : "ACTIVE"}
+                        variant="subtle"
+                      />
                     </Flex>
 
                     {/* SECTIONS GRID */}

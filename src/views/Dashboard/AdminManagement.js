@@ -52,18 +52,17 @@ import {
   FaTrash,
   FaIdCard,
   FaUniversity,
-  FaCheckCircle,
-  FaTimesCircle,
   FaEllipsisV,
   FaCheck,
   FaTimes,
   FaSyncAlt,
 } from "react-icons/fa";
 import DataTable from "components/common/DataTable";
+import StatusBadge from "components/common/StatusBadge";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
 import ErrorState from "components/feedback/ErrorState";
 import { useAppToast } from "components/feedback";
-import { MdVerified, MdOutlinePending } from "react-icons/md";
+import { MdOutlinePending } from "react-icons/md";
 import {
   getKYCFullPII,
   clearAuth,
@@ -74,7 +73,14 @@ import {
   deleteOrphanedKyc,
   cleanupAllOrphanedKyc,
 } from "api/adminKyc";
-import { useAppDispatch } from "store/hooks";
+import { useAppDispatch, useAppSelector } from "store/hooks";
+import {
+  isOwnerRole,
+  isPrivilegedRole,
+  selectAuthInitialized,
+  selectRole,
+  selectUser,
+} from "store/slices/authSlice";
 import {
   fetchTechnicians,
   fetchKYCRecords,
@@ -469,7 +475,59 @@ const getTechnicianSpecialization = (tech) => {
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 };
 
-// Helper to resolve technician district safely
+const getDistrictRefId = (ref) =>
+  String(
+    typeof ref === "object"
+      ? ref?._id || ref?.id || ""
+      : ref || ""
+  );
+
+const getTechnicianApprovedDistricts = (tech, masterDistricts = []) => {
+  if (!tech) return [];
+  const refs = [
+    ...(Array.isArray(tech.enabledDistrictIds) ? tech.enabledDistrictIds : []),
+    ...(Array.isArray(tech.allowedCityIds) ? tech.allowedCityIds : []),
+  ];
+  const map = new Map();
+
+  refs.forEach((ref) => {
+    if (!ref) return;
+    const id = getDistrictRefId(ref);
+    if (!id || map.has(id)) return;
+
+    const masterMatch = (masterDistricts || []).find(
+      (district) =>
+        String(district?._id || district?.id || "") === id ||
+        (typeof ref === "object" &&
+          String(district?.name || district?.districtName || district?.city || "").toLowerCase() ===
+            String(ref?.name || ref?.districtName || ref?.city || "").toLowerCase())
+    );
+
+    const name =
+      (typeof ref === "object" && (ref.name || ref.districtName || ref.city)) ||
+      masterMatch?.name ||
+      masterMatch?.districtName ||
+      masterMatch?.city ||
+      id;
+
+    map.set(id, {
+      id,
+      name: String(name).trim(),
+      city: typeof ref === "object" ? ref.city || masterMatch?.city || "" : masterMatch?.city || "",
+    });
+  });
+
+  return Array.from(map.values());
+};
+
+const getTechnicianApprovedDistrictNames = (tech, masterDistricts = []) =>
+  getTechnicianApprovedDistricts(tech, masterDistricts).map((district) => district.name);
+
+const hasApprovedDistrictCoverage = (tech, masterDistricts = []) =>
+  getTechnicianApprovedDistricts(tech, masterDistricts).length > 0;
+
+// Helper to resolve technician registration district safely. This is location
+// metadata only and never grants dispatch coverage.
 const getTechnicianDistrict = (tech, masterDistricts = []) => {
   if (!tech) return "";
   const d =
@@ -499,28 +557,6 @@ const getTechnicianDistrict = (tech, masterDistricts = []) => {
   }
   if (d && typeof d === "object") return (d.name || d.districtName || d.city || "").trim();
   return "";
-};
-
-// Helper to determine if a technician belongs to a created operational district
-const isCreatedDistrict = (tech, masterDistricts = [], createdNamesSet = new Set(), createdIdsSet = new Set()) => {
-  if (!tech) return false;
-  const dist = getTechnicianDistrict(tech, masterDistricts);
-  if (dist && createdNamesSet.has(dist.toLowerCase())) return true;
-  const idCandidates = [
-    tech.district,
-    tech.districtId,
-    tech.primaryCityId,
-    tech.operationalCityId,
-    tech.address?.district,
-    tech.profile?.district,
-  ];
-  for (const candidate of idCandidates) {
-    if (candidate) {
-      const idStr = typeof candidate === "object" ? String(candidate._id || candidate.id || "") : String(candidate);
-      if (idStr && createdIdsSet.has(idStr)) return true;
-    }
-  }
-  return false;
 };
 
 const getTechnicianImage = (tech, kycRecords = []) => {
@@ -629,6 +665,11 @@ function AdminManagement() {
 
   const toast = useAppToast();
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
+  const authInitialized = useAppSelector(selectAuthInitialized);
+  const authUser = useAppSelector(selectUser);
+  const userRole = useAppSelector(selectRole);
+  const isOwner = isOwnerRole(userRole);
 
   // Primary data states
   const [adminData, setAdminData] = useState([]);
@@ -766,7 +807,6 @@ function AdminManagement() {
     }
   };
   const isMountedRef = useRef(true);
-  const dispatch = useAppDispatch();
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -790,13 +830,13 @@ function AdminManagement() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // 1. Check Owner Authorization
+  // 1. Check privileged authorization
   useEffect(() => {
-    const userString = localStorage.getItem("user");
-    if (!userString) {
+    if (!authInitialized) return;
+    if (!isPrivilegedRole(userRole)) {
       toast({
         title: "Access Denied",
-        description: "Please sign in to access this page.",
+        description: "Please sign in with an Owner or Admin account.",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -804,28 +844,10 @@ function AdminManagement() {
       navigate("/auth/signin");
       return;
     }
-    try {
-      const userData = JSON.parse(userString);
-      const userRole = userData.role?.toLowerCase();
-      if (userRole !== "owner") {
-        toast({
-          title: "Access Denied",
-          description: "Only owner accounts can access this page.",
-          status: "error",
-          duration: 3000,
-          isClosable: true,
-        });
-        navigate("/access-denied");
-        return;
-      }
-      if (isMountedRef.current) {
-        setCurrentUser(userData);
-      }
-    } catch (error) {
-      localStorage.removeItem("user");
-      navigate("/auth/signin");
+    if (isMountedRef.current) {
+      setCurrentUser(authUser || { role: userRole });
     }
-  }, [toast, navigate]);
+  }, [authInitialized, authUser, userRole, toast, navigate]);
 
   // 2. Fetch Technicians and KYC Data (CRUD page: force fresh reads via
   // shared thunks; parsing/sorting/guards below are unchanged)
@@ -954,95 +976,48 @@ function AdminManagement() {
     };
   }, [adminData, allKycRecords]);
 
-  // Created District sets (Names & IDs) for rapid, accurate matching
-  const createdDistrictNamesSet = useMemo(() => {
-    const set = new Set();
-    (masterDistricts || []).forEach((d) => {
-      const name = typeof d === "string" ? d : (d.name || d.districtName || d.title || d.city);
-      if (name && typeof name === "string" && name.trim()) {
-        set.add(name.trim().toLowerCase());
-      }
-    });
-    return set;
-  }, [masterDistricts]);
-
-  const createdDistrictIdsSet = useMemo(() => {
-    const set = new Set();
-    (masterDistricts || []).forEach((d) => {
-      if (d && typeof d === "object" && (d._id || d.id)) {
-        set.add(String(d._id || d.id));
-      }
-    });
-    return set;
-  }, [masterDistricts]);
-
-  // 1. Created Districts List (from master API districts)
+  // 1. Approved Coverage District List (from explicit district permission arrays)
   const createdDistrictsList = useMemo(() => {
     const map = new Map();
     (masterDistricts || []).forEach((d) => {
       const rawName = typeof d === "string" ? d : (d.name || d.districtName || d.title || d.city);
+      const id = typeof d === "object" ? String(d._id || d.id || "") : "";
       if (rawName && typeof rawName === "string" && rawName.trim()) {
         const name = rawName.trim().charAt(0).toUpperCase() + rawName.trim().slice(1);
-        if (!map.has(name.toLowerCase())) {
-          map.set(name.toLowerCase(), { name, count: 0 });
+        const key = id || name.toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, { id, name, count: 0 });
         }
       }
     });
 
     (adminData || []).forEach((tech) => {
-      const dist = getTechnicianDistrict(tech, masterDistricts);
-      if (dist && map.has(dist.toLowerCase())) {
-        map.get(dist.toLowerCase()).count += 1;
-      }
+      getTechnicianApprovedDistricts(tech, masterDistricts).forEach((district) => {
+        let key = district.id;
+        if (!map.has(key)) {
+          const nameKey = String(district.name || "").toLowerCase();
+          const match = Array.from(map.entries()).find(
+            ([, value]) => value.name.toLowerCase() === nameKey
+          );
+          if (match) key = match[0];
+        }
+        if (map.has(key)) {
+          map.get(key).count += 1;
+        } else {
+          map.set(key, { id: district.id, name: district.name, count: 1 });
+        }
+      });
     });
 
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [masterDistricts, adminData]);
 
-  // 2. Non-Created Districts List (from technician records + presets not in masterDistricts)
-  const nonCreatedDistrictsList = useMemo(() => {
-    const map = new Map();
-
-    (adminData || []).forEach((tech) => {
-      const dist = getTechnicianDistrict(tech, masterDistricts);
-      if (dist && !createdDistrictNamesSet.has(dist.toLowerCase())) {
-        const name = dist.charAt(0).toUpperCase() + dist.slice(1);
-        const key = name.toLowerCase();
-        if (!map.has(key)) {
-          map.set(key, { name, count: 0 });
-        }
-        map.get(key).count += 1;
-      }
-    });
-
-    const presets = [
-      "Ariyalur", "Chengalpattu", "Chennai", "Coimbatore", "Cuddalore", "Dharmapuri",
-      "Dindigul", "Erode", "Kanchipuram", "Kanyakumari", "Karur", "Krishnagiri",
-      "Madurai", "Mayiladuthurai", "Nagapattinam", "Namakkal", "Nilgiris", "Perambalur",
-      "Pudukkottai", "Ramanathapuram", "Ranipet", "Salem", "Sivaganga", "Tenkasi",
-      "Thanjavur", "Theni", "Thoothukudi", "Tiruchirappalli", "Tirunelveli", "Tirupathur",
-      "Tiruppur", "Tiruvallur", "Tiruvannamalai", "Thiruvarur", "Vellore", "Viluppuram", "Virudhunagar"
-    ];
-    presets.forEach((p) => {
-      const key = p.toLowerCase();
-      if (!createdDistrictNamesSet.has(key) && !map.has(key)) {
-        map.set(key, { name: p, count: 0 });
-      }
-    });
-
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [adminData, masterDistricts, createdDistrictNamesSet]);
-
-  // Technician counts per district category
-  const unassignedDistrictTechCount = useMemo(() => {
-    return (adminData || []).filter((tech) => !getTechnicianDistrict(tech, masterDistricts)).length;
-  }, [adminData, masterDistricts]);
-
+  // Technician counts per coverage category
   const createdDistrictTechCount = useMemo(() => {
     return (adminData || []).filter((tech) =>
-      isCreatedDistrict(tech, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet)
+      hasApprovedDistrictCoverage(tech, masterDistricts)
     ).length;
-  }, [adminData, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet]);
+  }, [adminData, masterDistricts]);
 
   const nonCreatedDistrictTechCount = useMemo(() => {
     return (adminData || []).length - createdDistrictTechCount;
@@ -1122,47 +1097,32 @@ function AdminManagement() {
       }
     }
 
-    // 3. Mandatory District-wise Filter (Category: All | Created | Non-Created, plus Specific District)
+    // 3. District-wise Filter — approved coverage only
     if (districtCategory === "created") {
       list = list.filter((admin) => {
-        const created = isCreatedDistrict(admin, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet);
-        if (!created) return false;
+        const approved = getTechnicianApprovedDistricts(admin, masterDistricts);
+        if (approved.length === 0) return false;
         if (districtFilter !== "all" && districtFilter.trim() !== "") {
-          const dist = getTechnicianDistrict(admin, masterDistricts).toLowerCase();
-          return dist === districtFilter.toLowerCase();
+          const target = districtFilter.toLowerCase();
+          return approved.some((district) => district.name.toLowerCase() === target);
         }
         return true;
       });
     } else if (districtCategory === "non_created") {
-      list = list.filter((admin) => {
-        const created = isCreatedDistrict(admin, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet);
-        if (created) return false;
-        if (districtFilter === "__unassigned__") {
-          return !getTechnicianDistrict(admin, masterDistricts);
-        }
-        if (districtFilter !== "all" && districtFilter.trim() !== "") {
-          const dist = getTechnicianDistrict(admin, masterDistricts).toLowerCase();
-          return dist === districtFilter.toLowerCase();
-        }
-        return true;
-      });
+      list = list.filter((admin) => !hasApprovedDistrictCoverage(admin, masterDistricts));
     } else {
       // districtCategory === "all"
       if (districtFilter === "__created_all__") {
-        list = list.filter((admin) =>
-          isCreatedDistrict(admin, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet)
-        );
-      } else if (districtFilter === "__non_created_all__") {
-        list = list.filter((admin) =>
-          !isCreatedDistrict(admin, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet)
-        );
-      } else if (districtFilter === "__unassigned__") {
-        list = list.filter((admin) => !getTechnicianDistrict(admin, masterDistricts));
+        list = list.filter((admin) => hasApprovedDistrictCoverage(admin, masterDistricts));
+      } else if (districtFilter === "__non_created_all__" || districtFilter === "__unassigned__") {
+        list = list.filter((admin) => !hasApprovedDistrictCoverage(admin, masterDistricts));
       } else if (districtFilter !== "all" && districtFilter.trim() !== "") {
         const target = districtFilter.toLowerCase();
         list = list.filter((admin) => {
-          const dist = getTechnicianDistrict(admin, masterDistricts).toLowerCase();
-          return dist === target || dist.includes(target);
+          return getTechnicianApprovedDistricts(admin, masterDistricts).some((district) => {
+            const name = district.name.toLowerCase();
+            return name === target || name.includes(target);
+          });
         });
       }
     }
@@ -1176,7 +1136,10 @@ function AdminManagement() {
         const email = (getTechnicianEmail(admin, allKycRecords) || "").toLowerCase();
         const spec = (getTechnicianSpecialization(admin) || "").toLowerCase();
         const city = (admin.city || admin.profile?.city || admin.locality || "").toLowerCase();
-        const district = getTechnicianDistrict(admin, masterDistricts).toLowerCase();
+        const approvedDistrictText = getTechnicianApprovedDistrictNames(admin, masterDistricts)
+          .join(" ")
+          .toLowerCase();
+        const registrationDistrict = getTechnicianDistrict(admin, masterDistricts).toLowerCase();
         const phone = (getTechnicianPhone(admin, allKycRecords) || "").toString().replace(/[\s-]/g, "");
         const kycMatch = findKYCRecord(admin, allKycRecords);
         const aadhaar = (kycMatch?.aadhaarNumber || "").toString().replace(/[\s-]/g, "");
@@ -1195,7 +1158,8 @@ function AdminManagement() {
           email.includes(q) ||
           spec.includes(q) ||
           city.includes(q) ||
-          district.includes(q) ||
+          approvedDistrictText.includes(q) ||
+          registrationDistrict.includes(q) ||
           phone.includes(qClean) ||
           aadhaar.includes(qClean) ||
           pan.includes(q) ||
@@ -1218,8 +1182,6 @@ function AdminManagement() {
     districtFilter,
     searchTerm,
     masterDistricts,
-    createdDistrictNamesSet,
-    createdDistrictIdsSet,
   ]);
 
   // Pagination calculations
@@ -1259,6 +1221,16 @@ function AdminManagement() {
 
   // Work Status Toggle
   const handleUpdateWorkStatus = async (tech, workStatus) => {
+    if (!isOwner) {
+      toast({
+        title: "Owner access required",
+        description: "Only Owner accounts can change technician work status.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
     try {
       setLoading(true);
       await dispatch(setWorkStatus({
@@ -1524,6 +1496,18 @@ function AdminManagement() {
   // Delete Technician
   const handleDeleteConfirm = async () => {
     if (!adminToDelete) return;
+    if (!isOwner) {
+      toast({
+        title: "Owner access required",
+        description: "Only Owner accounts can delete technicians.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      setIsDeleteDialogOpen(false);
+      setAdminToDelete(null);
+      return;
+    }
     setIsDeleting(true);
     try {
       await dispatch(removeTechnician({ id: adminToDelete._id })).unwrap();
@@ -1707,7 +1691,7 @@ function AdminManagement() {
                   </InputRightElement>
                 </InputGroup>
 
-                {/* 1. District Category Filter (Created Districts vs Non-Created Districts) */}
+                {/* 1. Approved Coverage vs Coverage Pending */}
                 <Select
                   size="sm"
                   maxW={{ base: "100%", sm: "205px" }}
@@ -1723,11 +1707,11 @@ function AdminManagement() {
                   _focus={{ borderColor: customColor }}
                   fontWeight="bold"
                   color={districtCategory !== "all" ? customColor : "gray.700"}
-                  title="Filter by Created vs Non-Created Districts"
+                  title="Filter by approved coverage or coverage pending"
                 >
-                  <option value="all">📍 Districts: All Types</option>
-                  <option value="created">✅ 1. Created Districts ({createdDistrictTechCount})</option>
-                  <option value="non_created">⚠️ 2. Non-Created ({nonCreatedDistrictTechCount})</option>
+                  <option value="all">📍 Coverage: All Technicians</option>
+                  <option value="created">✅ Approved Coverage ({createdDistrictTechCount})</option>
+                  <option value="non_created">⚠️ Coverage Pending ({nonCreatedDistrictTechCount})</option>
                 </Select>
 
                 {/* 2. Specific District-Wise Filter */}
@@ -1748,49 +1732,31 @@ function AdminManagement() {
                 >
                   {districtCategory === "created" ? (
                     <>
-                      <option value="all">📍 All Created Districts ({createdDistrictTechCount})</option>
+                      <option value="all">📍 All Approved Districts ({createdDistrictTechCount})</option>
                       {createdDistrictsList.map((d) => (
-                        <option key={d.name} value={d.name}>
+                        <option key={d.id || d.name} value={d.name}>
                           📍 {d.name} {d.count > 0 ? `(${d.count})` : ""}
                         </option>
                       ))}
                     </>
                   ) : districtCategory === "non_created" ? (
                     <>
-                      <option value="all">⚠️ All Non-Created ({nonCreatedDistrictTechCount})</option>
-                      {unassignedDistrictTechCount > 0 && (
-                        <option value="__unassigned__">⚠️ No District Assigned ({unassignedDistrictTechCount})</option>
-                      )}
-                      {nonCreatedDistrictsList.map((d) => (
-                        <option key={d.name} value={d.name}>
-                          📍 {d.name} {d.count > 0 ? `(${d.count})` : ""}
-                        </option>
-                      ))}
+                      <option value="all">⚠️ All Coverage Pending ({nonCreatedDistrictTechCount})</option>
                     </>
                   ) : (
                     <>
-                      <option value="all">📍 District: All Districts</option>
-                      <option value="__created_all__">✅ All Created Districts ({createdDistrictTechCount})</option>
-                      <option value="__non_created_all__">⚠️ All Non-Created ({nonCreatedDistrictTechCount})</option>
+                      <option value="all">📍 Coverage: All Technicians</option>
+                      <option value="__created_all__">✅ Approved Coverage ({createdDistrictTechCount})</option>
+                      <option value="__non_created_all__">⚠️ Coverage Pending ({nonCreatedDistrictTechCount})</option>
                       {createdDistrictsList.length > 0 && (
-                        <optgroup label="── ✅ 1. Created Districts ──">
+                        <optgroup label="── ✅ Approved Districts ──">
                           {createdDistrictsList.map((d) => (
-                            <option key={`c-${d.name}`} value={d.name}>
+                            <option key={`c-${d.id || d.name}`} value={d.name}>
                               📍 {d.name} {d.count > 0 ? `(${d.count})` : ""}
                             </option>
                           ))}
                         </optgroup>
                       )}
-                      <optgroup label="── ⚠️ 2. Non-Created Districts ──">
-                        {unassignedDistrictTechCount > 0 && (
-                          <option value="__unassigned__">⚠️ No District Assigned ({unassignedDistrictTechCount})</option>
-                        )}
-                        {nonCreatedDistrictsList.map((d) => (
-                          <option key={`nc-${d.name}`} value={d.name}>
-                            📍 {d.name} {d.count > 0 ? `(${d.count})` : ""}
-                          </option>
-                        ))}
-                      </optgroup>
                     </>
                   )}
                 </Select>
@@ -1936,9 +1902,13 @@ function AdminManagement() {
                             {getTechnicianPhone(tech, allKycRecords) || getTechnicianEmail(tech, allKycRecords) || "No contact"}
                           </Text>
                           {tech.availability?.isOnline && (
-                            <Badge colorScheme="green" fontSize="9px" px={1} borderRadius="full" flexShrink={0}>
-                              Online
-                            </Badge>
+                            <StatusBadge
+                              colorScheme="green"
+                              label="Online"
+                              variant="subtle"
+                              flexShrink={0}
+                              showDot
+                            />
                           )}
                         </Flex>
                       </Box>
@@ -1962,51 +1932,62 @@ function AdminManagement() {
                 },
                 {
                   key: "district",
-                  label: "District *",
-                  minWidth: "140px",
+                  label: "Approved Coverage",
+                  minWidth: "170px",
                   cell: (tech) => {
-                    const dist = getTechnicianDistrict(tech, masterDistricts);
-                    if (!dist) {
+                    const approved = getTechnicianApprovedDistricts(tech, masterDistricts);
+                    const registrationDistrict = getTechnicianDistrict(tech, masterDistricts);
+
+                    if (approved.length === 0) {
                       return (
-                        <Badge colorScheme="red" px={2} py={0.5} borderRadius="md" variant="solid" fontSize="2xs">
-                          ⚠️ District Missing
-                        </Badge>
+                        <Box>
+                          <StatusBadge
+                            colorScheme="orange"
+                            label="Coverage Pending"
+                            title="An Admin/Owner must grant a district with an active zone"
+                          />
+                          <Text fontSize="2xs" color="gray.500" mt={1} isTruncated maxW="160px">
+                            Registration: {registrationDistrict || "Not set"}
+                          </Text>
+                        </Box>
                       );
                     }
-                    const isCreated = isCreatedDistrict(tech, masterDistricts, createdDistrictNamesSet, createdDistrictIdsSet);
-                    return isCreated ? (
-                      <Badge
-                        colorScheme="teal"
-                        px={2.5}
-                        py={1}
-                        borderRadius="md"
-                        textTransform="capitalize"
-                        fontWeight="bold"
-                        fontSize="2xs"
-                        title="Created Operational District"
-                      >
-                        📍 {dist}
-                      </Badge>
-                    ) : (
-                      <Badge
-                        colorScheme="orange"
-                        px={2.5}
-                        py={1}
-                        borderRadius="md"
-                        textTransform="capitalize"
-                        fontWeight="bold"
-                        fontSize="2xs"
-                        title="Non-Created District (Pending Setup)"
-                      >
-                        ⚠️ {dist} (Not Created)
-                      </Badge>
+
+                    return (
+                      <Box>
+                        <HStack spacing={1} flexWrap="wrap">
+                          {approved.slice(0, 2).map((district) => (
+                            <Badge
+                              key={district.id}
+                              colorScheme="teal"
+                              px={2.5}
+                              py={1}
+                              borderRadius="md"
+                              textTransform="capitalize"
+                              fontWeight="bold"
+                              fontSize="2xs"
+                              title="Explicit Admin/Owner approved coverage"
+                            >
+                              📍 {district.name}
+                            </Badge>
+                          ))}
+                          {approved.length > 2 && (
+                            <Badge colorScheme="teal" variant="subtle" fontSize="2xs" px={2} py={1}>
+                              +{approved.length - 2}
+                            </Badge>
+                          )}
+                        </HStack>
+                        <Text fontSize="2xs" color="gray.500" mt={1}>
+                          Admin/Owner approved
+                        </Text>
+                      </Box>
                     );
                   },
                 },
                 {
                   key: "city",
-                  label: "City",
-                  minWidth: "100px",
+                  label: "Registration City",
+                  minWidth: "110px",
                   cell: (tech) => (
                     <Text fontSize="xs" color="gray.700" fontWeight="medium" textTransform="capitalize">
                       {tech.city || tech.profile?.city || tech.locality || "N/A"}
@@ -2020,19 +2001,11 @@ function AdminManagement() {
                   minWidth: "150px",
                   cell: (tech) => (
                     <Flex align="center" justify="center" gap={1.5}>
-                      <Badge
+                      <StatusBadge
                         colorScheme={tech.trainingCompleted ? "green" : "orange"}
-                        borderRadius="full"
-                        px={2.5}
-                        h="26px"
-                        fontSize="2xs"
-                        display="inline-flex"
-                        alignItems="center"
-                        gap={1}
-                      >
-                        <Icon as={tech.trainingCompleted ? FaCheckCircle : MdOutlinePending} />
-                        {tech.trainingCompleted ? "Completed" : "Pending"}
-                      </Badge>
+                        label={tech.trainingCompleted ? "Completed" : "Pending"}
+                        variant={tech.trainingCompleted ? "subtle" : "solid"}
+                      />
                       <Tooltip
                         label={
                           tech.trainingCompleted
@@ -2068,7 +2041,7 @@ function AdminManagement() {
                       "pending";
                     return (
                       <Flex justify="center" align="center">
-                        <Badge
+                        <StatusBadge
                           colorScheme={
                             isKycVer
                               ? "green"
@@ -2078,33 +2051,19 @@ function AdminManagement() {
                               ? "purple"
                               : "gray"
                           }
-                          borderRadius="full"
-                          px={2.5}
-                          h="26px"
-                          fontSize="2xs"
-                          display="inline-flex"
-                          alignItems="center"
-                          gap={1}
+                          label={
+                            isKycVer
+                              ? "Verified"
+                              : kycStatus === "rejected"
+                              ? "Rejected"
+                              : kycRecord
+                              ? "Under Review"
+                              : "Not Uploaded"
+                          }
+                          variant={isKycVer ? "subtle" : "solid"}
                           cursor="pointer"
                           onClick={() => handleOpenKYCModal(tech)}
-                        >
-                          <Icon
-                            as={
-                              isKycVer
-                                ? MdVerified
-                                : kycStatus === "rejected"
-                                ? FaTimesCircle
-                                : FaIdCard
-                            }
-                          />
-                          {isKycVer
-                            ? "Verified"
-                            : kycStatus === "rejected"
-                            ? "Rejected"
-                            : kycRecord
-                            ? "Under Review"
-                            : "Not Uploaded"}
-                        </Badge>
+                        />
                       </Flex>
                     );
                   },
@@ -2119,21 +2078,19 @@ function AdminManagement() {
                     const isBankVer = isTechnicianBankVerified(tech, allKycRecords);
                     return (
                       <Flex justify="center" align="center">
-                        <Badge
+                        <StatusBadge
                           colorScheme={isBankVer ? "green" : kycRecord?.bankDetails ? "orange" : "gray"}
-                          borderRadius="full"
-                          px={2.5}
-                          h="26px"
-                          fontSize="2xs"
-                          display="inline-flex"
-                          alignItems="center"
-                          gap={1}
+                          label={
+                            isBankVer
+                              ? "Verified"
+                              : kycRecord?.bankDetails
+                              ? "Pending"
+                              : "Not Added"
+                          }
+                          variant={isBankVer ? "subtle" : "solid"}
                           cursor="pointer"
                           onClick={() => handleOpenBankModal(tech)}
-                        >
-                          <Icon as={isBankVer ? FaCheckCircle : FaUniversity} />
-                          {isBankVer ? "Verified" : kycRecord?.bankDetails ? "Pending" : "Not Added"}
-                        </Badge>
+                        />
                       </Flex>
                     );
                   },
@@ -2145,7 +2102,7 @@ function AdminManagement() {
                   minWidth: "130px",
                   cell: (tech) => (
                     <Flex justify="center" align="center">
-                      <Badge
+                      <StatusBadge
                         colorScheme={
                           tech.workStatus === "approved" || tech.status === "Active"
                             ? "green"
@@ -2153,16 +2110,13 @@ function AdminManagement() {
                             ? "red"
                             : "yellow"
                         }
-                        borderRadius="full"
-                        px={2.5}
-                        h="26px"
-                        fontSize="2xs"
-                        display="inline-flex"
-                        alignItems="center"
-                        textTransform="capitalize"
-                      >
-                        {tech.workStatus || tech.status || "Pending"}
-                      </Badge>
+                        label={tech.workStatus || tech.status || "Pending"}
+                        variant={
+                          tech.workStatus === "approved" || tech.status === "Active"
+                            ? "subtle"
+                            : "solid"
+                        }
+                      />
                     </Flex>
                   ),
                 },
@@ -2216,48 +2170,50 @@ function AdminManagement() {
                         />
                       </Tooltip>
 
-                      <Menu>
-                        <MenuButton
-                          as={IconButton}
-                          size="xs"
-                          h="28px"
-                          w="28px"
-                          aria-label="More Options"
-                          icon={<FaEllipsisV />}
-                          variant="ghost"
-                        />
-                        <MenuList fontSize="sm">
-                          <MenuItem
-                            icon={<FaCheck color="green" />}
-                            onClick={() => handleUpdateWorkStatus(tech, "approved")}
-                          >
-                            Set Status: Approved
-                          </MenuItem>
-                          <MenuItem
-                            icon={<MdOutlinePending color="orange" />}
-                            onClick={() => handleUpdateWorkStatus(tech, "pending")}
-                          >
-                            Set Status: Pending
-                          </MenuItem>
-                          <MenuItem
-                            icon={<FaUserSlash color="red" />}
-                            onClick={() => handleUpdateWorkStatus(tech, "suspended")}
-                          >
-                            Set Status: Suspended
-                          </MenuItem>
-                          <Divider />
-                          <MenuItem
-                            icon={<FaTrash color="red" />}
-                            color="red.600"
-                            onClick={() => {
-                              setAdminToDelete(tech);
-                              setIsDeleteDialogOpen(true);
-                            }}
-                          >
-                            Delete Technician
-                          </MenuItem>
-                        </MenuList>
-                      </Menu>
+                      {isOwner && (
+                        <Menu>
+                          <MenuButton
+                            as={IconButton}
+                            size="xs"
+                            h="28px"
+                            w="28px"
+                            aria-label="More Options"
+                            icon={<FaEllipsisV />}
+                            variant="ghost"
+                          />
+                          <MenuList fontSize="sm">
+                            <MenuItem
+                              icon={<FaCheck color="green" />}
+                              onClick={() => handleUpdateWorkStatus(tech, "approved")}
+                            >
+                              Set Status: Approved
+                            </MenuItem>
+                            <MenuItem
+                              icon={<MdOutlinePending color="orange" />}
+                              onClick={() => handleUpdateWorkStatus(tech, "pending")}
+                            >
+                              Set Status: Pending
+                            </MenuItem>
+                            <MenuItem
+                              icon={<FaUserSlash color="red" />}
+                              onClick={() => handleUpdateWorkStatus(tech, "suspended")}
+                            >
+                              Set Status: Suspended
+                            </MenuItem>
+                            <Divider />
+                            <MenuItem
+                              icon={<FaTrash color="red" />}
+                              color="red.600"
+                              onClick={() => {
+                                setAdminToDelete(tech);
+                                setIsDeleteDialogOpen(true);
+                              }}
+                            >
+                              Delete Technician
+                            </MenuItem>
+                          </MenuList>
+                        </Menu>
+                      )}
                     </HStack>
                   ),
                 },
@@ -2429,6 +2385,7 @@ function AdminManagement() {
         getTechnicianPhone={getTechnicianPhone}
         getTechnicianEmail={getTechnicianEmail}
         getTechnicianDistrict={getTechnicianDistrict}
+        getTechnicianApprovedDistricts={(tech) => getTechnicianApprovedDistricts(tech, masterDistricts)}
         getTechnicianAddress={getTechnicianAddress}
         getTechnicianSpecialization={getTechnicianSpecialization}
       />

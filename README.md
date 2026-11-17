@@ -147,9 +147,30 @@ In the project directory, you can run:
 
 ## 🔐 Role-Based Access Control
 
-The platform enforces strict role gating:
-- **Owner**: Full access to financial metrics, commission controls, payouts, and administration.
-- **Admin**: Operational access restricted to assigned management tasks (dispatch, user verification, job assignment).
+The platform enforces role gating in both the API (`authorizeRoles`) and the
+dashboard (`src/config/accessPolicy.js`). The backend validates the role from
+the database on every request; the dashboard restores the stored session and
+confirms it against `GET /api/user/me` before rendering protected routes.
+
+| Module | Owner | Admin |
+| --- | --- | --- |
+| Dashboard (operational KPIs only for Admin) | ✅ | ✅ |
+| Technician Management (KYC/bank verification, training) | ✅ | ✅ |
+| Technician work status / delete | ✅ | ❌ |
+| User Management (view, search, delete) | ✅ | ✅ (no delete) |
+| City Zone / Scheduling & Dispatch | ✅ | ✅ |
+| Reports & Ratings (non-financial moderation) | ✅ | ✅ |
+| Refunds, penalties, payout freezes | ✅ | ❌ |
+| Skill Requests / Permissions diagnostics / Profile | ✅ | ✅ |
+| Product & Service Management | ✅ | ❌ |
+| Finance Tracking / Pay to Technician | ✅ | ❌ |
+| Commission Management / Admin Payments (refunds) | ✅ | ❌ |
+| Rewards / Product Insights / Credentials | ✅ | ❌ |
+
+Admin accounts are created and managed by an Owner. Unknown or customer roles
+are rejected at sign-in and cleared from storage; direct navigation to an
+Owner-only route renders `/access-denied`. Admin Payments is refund-only;
+offline and product payments are recorded from Product Management → Bookings.
 
 ---
 

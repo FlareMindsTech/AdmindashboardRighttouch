@@ -32,18 +32,14 @@ import {
   FaCopy,
   FaCheck,
   FaTimes,
-  FaMapMarkerAlt,
   FaCheckCircle,
   FaExternalLinkAlt,
 } from "react-icons/fa";
 import { MdRefresh } from "react-icons/md";
 import { useAppToast } from "components/feedback";
 import TablePagination from "components/common/TablePagination";
-import BaseLocationModal from "./BaseLocationModal";
-import {
-  getMissingBaseLocations,
-  getTechnicianBaseLocation,
-} from "api/scheduling";
+import StatusBadge from "components/common/StatusBadge";
+import { getMissingBaseLocations } from "api/scheduling";
 import { getGoogleMapsUrl } from "./schedulingFormatters";
 
 export default function TechnicianBaseLocationTab({ onRefreshMissingCount }) {
@@ -58,10 +54,6 @@ export default function TechnicianBaseLocationTab({ onRefreshMissingCount }) {
   const [limit, setLimit] = useState(25);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 25, totalPages: 1 });
   const [copiedKey, setCopiedKey] = useState("");
-
-  // Edit modal
-  const [selectedTechForEdit, setSelectedTechForEdit] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const copyToClipboard = (text, key, label = "Item") => {
     if (!text) return;
@@ -107,19 +99,6 @@ export default function TechnicianBaseLocationTab({ onRefreshMissingCount }) {
   useEffect(() => {
     loadMissing();
   }, [loadMissing]);
-
-  // Handle edit click
-  const handleOpenEdit = async (tech) => {
-    const techId = tech._id || tech.technicianId || tech.id;
-    const { data } = await getTechnicianBaseLocation(techId);
-    const baseLoc = data?.result ?? data?.data ?? data ?? null;
-
-    setSelectedTechForEdit({
-      ...tech,
-      serviceBaseLocation: baseLoc || tech.serviceBaseLocation,
-    });
-    setIsModalOpen(true);
-  };
 
   // Filtered rows
   const filteredTechs = useMemo(() => {
@@ -219,9 +198,6 @@ export default function TechnicianBaseLocationTab({ onRefreshMissingCount }) {
                 <Th py={3.5}>APPROVED DISTRICT</Th>
                 <Th py={3.5}>GPS LOCATION STATUS</Th>
                 <Th py={3.5}>GPS COORDINATES</Th>
-                <Th py={3.5} textAlign="center">
-                  ACTIONS
-                </Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -280,17 +256,17 @@ export default function TechnicianBaseLocationTab({ onRefreshMissingCount }) {
                     {/* Location Status */}
                     <Td py={3}>
                       {!hasCoords ? (
-                        <Badge colorScheme="red" variant="solid" fontSize="3xs" px={2} borderRadius="full">
-                          ● Missing Origin
-                        </Badge>
+                        <StatusBadge colorScheme="red" variant="solid" showDot>
+                          Missing Origin
+                        </StatusBadge>
                       ) : !isVerified ? (
-                        <Badge colorScheme="orange" variant="subtle" fontSize="3xs" px={2} borderRadius="full">
-                          ● Unverified Origin
-                        </Badge>
+                        <StatusBadge colorScheme="orange" variant="subtle" showDot>
+                          Unverified Origin
+                        </StatusBadge>
                       ) : (
-                        <Badge colorScheme="green" variant="subtle" fontSize="3xs" px={2} borderRadius="full">
-                          ✓ Verified
-                        </Badge>
+                        <StatusBadge colorScheme="green" variant="subtle" showDot>
+                          Verified
+                        </StatusBadge>
                       )}
                     </Td>
 
@@ -320,19 +296,6 @@ export default function TechnicianBaseLocationTab({ onRefreshMissingCount }) {
                           No coordinates on file
                         </Text>
                       )}
-                    </Td>
-
-                    {/* Actions */}
-                    <Td py={3} textAlign="center">
-                      <Button
-                        size="xs"
-                        colorScheme="teal"
-                        variant="solid"
-                        leftIcon={<Icon as={FaMapMarkerAlt} boxSize={2.5} />}
-                        onClick={() => handleOpenEdit(t)}
-                      >
-                        Set Base Location
-                      </Button>
                     </Td>
                   </Tr>
                 );
@@ -364,17 +327,6 @@ export default function TechnicianBaseLocationTab({ onRefreshMissingCount }) {
           />
         </Box>
       )}
-
-      {/* Base Location Edit Modal */}
-      <BaseLocationModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setSelectedTechForEdit(null);
-        }}
-        technician={selectedTechForEdit}
-        onSuccess={loadMissing}
-      />
     </Box>
   );
 }

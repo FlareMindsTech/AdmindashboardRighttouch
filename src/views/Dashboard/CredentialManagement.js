@@ -32,6 +32,7 @@ import { useNavigate } from "react-router-dom";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import AppModal from "components/common/AppModal";
+import StatusBadge from "components/common/StatusBadge";
 import FormErrorSummary from "components/feedback/FormErrorSummary";
 import { useAppToast } from "components/feedback";
 import { useAppDispatch, useAppSelector } from "store/hooks";
@@ -459,15 +460,13 @@ export default function CredentialManagement() {
                           </Badge>
                         </Td>
                         <Td>
-                          <Badge
+                          <StatusBadge
                             colorScheme={
                               user.status === "Active" ? "green" : "gray"
                             }
+                            label={user.status || "Unknown"}
                             variant="subtle"
-                            borderRadius="full"
-                          >
-                            {user.status || "Unknown"}
-                          </Badge>
+                          />
                         </Td>
                         <Td
                           display={{ base: "none", lg: "table-cell" }}

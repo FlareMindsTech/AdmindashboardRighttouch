@@ -24,6 +24,7 @@ import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
 import { MobileCard, MobileCardActions } from "components/common/MobileCard";
 import DataTable from "components/common/DataTable";
+import StatusBadge from "components/common/StatusBadge";
 import {
   UserDetailsModal,
   AllocateTechnicianModal,
@@ -45,6 +46,11 @@ import {
   getAllCurrentTechJob,
 } from "../utils/axiosInstance";
 import { useAppDispatch, useAppSelector } from "store/hooks";
+import {
+  isOwnerRole,
+  selectRole,
+  selectUser,
+} from "store/slices/authSlice";
 import {
   fetchUsersByRole,
   removeUserRecord,
@@ -144,14 +150,11 @@ const UserMobileCard = React.memo(({
             #{index} {userName}
           </Text>
         </HStack>
-        <Badge
+        <StatusBadge
           colorScheme={user.status?.toLowerCase() === "active" ? "green" : "red"}
-          borderRadius="full"
-          px={2}
-          fontSize="3xs"
-        >
-          {user.status || "Active"}
-        </Badge>
+          label={user.status || "Active"}
+          variant="subtle"
+        />
       </Flex>
 
       <Text fontSize="2xs" color="gray.600" noOfLines={1} mb={2}>
@@ -162,12 +165,11 @@ const UserMobileCard = React.memo(({
         <Badge colorScheme="blue" variant="subtle" fontSize="3xs">
           Bookings: {user.bookingCount}
         </Badge>
-        <Badge
+        <StatusBadge
           colorScheme={user.allocatedTechnician !== "None" ? "green" : "gray"}
-          fontSize="3xs"
-        >
-          Tech: {user.allocatedTechnician !== "None" ? "Yes" : "No"}
-        </Badge>
+          label={`Tech: ${user.allocatedTechnician !== "None" ? "Yes" : "No"}`}
+          variant="subtle"
+        />
       </HStack>
 
       <MobileCardActions
@@ -196,8 +198,9 @@ export default function UserManagement() {
   const customColor = "#008080";
 
   // State hooks
-  const [currentUser, setCurrentUser] = useState(null);
-  const isOwner = currentUser?.role?.toLowerCase() === "owner";
+  const currentUser = useAppSelector(selectUser);
+  const userRole = useAppSelector(selectRole);
+  const isOwner = isOwnerRole(userRole);
   const [userData, setUserData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -306,24 +309,6 @@ export default function UserManagement() {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-
-  // Check authentication
-  useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem("user"));
-    const role = storedUser?.role?.toLowerCase();
-
-    if (!storedUser || (role !== "admin" && role !== "super admin" && role !== "owner")) {
-      toast({
-        title: "Access Denied",
-        description: "Only admin, super admin, or owner can access this page.",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-    setCurrentUser(storedUser);
-  }, [toast]);
 
   const isMountedRef = useRef(true);
 
@@ -492,12 +477,24 @@ export default function UserManagement() {
   };
 
   const handleDeleteClick = (user) => {
+    if (!isOwner) return;
     setUserToDelete(user);
     setIsDeleteDialogOpen(true);
   };
 
   const handleConfirmDelete = async () => {
     if (!userToDelete) return;
+    if (!isOwner) {
+      toast({
+        title: "Owner access required",
+        description: "Only Owner accounts can delete users.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      closeDeleteModal();
+      return;
+    }
 
     setDeleteLoading(true);
     try {
@@ -707,15 +704,11 @@ export default function UserManagement() {
                         align: "center",
                         width: "120px",
                         cell: (user) => (
-                          <Badge
+                          <StatusBadge
                             colorScheme={user.status?.toLowerCase() === "active" ? "green" : "red"}
-                            px={2}
-                            py={0.5}
-                            borderRadius="full"
-                            fontSize="2xs"
-                          >
-                            {user.status || "Active"}
-                          </Badge>
+                            label={user.status || "Active"}
+                            variant="subtle"
+                          />
                         ),
                       },
                       {

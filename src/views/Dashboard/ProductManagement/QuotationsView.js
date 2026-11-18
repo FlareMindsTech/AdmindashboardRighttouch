@@ -12,6 +12,7 @@ import {
 } from "@chakra-ui/react";
 import DataTable from "components/common/DataTable";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
+import RefreshButton from "components/common/RefreshButton";
 import StatusBadge from "components/common/StatusBadge";
 import { MobileCard } from "components/common/MobileCard";
 import {
@@ -330,7 +331,7 @@ export default function QuotationsView({
           {(search || status !== "all" || paymentStatus !== "all" || fromDate || toDate) && (
             <Button size="sm" variant="ghost" onClick={clearFilters}>Clear</Button>
           )}
-          <Button size="sm" variant="outline" onClick={refresh} isLoading={isLoading}>Refresh</Button>
+          <RefreshButton onClick={refresh} isLoading={isLoading} aria-label="Refresh quotations" />
         </HStack>
       </Flex>
 

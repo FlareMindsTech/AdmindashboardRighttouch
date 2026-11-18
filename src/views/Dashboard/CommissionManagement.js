@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import AppModal from "components/common/AppModal";
+import RefreshButton from "components/common/RefreshButton";
 import StatusBadge from "components/common/StatusBadge";
 import { useAppToast } from "components/feedback";
 import ErrorState from "components/feedback/ErrorState";
@@ -78,7 +79,6 @@ import {
   MdEdit,
   MdVisibility,
   MdFilterList,
-  MdRefresh,
   MdTrendingUp,
   MdOutlineTrendingDown,
   MdSchedule,
@@ -831,20 +831,14 @@ export default function CommissionManagement() {
                   Export CSV
                 </Button>
               )}
-              <Button
-                leftIcon={<MdRefresh />}
-                size="sm"
-                variant="outline"
-                borderRadius="8px"
-                borderColor="gray.300"
+              <RefreshButton
                 onClick={() => {
                   if (activeTab === 0) fetchCommissions();
                   if (activeTab === 1) fetchBookingsList();
                   if (activeTab === 3) fetchAuditLogsList();
                 }}
-              >
-                Refresh
-              </Button>
+                aria-label="Refresh commission data"
+              />
             </HStack>
           </Flex>
 

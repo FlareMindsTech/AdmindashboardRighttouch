@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useAppToast } from "components/feedback";
 import AppModal from "components/common/AppModal";
+import RefreshButton from "components/common/RefreshButton";
 import ErrorState from "components/feedback/ErrorState";
 import {
   Box,
@@ -130,7 +131,11 @@ export default function SkillRequests() {
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
               </Select>
-              <Button size="sm" onClick={fetchList} variant="brand">Refresh</Button>
+              <RefreshButton
+                isLoading={loading}
+                onClick={fetchList}
+                aria-label="Refresh skill requests"
+              />
             </HStack>
           </Flex>
         </CardHeader>

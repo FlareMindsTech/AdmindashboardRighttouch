@@ -32,6 +32,7 @@ import {
 import { useAppToast } from "components/feedback";
 import ErrorState from "components/feedback/ErrorState";
 import AppModal from "components/common/AppModal";
+import RefreshButton from "components/common/RefreshButton";
 import StatusBadge from "components/common/StatusBadge";
 
 import {
@@ -50,7 +51,6 @@ import {
   MdPayments,
   MdHistory,
   MdPerson,
-  MdRefresh,
   MdVisibility,
   MdAccountBalanceWallet,
   MdTrendingUp,
@@ -507,20 +507,14 @@ export default function FinanceTracking() {
             >
               Export CSV
             </Button>
-            <Button
-              size="sm"
-              bg={BRAND}
-              color="white"
-              borderRadius="10px"
-              fontWeight="700"
-              _hover={{ bg: "#006666" }}
-              _active={{ bg: "#004d4d" }}
-              leftIcon={<MdRefresh size={16} />}
-              isLoading={isLoadingSummary || isLoadingBreakdown || isLoadingPayments}
+            <RefreshButton
+              isLoading={
+                isLoadingSummary || isLoadingBreakdown || isLoadingPayments
+              }
               onClick={handleRefreshAll}
-            >
-              Refresh Data
-            </Button>
+              label="Refresh"
+              aria-label="Refresh finance data"
+            />
           </HStack>
         </Flex>
 

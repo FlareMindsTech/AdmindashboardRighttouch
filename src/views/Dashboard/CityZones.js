@@ -50,6 +50,7 @@
 
 import Card from "components/Card/Card.js";
 import AppModal from "components/common/AppModal";
+import RefreshButton from "components/common/RefreshButton";
 import { useAppToast } from "components/feedback";
 import ErrorState from "components/feedback/ErrorState";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
@@ -4937,20 +4938,13 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     Add All 38 Districts
                   </Button>
                   {activeTab === 4 && (
-                    <Button
-                      leftIcon={<MdRefresh />}
-                      size="sm"
-                      variant="outline"
-                      borderRadius="8px"
-                      borderColor="gray.300"
-                      fontWeight="600"
+                    <RefreshButton
                       onClick={() => {
                         fetchHealthAndMonitor();
                         handleFetchSpatialHierarchy();
                       }}
-                    >
-                      Refresh Telemetry
-                    </Button>
+                      aria-label="Refresh telemetry"
+                    />
                   )}
                 </HStack>
               </Flex>
@@ -5123,18 +5117,11 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
 
                   <Box flex="1" />
 
-                  <Button
-                    leftIcon={<MdRefresh />}
-                    size="sm"
-                    variant="outline"
-                    borderRadius="8px"
-                    borderColor="gray.300"
-                    color="gray.700"
+                  <RefreshButton
                     onClick={fetchData}
                     isLoading={isLoading}
-                  >
-                    Refresh
-                  </Button>
+                    aria-label="Refresh city zones"
+                  />
                 </Flex>
               )}
             </CardHeader>

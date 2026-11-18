@@ -64,7 +64,6 @@ import {
   InputLeftElement,
   InputRightElement,
   Progress,
-  Tooltip,
 } from "@chakra-ui/react";
 
 
@@ -75,6 +74,7 @@ import CardHeader from "components/Card/CardHeader.js";
 import IconBox from "components/common/IconBox";
 import { MobileCard, MobileCardActions } from "components/common/MobileCard";
 import DataTable from "components/common/DataTable";
+import RefreshButton from "components/common/RefreshButton";
 import StatusBadge from "components/common/StatusBadge";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
 import ErrorState from "components/feedback/ErrorState";
@@ -106,7 +106,6 @@ import {
   FaFilter,
   FaRedo,
   FaTrophy,
-  FaSyncAlt,
 } from "react-icons/fa";
 import { MdCategory, MdInventory, MdWarning, MdAttachMoney } from "react-icons/md";
 
@@ -2461,21 +2460,6 @@ export default function ServiceManagement() {
                   minW={{ base: "0", sm: "200px" }}
                   w="100%"
                 >
-                  <Tooltip label="Refresh Services & Categories" hasArrow placement="top">
-                    <IconButton
-                      icon={<Icon as={FaSyncAlt} boxSize={3.5} />}
-                      aria-label="Refresh Services"
-                      size="sm"
-                      mr={2}
-                      variant="outline"
-                      color={customColor}
-                      borderColor={`${customColor}50`}
-                      _hover={{ bg: `${customColor}10`, borderColor: customColor }}
-                      _active={{ bg: `${customColor}20`, borderColor: customColor }}
-                      isLoading={isLoadingData}
-                      onClick={fetchData}
-                    />
-                  </Tooltip>
                   <Input
                     placeholder={
                       currentView === "categories"
@@ -2511,6 +2495,19 @@ export default function ServiceManagement() {
                     </Button>
                   )}
                 </Flex>
+              )}
+
+              {(currentView === "categories" || currentView === "services") && (
+                <RefreshButton
+                  iconOnly
+                  isLoading={isLoadingData}
+                  onClick={fetchData}
+                  aria-label="Refresh services and categories"
+                  color={customColor}
+                  borderColor={`${customColor}50`}
+                  _hover={{ bg: `${customColor}10`, borderColor: customColor }}
+                  _active={{ bg: `${customColor}20`, borderColor: customColor }}
+                />
               )}
 
               {/* Add Button - Only show for categories and services */}

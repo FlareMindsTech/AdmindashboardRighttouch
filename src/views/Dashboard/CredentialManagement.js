@@ -10,7 +10,6 @@ import {
   FormLabel,
   HStack,
   Heading,
-  IconButton,
   Input,
   Select,
   Spinner,
@@ -26,12 +25,13 @@ import {
   Tr,
   VStack,
 } from "@chakra-ui/react";
-import { AddIcon, RepeatIcon } from "@chakra-ui/icons";
+import { AddIcon } from "@chakra-ui/icons";
 import { FaUserShield } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import AppModal from "components/common/AppModal";
+import RefreshButton from "components/common/RefreshButton";
 import StatusBadge from "components/common/StatusBadge";
 import FormErrorSummary from "components/feedback/FormErrorSummary";
 import { useAppToast } from "components/feedback";
@@ -367,11 +367,9 @@ export default function CredentialManagement() {
             </HStack>
 
             <HStack spacing={2} justify={{ base: "flex-start", md: "flex-end" }}>
-              <IconButton
+              <RefreshButton
+                iconOnly
                 aria-label="Refresh credentials"
-                icon={<RepeatIcon />}
-                variant="outline"
-                borderColor="gray.200"
                 onClick={fetchUsers}
                 isLoading={loading}
               />

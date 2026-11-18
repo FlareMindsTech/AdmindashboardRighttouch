@@ -31,12 +31,12 @@ import {
   FaKey,
   FaUser,
   FaSearch,
-  FaRedo,
 } from "react-icons/fa";
 import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
 import SharedStatCard from "components/common/StatCard";
+import RefreshButton from "components/common/RefreshButton";
 import StatusBadge from "components/common/StatusBadge";
 import { getUserPermissions, getPermissionsAnalytics } from "api/permissions";
 import { useAppDispatch, useAppSelector } from "store/hooks";
@@ -217,16 +217,11 @@ export default function PermissionsManagement() {
                 User Permissions & Access Inspector
               </Heading>
             </Box>
-            <Button
-              size="sm"
-              variant="outline"
-              borderColor="gray.300"
-              leftIcon={<Icon as={FaRedo} boxSize="12px" />}
+            <RefreshButton
               isLoading={analyticsLoading}
               onClick={loadAnalytics}
-            >
-              Refresh Analytics
-            </Button>
+              aria-label="Refresh permissions analytics"
+            />
           </Flex>
         </CardHeader>
 

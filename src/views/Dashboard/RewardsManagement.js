@@ -12,6 +12,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useAppToast } from "components/feedback";
 import ErrorState from "components/feedback/ErrorState";
 import AppModal from "components/common/AppModal";
+import RefreshButton from "components/common/RefreshButton";
 import StatusBadge from "components/common/StatusBadge";
 import {
   Box,
@@ -284,9 +285,11 @@ export default function RewardsManagement() {
               <Heading size="md">Rewards & Loyalty Hub</Heading>
             </Box>
             <HStack>
-              <Button size="sm" variant="outline" onClick={loadOverview}>
-                Refresh Metrics
-              </Button>
+              <RefreshButton
+                isLoading={loading}
+                onClick={loadOverview}
+                aria-label="Refresh rewards metrics"
+              />
             </HStack>
           </Flex>
         </CardHeader>
@@ -402,9 +405,13 @@ export default function RewardsManagement() {
                       Apply Filters
                     </Button>
                   </HStack>
-                  <Button size="sm" variant="ghost" onClick={loadWallets}>
-                    Refresh Wallets
-                  </Button>
+                  <RefreshButton
+                    variant="ghost"
+                    label="Refresh wallets"
+                    isLoading={walletsLoading}
+                    onClick={loadWallets}
+                    aria-label="Refresh wallets"
+                  />
                 </Flex>
 
                 {walletsLoading ? (
@@ -477,9 +484,13 @@ export default function RewardsManagement() {
                       Filter Ledger
                     </Button>
                   </HStack>
-                  <Button size="sm" variant="ghost" onClick={loadTransactions}>
-                    Refresh Ledger
-                  </Button>
+                  <RefreshButton
+                    variant="ghost"
+                    label="Refresh ledger"
+                    isLoading={txLoading}
+                    onClick={loadTransactions}
+                    aria-label="Refresh ledger"
+                  />
                 </Flex>
 
                 {txLoading ? (
@@ -551,9 +562,13 @@ export default function RewardsManagement() {
                       Filter Redemptions
                     </Button>
                   </HStack>
-                  <Button size="sm" variant="ghost" onClick={loadRedemptions}>
-                    Refresh Redemptions
-                  </Button>
+                  <RefreshButton
+                    variant="ghost"
+                    label="Refresh redemptions"
+                    isLoading={redemptionsLoading}
+                    onClick={loadRedemptions}
+                    aria-label="Refresh redemptions"
+                  />
                 </Flex>
 
                 {redemptionsLoading ? (

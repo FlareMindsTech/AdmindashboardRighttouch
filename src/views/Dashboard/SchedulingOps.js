@@ -64,11 +64,10 @@ import {
   FaUserClock,
   FaWrench,
 } from "react-icons/fa";
-import { MdRefresh } from "react-icons/md";
-
 import Card from "components/Card/Card.js";
 import { useAppToast } from "components/feedback";
 import TablePagination from "components/common/TablePagination";
+import RefreshButton from "components/common/RefreshButton";
 import StatusBadge from "components/common/StatusBadge";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
 
@@ -81,6 +80,7 @@ import {
   getAllSchedulingBookings,
   retryDispatch,
 } from "api/scheduling";
+import { listDistricts } from "api/districts";
 
 import {
   formatFriendlyDateTime,
@@ -145,6 +145,54 @@ const scheduleTimeOf = (booking) => {
   if (!value) return 0;
   const time = new Date(value).getTime();
   return Number.isNaN(time) ? 0 : time;
+};
+
+const createdTimeOf = (booking) => {
+  const value =
+    booking?.createdAt ||
+    booking?.created_at ||
+    booking?.bookedAt ||
+    booking?.booked_at;
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+};
+
+const districtIdOf = (booking) => {
+  const value =
+    booking?.districtId ||
+    booking?.district ||
+    booking?.addressSnapshot?.districtId;
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  return String(value._id || value.id || value.districtId || "");
+};
+
+const districtNameOf = (booking, lookup = {}) => {
+  const districtObject =
+    booking?.districtId && typeof booking.districtId === "object"
+      ? booking.districtId
+      : booking?.district && typeof booking.district === "object"
+      ? booking.district
+      : null;
+
+  if (districtObject) {
+    const direct =
+      districtObject.name ||
+      districtObject.districtName ||
+      districtObject.city;
+    if (direct) return direct;
+  }
+  const name =
+    booking?.districtName ||
+    booking?.district_name ||
+    booking?.addressSnapshot?.district;
+  if (name) return name;
+
+  const id = districtIdOf(booking);
+  if (id && lookup[id]) return lookup[id];
+  if (typeof booking?.district === "string") return booking.district;
+  return id ? "Unknown district" : "Unassigned";
 };
 
 const noShowStatusOf = (booking) => {
@@ -269,7 +317,9 @@ export default function SchedulingOps() {
   const [bookingSearch, setBookingSearch] = useState("");
   const [bookingStatusFilter, setBookingStatusFilter] = useState("ALL");
   const [bookingTypeFilter, setBookingTypeFilter] = useState("ALL");
-  const [bookingSort, setBookingSort] = useState("SOONEST");
+  const [bookingDistrictFilter, setBookingDistrictFilter] = useState("ALL");
+  const [bookingSort, setBookingSort] = useState("NEWEST");
+  const [districts, setDistricts] = useState([]);
   const [bookingPage, setBookingPage] = useState(1);
   const [bookingLimit, setBookingLimit] = useState(15);
   const [bookingRetryId, setBookingRetryId] = useState(null);
@@ -379,6 +429,18 @@ export default function SchedulingOps() {
     [toast]
   );
 
+  const loadDistricts = useCallback(async () => {
+    const { data, error } = await listDistricts();
+
+    if (error) return;
+
+    const response = data?.result ?? data?.data ?? data ?? [];
+    const items = Array.isArray(response)
+      ? response
+      : response?.districts ?? response?.items ?? [];
+    setDistricts(items);
+  }, []);
+
   useEffect(() => {
     const isMounted = { current: true };
 
@@ -386,6 +448,7 @@ export default function SchedulingOps() {
       await Promise.all([
         loadTelemetry(isMounted),
         loadLiveBookings(isMounted),
+        loadDistricts(),
       ]);
       if (isMounted.current) setLastUpdated(new Date());
     };
@@ -395,7 +458,7 @@ export default function SchedulingOps() {
     return () => {
       isMounted.current = false;
     };
-  }, [loadTelemetry, loadLiveBookings]);
+  }, [loadTelemetry, loadLiveBookings, loadDistricts]);
 
   useEffect(() => {
     if (!autoRefresh) return undefined;
@@ -421,10 +484,11 @@ export default function SchedulingOps() {
     await Promise.all([
       loadTelemetry(isMounted),
       loadLiveBookings(isMounted),
+      loadDistricts(),
     ]);
     setRefreshing(false);
     setLastUpdated(new Date());
-  }, [loadTelemetry, loadLiveBookings]);
+  }, [loadTelemetry, loadLiveBookings, loadDistricts]);
 
   const openConfirm = (action) => {
     setConfirmAction(action);
@@ -580,6 +644,58 @@ export default function SchedulingOps() {
       })
     : "not loaded yet";
 
+  const districtLookup = useMemo(() => {
+    const lookup = {};
+
+    districts.forEach((district) => {
+      const id = String(district?._id || district?.id || "");
+      if (!id) return;
+      lookup[id] =
+        district.name ||
+        district.districtName ||
+        district.city ||
+        "Unnamed district";
+    });
+
+    bookings.forEach((booking) => {
+      const rawDistrict =
+        booking?.districtId && typeof booking.districtId === "object"
+          ? booking.districtId
+          : booking?.district;
+      if (!rawDistrict || typeof rawDistrict !== "object") return;
+      const id = String(rawDistrict._id || rawDistrict.id || "");
+      if (!id) return;
+      lookup[id] =
+        rawDistrict.name ||
+        rawDistrict.districtName ||
+        rawDistrict.city ||
+        lookup[id] ||
+        "Unnamed district";
+    });
+
+    return lookup;
+  }, [districts, bookings]);
+
+  const districtOptions = useMemo(() => {
+    const counts = new Map();
+
+    bookings.forEach((booking) => {
+      const id = districtIdOf(booking) || "UNASSIGNED";
+      counts.set(id, (counts.get(id) || 0) + 1);
+    });
+
+    return Array.from(counts.entries())
+      .map(([id, count]) => ({
+        id,
+        name:
+          id === "UNASSIGNED"
+            ? "Unassigned"
+            : districtLookup[id] || "Unknown district",
+        count,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [bookings, districtLookup]);
+
   const filteredBookings = useMemo(() => {
     return bookings.filter((booking) => {
       const status = String(booking.status || "").toLowerCase();
@@ -587,8 +703,16 @@ export default function SchedulingOps() {
       const currentTechnician = currentTechnicianOf(booking);
       const noShow = hasNoShowClaim(booking);
       const typeKey = getBookingTypeMeta(booking).key.toUpperCase();
+      const districtKey = districtIdOf(booking) || "UNASSIGNED";
 
       if (bookingTypeFilter !== "ALL" && typeKey !== bookingTypeFilter) {
+        return false;
+      }
+
+      if (
+        bookingDistrictFilter !== "ALL" &&
+        districtKey !== bookingDistrictFilter
+      ) {
         return false;
       }
 
@@ -622,12 +746,20 @@ export default function SchedulingOps() {
         customerPhoneOf(booking),
         serviceNameOf(booking),
         technicianName,
+        districtNameOf(booking, districtLookup),
       ]
         .join(" ")
         .toLowerCase()
         .includes(query);
     });
-  }, [bookings, bookingSearch, bookingStatusFilter, bookingTypeFilter]);
+  }, [
+    bookings,
+    bookingSearch,
+    bookingStatusFilter,
+    bookingTypeFilter,
+    bookingDistrictFilter,
+    districtLookup,
+  ]);
 
   const sortedBookings = useMemo(() => {
     const list = [...filteredBookings];
@@ -638,8 +770,26 @@ export default function SchedulingOps() {
       );
     }
 
+    if (bookingSort === "NEWEST") {
+      return list.sort(
+        (a, b) =>
+          createdTimeOf(b) - createdTimeOf(a) ||
+          scheduleTimeOf(b) - scheduleTimeOf(a)
+      );
+    }
+
     return list.sort(sortBySchedule(bookingSort === "LATEST" ? "desc" : "asc"));
   }, [filteredBookings, bookingSort]);
+
+  const latestBooking = useMemo(() => {
+    if (filteredBookings.length === 0) return null;
+
+    return [...filteredBookings].sort(
+      (a, b) =>
+        createdTimeOf(b) - createdTimeOf(a) ||
+        scheduleTimeOf(b) - scheduleTimeOf(a)
+    )[0];
+  }, [filteredBookings]);
 
   const pagedBookings = useMemo(() => {
     const start = (bookingPage - 1) * bookingLimit;
@@ -654,13 +804,15 @@ export default function SchedulingOps() {
   const hasActiveFilters =
     bookingSearch.trim() !== "" ||
     bookingStatusFilter !== "ALL" ||
-    bookingTypeFilter !== "ALL";
+    bookingTypeFilter !== "ALL" ||
+    bookingDistrictFilter !== "ALL";
 
   const clearFilters = () => {
     setBookingSearch("");
     setBookingStatusFilter("ALL");
     setBookingTypeFilter("ALL");
-    setBookingSort("SOONEST");
+    setBookingDistrictFilter("ALL");
+    setBookingSort("NEWEST");
     setBookingPage(1);
   };
 
@@ -903,17 +1055,11 @@ export default function SchedulingOps() {
               </Button>
             )}
 
-            <Button
-              size="sm"
-              variant="outline"
-              leftIcon={<MdRefresh size={16} />}
-              borderRadius="10px"
-              fontWeight="700"
+            <RefreshButton
               isLoading={refreshing}
               onClick={handleRefreshAll}
-            >
-              Refresh
-            </Button>
+              aria-label="Refresh scheduling and dispatch"
+            />
 
             <Menu placement="bottom-end">
               <MenuButton
@@ -1172,6 +1318,110 @@ export default function SchedulingOps() {
 
           <TabPanels>
             <TabPanel px={{ base: 3, md: 5 }} py={5}>
+              {latestBooking && (
+                <Box
+                  mb={4}
+                  p={{ base: 4, md: 5 }}
+                  borderRadius="14px"
+                  border="1px solid"
+                  borderColor={isDark ? "teal.700" : "teal.200"}
+                  bg={isDark ? "gray.800" : "teal.50"}
+                >
+                  <Flex
+                    direction={{ base: "column", lg: "row" }}
+                    justify="space-between"
+                    align={{ base: "stretch", lg: "center" }}
+                    gap={4}
+                  >
+                    <Box minW={0}>
+                      <HStack spacing={2} flexWrap="wrap" mb={2}>
+                        <Badge
+                          colorScheme="teal"
+                          borderRadius="full"
+                          px={2.5}
+                          fontSize="2xs"
+                        >
+                          Latest job
+                        </Badge>
+                        <Text
+                          fontSize="xs"
+                          fontFamily="mono"
+                          fontWeight="800"
+                          color={isDark ? "teal.200" : "teal.700"}
+                        >
+                          #{bookingIdOf(latestBooking).slice(-8) || "—"}
+                        </Text>
+                        {renderDispatchBadge(latestBooking)}
+                      </HStack>
+
+                      <Text
+                        fontSize={{ base: "md", md: "lg" }}
+                        fontWeight="800"
+                        color={isDark ? "gray.100" : "gray.800"}
+                        noOfLines={1}
+                      >
+                        {customerNameOf(latestBooking)} ·{" "}
+                        {serviceNameOf(latestBooking)}
+                      </Text>
+
+                      <HStack
+                        spacing={{ base: 2, md: 4 }}
+                        mt={2}
+                        flexWrap="wrap"
+                        color={isDark ? "gray.400" : "gray.600"}
+                      >
+                        <HStack spacing={1.5}>
+                          <Icon as={FaMapMarkerAlt} boxSize={3} />
+                          <Text fontSize="xs" fontWeight="600">
+                            {districtNameOf(latestBooking, districtLookup)}
+                          </Text>
+                        </HStack>
+                        <HStack spacing={1.5}>
+                          <Icon as={FaCalendarAlt} boxSize={3} />
+                          <Text fontSize="xs" fontWeight="600">
+                            {scheduleLabelOf(latestBooking)}
+                          </Text>
+                        </HStack>
+                        <Text
+                          fontSize="sm"
+                          fontWeight="800"
+                          color={isDark ? "teal.200" : "teal.700"}
+                        >
+                          {formatFriendlyCurrency(
+                            bookingAmountOf(latestBooking)
+                          )}
+                        </Text>
+                      </HStack>
+                    </Box>
+
+                    <HStack spacing={2} flexShrink={0}>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        leftIcon={<FaEye size={10} />}
+                        isDisabled={!bookingIdOf(latestBooking)}
+                        onClick={() =>
+                          handleOpenDrawer(bookingIdOf(latestBooking))
+                        }
+                      >
+                        Details
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        leftIcon={<FaBullhorn size={10} />}
+                        isDisabled={!bookingIdOf(latestBooking)}
+                        onClick={() =>
+                          handleOpenTracker(bookingIdOf(latestBooking))
+                        }
+                      >
+                        Track
+                      </Button>
+                    </HStack>
+                  </Flex>
+                </Box>
+              )}
+
               <Flex
                 direction={{ base: "column", lg: "row" }}
                 justify="space-between"
@@ -1248,7 +1498,26 @@ export default function SchedulingOps() {
 
                   <Select
                     size="sm"
-                    maxW={{ base: "100%", md: "190px" }}
+                    maxW={{ base: "100%", md: "220px" }}
+                    value={bookingDistrictFilter}
+                    onChange={(event) => {
+                      setBookingDistrictFilter(event.target.value);
+                      setBookingPage(1);
+                    }}
+                    borderRadius="8px"
+                    aria-label="Filter bookings by district"
+                  >
+                    <option value="ALL">All districts</option>
+                    {districtOptions.map((district) => (
+                      <option key={district.id} value={district.id}>
+                        {district.name} ({district.count})
+                      </option>
+                    ))}
+                  </Select>
+
+                  <Select
+                    size="sm"
+                    maxW={{ base: "100%", md: "200px" }}
                     value={bookingSort}
                     onChange={(event) => {
                       setBookingSort(event.target.value);
@@ -1257,6 +1526,7 @@ export default function SchedulingOps() {
                     borderRadius="8px"
                     aria-label="Sort bookings"
                   >
+                    <option value="NEWEST">Newest created</option>
                     <option value="SOONEST">Soonest scheduled</option>
                     <option value="LATEST">Latest scheduled</option>
                     <option value="CUSTOMER">Customer name</option>
@@ -1426,6 +1696,12 @@ export default function SchedulingOps() {
                                         <Icon as={FaCalendarAlt} boxSize={2.5} color="gray.400" />
                                         <Text fontSize="2xs" color="gray.500" fontWeight="600">
                                           {scheduleLabelOf(booking)}
+                                        </Text>
+                                      </HStack>
+                                      <HStack spacing={1.5}>
+                                        <Icon as={FaMapMarkerAlt} boxSize={2.5} color="gray.400" />
+                                        <Text fontSize="2xs" color="gray.500" fontWeight="600" noOfLines={1}>
+                                          {districtNameOf(booking, districtLookup)}
                                         </Text>
                                       </HStack>
                                     </VStack>
@@ -1694,6 +1970,12 @@ export default function SchedulingOps() {
                                   <Text fontSize="2xs" color="gray.500">
                                     {scheduleLabelOf(booking)}
                                   </Text>
+                                  <HStack spacing={1.5} color="gray.500">
+                                    <Icon as={FaMapMarkerAlt} boxSize={2.5} />
+                                    <Text fontSize="2xs" fontWeight="600" noOfLines={1}>
+                                      {districtNameOf(booking, districtLookup)}
+                                    </Text>
+                                  </HStack>
                                 </VStack>
                                 <Text fontSize="sm" fontWeight="800" whiteSpace="nowrap">
                                   {formatFriendlyCurrency(bookingAmountOf(booking))}

@@ -42,7 +42,9 @@ import {
   FaUndoAlt,
   FaPaperPlane,
 } from "react-icons/fa";
-import { MdRefresh, MdFileDownload, MdArrowDropDown } from "react-icons/md";
+import { MdFileDownload, MdArrowDropDown } from "react-icons/md";
+
+import RefreshButton from "components/common/RefreshButton";
 
 // Reusable TechnicianPayouts Components
 import {
@@ -495,18 +497,11 @@ export default function TechnicianPayouts() {
             </Menu>
 
             {/* Refresh Button */}
-            <Button
-              size="sm"
-              variant="outline"
-              borderRadius="10px"
-              fontWeight="700"
-              leftIcon={<MdRefresh size={16} />}
+            <RefreshButton
               isLoading={refreshing}
-              loadingText="Refreshing..."
               onClick={handleRefreshAll}
-            >
-              Refresh
-            </Button>
+              aria-label="Refresh payouts"
+            />
           </HStack>
         </Flex>
 

@@ -3,6 +3,7 @@ import AppModal from "components/common/AppModal";
 import { useAppToast } from "components/feedback";
 import ErrorState from "components/feedback/ErrorState";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
+import RefreshButton from "components/common/RefreshButton";
 import {
   Box,
   Flex,
@@ -41,7 +42,6 @@ import {
   MdStarBorder,
   MdReport,
   MdCheckCircle,
-  MdRefresh,
   MdSearch,
   MdRateReview,
   MdOutlineRateReview,
@@ -1004,20 +1004,12 @@ export default function ReportsManagement() {
             >
               Export CSV
             </Button>
-            <Button
-              size="sm"
-              bg={BRAND}
-              color="white"
-              borderRadius="10px"
-              fontWeight="700"
-              _hover={{ bg: "#006666" }}
-              _active={{ bg: "#004d4d" }}
-              leftIcon={<MdRefresh size={16} />}
+            <RefreshButton
               isLoading={isLoading}
               onClick={fetchData}
-            >
-              Refresh Desk
-            </Button>
+              label="Refresh"
+              aria-label="Refresh reports and ratings"
+            />
           </HStack>
         </Flex>
 

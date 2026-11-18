@@ -42,13 +42,13 @@ import {
   FaRedoAlt,
   FaSearch,
   FaShieldAlt,
-  FaSyncAlt,
   FaTimes,
   FaUndoAlt,
   FaUniversity,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import AppModal from "components/common/AppModal";
+import RefreshButton from "components/common/RefreshButton";
 import ErrorState from "components/feedback/ErrorState";
 import TablePagination from "components/common/TablePagination";
 import StatusBadge from "components/common/StatusBadge";
@@ -705,18 +705,15 @@ export default function AdminPayments() {
                 workspace. Every action is recorded for audit.
               </Text>
               <HStack spacing={3} mt={6} flexWrap="wrap">
-                <Button
-                  size="sm"
+                <RefreshButton
                   bg="white"
                   color="teal.800"
-                  fontWeight="800"
-                  borderRadius="10px"
-                  leftIcon={<Icon as={FaSyncAlt} boxSize={3} />}
+                  borderColor="white"
                   _hover={{ bg: "teal.50", transform: "translateY(-1px)" }}
+                  isLoading={loading}
                   onClick={loadRefunds}
-                >
-                  Refresh
-                </Button>
+                  aria-label="Refresh refunds"
+                />
                 <Button
                   size="sm"
                   variant="ghost"
@@ -917,16 +914,11 @@ export default function AdminPayments() {
                   Clear filters
                 </Button>
               ) : null}
-              <Button
-                size="xs"
-                variant="outline"
-                colorScheme="teal"
-                leftIcon={<Icon as={FaSyncAlt} boxSize={2.5} />}
+              <RefreshButton
                 isLoading={loading}
                 onClick={loadRefunds}
-              >
-                Refresh
-              </Button>
+                aria-label="Refresh refund ledger"
+              />
             </HStack>
           </Flex>
 

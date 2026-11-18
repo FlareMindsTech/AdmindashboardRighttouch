@@ -32,6 +32,7 @@ import Card from "components/Card/Card.js";
 import CardBody from "components/Card/CardBody.js";
 import CardHeader from "components/Card/CardHeader.js";
 import SharedStatCard from "components/common/StatCard";
+import RefreshButton from "components/common/RefreshButton";
 import StatusBadge from "components/common/StatusBadge";
 import {
   getProductDashboard,
@@ -135,9 +136,14 @@ export default function ProductInsights() {
             <Box>
               <Heading size="md">Product Insights & Audit Ledger</Heading>
             </Box>
-            <Button size="sm" variant="brand" onClick={() => { loadSummary(); loadTab(); }}>
-              Refresh Data
-            </Button>
+            <RefreshButton
+              isLoading={loading}
+              onClick={() => {
+                loadSummary();
+                loadTab();
+              }}
+              aria-label="Refresh product insights"
+            />
           </Flex>
         </CardHeader>
         <CardBody>

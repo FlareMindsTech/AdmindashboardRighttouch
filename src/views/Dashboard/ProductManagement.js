@@ -182,7 +182,6 @@ import {
   FaMapMarkerAlt,
   FaInfoCircle,
   FaLayerGroup,
-  FaSyncAlt,
   FaPercent,
   FaCreditCard,
   FaQuestionCircle,
@@ -195,6 +194,7 @@ import QuoteRequestsView from "./ProductManagement/QuoteRequestsView";
 import QuotationsView from "./ProductManagement/QuotationsView";
 import BookingsView from "./ProductManagement/BookingsView";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
+import RefreshButton from "components/common/RefreshButton";
 import StatusBadge from "components/common/StatusBadge";
 import { useAppToast } from "components/feedback";
 import ErrorState from "components/feedback/ErrorState";
@@ -3766,21 +3766,6 @@ export default function ProductManagement() {
                 minW={{ base: "0", sm: "220px" }}
                 w="100%"
               >
-                <IconButton
-                  icon={<Icon as={FaSyncAlt} boxSize={3.5} />}
-                  aria-label="Refresh Dashboard Data"
-                  title="Refresh All Dashboard Data"
-                  size="sm"
-                  mr={2}
-                  colorScheme="teal"
-                  variant="outline"
-                  borderColor={`${customColor}50`}
-                  color={customColor}
-                  _hover={{ bg: `${customColor}10`, borderColor: customColor }}
-                  _active={{ bg: `${customColor}20`, borderColor: customColor }}
-                  isLoading={isRefreshingData}
-                  onClick={handleRefreshAllData}
-                />
                 <Input
                   placeholder={
                     currentView === "categories"
@@ -3841,6 +3826,17 @@ export default function ProductManagement() {
                   </Button>
                 )}
               </Flex>
+
+              <RefreshButton
+                iconOnly
+                isLoading={isRefreshingData}
+                onClick={handleRefreshAllData}
+                aria-label="Refresh product management data"
+                color={customColor}
+                borderColor={`${customColor}50`}
+                _hover={{ bg: `${customColor}10`, borderColor: customColor }}
+                _active={{ bg: `${customColor}20`, borderColor: customColor }}
+              />
 
               <Button
                 bg={customColor}

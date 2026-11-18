@@ -55,9 +55,9 @@ import {
   FaEllipsisV,
   FaCheck,
   FaTimes,
-  FaSyncAlt,
 } from "react-icons/fa";
 import DataTable from "components/common/DataTable";
+import RefreshButton from "components/common/RefreshButton";
 import StatusBadge from "components/common/StatusBadge";
 import ConfirmActionModal from "components/common/ConfirmActionModal";
 import ErrorState from "components/feedback/ErrorState";
@@ -1647,22 +1647,6 @@ function AdminManagement() {
                   Skill Requests
                 </Button>
 
-                {/* Dedicated Refresh Button */}
-                <Tooltip label="Refresh Technicians & Verifications" hasArrow placement="top">
-                  <IconButton
-                    icon={<Icon as={FaSyncAlt} boxSize={3.5} />}
-                    aria-label="Refresh Technicians"
-                    size="sm"
-                    variant="outline"
-                    color={customColor}
-                    borderColor={`${customColor}50`}
-                    _hover={{ bg: `${customColor}10`, borderColor: customColor }}
-                    _active={{ bg: `${customColor}20`, borderColor: customColor }}
-                    isLoading={loading}
-                    onClick={fetchData}
-                  />
-                </Tooltip>
-
                 {/* Search */}
                 <InputGroup size="sm" maxW={{ base: "100%", sm: "300px" }}>
                   <Input
@@ -1819,6 +1803,17 @@ function AdminManagement() {
                     Reset Filters
                   </Button>
                 )}
+
+                <RefreshButton
+                  iconOnly
+                  isLoading={loading}
+                  onClick={fetchData}
+                  aria-label="Refresh technicians and verifications"
+                  color={customColor}
+                  borderColor={`${customColor}50`}
+                  _hover={{ bg: `${customColor}10`, borderColor: customColor }}
+                  _active={{ bg: `${customColor}20`, borderColor: customColor }}
+                />
               </Flex>
             </Flex>
           </CardHeader>

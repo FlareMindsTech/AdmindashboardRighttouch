@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
-  Button,
   Flex,
   Heading,
-  Icon,
   SimpleGrid,
   Stack,
   Text,
@@ -14,7 +12,6 @@ import {
   FaCalendarCheck,
   FaCheckCircle,
   FaRupeeSign,
-  FaSyncAlt,
   FaTools,
 } from "react-icons/fa";
 import { useAppDispatch, useAppSelector } from "store/hooks";
@@ -33,6 +30,7 @@ import {
   selectProductBookings,
 } from "store/slices/bookingsSlice";
 import LoadingState from "components/common/LoadingState";
+import RefreshButton from "components/common/RefreshButton";
 import KpiTile from "components/Dashboard/KpiTile";
 import RevenueTrendCard from "components/Dashboard/RevenueTrendCard";
 import RevenueMixCard from "components/Dashboard/RevenueMixCard";
@@ -325,20 +323,12 @@ export default function Dashboard() {
               {isOwner ? "Dashboard Overview" : "Operations Overview"}
             </Heading>
           </Box>
-          <Button
-            size="sm"
-            variant="outline"
-            color="#008080"
-            borderColor="#00808050"
-            _hover={{ bg: "#00808010", borderColor: "#008080" }}
-            _active={{ bg: "#00808020", borderColor: "#008080" }}
-            leftIcon={<Icon as={FaSyncAlt} />}
+          <RefreshButton
             isLoading={isRefreshing}
-            loadingText="Refreshing..."
             onClick={handleRefresh}
-          >
-            Refresh Dashboard
-          </Button>
+            label="Refresh"
+            aria-label="Refresh dashboard"
+          />
         </Flex>
 
         {isOwner ? (

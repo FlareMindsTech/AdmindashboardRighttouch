@@ -98,6 +98,7 @@ import DispatchQueueTab from "components/Scheduling/DispatchQueueTab";
 import TechnicianBaseLocationTab from "components/Scheduling/TechnicianBaseLocationTab";
 import NoShowCompensationTab from "components/Scheduling/NoShowCompensationTab";
 import ZoneHealthTab from "components/Scheduling/ZoneHealthTab";
+import ScheduleSlotSettingsTab from "components/Scheduling/ScheduleSlotSettingsTab";
 import BookingDetailDrawer from "components/Scheduling/BookingDetailDrawer";
 import NoShowCompensationModal from "components/Scheduling/NoShowCompensationModal";
 
@@ -129,6 +130,15 @@ const serviceNameOf = (booking) =>
 const bookingAmountOf = (booking) => getBookingAmount(booking);
 
 const scheduleValueOf = (booking) => getBookingScheduleInfo(booking).date;
+
+const scheduleLabelOf = (booking) => {
+  const info = getBookingScheduleInfo(booking);
+  const dateFormatted = info.date ? formatFriendlyDateTime(info.date) : "";
+  if (dateFormatted && dateFormatted !== "—") {
+    return info.timeLabel ? `${dateFormatted} (${info.timeLabel})` : dateFormatted;
+  }
+  return info.timeLabel || "—";
+};
 
 const scheduleTimeOf = (booking) => {
   const value = scheduleValueOf(booking);
@@ -932,6 +942,13 @@ export default function SchedulingOps() {
                 >
                   Restart dispatch worker
                 </MenuItem>
+                <MenuDivider />
+                <MenuItem
+                  icon={<FaClock size={11} />}
+                  onClick={() => setActiveMainTab(5)}
+                >
+                  Configure schedule slots
+                </MenuItem>
               </MenuList>
             </Menu>
           </HStack>
@@ -1142,6 +1159,13 @@ export default function SchedulingOps() {
               <HStack spacing={2}>
                 <Icon as={FaMapMarkedAlt} boxSize={3.5} />
                 <Text>Zone health</Text>
+              </HStack>
+            </Tab>
+
+            <Tab fontWeight="700" fontSize="sm" py={3.5} px={{ base: 3, md: 4 }} whiteSpace="nowrap">
+              <HStack spacing={2}>
+                <Icon as={FaClock} boxSize={3.5} />
+                <Text>Schedule slots</Text>
               </HStack>
             </Tab>
           </TabList>
@@ -1401,7 +1425,7 @@ export default function SchedulingOps() {
                                       <HStack spacing={1.5}>
                                         <Icon as={FaCalendarAlt} boxSize={2.5} color="gray.400" />
                                         <Text fontSize="2xs" color="gray.500" fontWeight="600">
-                                          {formatFriendlyDateTime(scheduleValueOf(booking))}
+                                          {scheduleLabelOf(booking)}
                                         </Text>
                                       </HStack>
                                     </VStack>
@@ -1668,7 +1692,7 @@ export default function SchedulingOps() {
                                     {serviceNameOf(booking)}
                                   </Text>
                                   <Text fontSize="2xs" color="gray.500">
-                                    {formatFriendlyDateTime(scheduleValueOf(booking))}
+                                    {scheduleLabelOf(booking)}
                                   </Text>
                                 </VStack>
                                 <Text fontSize="sm" fontWeight="800" whiteSpace="nowrap">
@@ -1810,6 +1834,10 @@ export default function SchedulingOps() {
 
             <TabPanel px={{ base: 3, md: 5 }} py={5}>
               <ZoneHealthTab />
+            </TabPanel>
+
+            <TabPanel px={{ base: 3, md: 5 }} py={5}>
+              <ScheduleSlotSettingsTab />
             </TabPanel>
           </TabPanels>
         </Tabs>

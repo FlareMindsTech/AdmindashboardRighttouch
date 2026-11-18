@@ -123,13 +123,25 @@ const firstText = (...values) => {
 };
 
 const personFullName = (person) => {
-  if (!person || typeof person !== "object") return "";
+  if (!person) return "";
+  if (typeof person === "string" && person.trim()) {
+    const trimmed = person.trim();
+    if (!/^[0-9a-fA-F]{24}$/.test(trimmed)) {
+      return trimmed;
+    }
+    return "";
+  }
+  if (typeof person !== "object") return "";
   const direct = firstText(
     person.name,
     person.fullName,
     person.displayName,
     person.customerName,
-    person.technicianName
+    person.technicianName,
+    person.clientName,
+    person.reportedBy,
+    person.userName,
+    person.contactName
   );
   if (direct) return direct;
   const combined = firstText(
@@ -144,25 +156,43 @@ const personFullName = (person) => {
     personFullName(person.userId) ||
     personFullName(person.user) ||
     personFullName(person.profile) ||
+    personFullName(person.customer) ||
+    personFullName(person.customerDetails) ||
+    personFullName(person.customerSnapshot) ||
     personFullName(person.customerId)
   );
 };
 
 const personPhoneNumber = (person) => {
-  if (!person || typeof person !== "object") return "";
+  if (!person) return "";
+  if (typeof person === "string" && person.trim()) {
+    const cleaned = person.replace(/[^\d+]/g, "");
+    if (cleaned.length >= 7) return person.trim();
+    return "";
+  }
+  if (typeof person !== "object") return "";
   return firstText(
     person.mobileNumber,
     person.mobile,
     person.phone,
     person.phoneNumber,
+    person.customerPhone,
+    person.customerMobile,
     person.contactNumber,
+    person.contactPhone,
     person.contact,
     person.userId?.mobileNumber,
     person.userId?.phone,
+    person.userId?.mobile,
     person.user?.mobileNumber,
     person.user?.phone,
+    person.user?.mobile,
     person.profile?.mobileNumber,
-    person.profile?.phone
+    person.profile?.phone,
+    person.customerDetails?.mobileNumber,
+    person.customerDetails?.phone,
+    person.customerSnapshot?.mobileNumber,
+    person.customerSnapshot?.phone
   );
 };
 
@@ -171,12 +201,24 @@ export const getBookingCustomerName = (booking) => {
   const name =
     personFullName(booking.customerSnapshot) ||
     personFullName(booking.customerId) ||
+    personFullName(booking.customerDetails) ||
     personFullName(booking.customer) ||
     personFullName(booking.user) ||
     personFullName(booking.userId) ||
+    personFullName(booking.client) ||
+    personFullName(booking.clientDetails) ||
     firstText(
       booking.customerName,
+      booking.clientName,
+      booking.reportedBy,
+      booking.userName,
+      booking.name,
+      booking.address?.name,
+      booking.address?.fullName,
+      booking.address?.customerName,
+      booking.address?.recipientName,
       booking.addressSnapshot?.name,
+      booking.addressSnapshot?.fullName,
       booking.addressId?.name
     );
   return name || "Customer";
@@ -187,13 +229,28 @@ export const getBookingCustomerPhone = (booking) => {
   return (
     personPhoneNumber(booking.customerSnapshot) ||
     personPhoneNumber(booking.customerId) ||
+    personPhoneNumber(booking.customerDetails) ||
     personPhoneNumber(booking.customer) ||
     personPhoneNumber(booking.user) ||
     personPhoneNumber(booking.userId) ||
+    personPhoneNumber(booking.client) ||
     firstText(
       booking.customerPhone,
+      booking.customerMobile,
+      booking.mobileNumber,
+      booking.mobile,
+      booking.phone,
+      booking.phoneNumber,
+      booking.contactNumber,
+      booking.contactPhone,
+      booking.address?.phone,
+      booking.address?.mobileNumber,
+      booking.address?.mobile,
+      booking.address?.contactNumber,
       booking.addressSnapshot?.phone,
-      booking.addressId?.phone
+      booking.addressSnapshot?.mobileNumber,
+      booking.addressId?.phone,
+      booking.addressId?.mobileNumber
     )
   );
 };
@@ -330,21 +387,55 @@ export const getBookingScheduleInfo = (booking) => {
     booking.slotStartAt ||
     booking.bookingDate ||
     booking.scheduledDate ||
+    booking.date ||
     booking.slotDate ||
     booking.scheduledFor ||
     booking.serviceDate ||
     booking.appointmentDate ||
     booking.scheduledDateLocal ||
+    booking.execution?.scheduledAt ||
+    booking.execution?.date ||
     booking.createdAt ||
     null;
-  const timeLabel = firstText(
+
+  let timeLabel = firstText(
     booking.slotLabel,
     booking.scheduledTimeLocal,
     booking.slotValue,
     booking.bookingTime,
     booking.slotTime,
-    booking.scheduledTime
+    booking.scheduledTime,
+    booking.timeSlot,
+    booking.timeslot,
+    booking.time
   );
+
+  if (!timeLabel && booking.slot) {
+    if (typeof booking.slot === "string") {
+      timeLabel = booking.slot;
+    } else if (typeof booking.slot === "object") {
+      if (booking.slot.label) {
+        timeLabel = booking.slot.label;
+      } else if (booking.slot.from && booking.slot.to) {
+        timeLabel = `${booking.slot.from} - ${booking.slot.to}`;
+      } else if (booking.slot.startTime && booking.slot.endTime) {
+        timeLabel = `${booking.slot.startTime} - ${booking.slot.endTime}`;
+      } else if (booking.slot.start && booking.slot.end) {
+        timeLabel = `${booking.slot.start} - ${booking.slot.end}`;
+      } else if (booking.slot.slot) {
+        timeLabel = String(booking.slot.slot);
+      }
+    }
+  }
+
+  if (!timeLabel && booking.execution?.slot) {
+    const es = booking.execution.slot;
+    if (typeof es === "string") timeLabel = es;
+    else if (typeof es === "object") {
+      timeLabel = es.label || `${es.from || es.start || ""} - ${es.to || es.end || ""}`.trim();
+    }
+  }
+
   return { date, timeLabel };
 };
 

@@ -74,3 +74,29 @@ export const getZoneHealthDashboard = () =>
  */
 export const updateNoShowCompensation = (bookingId, body) =>
   handle(apiClient.put(`/user/booking/${bookingId}/customer-no-show/compensation`, body));
+
+/* ================= 6. SCHEDULE SLOT SETTINGS ================= */
+
+/**
+ * Get global schedule slot configuration, defaults, and live preview.
+ */
+export const getScheduleSlotSettings = () =>
+  handle(apiClient.get("/admin/settings/schedule-slots"));
+
+/**
+ * Update global schedule slot configuration.
+ * @param {Object} body
+ * @param {number} body.scheduleDays - Days 1 to 30
+ * @param {number} body.windowStartHour - Hour 0 to 22 (24-hr)
+ * @param {number} body.windowEndHour - Hour 1 to 23 (end > start)
+ * @param {number} body.slotCount - Slots 1 to 12 (window must divide evenly, min 30 mins each)
+ */
+export const updateScheduleSlotSettings = (body) =>
+  handle(apiClient.put("/admin/settings/schedule-slots", body));
+
+/**
+ * Reset schedule slot configuration to default:
+ * 5 bookable days, 09:00 - 21:00 window, 4 slots.
+ */
+export const resetScheduleSlotSettings = () =>
+  handle(apiClient.post("/admin/settings/schedule-slots/reset"));

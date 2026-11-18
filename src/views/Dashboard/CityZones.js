@@ -726,13 +726,14 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       totalTechnicians: technicians.length,
     };
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (options = {}) => {
+      const forceTechnicians = options?.forceTechnicians ?? (activeTab === 3);
       try {
         setLoadError(null);
         setIsLoading(true);
         const supportPromise = Promise.all([
           dispatch(fetchServices()).unwrap().then((r) => r.list).catch(() => []),
-          dispatch(fetchTechniciansShared()).unwrap().then((r) => r.list).catch(() => ({ result: [], data: [], technicians: [] })),
+          dispatch(fetchTechniciansShared({ force: forceTechnicians })).unwrap().then((r) => r.list).catch(() => ({ result: [], data: [], technicians: [] })),
         ]);
         const [districtsData, zonesData, mappingsData, citiesData] = await Promise.all([
           getAllDistricts().catch(() => ({ result: [], data: [], districts: [] })),
@@ -757,7 +758,6 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
         setZones(Array.isArray(zonesRaw) ? zonesRaw : []);
         setMappings(Array.isArray(mappingsRaw) ? mappingsRaw : []);
         setCities(Array.isArray(citiesRaw) ? citiesRaw : []);
-        setIsLoading(false);
 
         const [servicesData, techData] = await supportPromise;
         const servicesRaw = (servicesData.result || servicesData.data || servicesData.services || servicesData || []).slice();
@@ -789,7 +789,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
           setIsLoading(false);
         }
       }
-    }, [dispatch, toast]);
+    }, [dispatch, toast, activeTab]);
 
     const fetchHealthAndMonitor = useCallback(async () => {
       try {
@@ -3938,7 +3938,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
     };
 
     // --- DIAGNOSTICS & MONITORING HANDLERS ---
-    const handleFetchSpatialHierarchy = async () => {
+    const handleFetchSpatialHierarchy = useCallback(async () => {
       try {
         setIsLoadingSpatialTree(true);
         const res = await getSpatialHierarchy();
@@ -3950,7 +3950,31 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       } finally {
         setIsLoadingSpatialTree(false);
       }
-    };
+    }, [toast]);
+
+    const handleContextualRefresh = useCallback(async () => {
+      try {
+        setIsLoading(true);
+        const tasks = [
+          fetchData({ forceTechnicians: activeTab === 3 }),
+        ];
+
+        if (activeTab === 2) {
+          tasks.push(fetchMatrixData());
+        } else if (activeTab === 4) {
+          tasks.push(fetchHealthAndMonitor());
+          if (typeof handleFetchSpatialHierarchy === "function") {
+            tasks.push(handleFetchSpatialHierarchy());
+          }
+        }
+
+        await Promise.all(tasks);
+      } finally {
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
+      }
+    }, [activeTab, fetchData, fetchMatrixData, fetchHealthAndMonitor, handleFetchSpatialHierarchy]);
 
     // F-01A: impact analysis uses the exact backend contract
     // ({ type: "district", id }) and surfaces failures explicitly instead of
@@ -4828,7 +4852,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
               compact
               error={loadError}
               title="Could not load location data"
-              onRetry={fetchData}
+              onRetry={handleContextualRefresh}
             />
           </Box>
         )}
@@ -4939,10 +4963,8 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   </Button>
                   {activeTab === 4 && (
                     <RefreshButton
-                      onClick={() => {
-                        fetchHealthAndMonitor();
-                        handleFetchSpatialHierarchy();
-                      }}
+                      onClick={handleContextualRefresh}
+                      isLoading={isLoading || isHealthLoading || isLoadingSpatialTree}
                       aria-label="Refresh telemetry"
                     />
                   )}
@@ -5118,7 +5140,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   <Box flex="1" />
 
                   <RefreshButton
-                    onClick={fetchData}
+                    onClick={handleContextualRefresh}
                     isLoading={isLoading}
                     aria-label="Refresh city zones"
                   />
@@ -5787,16 +5809,23 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           </Select>
                         </HStack>
 
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          leftIcon={<MdClear />}
-                          onClick={handleResetMatrixFilters}
-                          borderRadius="8px"
-                          bg="white"
-                        >
-                          Reset / Show All
-                        </Button>
+                        <HStack spacing={2}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            leftIcon={<MdClear />}
+                            onClick={handleResetMatrixFilters}
+                            borderRadius="8px"
+                            bg="white"
+                          >
+                            Reset / Show All
+                          </Button>
+                          <RefreshButton
+                            onClick={handleContextualRefresh}
+                            isLoading={isLoading}
+                            aria-label="Refresh service matrix"
+                          />
+                        </HStack>
                       </Flex>
                     </Box>
 

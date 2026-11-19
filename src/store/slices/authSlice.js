@@ -33,7 +33,7 @@ import {
 export { PRIVILEGED_ROLES, isAdminRole, isOwnerRole, isPrivilegedRole };
 
 const API_BASE_URL = (
-  process.env.REACT_APP_API_BASE_URL || "https://api.righttouchservice.com"
+  process.env.REACT_APP_API_BASE_URL || "http://13.206.118.180:7372"
 )
   .replace(/\/api\/?$/, "")
   .replace(/\/+$/, "");
@@ -136,6 +136,16 @@ export const verifySession = createAsyncThunk(
     try {
       // Expired access token + stored refresh token = silent restore.
       if (isJwtExpired(token)) {
+        if (!getRefreshToken()) {
+          clearAuth();
+          return rejectWithValue({
+            status: 401,
+            code: "SESSION_EXPIRED",
+            message: "Your session has expired. Please sign in again.",
+            detail: "",
+            keepSession: false,
+          });
+        }
         token = await refreshSession({ staleToken: token });
       }
 
@@ -144,6 +154,16 @@ export const verifySession = createAsyncThunk(
         res = await fetchProfile(token);
       } catch (err) {
         if (err.response?.status === 401) {
+          if (!getRefreshToken()) {
+            clearAuth();
+            return rejectWithValue({
+              status: 401,
+              code: "SESSION_EXPIRED",
+              message: "Your session has expired. Please sign in again.",
+              detail: "",
+              keepSession: false,
+            });
+          }
           token = await refreshSession({ staleToken: token });
           res = await fetchProfile(token);
         } else {
@@ -163,17 +183,6 @@ export const verifySession = createAsyncThunk(
         });
       }
 
-      // Upgrade sessions created before refresh tokens were deployed. The
-      // backend accepts a valid Bearer token on /auth/refresh once.
-      if (!getRefreshToken()) {
-        try {
-          token = await refreshSession({ staleToken: token });
-        } catch (err) {
-          // A transient failure must not invalidate an otherwise good session.
-          if (err?.terminal) throw err;
-        }
-      }
-
       const storedUser = getUser() || {};
       const userId =
         profile.userId || profile.id || profile._id || storedUser.id || storedUser.userId || "";
@@ -185,7 +194,7 @@ export const verifySession = createAsyncThunk(
       const isRefreshError = err?.name === "RefreshError";
       const terminal = isRefreshError
         ? Boolean(err.terminal)
-        : status === 401 || status === 403;
+        : status === 401 || status === 403 || status === 404;
 
       if (terminal) clearAuth();
 

@@ -11,7 +11,7 @@ import {
 } from "./authStorage";
 
 const API_BASE_URL = (
-  process.env.REACT_APP_API_BASE_URL || "https://api.righttouchservice.com"
+  process.env.REACT_APP_API_BASE_URL || "http://13.206.118.180:7372"
 )
   .replace(/\/api\/?$/, "")
   .replace(/\/+$/, "");
@@ -111,27 +111,14 @@ const doRefresh = async ({ staleToken, staleRefreshToken } = {}) => {
   }
 
   const refreshToken = getRefreshToken();
-  // Pre-refresh-token deployments: upgrade a still-valid access token once.
-  // The backend accepts a Bearer token on /auth/refresh for this rollout.
-  const legacyUpgrade = !refreshToken;
-  if (legacyUpgrade) {
-    // Logout cleared storage while this request waited for the lock.
-    if (staleRefreshToken) {
-      throw new RefreshError("Session ended", {
-        terminal: false,
-        status: 0,
-        code: "SESSION_ENDED",
-      });
-    }
-    if (!currentToken) {
-      const ended = Boolean(staleToken);
-      throw new RefreshError(ended ? "Session ended" : "No refresh token available", {
-        terminal: !ended,
-        status: ended ? 0 : 401,
-        code: ended ? "SESSION_ENDED" : "NO_REFRESH_TOKEN",
-      });
-    }
+  if (!refreshToken) {
+    throw new RefreshError("No refresh token available", {
+      terminal: true,
+      status: 401,
+      code: "NO_REFRESH_TOKEN",
+    });
   }
+
   // Logout (or another tab) changed the pair before we acquired the lock.
   if (staleRefreshToken && refreshToken && refreshToken !== staleRefreshToken) {
     if (currentToken) return currentToken;
@@ -144,19 +131,26 @@ const doRefresh = async ({ staleToken, staleRefreshToken } = {}) => {
 
   let response;
   try {
-    response = await refreshClient.post(
-      "/user/auth/refresh",
-      legacyUpgrade
-        ? undefined
-        : { refresh_token: refreshToken, refreshToken },
-      legacyUpgrade
-        ? { headers: { Authorization: `Bearer ${currentToken}` } }
-        : undefined
-    );
+    try {
+      response = await refreshClient.post("/admin/auth/refresh", {
+        refresh_token: refreshToken,
+        refreshToken,
+      });
+    } catch (adminErr) {
+      if (adminErr.response?.status === 404) {
+        response = await refreshClient.post("/user/auth/refresh", {
+          refresh_token: refreshToken,
+          refreshToken,
+        });
+      } else {
+        throw adminErr;
+      }
+    }
   } catch (err) {
     const status = err.response?.status || 0;
     const code = err.response?.data?.code || "";
-    const terminal = status === 400 || status === 401 || status === 403;
+    // Any 4xx client error (400, 401, 403, 404, etc.) on refresh means session is definitively unrecoverable -> terminal = true
+    const terminal = (status >= 400 && status < 500) || status === 0;
     throw new RefreshError(
       err.response?.data?.message ||
         err.message ||
@@ -174,32 +168,19 @@ const doRefresh = async ({ staleToken, staleRefreshToken } = {}) => {
     });
   }
 
-  if (legacyUpgrade) {
-    // Never resurrect a session that was logged out or replaced mid-flight.
+  // Never resurrect a session that was logged out, or clobber a pair that a
+  // different tab rotated while this request was in flight.
+  const latestRefreshToken = getRefreshToken();
+  if (!latestRefreshToken) {
+    throw new RefreshError("Session ended", {
+      terminal: false,
+      status: 0,
+      code: "SESSION_ENDED",
+    });
+  }
+  if (latestRefreshToken !== refreshToken) {
     const latestToken = getToken();
-    if (!latestToken) {
-      throw new RefreshError("Session ended", {
-        terminal: false,
-        status: 0,
-        code: "SESSION_ENDED",
-      });
-    }
-    if (latestToken !== currentToken) return latestToken;
-  } else {
-    // Never resurrect a session that was logged out, or clobber a pair that a
-    // different tab rotated while this request was in flight.
-    const latestRefreshToken = getRefreshToken();
-    if (!latestRefreshToken) {
-      throw new RefreshError("Session ended", {
-        terminal: false,
-        status: 0,
-        code: "SESSION_ENDED",
-      });
-    }
-    if (latestRefreshToken !== refreshToken) {
-      const latestToken = getToken();
-      if (latestToken) return latestToken;
-    }
+    if (latestToken) return latestToken;
   }
 
   updateTokens(tokens.token, tokens.refreshToken);

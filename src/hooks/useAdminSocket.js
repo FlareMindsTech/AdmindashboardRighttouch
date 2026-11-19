@@ -11,11 +11,11 @@ import {
   selectSessionVerified,
 } from "store/slices/authSlice";
 import { applySocketCounts } from "store/slices/notificationsSlice";
-import { getToken, handleSessionExpiry } from "views/utils/axiosInstance";
+import { getToken, getRefreshToken, handleSessionExpiry } from "views/utils/axiosInstance";
 import { refreshSession } from "views/utils/tokenRefresh";
 
 const API_ORIGIN = (
-  process.env.REACT_APP_API_BASE_URL || "https://api.righttouchservice.com"
+  process.env.REACT_APP_API_BASE_URL || "http://13.206.118.180:7372"
 )
   .replace(/\/api\/?$/, "")
   .replace(/\/+$/, "");
@@ -96,16 +96,20 @@ export const useAdminSocket = () => {
       if (reconnectAttemptInFlight) return;
       reconnectAttemptInFlight = true;
       try {
+        const refreshToken = getRefreshToken();
+        if (!refreshToken) {
+          socket.disconnect();
+          handleSessionExpiry("Socket authentication expired");
+          return;
+        }
         const token = await refreshSession({ staleToken: getToken() });
         if (token) {
           socket.auth = { token };
           if (!socket.connected) socket.connect();
         }
       } catch (err) {
-        if (err?.terminal) {
-          socket.disconnect();
-          handleSessionExpiry(err.message);
-        }
+        socket.disconnect();
+        handleSessionExpiry(err?.message || "Session expired");
       } finally {
         reconnectAttemptInFlight = false;
       }

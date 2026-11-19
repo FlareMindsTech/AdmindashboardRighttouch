@@ -9,7 +9,8 @@ import {
   selectIsAuthenticated,
   selectToken,
 } from "store/slices/authSlice";
-import { getToken } from "views/utils/authStorage";
+import { getToken, getRefreshToken } from "views/utils/authStorage";
+import { handleSessionExpiry } from "views/utils/axiosInstance";
 import { refreshSession } from "views/utils/tokenRefresh";
 
 const REFRESH_LEEWAY_MS = 15 * 60 * 1000;
@@ -72,15 +73,27 @@ export const useSessionRefresh = () => {
         return;
       }
 
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) {
+        // No refresh token available. If token is already expired, terminate session.
+        if (expiry && expiry <= Date.now()) {
+          handleSessionExpiry("Session expired");
+        }
+        return;
+      }
+
       inFlight = true;
       try {
         await refreshSession({ staleToken: current });
         if (!cancelled) schedule();
       } catch (err) {
-        // Terminal errors already clear storage; non-terminal ones (offline,
-        // 5xx) deserve a quiet retry rather than a 1-second tight loop.
+        // Terminal errors clear storage and terminate session; non-terminal ones (offline,
+        // 5xx) deserve a quiet retry rather than a tight loop.
         if (!cancelled) {
-          if (err?.terminal) return;
+          if (err?.terminal) {
+            handleSessionExpiry(err.message);
+            return;
+          }
           schedule(MIN_RETRY_MS);
         }
       } finally {

@@ -1,8 +1,8 @@
 import axios from "axios";
 import { appToast } from "components/feedback/standaloneToast";
 import { normalizeError } from "errors/normalizeError";
-import { clearAuth, getToken } from "./authStorage";
-import { refreshSession, isAuthEndpoint } from "./tokenRefresh";
+import { clearAuth, getToken, getRefreshToken } from "./authStorage";
+import { refreshSession, isAuthEndpoint, markSessionExpired } from "./tokenRefresh";
 
 export {
   setAuth,
@@ -24,36 +24,45 @@ export const setAuthResetListener = (listener) => {
 };
 
 export const handleSessionExpiry = (customMessage) => {
-  const now = Date.now();
-  // Debounce (5 seconds) to prevent multiple duplicate toasts when several API calls fail simultaneously
-  if (now - lastExpiryToastTime < 5000) {
-    return;
-  }
-  lastExpiryToastTime = now;
-
   console.warn("⚠️ Unauthorized (401) / Session expired. Clearing auth data...");
-  clearAuth();
 
-  // Notify Redux (if registered) — storage already cleared above.
+  // 1. Storage wipe must ALWAYS execute synchronously and immediately
+  try {
+    clearAuth();
+  } catch (e) {
+    console.error("Auth clear storage error:", e);
+  }
+
+  // 2. Notify Redux (if registered) synchronously to reset state and stop background polling
   try {
     if (authResetListener) authResetListener();
   } catch (e) {
     console.error("Auth reset listener error:", e);
   }
 
-  appToast.warning("Session expired", {
-    id: "session-expired-toast",
-    description: customMessage || "Your session has expired. Please sign in again to continue.",
-    duration: 5000,
-  });
+  // 3. Mark session expired event for cross-tab or custom event listeners
+  try {
+    markSessionExpired(customMessage);
+  } catch (e) {
+    // Ignore event dispatch errors
+  }
 
-  // Redirect to signin if not already on the auth page
+  // 4. Debounce (5 seconds) to prevent multiple duplicate toasts when several API calls fail simultaneously
+  const now = Date.now();
+  if (now - lastExpiryToastTime > 5000) {
+    lastExpiryToastTime = now;
+    appToast.warning("Session expired", {
+      id: "session-expired-toast",
+      description: customMessage || "Your session has expired. Please sign in again to continue.",
+      duration: 5000,
+    });
+  }
+
+  // 5. Redirect to signin immediately if not already on the auth page
   if (typeof window !== "undefined" && window.location) {
     const hash = window.location.hash || "";
     if (!hash.includes("/auth/signin") && !hash.includes("/auth/")) {
-      setTimeout(() => {
-        window.location.hash = "#/auth/signin";
-      }, 200);
+      window.location.hash = "#/auth/signin";
     }
   }
 };
@@ -95,11 +104,18 @@ if (typeof window !== "undefined" && window.fetch) {
     if (!response || response.status !== 401) return response;
 
     const url = isRequest ? input.url : String(input || "");
+    if (isAuthEndpoint(url)) return response;
+
     if (alreadyRetried) {
-      handleSessionExpiry();
+      handleSessionExpiry("Session expired");
       return response;
     }
-    if (isAuthEndpoint(url)) return response;
+
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) {
+      handleSessionExpiry("Session expired");
+      return response;
+    }
 
     const staleToken = isRequest
       ? bearerFrom(input.headers) || getToken()
@@ -107,7 +123,10 @@ if (typeof window !== "undefined" && window.fetch) {
 
     try {
       const newToken = await refreshSession({ staleToken });
-      if (!newToken) return response;
+      if (!newToken) {
+        handleSessionExpiry("Session expired");
+        return response;
+      }
 
       if (retrySource) {
         const headers = new Headers(retrySource.headers);
@@ -123,9 +142,7 @@ if (typeof window !== "undefined" && window.fetch) {
       retryInit.__rtRetried = true;
       return originalFetch.call(this, input, retryInit);
     } catch (err) {
-      if (err && err.terminal) {
-        handleSessionExpiry(err.message);
-      }
+      handleSessionExpiry(err?.message || "Session expired");
       return response;
     }
   };
@@ -133,7 +150,7 @@ if (typeof window !== "undefined" && window.fetch) {
 
 // --- Configuration ---
 const API_BASE_URL = (
-  process.env.REACT_APP_API_BASE_URL || "https://api.righttouchservice.com"
+  process.env.REACT_APP_API_BASE_URL || "http://13.206.118.180:7372"
 )
   .replace(/\/api\/?$/, "")
   .replace(/\/+$/, "");
@@ -200,28 +217,46 @@ export const createUnauthorizedResponseHandler = (instance) => async (error) => 
   const url = error.config?.url || "";
   const alreadyRetried = Boolean(error.config?._rtRetried);
 
-  if (!isAuthEndpoint(url) && !alreadyRetried) {
-    try {
-      await refreshSession({
-        staleToken: bearerFromConfig(error.config) || getToken(),
-      });
-      error.config._rtRetried = true;
-      return instance(error.config);
-    } catch (refreshErr) {
-      if (refreshErr?.terminal) {
-        handleSessionExpiry(refreshErr.message);
-      }
-      return Promise.reject(error);
-    }
-  }
-
+  // 1. Auth endpoints (login, signin, verify-otp, etc.) must NOT trigger session expiry.
+  // Let the component or caller handle bad credentials.
   if (isAuthEndpoint(url)) {
     if (/\/(login|signin)/i.test(url)) clearAuth();
     return Promise.reject(error);
   }
 
-  handleSessionExpiry();
-  return Promise.reject(error);
+  // 2. If this request was already retried once and still returned 401 -> session is dead.
+  if (alreadyRetried) {
+    handleSessionExpiry("Your session has expired. Please sign in again.");
+    return Promise.reject(error);
+  }
+
+  // 3. If there is no refresh token available in storage, session renewal is impossible.
+  // Expire the session immediately instead of looping or making dead requests.
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    handleSessionExpiry("Your session has expired. Please sign in again.");
+    return Promise.reject(error);
+  }
+
+  // 4. Attempt token refresh once
+  try {
+    const newToken = await refreshSession({
+      staleToken: bearerFromConfig(error.config) || getToken(),
+    });
+    if (!newToken) {
+      handleSessionExpiry("Unable to restore your session. Please sign in again.");
+      return Promise.reject(error);
+    }
+    error.config._rtRetried = true;
+    if (error.config.headers) {
+      error.config.headers.Authorization = `Bearer ${newToken}`;
+    }
+    return instance(error.config);
+  } catch (refreshErr) {
+    // ANY failure during token refresh for an unauthorized request terminates the session cleanly
+    handleSessionExpiry(refreshErr?.message || "Session expired");
+    return Promise.reject(error);
+  }
 };
 
 axiosInstance.interceptors.response.use(

@@ -7,6 +7,7 @@ export default function BookingTrackingModal({
   isOpen,
   onClose,
   bookingId,
+  customerLookup = null,
   onOpenCompensation,
 }) {
   const shortId = bookingId ? String(bookingId).slice(-8) : "";
@@ -28,6 +29,7 @@ export default function BookingTrackingModal({
           key={bookingId}
           preselectedBookingId={bookingId}
           lockToBooking
+          customerLookup={customerLookup}
           onOpenCompensation={onOpenCompensation}
         />
       ) : null}

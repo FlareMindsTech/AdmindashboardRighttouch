@@ -4788,6 +4788,17 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
       </VStack>
     );
 
+    const contextualRefreshLabel =
+      activeTab === 0
+        ? "Refresh district master"
+        : activeTab === 1
+          ? "Refresh city micro-zones"
+          : activeTab === 2
+            ? "Refresh service-zone matrix"
+            : activeTab === 3
+              ? "Refresh technician district permissions"
+              : "Refresh diagnostics and telemetry";
+
     const statCards = [
       {
         key: "total-districts",
@@ -4965,7 +4976,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                     <RefreshButton
                       onClick={handleContextualRefresh}
                       isLoading={isLoading || isHealthLoading || isLoadingSpatialTree}
-                      aria-label="Refresh telemetry"
+                      aria-label={contextualRefreshLabel}
                     />
                   )}
                 </HStack>
@@ -5142,7 +5153,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                   <RefreshButton
                     onClick={handleContextualRefresh}
                     isLoading={isLoading}
-                    aria-label="Refresh city zones"
+                    aria-label={contextualRefreshLabel}
                   />
                 </Flex>
               )}
@@ -5823,7 +5834,7 @@ import { fetchTechnicians as fetchTechniciansShared } from "store/slices/technic
                           <RefreshButton
                             onClick={handleContextualRefresh}
                             isLoading={isLoading}
-                            aria-label="Refresh service matrix"
+                            aria-label={contextualRefreshLabel}
                           />
                         </HStack>
                       </Flex>

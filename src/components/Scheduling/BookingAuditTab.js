@@ -80,6 +80,7 @@ export default function BookingAuditTab({
   preselectedBookingId,
   onOpenCompensation,
   lockToBooking = false,
+  customerLookup = null,
 }) {
   const toast = useAppToast();
   const { colorMode } = useColorMode();
@@ -187,8 +188,8 @@ export default function BookingAuditTab({
   const broadcastSummary = getBroadcastSummary(broadcastAudit);
   const broadcastCandidates =
     broadcastAudit?.candidates || broadcastAudit?.offers || broadcastAudit?.deliveries || [];
-  const customerName = getBookingCustomerName(bookingDetail);
-  const customerPhone = getBookingCustomerPhone(bookingDetail);
+  const customerName = getBookingCustomerName(bookingDetail, customerLookup);
+  const customerPhone = getBookingCustomerPhone(bookingDetail, customerLookup);
   const technicianInfo = getBookingTechnicianInfo(bookingDetail);
   const currentTechnicianInfo = technicianInfo?.isCurrent ? technicianInfo : null;
   const schedule = getBookingScheduleInfo(bookingDetail);

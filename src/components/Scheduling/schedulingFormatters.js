@@ -122,6 +122,14 @@ const firstText = (...values) => {
   return "";
 };
 
+const isValidPhone = (val) => {
+  if (!val) return false;
+  const str = String(val).trim();
+  if (/^[0-9a-fA-F]{24}$/.test(str)) return false;
+  const cleaned = str.replace(/[^\d+]/g, "");
+  return cleaned.length >= 7 && cleaned.length <= 16;
+};
+
 const personFullName = (person) => {
   if (!person) return "";
   if (typeof person === "string" && person.trim()) {
@@ -143,15 +151,13 @@ const personFullName = (person) => {
     person.userName,
     person.contactName
   );
-  if (direct) return direct;
-  const combined = firstText(
-    `${firstText(person.fname, person.firstName)} ${firstText(
-      person.lname,
-      person.lastName
-    )}`.trim(),
-    `${firstText(person.firstName)} ${firstText(person.lastName)}`.trim()
-  );
-  if (combined) return combined;
+  if (direct && !/^[0-9a-fA-F]{24}$/.test(direct)) return direct;
+
+  const firstName = firstText(person.fname, person.firstName);
+  const lastName = firstText(person.lname, person.lastName);
+  const combined = `${firstName} ${lastName}`.trim();
+  if (combined && !/^[0-9a-fA-F]{24}$/.test(combined)) return combined;
+
   return (
     personFullName(person.userId) ||
     personFullName(person.user) ||
@@ -166,12 +172,12 @@ const personFullName = (person) => {
 const personPhoneNumber = (person) => {
   if (!person) return "";
   if (typeof person === "string" && person.trim()) {
-    const cleaned = person.replace(/[^\d+]/g, "");
-    if (cleaned.length >= 7) return person.trim();
+    const trimmed = person.trim();
+    if (isValidPhone(trimmed)) return trimmed;
     return "";
   }
   if (typeof person !== "object") return "";
-  return firstText(
+  const raw = firstText(
     person.mobileNumber,
     person.mobile,
     person.phone,
@@ -194,41 +200,30 @@ const personPhoneNumber = (person) => {
     person.customerSnapshot?.mobileNumber,
     person.customerSnapshot?.phone
   );
+  if (isValidPhone(raw)) return raw;
+  return "";
 };
 
-export const getBookingCustomerName = (booking) => {
-  if (!booking) return "Customer";
-  const name =
-    personFullName(booking.customerSnapshot) ||
-    personFullName(booking.customerId) ||
-    personFullName(booking.customerDetails) ||
-    personFullName(booking.customer) ||
-    personFullName(booking.user) ||
-    personFullName(booking.userId) ||
-    personFullName(booking.client) ||
-    personFullName(booking.clientDetails) ||
-    firstText(
-      booking.customerName,
-      booking.clientName,
-      booking.reportedBy,
-      booking.userName,
-      booking.name,
-      booking.address?.name,
-      booking.address?.fullName,
-      booking.address?.customerName,
-      booking.address?.recipientName,
-      booking.addressSnapshot?.name,
-      booking.addressSnapshot?.fullName,
-      booking.addressId?.name
-    );
-  return name || "Customer";
-};
-
-export const getBookingCustomerPhone = (booking) => {
+export const getBookingCustomerPhone = (booking, customerLookup = null) => {
   if (!booking) return "";
-  return (
+
+  const custId =
+    typeof booking.customerId === "string"
+      ? booking.customerId
+      : booking.customerId?._id
+      ? String(booking.customerId._id)
+      : null;
+  const lookupUser =
+    customerLookup && custId
+      ? typeof customerLookup.get === "function"
+        ? customerLookup.get(custId)
+        : customerLookup[custId]
+      : null;
+
+  const phone =
     personPhoneNumber(booking.customerSnapshot) ||
     personPhoneNumber(booking.customerId) ||
+    personPhoneNumber(lookupUser) ||
     personPhoneNumber(booking.customerDetails) ||
     personPhoneNumber(booking.customer) ||
     personPhoneNumber(booking.user) ||
@@ -243,15 +238,106 @@ export const getBookingCustomerPhone = (booking) => {
       booking.phoneNumber,
       booking.contactNumber,
       booking.contactPhone,
+      booking.addressSnapshot?.phone,
+      booking.addressSnapshot?.mobileNumber,
+      booking.addressSnapshot?.mobile,
+      booking.addressSnapshot?.contactNumber,
       booking.address?.phone,
       booking.address?.mobileNumber,
       booking.address?.mobile,
       booking.address?.contactNumber,
-      booking.addressSnapshot?.phone,
-      booking.addressSnapshot?.mobileNumber,
       booking.addressId?.phone,
-      booking.addressId?.mobileNumber
-    )
+      booking.addressId?.mobileNumber,
+      booking.addressId?.mobile
+    );
+
+  return isValidPhone(phone) ? phone : "";
+};
+
+export const getBookingCustomerName = (booking, customerLookup = null) => {
+  if (!booking) return "Customer";
+
+  const custId =
+    typeof booking.customerId === "string"
+      ? booking.customerId
+      : booking.customerId?._id
+      ? String(booking.customerId._id)
+      : null;
+  const lookupUser =
+    customerLookup && custId
+      ? typeof customerLookup.get === "function"
+        ? customerLookup.get(custId)
+        : customerLookup[custId]
+      : null;
+
+  const name =
+    personFullName(booking.customerSnapshot) ||
+    personFullName(booking.customerId) ||
+    personFullName(lookupUser) ||
+    personFullName(booking.customerDetails) ||
+    personFullName(booking.customer) ||
+    personFullName(booking.user) ||
+    personFullName(booking.userId) ||
+    personFullName(booking.client) ||
+    personFullName(booking.clientDetails) ||
+    firstText(
+      booking.customerName,
+      booking.clientName,
+      booking.reportedBy,
+      booking.userName,
+      booking.name,
+      booking.addressSnapshot?.name,
+      booking.addressSnapshot?.fullName,
+      booking.addressSnapshot?.recipientName,
+      booking.addressSnapshot?.contactName,
+      booking.address?.name,
+      booking.address?.fullName,
+      booking.address?.customerName,
+      booking.address?.recipientName,
+      booking.addressId?.name,
+      booking.addressId?.fullName,
+      booking.addressId?.recipientName
+    );
+
+  if (name && !/^[0-9a-fA-F]{24}$/.test(name)) return name;
+
+  const phone = getBookingCustomerPhone(booking, customerLookup);
+  if (phone) return `Customer (${phone})`;
+
+  const email =
+    booking?.customerId?.email ||
+    lookupUser?.email ||
+    booking?.customerSnapshot?.email ||
+    booking?.customer?.email ||
+    booking?.customerEmail;
+  if (email) return email;
+
+  return "Customer";
+};
+
+export const getBookingCustomerEmail = (booking, customerLookup = null) => {
+  if (!booking) return "";
+  const custId =
+    typeof booking.customerId === "string"
+      ? booking.customerId
+      : booking.customerId?._id
+      ? String(booking.customerId._id)
+      : null;
+  const lookupUser =
+    customerLookup && custId
+      ? typeof customerLookup.get === "function"
+        ? customerLookup.get(custId)
+        : customerLookup[custId]
+      : null;
+
+  return firstText(
+    booking?.customerId?.email,
+    lookupUser?.email,
+    booking?.customerSnapshot?.email,
+    booking?.customer?.email,
+    booking?.customerEmail,
+    booking?.user?.email,
+    booking?.userId?.email
   );
 };
 

@@ -115,10 +115,11 @@ const currentTechnicianOf = (booking) => {
 const noShowOf = (booking) =>
   booking?.customerNoShow || booking?.noShow || null;
 
-const customerNameOf = (booking) => getBookingCustomerName(booking);
+const customerNameOf = (booking, lookup = null) =>
+  getBookingCustomerName(booking, lookup);
 
-const customerPhoneOf = (booking) =>
-  getBookingCustomerPhone(booking) || "No phone on file";
+const customerPhoneOf = (booking, lookup = null) =>
+  getBookingCustomerPhone(booking, lookup) || "No phone on file";
 
 const serviceNameOf = (booking) =>
   booking?.serviceName ||
@@ -312,6 +313,7 @@ export default function SchedulingOps() {
   const [isCompensationModalOpen, setIsCompensationModalOpen] = useState(false);
 
   const [bookings, setBookings] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [bookingsError, setBookingsError] = useState("");
   const [bookingSearch, setBookingSearch] = useState("");
@@ -412,7 +414,11 @@ export default function SchedulingOps() {
       const items = Array.isArray(response)
         ? response
         : response?.bookings ?? response?.items ?? [];
+      const customersList = response?.customers ?? [];
       setBookings(items);
+      if (Array.isArray(customersList) && customersList.length > 0) {
+        setCustomers(customersList);
+      }
 
       const pendingNoShow = items.filter((booking) => {
         const noShow = noShowOf(booking);
@@ -676,6 +682,15 @@ export default function SchedulingOps() {
     return lookup;
   }, [districts, bookings]);
 
+  const customerLookup = useMemo(() => {
+    const map = new Map();
+    customers.forEach((c) => {
+      const id = String(c?._id || c?.id || "");
+      if (id) map.set(id, c);
+    });
+    return map;
+  }, [customers]);
+
   const districtOptions = useMemo(() => {
     const counts = new Map();
 
@@ -742,8 +757,8 @@ export default function SchedulingOps() {
 
       return [
         bookingIdOf(booking),
-        customerNameOf(booking),
-        customerPhoneOf(booking),
+        customerNameOf(booking, customerLookup),
+        customerPhoneOf(booking, customerLookup),
         serviceNameOf(booking),
         technicianName,
         districtNameOf(booking, districtLookup),
@@ -759,6 +774,7 @@ export default function SchedulingOps() {
     bookingTypeFilter,
     bookingDistrictFilter,
     districtLookup,
+    customerLookup,
   ]);
 
   const sortedBookings = useMemo(() => {
@@ -766,7 +782,7 @@ export default function SchedulingOps() {
 
     if (bookingSort === "CUSTOMER") {
       return list.sort((a, b) =>
-        customerNameOf(a).localeCompare(customerNameOf(b))
+        customerNameOf(a, customerLookup).localeCompare(customerNameOf(b, customerLookup))
       );
     }
 
@@ -779,7 +795,7 @@ export default function SchedulingOps() {
     }
 
     return list.sort(sortBySchedule(bookingSort === "LATEST" ? "desc" : "asc"));
-  }, [filteredBookings, bookingSort]);
+  }, [filteredBookings, bookingSort, customerLookup]);
 
   const latestBooking = useMemo(() => {
     if (filteredBookings.length === 0) return null;
@@ -1360,7 +1376,7 @@ export default function SchedulingOps() {
                         color={isDark ? "gray.100" : "gray.800"}
                         noOfLines={1}
                       >
-                        {customerNameOf(latestBooking)} ·{" "}
+                        {customerNameOf(latestBooking, customerLookup)} ·{" "}
                         {serviceNameOf(latestBooking)}
                       </Text>
 
@@ -1711,14 +1727,14 @@ export default function SchedulingOps() {
                                     <HStack spacing={2.5}>
                                       <Avatar
                                         size="sm"
-                                        name={customerNameOf(booking)}
+                                        name={customerNameOf(booking, customerLookup)}
                                         bg="teal.500"
                                         color="white"
                                         fontSize="2xs"
                                       />
                                       <VStack align="flex-start" spacing={0}>
                                         <Text fontSize="sm" fontWeight="700" noOfLines={1}>
-                                          {customerNameOf(booking)}
+                                          {customerNameOf(booking, customerLookup)}
                                         </Text>
                                         <Text
                                           fontSize="xs"
@@ -1726,7 +1742,7 @@ export default function SchedulingOps() {
                                           fontFamily="mono"
                                           noOfLines={1}
                                         >
-                                          {customerPhoneOf(booking)}
+                                          {customerPhoneOf(booking, customerLookup)}
                                         </Text>
                                       </VStack>
                                     </HStack>
@@ -1953,10 +1969,10 @@ export default function SchedulingOps() {
                                     </Badge>
                                   </HStack>
                                   <Text fontSize="sm" fontWeight="800" mt={1} noOfLines={1}>
-                                    {customerNameOf(booking)}
+                                    {customerNameOf(booking, customerLookup)}
                                   </Text>
                                   <Text fontSize="xs" color="gray.500" noOfLines={1}>
-                                    {customerPhoneOf(booking)}
+                                    {customerPhoneOf(booking, customerLookup)}
                                   </Text>
                                 </Box>
                                 {renderDispatchBadge(booking)}
@@ -2111,6 +2127,7 @@ export default function SchedulingOps() {
             <TabPanel px={{ base: 3, md: 5 }} py={5}>
               <NoShowCompensationTab
                 onRefreshPendingCount={handleNoShowCountChange}
+                customerLookup={customerLookup}
               />
             </TabPanel>
 
@@ -2132,6 +2149,10 @@ export default function SchedulingOps() {
           setSelectedDrawerBookingId("");
         }}
         bookingId={selectedDrawerBookingId}
+        initialBooking={
+          bookings.find((b) => bookingIdOf(b) === selectedDrawerBookingId) || null
+        }
+        customerLookup={customerLookup}
         onOpenCompensation={handleOpenCompensation}
         onOpenTracker={handleOpenTracker}
         isDark={isDark}
@@ -2141,6 +2162,7 @@ export default function SchedulingOps() {
         isOpen={isTrackerOpen}
         onClose={handleCloseTracker}
         bookingId={trackerBookingId}
+        customerLookup={customerLookup}
         onOpenCompensation={handleTrackerCompensation}
       />
 

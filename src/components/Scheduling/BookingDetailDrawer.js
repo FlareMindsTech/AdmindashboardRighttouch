@@ -78,6 +78,7 @@ import {
   formatFriendlyRelativeTime,
   getBookingCustomerName,
   getBookingCustomerPhone,
+  getBookingCustomerEmail,
   getBookingTechnicianInfo,
   getBookingScheduleInfo,
   getBookingAmount,
@@ -504,6 +505,8 @@ export default function BookingDetailDrawer({
   isOpen,
   onClose,
   bookingId,
+  initialBooking = null,
+  customerLookup = null,
   onOpenCompensation,
   onOpenTracker,
   isDark,
@@ -513,13 +516,24 @@ export default function BookingDetailDrawer({
   const dark = typeof isDark === "boolean" ? isDark : colorMode === "dark";
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [booking, setBooking] = useState(null);
+  const [booking, setBooking] = useState(initialBooking || null);
   const [broadcast, setBroadcast] = useState(null);
   const [error, setError] = useState("");
   const [auditError, setAuditError] = useState("");
   const [copiedKey, setCopiedKey] = useState("");
   const [retrying, setRetrying] = useState(false);
   const requestRef = useRef(0);
+
+  useEffect(() => {
+    if (
+      isOpen &&
+      initialBooking &&
+      (!booking ||
+        String(booking._id || booking.id || "") !== String(bookingId || ""))
+    ) {
+      setBooking(initialBooking);
+    }
+  }, [isOpen, initialBooking, bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const copyToClipboard = (text, key, label) => {
     if (!text) return;
@@ -669,9 +683,10 @@ export default function BookingDetailDrawer({
     "";
   const faultProblem = booking?.faultProblem || "";
 
-  const customerName = getBookingCustomerName(booking);
-  const customerPhone = getBookingCustomerPhone(booking);
+  const customerName = getBookingCustomerName(booking, customerLookup);
+  const customerPhone = getBookingCustomerPhone(booking, customerLookup);
   const customerEmail =
+    getBookingCustomerEmail(booking, customerLookup) ||
     booking?.customerId?.email ||
     booking?.customerSnapshot?.email ||
     booking?.customer?.email ||

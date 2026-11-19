@@ -136,12 +136,22 @@ In the project directory, you can run:
 
 | Command | Description |
 | :--- | :--- |
-| `npm start` | Runs the app in development mode at [http://localhost:3000](http://localhost:3000) with hot-reloading. |
+| `npm start` | Serves the production build from `build/` at [http://localhost:3000](http://localhost:3000). Run `npm run build` first. |
+| `npm run dev` | Runs the app in development mode at [http://localhost:3000](http://localhost:3000) with hot-reloading. |
 | `npm run build` | Builds the production-ready bundle into the `build/` directory. |
 | `npm run lint:check` | Runs ESLint across all JavaScript/JSX files to check for code issues. |
 | `npm run lint:fix` | Runs ESLint and automatically fixes fixable formatting and lint issues. |
 | `npm test` | Launches the test runner in interactive watch mode. |
 | `npm run install:clean` | Performs a clean reinstall of `node_modules` and restarts development server. |
+
+### Render deployment
+
+Use a production build rather than the CRA development server:
+
+- **Build Command:** `npm install && npm run build`
+- **Start Command:** `npm start`
+- The `start` script serves `build/` through `serve`; use `npm run dev` for local hot-reloading.
+- The build script disables source maps and sets a 512 MB Node heap to fit constrained deploy builders.
 
 ---
 

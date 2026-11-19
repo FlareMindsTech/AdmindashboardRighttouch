@@ -41,9 +41,14 @@ import { useAppToast } from "components/feedback";
 import StatusBadge from "components/common/StatusBadge";
 import NoShowCompensationModal from "./NoShowCompensationModal";
 import { getAllSchedulingBookings } from "api/scheduling";
-import { formatFriendlyDateTime, formatFriendlyCurrency } from "./schedulingFormatters";
+import {
+  formatFriendlyDateTime,
+  formatFriendlyCurrency,
+  getBookingCustomerName,
+  getBookingCustomerPhone,
+} from "./schedulingFormatters";
 
-export default function NoShowCompensationTab({ onRefreshPendingCount }) {
+export default function NoShowCompensationTab({ onRefreshPendingCount, customerLookup = null }) {
   const toast = useAppToast();
   const { colorMode } = useColorMode();
   const isDark = colorMode === "dark";
@@ -338,11 +343,8 @@ export default function NoShowCompensationTab({ onRefreshPendingCount }) {
                   ns.technicianName ||
                   "Technician";
 
-                const custName =
-                  b.customerName ||
-                  b.user?.name ||
-                  b.customer?.name ||
-                  "Customer";
+                const custName = getBookingCustomerName(b, customerLookup);
+                const custPhone = getBookingCustomerPhone(b, customerLookup);
 
                 return (
                   <Tr key={bId + idx} _hover={{ bg: isDark ? "gray.800" : "gray.50" }}>
@@ -384,9 +386,16 @@ export default function NoShowCompensationTab({ onRefreshPendingCount }) {
 
                     {/* Customer */}
                     <Td py={3}>
-                      <Text fontSize="xs" color="gray.600">
-                        {custName}
-                      </Text>
+                      <VStack align="flex-start" spacing={0}>
+                        <Text fontSize="xs" fontWeight="700">
+                          {custName}
+                        </Text>
+                        {custPhone && (
+                          <Text fontSize="2xs" color="gray.500" fontFamily="mono">
+                            {custPhone}
+                          </Text>
+                        )}
+                      </VStack>
                     </Td>
 
                     {/* Compensation Amount */}
